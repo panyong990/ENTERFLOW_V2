@@ -1,0 +1,484 @@
+# Enter-Flow — Figma Make Design Prompt
+**Enter-Fil Industrial Products · Order Management System with Real-Time Monitoring**
+*For use with Figma Make AI · Full-System UI Generation Prompt*
+
+---
+
+## ── OVERVIEW & CONTEXT
+
+Design a complete, production-ready web application UI called **Enter-Flow** — an ERP / Order Management System for **Enter-Fil Industrial Products**, a Philippine industrial filter manufacturing company. The system must serve three internal user roles (Management, Accounting/Finance, Floor/Production) and one external role (Client Portal). It is a **desktop-first web app** used on factory computers and office desktops.
+
+Enter-Fil makes industrial air/oil separator filters. Their pain point: everything runs on paper, spreadsheets, and verbal updates. Enter-Flow digitizes the full pipeline from sales inquiry → quotation → job order → production → delivery → payment — all in one dashboard.
+
+---
+
+## ── BRAND IDENTITY
+
+Pull directly from enterfil.com brand language:
+
+- **Primary Red:** `#C8102E` (Enter-Fil's signature red — used for CTAs, active states, accent borders)
+- **Dark Navy Sidebar:** `#1A2B4A` (sidebar background, header bar)
+- **White Content Area:** `#FFFFFF` (main content bg)
+- **Light Gray Background:** `#F4F6F9` (page canvas)
+- **Muted Text:** `#64748B`
+- **Success Green:** `#16A34A`
+- **Warning Amber:** `#D97706`
+- **Danger Red:** `#DC2626`
+- **Gold Accent:** `#C9A84C` (used for section dividers, tier labels, premium indicators)
+
+**Logo:** Top-left of sidebar — the Enter-Fil triangle/mountain logo (▲ EFIP mark) in white, with text "ENTER-FIL" bold white, subtitle "Industrial Products" in muted. Show a small red underline/rule beneath.
+
+**Typography:**
+- Display / Headings: **Syne** (700–800 weight) — bold, geometric, serious
+- Body / Labels: **DM Sans** (300–600 weight) — clean, legible, neutral
+- Monospace (for PO/JO codes): `font-family: 'JetBrains Mono', monospace`
+
+**Design Tone:** Industrial-utilitarian meets clean enterprise SaaS. No gradients, no glass morphism, no 3D. Flat, high-contrast, data-dense but breathable. Think: a serious tool for busy factory workers — every pixel earns its place.
+
+---
+
+## ── LAYOUT SYSTEM (ALL PAGES)
+
+Every internal page uses a **persistent two-column shell**:
+
+```
+┌─────────────────┬────────────────────────────────────────────────┐
+│  SIDEBAR        │  TOP BAR                                        │
+│  240px fixed    │  (company name · date/time · user avatar/role) │
+│                 ├────────────────────────────────────────────────┤
+│  Nav items      │  PAGE CONTENT AREA                              │
+│  (icons+labels) │  (scrollable, white cards on #F4F6F9 canvas)   │
+│                 │                                                 │
+│  Bottom:        │                                                 │
+│  User info      │                                                 │
+│  + logout       │                                                 │
+└─────────────────┴────────────────────────────────────────────────┘
+```
+
+**Sidebar (`#1A2B4A`):**
+- Logo block at top (40px height, white)
+- Section label "MODULES" in tiny uppercase muted
+- Nav items: icon (20px) + label, full-width, 44px tall
+- Active item: `#C8102E` left border (3px), light red tint background `rgba(200,16,46,0.1)`, white text
+- Inactive: `rgba(255,255,255,0.55)` text
+- Bottom: user avatar initials circle, name, role badge, logout link
+
+**Top Bar (`#FFFFFF`, 56px, border-bottom 1px `#E5E7EB`):**
+- Left: breadcrumb path (e.g. "Management / Sales & Orders")
+- Right: date + time live clock · notification bell with badge · user avatar
+
+---
+
+## ── SCREENS TO DESIGN
+
+---
+
+### SCREEN 1 · LOGIN PAGE
+
+Centered card on `#F4F6F9` background with subtle repeating dot-grid texture.
+
+Card (480px wide, centered):
+- Top: Enter-Fil ▲ logo mark (48px) + "ENTER-FIL ERP" bold + "Industrial Products Management System" in small muted
+- Toggle tabs: [Sign In] [Create Account] — pill tabs, red underline on active
+- Sign In fields: Email (placeholder: you@enterfil.com) · Password (with show/hide eye icon)
+- Primary CTA button: `#C8102E` full-width, "→ Sign In", white bold text, 48px height, 6px radius
+- Below button: "Forgot password?" link in muted
+- No decorative 3D elements; just clean white card with 1px border and subtle shadow
+
+Create Account tab:
+- Fields: Full Name · Email · Password (min 6 chars)
+- "Create Account" button (same red)
+- Note below: "After creating your account, an administrator must assign your role before you can access the system."
+
+---
+
+### SCREEN 2 · MANAGEMENT DASHBOARD
+
+**Top stat cards row (4 across):**
+| Card | Value | Sub-label |
+|------|-------|-----------|
+| Active Orders | 12 | ↑ +3 this week |
+| Jobs In Progress | 8 | 3 near deadline |
+| Low Stock Alerts | 3 | Action needed |
+| Revenue (PHP) | ₱1.2M | ↑ +16% vs last month |
+
+Each card: white, 12px radius, left-side color bar (red/amber/orange/green), large bold number, small label below.
+
+**Second row (3 columns):**
+- **Weekly Output** — vertical bar chart (Mon–Sat), red bars, minimal gridlines
+- **Revenue Trend (6M)** — simple line chart, smooth curve, red line, light red fill
+- **Production Stages** — donut/pie chart with legend: Molding (2), Cutting (3), Assembling (4), Heating/Gasket (3), Inspection (2), Completed (4)
+
+**Third row (2 columns):**
+- **Active Jobs** list — each row: PO code + client name + filter product + status badge + due countdown. Status badges: `Assembling` (amber), `Spotting of Filter Core` (orange), `Quality/Product Inspection` (blue), `Holding` (gray), `Completed` (green). Show 4 rows. "+ View All →" link.
+- **Alerts** panel — red-headed section. Alert items with icons: 🔴 Material Shortage (detail text below), 🟠 Deadline Approaching, 🟢 Ready for Dispatch, 🟡 Payment Overdue. Each alert is a slim colored row.
+
+---
+
+### SCREEN 3 · SALES & ORDER PROCESSING (Management)
+
+**Page header:** "Sales & Order Processing" H1 · "Manage the full sales pipeline — inquiry to job order" subtitle
+
+**Top action bar:** `+ NEW INQUIRY` button (red) · `→ CONVERT PO → JO` button (dark navy, only active when a PO is selected)
+
+**How it works** tip bar: amber background, small text explaining the pipeline step-by-step.
+
+**Pipeline board (Kanban — 3 columns):**
+
+```
+┌─ NEW INQUIRY ──┐  ┌─ QUOTATION SENT ─┐  ┌─── PO RECEIVED ────┐
+│ INQ-004        │  │ INQ-001          │  │ INQ-002            │
+│ Unkno[rg]      │  │ monaco           │  │ B.E. AEROSPACE     │
+│ Air Filter·10  │  │ Filter 2.0 5-mic │  │ AIR FILTER 115×103 │
+│ ₱50,000        │  │ Qty: 100 ·₱5,000 │  │ Qty: 50 ·₱0       │
+│ [→ To Quot.]   │  │ [→ To PO Recv.]  │  │ [GENERATE JO ▶]    │
+│                │  │                  │  │                    │
+│                │  │                  │  │ INQ-001            │
+│                │  │                  │  │ Maynilad           │
+│                │  │                  │  │ Filter · Qty 100   │
+│                │  │                  │  │ [GENERATE JO ▶]    │
+└────────────────┘  └──────────────────┘  └────────────────────┘
+```
+
+**CRITICAL BEHAVIOR (document as annotation):**
+> Once a PO is converted to a Job Order (JO) by clicking "GENERATE JO", that card is **immediately removed from the PO Received column** and disappears from this board. The data is saved to history/analytics but the active pipeline view stays clean. Only active, not-yet-converted items appear here.
+
+Each inquiry card: white, 1px border, 8px radius. Top-right: 3-dot menu (Edit, Delete, Archive). Client name bold. Product description small. Status badge top-right corner. Advance button bottom-full-width.
+
+---
+
+### SCREEN 4 · PRODUCTION FLOOR (Management view + Production user view)
+
+**Page header:** "Production Floor" · "Kiosk mode — tap to update job stages · 10-step manufacturing process"
+
+**Filter tab pills:** `ALL (7)` · `MOLDING (2)` · `SPOTTING OF FILTER CORE (1)` · `ASSEMBLING (1)` · `QUALITY / P.I. (3)` — each pill shows count badge
+
+**Job Order cards grid (2-column):**
+
+Each card shows the FULL JO detail (this is the fix — expanded by default or expandable):
+
+```
+┌─────────────────────────────────────────────────────┐
+│ PO-2026-5001 (JO-001) ⓘ          [Quality/P.I.] ✓  │
+│ B.E. AEROSPACE                    ⏰ Due: Dec 4      │
+│ AIR FILTER · Qty: 50                               │
+│ ─────────────────────────────────────────────────── │
+│ ITEM: KF-OS.107.65.252 · OD: 107mm · ID: 64.6mm   │
+│ Height: 252mm · Media: Microglass Fiber             │
+│ Inner Core: Expanded Metal Perfo 2mm                │
+│ End Cap: E.G. 1.0mm · Brand: Hitachi Comp.         │
+│ ─────────────────────────────────────────────────── │
+│ Stage 10 of 10 ▓▓▓▓▓▓▓▓▓▓ 100%                    │
+│ [Click to expand all stages ▼]                     │
+│                                            [✓ DONE] │
+└─────────────────────────────────────────────────────┘
+```
+
+**Expandable stage tracker (inside each card when expanded):**
+10 numbered stages as a vertical timeline:
+1. 🔴 Molding
+2. Cutting of Steel Plate
+3. Spotting of Filter Core
+4. Assembling
+5. Inserting of Filter Media
+6. Trimming
+7. Top/Bottom Cap Sealing (Heating)
+8. Gasket/O-Ring fitting
+9. Quality / Product Inspection
+10. ✅ Completed
+
+Each stage: circle with number (red = current, green checkmark = done, gray = pending) · stage name · timestamp when marked.
+
+**CRITICAL BEHAVIOR (annotate):**
+> When all 10 stages are completed and the owner marks the order as "Done/Complete," a **[Archive / Remove from Floor]** button appears. Clicking it removes the JO card from the production board view. The full JO record and stage history is preserved in the database for analytics — only the active board view is cleaned. This keeps the floor view showing only work-in-progress.
+
+**Bottom red alert bar (if any order is paused):**
+`⚠ PAUSED — MATERIAL SHORTAGE` — full-width amber/red bar at bottom of screen.
+
+---
+
+### SCREEN 5 · INVENTORY & PROCUREMENT (Inventory Scanner)
+
+**Page header:** "Inventory & Procurement" · "Desktop scanner dashboard — barcode scanning & material checks"
+
+**Barcode scan input bar:** full-width input with scan icon — "Place cursor here and scan barcode..."
+
+**Top summary cards (4):**
+- Raw Materials: 139
+- In Production: 0
+- Finished Goods: 107
+- Low Stock: 0 (red badge if > 0)
+
+**Action buttons row:** INBOUND · TRANSFER · DISPATCH (3 outlined buttons, icons)
+
+**Two-column lower section:**
+- Left: "Recent Scans" — list of recent barcode scans, each row: item code + name + qty + status badge (Inbound/Transferred) + timestamp
+- Right: "Job Order Material Checks" — per active JO, two checklist rows:
+  - Check 1: Finished Goods Available? ❌ NO (red) / ✅ YES (green)
+  - Check 2: Raw Materials Available? ⚠ LOW STOCK (amber link) / ✅ YES
+  - If low: `[📦 ORDER RAW MATERIALS FROM SUPPLIER]` CTA button (red, full-width in that panel)
+
+---
+
+### SCREEN 6 · LOGISTICS & BILLING (Management)
+
+**Page header:** "Logistics & Accounting" · "Delivery tracking, invoicing and billing — auto-populated when production completes"
+
+**Top summary row:** S (Total Billed) · PENDING (count) · PAID (count)
+
+**Controls:** Search box · "All Statuses" dropdown · `EXPORT` button · `GENERATE SI & DR` button (red)
+
+**Main table:**
+
+| DATE | PO NO. | SI NO. | DR NO. | CUSTOMER | ITEM | QTY | AMOUNT | STATUS |
+|------|--------|--------|--------|----------|------|-----|--------|--------|
+| 2026-03-31 | PO-2026-9901 | SI-2026-9901 | DR-2026-0901 | B.E. Aerospace | Air Filter | 50 | ₱0 | [Delivered / Paid ▼] |
+| 2026-03-31 | PO-2026-9531 | SI-2026-9531 | DR-2026-9531 | Maynilad | Filter | 100 | ₱0 | [Delivered / Paid ▼] |
+| 2026-03-30 | PO-2026-9533 | SI-2026-9533 | DR-2026-9531 | Maynilad | Filter | 100 | ₱0 | [Delivered ▼] |
+
+Status column: pill dropdown with options — Pending Delivery / Delivered / Delivered + Paid. Color coded: gray/blue/green.
+
+Each row has a right-side expand chevron to reveal: delivery method (Lalamove / Company Vehicle / Pick-up), signed DR photo upload slot, payment receipt upload slot.
+
+---
+
+### SCREEN 7 · ACCOUNTING & LOGISTICS (Accounting user view)
+
+**Page header:** "Accounting & Logistics" · "Unified ERP Ledger — Order-to-Cash lifecycle powered by Sales & Production data"
+
+**Top-right action buttons:** `🧾 1 Pending Invoices` (amber badge) · `📋 0 Re-Invoice Today` (outlined)
+
+**Summary KPI cards:** Total Invoices: 3 · Pending Amount: ₱0 · Pending: 1 · Paid & Closed: 2
+
+**Search bar**
+
+**Invoices table:**
+
+| DATE | INVOICE NO. | SOURCE PO NO. | CLIENT | ITEM | AMOUNT | PAYMENT | STATUS |
+|------|-------------|---------------|--------|------|--------|---------|--------|
+| 2026-02-31 | SI-2026-9905 | PO-2026-9905 | B.E. Aerospace | Air Filter | ₱0 | Bank Transfer | Paid (green) |
+| 2026-03-31 | SI-2026-9531 | PO-2026-9531 | Maynilad | Filter | ₱0 | Bank Transfer | Paid (green) |
+| 2026-03-30 | SI-2026-9531 | PO-2026-9531 | Maynilad | Filter | ₱0 | — | Pending (amber) |
+
+Clicking a row expands: payment type (COD / 15-day / 30-day terms) · due date auto-calculated · days overdue counter · partial payment upload rows (multiple receipt photos) · "Secretary Approves → Mark Cleared" button.
+
+---
+
+### SCREEN 8 · USER MANAGEMENT (Management only)
+
+**Page header:** "User Management" · "Manage user accounts and assign roles to control module access across the ERP system."
+
+**Role Access Matrix (4 role cards):**
+- `No Role` — Cannot access the system (gray outlined)
+- `Management` — Full access to all modules (red filled, white text)
+- `Accounting / Finance` — Dashboard, Sales, Logistics, Accounting (dark filled)
+- `Floor / Production` — Production, Inventory (medium gray filled)
+
+**All Users table:**
+
+| USER | INITIALS | CURRENT ROLE | JOINED | ACTIONS |
+|------|----------|--------------|--------|---------|
+| Tricia | TM | [Management] | Apr 2, 2026 | [Edit Role] |
+| Accounting | AC | [Accounting/Finance] | Apr 2, 2026 | [Edit Role] |
+| Floor 1 | F1 | [Floor/Production] | Apr 2, 2026 | [Edit Role] |
+| Alicia | A | [No Role] | Apr 3, 2026 | [Edit Role] |
+
+---
+
+### SCREEN 9 · CLIENT PORTAL (Separate layout — no internal sidebar)
+
+The Client Portal has a **completely different shell** from the internal app. It feels like a customer-facing web portal, lighter and simpler.
+
+**Shell:** White full-width header with Enter-Fil logo left, client company name right ("Welcome, B.E. Aerospace"), logout link.
+
+**Tab navigation (4 tabs, prominent, full-width pill bar):**
+`📋 Orders` · `📍 Status` · `🚚 Logistics` · `💳 Accounting`
+
+These must ALL be fully designed.
+
+---
+
+**CLIENT PORTAL — Tab 1: ORDERS**
+
+Two-column layout:
+- Left panel: "Submit New Inquiry" form card
+  - Filter Type dropdown (Air Filter / Oil Filter / Oil Separator / Column Filter)
+  - Dimensions: OD1 · OD2 · ID1 · ID2 · Height (mm inputs)
+  - Filter Class / Media Type
+  - Inner Core / Outer Core
+  - O-Ring / Gasket
+  - OEM Part No. reference
+  - Special Notes textarea
+  - Quantity (min 10 pcs note shown)
+  - `[Submit Inquiry]` red CTA button
+
+- Right panel: "My Orders" table
+  - INQ/PO code · Product · Qty · Date · Status pipeline badge
+  - Status pipeline: `Inquiry Sent` → `Quotation Received` → `PO Uploaded` → `In Production` → `Delivered` → `Paid`
+  - Each row: expand to see quotation PDF link, "Upload PO" button (if status = Quotation Received)
+
+**CRITICAL BEHAVIOR:**
+> Once an order moves past "Delivered + Paid," it no longer appears in the active orders list but moves to "Order History" (accessible via a "View History" link). Active view = only open/in-progress orders.
+
+---
+
+**CLIENT PORTAL — Tab 2: STATUS**
+
+Page title: "Order Status Tracker"
+
+For each active order — a vertical status timeline card:
+
+```
+PO-2026-9901 · Air Filter 115×103×500mm · Qty: 50
+B.E. Aerospace
+
+✅ Inquiry Submitted         Mar 28, 2026
+✅ Quotation Received        Mar 29, 2026
+✅ PO Approved & Uploaded    Mar 30, 2026
+✅ Job Order Created         Mar 30, 2026
+🔵 In Production ← CURRENT  Stage 7 of 10 · Est. completion Apr 5
+⬜ Quality Inspection        —
+⬜ Ready for Dispatch        —
+⬜ Delivered                 —
+⬜ Invoiced                  —
+⬜ Payment Cleared           —
+```
+
+Each step: circle (green check / blue current / gray pending) + label + date or ETA. No phone call needed to know where the order is.
+
+---
+
+**CLIENT PORTAL — Tab 3: LOGISTICS**
+
+"My Deliveries" table:
+
+| ORDER | ITEM | QTY | DELIVERY METHOD | STATUS | SIGNED DR |
+|-------|------|-----|-----------------|--------|-----------|
+| PO-2026-9901 | Air Filter | 50 | Company Vehicle | Delivered ✅ | [View Photo] |
+| PO-2026-9531 | Filter | 100 | Lalamove | In Transit 🚚 | — |
+| PO-2026-9533 | Filter | 100 | Pick-up | Pending ⏳ | — |
+
+Filter by: All / Pending / In Transit / Delivered
+
+---
+
+**CLIENT PORTAL — Tab 4: ACCOUNTING**
+
+"My Invoices & Payments" summary:
+
+Top summary pills: Total Orders: 3 · Paid: 2 · Pending: 1 · Amount Due: ₱0
+
+Invoice table:
+
+| INVOICE NO. | ORDER | ITEM | AMOUNT | PAYMENT TYPE | DUE DATE | STATUS |
+|-------------|-------|------|--------|--------------|----------|--------|
+| SI-2026-9905 | PO-2026-9905 | Air Filter | ₱0 | Bank Transfer | — | Paid ✅ |
+| SI-2026-9531 | PO-2026-9531 | Filter | ₱0 | 30-Day Terms | Apr 30 | Pending ⚠ |
+
+Clicking "Pending" row expands: payment instructions, bank details note, ability to notify secretary of payment.
+
+---
+
+## ── COMPONENT LIBRARY (DESIGN SYSTEM)
+
+Design these reusable components consistently:
+
+**Status Badge Pills:**
+- `New Inquiry` — blue outlined
+- `Quotation Sent` — amber filled
+- `PO Received` — indigo filled
+- `Job Order Created` — dark navy filled
+- `In Production` — gray filled, blinking dot
+- `Quality Inspection` — purple filled
+- `Ready for Dispatch` — teal filled
+- `Delivered` — green filled
+- `Delivered / Paid` — deep green filled
+- `Overdue` — red filled
+- `Holding` — light gray, muted text
+- `Cancelled` — red outlined, strikethrough text
+
+**Alert Banners:**
+- Error: `#FEE2E2` bg, `#991B1B` text, red left border
+- Warning: `#FEF3C7` bg, `#92400e` text, amber left border
+- Success: `#D1FAE5` bg, `#065F46` text, green left border
+- Info: `#DBEAFE` bg, `#1E40AF` text, blue left border
+
+**Buttons:**
+- Primary: `#C8102E` bg, white bold text, 6px radius, 44px height
+- Secondary: white bg, `#1A2B4A` border+text, 6px radius
+- Ghost: transparent, muted text, hover = light gray bg
+- Danger: `#DC2626` bg (for delete/remove actions)
+
+**Tables:** alternating row bg (`#fff` / `#FAFAFA`), 1px `#E5E7EB` borders, 12px cell padding, sortable column headers with ↕ icon.
+
+**Cards:** white bg, 1px `#E5E7EB` border, 12px border-radius, 20px padding, `box-shadow: 0 1px 4px rgba(0,0,0,0.06)`
+
+---
+
+## ── PIPELINE RULES (ANNOTATE ON DESIGNS)
+
+These behaviors must be annotated as design notes on the relevant screens:
+
+1. **INQ → PO → JO lifecycle:** Cards only appear in one stage at a time. When advanced, they disappear from the previous column. The "Generate JO" button moves the card OUT of Sales board entirely.
+
+2. **Production cleanup:** Completed JOs have an explicit "Archive" action. The production board only shows in-progress work. Completed = hidden from board, preserved in database.
+
+3. **Client portal filtering:** Client X sees ONLY their own company's orders across all 4 portal tabs. No cross-client data leakage.
+
+4. **Accounting tab consistency:** Invoice status = "Cleared" only after secretary manually approves uploaded receipt photos. Auto-calculations handle due dates but NOT payment approval.
+
+5. **Inventory low-stock thresholds:** Adhesive < 3 sets · Box < 50 pcs · Filter Media < 5 rolls (local). System shows red badge on Inventory nav item when triggered.
+
+---
+
+## ── NAVIGATION PER USER ROLE
+
+**Management sidebar nav:**
+- 📊 Dashboard
+- 🛒 Sales & Orders
+- 🏭 Production Floor
+- 📦 Inventory Scanner
+- 🚚 Logistics & Billing
+- 💳 Accounting & Logistics
+- 👥 User Management
+
+**Accounting/Finance sidebar nav:**
+- 📊 Dashboard
+- 🛒 Sales & Orders
+- 🚚 Logistics & Billing
+- 💳 Accounting & Logistics
+
+**Floor/Production sidebar nav:**
+- 🏭 Production Floor
+- 📦 Inventory Scanner
+
+**Client Portal (separate, no sidebar):**
+- Tab bar: Orders · Status · Logistics · Accounting
+
+---
+
+## ── FIGMA MAKE INSTRUCTIONS
+
+Generate these screens in order:
+1. Login / Create Account (single page, tabbed)
+2. Management Dashboard
+3. Sales & Order Processing (Kanban board)
+4. Production Floor (card grid with expandable JO details)
+5. Inventory & Procurement
+6. Logistics & Billing
+7. Accounting & Logistics
+8. User Management
+9. Client Portal — Orders tab
+10. Client Portal — Status tab
+11. Client Portal — Logistics tab
+12. Client Portal — Accounting tab
+13. Accounting Dashboard (separate view for Accounting role)
+14. Production Dashboard (simplified view for Floor role)
+
+Use **auto-layout frames** for all repeating elements (cards, table rows, nav items). Apply the design tokens above consistently. Mark all interactive states: default, hover, active, disabled.
+
+The design should feel like a serious enterprise tool — clean, dense, trustworthy — not a startup landing page. Every screen should immediately communicate which role the user is and what action they need to take next.
+
+---
+
+*Enter-Flow v2.0 — Afurong, Almaquer, Esparrago, Zaragoza — NU Fairview BSIT*

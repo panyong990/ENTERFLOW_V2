@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Enter-Flow — System Flowcharts</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --navy:       #1A2B4A;
+  --gold:       #C9A84C;
+  --portal:     #4F46E5;
+  --sales:      #1A2B4A;
+  --inventory:  #0f766e;
+  --production: #374151;
+  --logistics:  #0369a1;
+  --accounting: #166534;
+  --bg:         #EFF2F6;
+  --border:     #e2e8f0;
+  --text:       #0f172a;
+  --muted:      #64748b;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+body{
+  font-family:'DM Sans',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+}
+
+/* ─── HEADER ─────────────────────────────────── */
+.page-header{
+  background:var(--navy);
+  padding:24px 32px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:12px;
+  border-bottom:3px solid var(--gold);
+}
+.header-title h1{
+  font-family:'Syne',sans-serif;
+  font-size:19px; font-weight:800;
+  color:#fff; letter-spacing:-0.3px;
+}
+.header-title p{
+  font-size:11.5px; color:rgba(255,255,255,0.55); margin-top:3px;
+}
+.header-badge{
+  background:var(--gold); color:var(--navy);
+  font-family:'Syne',sans-serif;
+  font-size:11px; font-weight:700;
+  padding:6px 14px; border-radius:20px;
+  white-space:nowrap;
+}
+
+/* ─── TABS ───────────────────────────────────── */
+.tab-bar{
+  display:flex; background:var(--navy);
+  padding:0 32px; gap:0;
+}
+.tab-btn{
+  font-family:'Syne',sans-serif;
+  font-size:12.5px; font-weight:700;
+  padding:13px 22px; border:none;
+  background:transparent; cursor:pointer;
+  color:rgba(255,255,255,0.45);
+  letter-spacing:0.2px;
+  border-bottom:3px solid transparent;
+  transition:all .18s;
+}
+.tab-btn.active{ color:var(--gold); border-bottom-color:var(--gold); }
+.tab-btn:hover:not(.active){ color:rgba(255,255,255,0.75); }
+
+/* ─── CONTENT ────────────────────────────────── */
+.tab-content{ display:none; padding:28px 32px; }
+.tab-content.active{ display:block; }
+
+/* ─── LEGEND ─────────────────────────────────── */
+.legend{
+  display:flex; flex-wrap:wrap; gap:10px 18px;
+  background:#fff; padding:12px 18px;
+  border-radius:10px; border:1px solid var(--border);
+  margin-bottom:24px; align-items:center;
+}
+.legend-title{
+  font-family:'Syne',sans-serif;
+  font-size:10.5px; font-weight:700;
+  color:var(--navy); text-transform:uppercase; letter-spacing:0.5px;
+}
+.legend-item{
+  display:flex; align-items:center; gap:6px;
+  font-size:11.5px; font-weight:500; color:var(--muted);
+}
+.leg-dot{ width:11px; height:11px; border-radius:3px; flex-shrink:0; }
+
+/* ─── MODULE GRID ────────────────────────────── */
+.modules-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(480px,1fr));
+  gap:18px;
+}
+
+/* ─── MODULE CARD ────────────────────────────── */
+.module-card{
+  background:#fff; border-radius:14px;
+  overflow:hidden; border:1px solid var(--border);
+  box-shadow:0 2px 8px rgba(0,0,0,0.05);
+}
+.module-card-header{
+  display:flex; align-items:center; gap:12px;
+  padding:15px 20px; color:#fff;
+}
+.module-icon{
+  width:34px; height:34px;
+  background:rgba(255,255,255,0.15);
+  border-radius:7px; display:flex;
+  align-items:center; justify-content:center;
+  font-size:16px; flex-shrink:0;
+}
+.module-card-header h3{
+  font-family:'Syne',sans-serif;
+  font-size:14px; font-weight:700;
+}
+.module-card-header p{ font-size:10.5px; opacity:0.65; margin-top:2px; }
+.module-card-body{ padding:18px 20px; }
+
+/* ─── FLOW NODES ─────────────────────────────── */
+.flow{ display:flex; flex-direction:column; gap:0; }
+.flow-row{
+  display:flex; align-items:center;
+  gap:8px; flex-wrap:wrap;
+}
+
+.fn{
+  display:inline-flex; flex-direction:column;
+  padding:8px 11px; border-radius:8px;
+  font-size:11px; font-weight:600;
+  text-align:center; line-height:1.3;
+  min-width:95px; border:1.5px solid;
+}
+.fn small{ font-size:9.5px; font-weight:400; opacity:0.75; margin-top:2px; }
+
+.fn-ghost  { background:none; color:var(--muted); border:none; font-style:italic; font-size:10px; font-weight:500; min-width:auto; }
+.fn-portal { background:#ede9fe; color:#3730a3; border-color:#c4b5fd; }
+.fn-sales  { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
+.fn-inv    { background:#ccfbf1; color:#0f766e; border-color:#99f6e4; }
+.fn-prod   { background:#f3f4f6; color:#374151; border-color:#d1d5db; }
+.fn-log    { background:#e0f2fe; color:#0369a1; border-color:#bae6fd; }
+.fn-acc    { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+.fn-gold   { background:#fef3c7; color:#92400e; border-color:#fde68a; }
+.fn-danger { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+.fn-ok     { background:#d1fae5; color:#065f46; border-color:#6ee7b7; }
+
+/* Decision diamond */
+.diamond{
+  position:relative; display:inline-flex;
+  align-items:center; justify-content:center;
+  width:78px; height:60px; flex-shrink:0;
+}
+.diamond::before{
+  content:''; position:absolute; inset:0;
+  clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+}
+.diamond span{
+  position:relative; font-size:9px; font-weight:700;
+  text-align:center; line-height:1.2; z-index:1; padding:0 8px;
+}
+.d-blue::before  { background:#dbeafe; }
+.d-blue span     { color:#1e40af; }
+.d-amber::before { background:#fef3c7; }
+.d-amber span    { color:#92400e; }
+
+/* Arrows */
+.arr{ color:#94a3b8; font-size:17px; flex-shrink:0; line-height:1; }
+.arr-d{
+  display:flex; justify-content:center;
+  color:#94a3b8; font-size:14px;
+  margin:6px 0;
+}
+
+/* Branch tag */
+.btag{
+  font-size:9px; font-weight:700;
+  padding:2px 7px; border-radius:8px;
+  text-transform:uppercase; letter-spacing:0.3px;
+  flex-shrink:0; white-space:nowrap;
+}
+.btag-yes  { background:#d1fae5; color:#065f46; }
+.btag-no   { background:#fee2e2; color:#991b1b; }
+.btag-cod  { background:#fef3c7; color:#92400e; }
+.btag-term { background:#dbeafe; color:#1e40af; }
+.btag-low  { background:#fee2e2; color:#991b1b; }
+.btag-ok   { background:#d1fae5; color:#065f46; }
+.btag-la   { background:#ede9fe; color:#5b21b6; }
+.btag-co   { background:#f1f5f9; color:#374151; }
+.btag-pu   { background:#ccfbf1; color:#0f766e; }
+
+/* Branch block */
+.bblock{
+  background:#f8fafc; border:1px dashed #cbd5e1;
+  border-radius:10px; padding:10px 12px;
+  display:flex; flex-direction:column; gap:8px;
+}
+.bb{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+
+/* Divider */
+.fdiv{ height:1px; background:#e5e7eb; margin:12px 0; }
+
+/* Note */
+.fnote{
+  font-size:10px; color:var(--muted);
+  background:#f8fafc; border:1px dashed #e2e8f0;
+  border-radius:6px; padding:8px 11px;
+  margin-top:12px; line-height:1.55;
+}
+
+/* Portal menu pills */
+.menu-pills{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.menu-pill{
+  font-size:11px; font-weight:600;
+  padding:5px 12px; border-radius:20px;
+  background:#ede9fe; color:#3730a3;
+  border:1px solid #c4b5fd;
+}
+
+/* ─── CONNECTED FLOW ─────────────────────────── */
+.connected-flow{ max-width:920px; margin:0 auto; }
+
+.phase-block{
+  background:#fff; border-radius:14px;
+  padding:18px 22px; border:1px solid var(--border);
+  box-shadow:0 2px 6px rgba(0,0,0,0.04);
+}
+.phase-label{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:'Syne',sans-serif; font-size:11.5px;
+  font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:0.4px;
+  margin-bottom:14px;
+}
+.phase-num{
+  width:22px; height:22px; border-radius:50%;
+  background:var(--navy); color:#fff;
+  font-size:11px; display:flex;
+  align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.c-nodes{
+  display:flex; align-items:center;
+  gap:10px; flex-wrap:wrap;
+}
+.c-connector{
+  display:flex; flex-direction:column;
+  align-items:center; padding:6px 0;
+}
+.c-line{ width:2px; height:22px; background:#cbd5e1; }
+.c-arrow{ color:#94a3b8; font-size:13px; }
+
+.dept-pill{
+  font-size:9px; font-weight:700;
+  padding:3px 7px; border-radius:4px;
+  text-transform:uppercase; letter-spacing:0.4px;
+  color:#fff; flex-shrink:0;
+}
+
+/* RESPONSIVE */
+@media(max-width:720px){
+  .modules-grid{ grid-template-columns:1fr; }
+  .tab-content{ padding:16px; }
+  .page-header{ padding:18px 16px; }
+  .tab-bar{ padding:0 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- HEADER                                         -->
+<!-- ══════════════════════════════════════════════ -->
+<header class="page-header">
+  <div class="header-title">
+    <h1>Enter-Flow — System Flowcharts</h1>
+    <p>Enter-Fil Industrial Products · Order Management System with Real-Time Tracking &amp; Inventory</p>
+  </div>
+  <div class="header-badge">Enter-Flow v2.0</div>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('modules',this)">📋 Module Flowcharts</button>
+  <button class="tab-btn" onclick="switchTab('connected',this)">🔗 End-to-End Connected Flow</button>
+</div>
+
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- TAB 1 — MODULE FLOWCHARTS                      -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="modules" class="tab-content active">
+
+  <div class="legend">
+    <span class="legend-title">Department Key:</span>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--portal)"></div>Client Portal</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--sales)"></div>Sales &amp; Management</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--inventory)"></div>Inventory</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--production)"></div>Production</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--logistics)"></div>Logistics</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--accounting)"></div>Accounting</div>
+    <div class="legend-item">
+      <div style="width:18px;height:14px;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);background:#fef3c7;border:1px solid #fde68a;"></div>
+      Decision Point
+    </div>
+  </div>
+
+  <div class="modules-grid">
+
+    <!-- ── M1: CLIENT PORTAL ─────────────────────── -->
+    <div class="module-card">
+      <div class="module-card-header" style="background:var(--portal);">
+        <div class="module-icon">💻</div>
+        <div>
+          <h3>Client Portal</h3>
+          <p>Client-facing interface for inquiry, tracking &amp; monitoring</p>
+        </div>
+      </div>
+      <div class="module-card-body">
+
+        <div style="margin-bottom:12px;">
+          <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Portal Navigation Menus</div>
+          <div class="menu-pills">
+            <div class="menu-pill">📋 Orders</div>
+            <div class="menu-pill">📍 Status</div>
+            <div class="menu-pill">🚚 Logistics</div>
+            <div class="menu-pill">💳 Accounting</div>
+          </div>
+        </div>
+
+        <div class="fdiv"></div>
+
+        <div class="flow">
+          <div class="flow-row">
+            <div class="fn fn-portal">Login / Dashboard<small>View order history</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-portal">Create Inquiry<small>Dimensions, specs,<br/>filter class, part no.</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-ghost">↓ To Sales</div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="flow-row">
+            <div class="fn fn-ghost">↑ From Sales</div>
+            <span class="arr">→</span>
+            <div class="fn fn-portal">Review Quotation<small>Price &amp; lead time</small></div>
+            <span class="arr">→</span>
+            <div class="diamond d-blue"><span>Approved?</span></div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="bblock">
+            <div class="bb">
+              <span class="btag btag-yes">YES</span>
+              <div class="fn fn-ok">Upload Purchase Order (PO)<small>Confirmed order submitted</small></div>
+              <span class="arr">→</span>
+              <div class="fn fn-ghost">↓ To Management</div>
+            </div>
+            <div class="bb">
+              <span class="btag btag-no">NO</span>
+              <div class="fn fn-danger">Cancel / Revise<small>Re-negotiate or re-submit</small></div>
+            </div>
+          </div>
+
+          <div class="fnote">💡 Clients can monitor all transactions via the <b>Orders, Status, Logistics,</b> and <b>Accounting</b> menus without needing to call or message the company.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── M2: SALES & MANAGEMENT ─────────────────── -->
+    <div class="module-card">
+      <div class="module-card-header" style="background:var(--sales);">
+        <div class="module-icon">📊</div>
+        <div>
+          <h3>Sales &amp; Management</h3>
+          <p>Quotation, costing &amp; job order processing</p>
+        </div>
+      </div>
+      <div class="module-card-body">
+        <div class="flow">
+          <div class="flow-row">
+            <div class="fn fn-ghost">↓ From Portal</div>
+            <span class="arr">→</span>
+            <div class="fn fn-sales">Review Order<small>Assess custom specs</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-gold">Cost Calculation<small>Raw Mats + Labor + Markup<br/>MOQ: min. 10 pcs</small></div>
+            <span class="arr">→</span>
+            <div class="diamond d-amber"><span>Enough Raw Materials?</span></div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="bblock">
+            <div class="bb">
+              <span class="btag btag-low">LOW</span>
+              <div class="fn fn-danger">Adjust Lead Time<small>Order materials first</small></div>
+              <span class="arr">→</span>
+              <div class="fn fn-sales">Send Quotation<small>Adjusted date</small></div>
+            </div>
+            <div class="bb">
+              <span class="btag btag-ok">SUFFICIENT</span>
+              <div class="fn fn-ok">Standard Lead Time<small>Proceed to schedule</small></div>
+              <span class="arr">→</span>
+              <div class="fn fn-sales">Send Quotation<small>Uploaded to portal</small></div>
+            </div>
+          </div>
+          <div class="arr-d" style="font-size:10px;color:var(--muted);">↑ Back to Portal → Client Approves &amp; Uploads PO</div>
+
+          <div class="fdiv"></div>
+
+          <div class="flow-row">
+            <div class="fn fn-ghost">↓ PO Received</div>
+            <span class="arr">→</span>
+            <div class="diamond d-amber"><span>Payment Type?</span></div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="bblock">
+            <div class="bb">
+              <span class="btag btag-cod">COD</span>
+              <div class="fn fn-gold">Collect Downpayment<small>For new/COD clients</small></div>
+              <span class="arr">→</span>
+              <div class="fn fn-ghost">↓ To Production</div>
+            </div>
+            <div class="bb">
+              <span class="btag btag-term">TERMS</span>
+              <div class="fn fn-sales">Confirm Job Order (JO)<small>Direct to production</small></div>
+              <span class="arr">→</span>
+              <div class="fn fn-ghost">↓ To Production</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── M3: INVENTORY ─────────────────────────── -->
+    <div class="module-card">
+      <div class="module-card-header" style="background:var(--inventory);">
+        <div class="module-icon">📦</div>
+        <div>
+          <h3>Inventory Management</h3>
+          <p>Raw material tracking &amp; low-stock alerts</p>
+        </div>
+      </div>
+      <div class="module-card-body">
+        <div class="flow">
+          <div class="flow-row">
+            <div class="fn fn-inv">Track Critical Materials<small>Filter Media · Adhesive · Box</small></div>
+            <span class="arr">→</span>
+            <div class="diamond d-blue"><span>Stock Sufficient?</span></div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="bblock">
+            <div class="bb">
+              <span class="btag btag-low">LOW</span>
+              <div class="fn fn-danger">🔔 Low Stock Alert<small>Adhesive &lt; 3 sets<br/>Box &lt; 50 pcs<br/>Filter Media &lt; 5 rolls (local)</small></div>
+            </div>
+            <div class="bb">
+              <span class="btag btag-ok">OK</span>
+              <div class="fn fn-ok">Stock Adequate<small>Proceed with production</small></div>
+            </div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="flow-row">
+            <div class="fn fn-inv">Buffer Stock<small>10–30 pcs per filter<br/>for repeat clients</small></div>
+          </div>
+
+          <div class="fnote">⚠️ <b>Limitation:</b> Inventory is checked before Job Order approval, but individual material deductions per production step are not automatically calculated due to varied custom specifications (no standard measurement per filter).</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── M4: PRODUCTION FLOOR ───────────────────── -->
+    <div class="module-card">
+      <div class="module-card-header" style="background:var(--production);">
+        <div class="module-icon">🏭</div>
+        <div>
+          <h3>Production Floor</h3>
+          <p>Real-time order trailing &amp; stage tracking</p>
+        </div>
+      </div>
+      <div class="module-card-body">
+        <div class="flow">
+          <div class="flow-row">
+            <div class="fn fn-prod">Production Queue<small>Rush orders prioritized<br/>1 item per station at a time</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-prod">🔴 Production Started<small>Owner marks in system</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-prod">Fabrication Stages<small>Pie chart dashboard<br/>per active order</small></div>
+          </div>
+          <div class="arr-d">↓</div>
+          <div class="flow-row">
+            <div class="fn fn-ok">✅ Product Finished<small>Owner marks complete</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-inv">Ready for Delivery<br/>or Pick-up</div>
+          </div>
+
+          <div class="fnote">📊 Pie chart dashboard visible to all staff — each station can see when the previous stage is done, eliminating verbal updates. Lead time is set manually during the quotation phase based on quantity &amp; filter complexity.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── M5: LOGISTICS ─────────────────────────── -->
+    <div class="module-card">
+      <div class="module-card-header" style="background:var(--logistics);">
+        <div class="module-icon">🚚</div>
+        <div>
+          <h3>Logistics &amp; Dispatch</h3>
+          <p>Delivery tracking &amp; dispatch management</p>
+        </div>
+      </div>
+      <div class="module-card-body">
+        <div class="flow">
+          <div class="flow-row">
+            <div class="fn fn-log">📋 Daily Delivery Summary<small>Auto-generated list of<br/>pending deliveries</small></div>
+            <span class="arr">→</span>
+            <div class="diamond d-blue"><span>Delivery Method?</span></div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="bblock">
+            <div class="bb">
+              <span class="btag btag-la">LALAMOVE</span>
+              <div class="fn fn-portal">Book via Lalamove App<small>3rd-party app (external)<br/>Not integrated in system</small></div>
+            </div>
+            <div class="bb">
+              <span class="btag btag-co">COMPANY</span>
+              <div class="fn fn-prod">Company Vehicle<small>Owner manually marks<br/>"Delivered" in system</small></div>
+            </div>
+            <div class="bb">
+              <span class="btag btag-pu">PICK-UP</span>
+              <div class="fn fn-inv">Client Pick-up<small>Owner manually marks<br/>"Picked Up" in system</small></div>
+            </div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="flow-row">
+            <div class="fn fn-log">📷 Upload Signed DR<small>Photo of delivery receipt<br/>signed by recipient</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-ok">✅ Delivered<small>Status updated</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── M6: ACCOUNTING ─────────────────────────── -->
+    <div class="module-card">
+      <div class="module-card-header" style="background:var(--accounting);">
+        <div class="module-icon">💰</div>
+        <div>
+          <h3>Accounting (Secretary)</h3>
+          <p>Billing, payment tracking &amp; clearance</p>
+        </div>
+      </div>
+      <div class="module-card-body">
+        <div class="flow">
+
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;"><span class="btag btag-cod">COD Flow</span></div>
+          <div class="flow-row">
+            <div class="fn fn-gold">Downpayment Recorded<small>Entered in ledger</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-gold">Billing After Delivery<small>Issue final receipt</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-acc">Balance Collected<small>Upload receipt photo</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-ok">✅ Cleared</div>
+          </div>
+
+          <div class="fdiv"></div>
+
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;"><span class="btag btag-term">15 / 30-Day Terms Flow</span></div>
+          <div class="flow-row">
+            <div class="fn fn-acc">Invoice Sent<small>After delivery</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-acc">Auto Due Date<small>Receipt + 15 or 30 days<br/>(auto-calculated)</small></div>
+            <span class="arr">→</span>
+            <div class="fn fn-acc">Pending Payment<small>Awaiting settlement</small></div>
+            <span class="arr">→</span>
+            <div class="diamond d-amber"><span>Paid on Time?</span></div>
+          </div>
+          <div class="arr-d">↓</div>
+
+          <div class="bblock">
+            <div class="bb">
+              <span class="btag btag-ok">PAID</span>
+              <div class="fn fn-acc">Upload Receipt(s)<small>Partial installments allowed<br/>Multiple receipts per order</small></div>
+              <span class="arr">→</span>
+              <div class="fn fn-ok">Secretary Approves → ✅ Cleared</div>
+            </div>
+            <div class="bb">
+              <span class="btag btag-low">OVERDUE</span>
+              <div class="fn fn-danger">🔔 Overdue Flag<small>Secretary manually reviews</small></div>
+            </div>
+          </div>
+
+          <div class="fnote">🔒 <b>No automated payment gateway.</b> The company secretary manually reviews uploaded receipt photos to officially mark accounts as Cleared. Partial installments supported via multiple receipt uploads.</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end modules-grid -->
+</div><!-- end tab 1 -->
+
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- TAB 2 — END-TO-END CONNECTED FLOW              -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="connected" class="tab-content">
+
+  <div class="legend">
+    <span class="legend-title">Department Key:</span>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--portal)"></div>Client Portal</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--sales)"></div>Sales &amp; Mgt</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--inventory)"></div>Inventory</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--production)"></div>Production</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--logistics)"></div>Logistics</div>
+    <div class="legend-item"><div class="leg-dot" style="background:var(--accounting)"></div>Accounting</div>
+    <div class="legend-item">
+      <div style="width:16px;height:12px;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);background:#fef3c7;"></div>Decision Point
+    </div>
+  </div>
+
+  <div class="connected-flow">
+
+    <!-- PHASE 1 -->
+    <div class="phase-block">
+      <div class="phase-label"><div class="phase-num">1</div>Inquiry &amp; Costing</div>
+      <div class="c-nodes">
+        <div class="dept-pill" style="background:var(--portal)">Portal</div>
+        <div class="fn fn-portal">Client Creates Inquiry<small>Specs, material grade,<br/>filter class, part no.</small></div>
+        <span class="arr">→</span>
+        <div class="dept-pill" style="background:var(--sales)">Sales</div>
+        <div class="fn fn-sales">Review &amp; Cost Calculation<small>Raw Mats + Labor + Markup<br/>MOQ: min. 10 pcs</small></div>
+        <span class="arr">→</span>
+        <div class="dept-pill" style="background:var(--inventory)">Inv</div>
+        <div class="fn fn-inv">Check Raw Materials<small>Filter Media · Adhesive · Box</small></div>
+      </div>
+    </div>
+
+    <div class="c-connector"><div class="c-line"></div><div class="c-arrow">▼</div></div>
+
+    <!-- PHASE 2 -->
+    <div class="phase-block">
+      <div class="phase-label"><div class="phase-num">2</div>Lead Time Determination &amp; Quotation</div>
+      <div class="c-nodes">
+        <div class="diamond d-amber"><span>Stock Sufficient?</span></div>
+        <div class="bblock">
+          <div class="bb">
+            <span class="btag btag-low">LOW</span>
+            <div class="fn fn-danger">Adjust Lead Time<small>Order materials first</small></div>
+          </div>
+          <div class="bb">
+            <span class="btag btag-ok">SUFFICIENT</span>
+            <div class="fn fn-ok">Standard Lead Time</div>
+          </div>
+        </div>
+        <span class="arr">→</span>
+        <div class="dept-pill" style="background:var(--sales)">Sales</div>
+        <div class="fn fn-sales">Send Quotation<small>Uploaded to Client Portal</small></div>
+      </div>
+    </div>
+
+    <div class="c-connector"><div class="c-line"></div><div class="c-arrow">▼</div></div>
+
+    <!-- PHASE 3 -->
+    <div class="phase-block">
+      <div class="phase-label"><div class="phase-num">3</div>Client Approval &amp; Purchase Order</div>
+      <div class="c-nodes">
+        <div class="dept-pill" style="background:var(--portal)">Portal</div>
+        <div class="fn fn-portal">Review Quotation</div>
+        <span class="arr">→</span>
+        <div class="diamond d-blue"><span>Approved?</span></div>
+        <div class="bblock">
+          <div class="bb">
+            <span class="btag btag-yes">YES</span>
+            <div class="fn fn-ok">Upload Purchase Order (PO)<small>Client submits via portal</small></div>
+          </div>
+          <div class="bb">
+            <span class="btag btag-no">NO</span>
+            <div class="fn fn-danger">Cancel / Revise<small>Re-negotiate terms</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="c-connector"><div class="c-line"></div><div class="c-arrow">▼</div></div>
+
+    <!-- PHASE 4 -->
+    <div class="phase-block">
+      <div class="phase-label"><div class="phase-num">4</div>Payment Processing &amp; Production Release</div>
+      <div class="c-nodes">
+        <div class="dept-pill" style="background:var(--sales)">Sales</div>
+        <div class="diamond d-amber"><span>Payment Type?</span></div>
+        <div class="bblock">
+          <div class="bb">
+            <span class="btag btag-cod">COD</span>
+            <div class="fn fn-gold">Collect Downpayment</div>
+            <span class="arr">→</span>
+            <div class="fn fn-sales">Job Order Released</div>
+          </div>
+          <div class="bb">
+            <span class="btag btag-term">TERMS</span>
+            <div class="fn fn-sales">Confirm Job Order (JO)</div>
+            <span class="arr">→</span>
+            <div class="fn fn-sales">Job Order Released</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="c-connector"><div class="c-line"></div><div class="c-arrow">▼</div></div>
+
+    <!-- PHASE 5 -->
+    <div class="phase-block">
+      <div class="phase-label"><div class="phase-num">5</div>Production Trailing</div>
+      <div class="c-nodes">
+        <div class="dept-pill" style="background:var(--production)">Production</div>
+        <div class="fn fn-prod">Queue Order<small>Rush orders first</small></div>
+        <span class="arr">→</span>
+        <div class="fn fn-prod">🔴 Production Started<small>Owner updates system</small></div>
+        <span class="arr">→</span>
+        <div class="fn fn-prod">Fabrication Stages<small>Pie chart per station<br/>(visible to all staff)</small></div>
+        <span class="arr">→</span>
+        <div class="fn fn-ok">✅ Product Finished<small>Owner marks complete</small></div>
+      </div>
+    </div>
+
+    <div class="c-connector"><div class="c-line"></div><div class="c-arrow">▼</div></div>
+
+    <!-- PHASE 6 -->
+    <div class="phase-block">
+      <div class="phase-label"><div class="phase-num">6</div>Logistics &amp; Dispatch</div>
+      <div class="c-nodes">
+        <div class="dept-pill" style="background:var(--logistics)">Logistics</div>
+        <div class="fn fn-log">📋 Daily Delivery Summary<small>Auto-generated queue</small></div>
+        <span class="arr">→</span>
+        <div class="diamond d-blue"><span>Delivery Method?</span></div>
+        <div class="bblock">
+          <div class="bb">
+            <span class="btag btag-la">LALAMOVE</span>
+            <div class="fn fn-portal">Book via Lalamove App<small>3rd-party · external</small></div>
+          </div>
+          <div class="bb">
+            <span class="btag btag-co">COMPANY</span>
+            <div class="fn fn-prod">Company Vehicle<small>Manually mark "Delivered"</small></div>
+          </div>
+          <div class="bb">
+            <span class="btag btag-pu">PICK-UP</span>
+            <div class="fn fn-inv">Client Pick-up<small>Manually mark "Picked Up"</small></div>
+          </div>
+        </div>
+        <span class="arr">→</span>
+        <div class="fn fn-log">📷 Upload Signed DR</div>
+        <span class="arr">→</span>
+        <div class="fn fn-ok">✅ Delivered</div>
+      </div>
+    </div>
+
+    <div class="c-connector"><div class="c-line"></div><div class="c-arrow">▼</div></div>
+
+    <!-- PHASE 7 -->
+    <div class="phase-block">
+      <div class="phase-label"><div class="phase-num">7</div>Billing &amp; Payment Collection</div>
+      <div class="c-nodes" style="align-items:flex-start;">
+        <div class="dept-pill" style="background:var(--accounting);margin-top:4px;">Accounting</div>
+        <div class="bblock" style="flex:1;">
+          <!-- COD -->
+          <div class="bb">
+            <span class="btag btag-cod">COD</span>
+            <div class="fn fn-gold">Billing After Delivery</div>
+            <span class="arr">→</span>
+            <div class="fn fn-acc">Collect Balance</div>
+            <span class="arr">→</span>
+            <div class="fn fn-acc">Upload Receipt</div>
+            <span class="arr">→</span>
+            <div class="fn fn-ok">Secretary Approves → ✅ Cleared</div>
+          </div>
+          <!-- Terms -->
+          <div style="height:1px;background:#e5e7eb;margin:6px 0;"></div>
+          <div class="bb" style="flex-wrap:wrap;">
+            <span class="btag btag-term">TERMS</span>
+            <div class="fn fn-acc">Invoice Sent</div>
+            <span class="arr">→</span>
+            <div class="fn fn-acc">Auto Due Date<small>Receipt + 15 or 30 days</small></div>
+            <span class="arr">→</span>
+            <div class="diamond d-amber"><span>Paid on Time?</span></div>
+            <div class="bblock">
+              <div class="bb">
+                <span class="btag btag-ok">YES</span>
+                <div class="fn fn-acc">Upload Receipt(s)<small>Partial ok</small></div>
+                <span class="arr">→</span>
+                <div class="fn fn-ok">✅ Secretary Approves → Cleared</div>
+              </div>
+              <div class="bb">
+                <span class="btag btag-low">OVERDUE</span>
+                <div class="fn fn-danger">🔔 Overdue Flag<small>Manual review</small></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end connected-flow -->
+</div><!-- end tab 2 -->
+
+
+<script>
+function switchTab(id, btn){
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

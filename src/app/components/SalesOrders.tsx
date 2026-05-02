@@ -15,7 +15,7 @@ const columns: { id: Stage; title: string; tint: string }[] = [
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeJO, rejectInquiry, isNewClient } = useOrders();
+  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeJO, rejectInquiry, approveCancellation, declineCancellation, isNewClient } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -160,6 +160,28 @@ export function SalesOrders() {
                         });
                         toast.info("Inquiry rejected", { description: `${c.code} archived · client notified with reason` });
                       }}
+                      onAcceptCancel={() => {
+                        approveCancellation(c.id);
+                        pushNotif({
+                          dept: "sales",
+                          title: `Cancellation accepted: ${c.code}`,
+                          body: `${c.clientName} · order archived as cancelled`,
+                          link: "sales",
+                          recipients: ["client"],
+                        });
+                        toast.success("Cancellation accepted", { description: `${c.code} archived · client notified` });
+                      }}
+                      onDeclineCancel={() => {
+                        declineCancellation(c.id);
+                        pushNotif({
+                          dept: "sales",
+                          title: `Cancellation declined: ${c.code}`,
+                          body: `${c.clientName} · please reach out via Viber/SMS/email to discuss`,
+                          link: "sales",
+                          recipients: ["client"],
+                        });
+                        toast.info("Cancellation declined", { description: `Contact ${c.clientName} via Viber/SMS/email to discuss` });
+                      }}
                     />
                   ))}
                 </div>
@@ -236,8 +258,8 @@ export function SalesOrders() {
 }
 
 /* ---- Inquiry Card with collapsible product list ---- */
-function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGenerateJO, onReject }: {
-  inquiry: Inquiry; isNew: boolean; onReview: () => void; onViewQuote: () => void; onUploadPO: () => void; onGenerateJO: () => void; onReject: (reason: string) => void;
+function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGenerateJO, onReject, onAcceptCancel, onDeclineCancel }: {
+  inquiry: Inquiry; isNew: boolean; onReview: () => void; onViewQuote: () => void; onUploadPO: () => void; onGenerateJO: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
@@ -245,7 +267,28 @@ function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGene
   const total = quotationTotal(inquiry);
 
   return (
-    <article className="rounded-lg border bg-white p-4 hover:shadow-sm transition-all" style={{ borderColor: inquiry.urgent ? "#FECACA" : "#E2E8F0" }}>
+    <article className="rounded-lg border bg-white p-4 hover:shadow-sm transition-all" style={{ borderColor: inquiry.pendingCancellation ? "#FBBF24" : inquiry.urgent ? "#FECACA" : "#E2E8F0", borderWidth: inquiry.pendingCancellation ? 2 : 1 }}>
+      {/* Pending cancellation banner */}
+      {inquiry.pendingCancellation && (
+        <div className="rounded-md p-3 mb-3" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span style={{ fontSize: 14 }}>⏳</span>
+            <span className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#92400E", letterSpacing: 0.4, textTransform: "uppercase" }}>Cancellation Requested by {inquiry.pendingCancellation.requestedBy === "client" ? "Client" : "Management"}</span>
+          </div>
+          <div className="font-dm mb-2" style={{ fontSize: 12, color: "#92400E" }}>Reason: <span style={{ fontWeight: 600 }}>{inquiry.pendingCancellation.reason}</span></div>
+          <div className="font-dm mb-2" style={{ fontSize: 11, color: "#B45309" }}>Requested {inquiry.pendingCancellation.requestedAt}</div>
+          <div className="flex items-center gap-2">
+            <button onClick={onAcceptCancel} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E" }}>
+              <CheckCircle2 size={11} /> Accept Cancel
+            </button>
+            <button onClick={onDeclineCancel} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border" style={{ fontSize: 11, fontWeight: 700, color: "#475569", borderColor: "#CBD5E1" }}>
+              <X size={11} /> Decline
+            </button>
+            <span className="font-dm ml-auto" style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>If decline, contact client via Viber/SMS/email</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-2 gap-2">
         <span className="font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{inquiry.code}</span>
         <div className="flex items-center gap-2">
@@ -284,7 +327,9 @@ function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGene
           </button>
         )}
         {inquiry.stage === "po" && inquiry.poFileName && (
-          <span className="font-dm" style={{ fontSize: 11, color: "#16A34A", fontWeight: 600 }}>📎 {inquiry.poFileName}</span>
+          <button onClick={onUploadPO} className="font-dm flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-green-50" style={{ fontSize: 11, color: "#16A34A", fontWeight: 700, border: "1px solid #BBF7D0" }} title="View client-submitted PO">
+            <Eye size={11} /> View PO
+          </button>
         )}
       </div>
 

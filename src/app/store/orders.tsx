@@ -395,6 +395,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       inquiries, archivedInquiries, completedJOs, clearedPOs,
       addInquiry, sendQuotation, uploadPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
+      requestCancellation, approveCancellation, declineCancellation,
+      confirmClientPayment,
       addClientReceipt, reorderToProduction, markPOCleared,
       setStage, setUrgent, setDueDate, markDelivered,
       byClient, isNewClient,

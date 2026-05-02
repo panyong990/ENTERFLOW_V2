@@ -107,7 +107,7 @@ const FILTRATION_RATINGS = [
 ];
 
 function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitted: () => void }) {
-  const { addInquiry, byClient, uploadPO, cancelInquiry, reorderToProduction } = useOrders();
+  const { addInquiry, byClient, uploadPO, requestCancellation, reorderToProduction } = useOrders();
   const { push: pushNotif } = useNotifications();
   const clientInqs = byClient(clientName);
   const myOrders = byClient(clientName);
@@ -481,15 +481,16 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
             key={inq.id}
             inquiry={inq}
             onUploadPO={() => setPoForId(inq.id)}
-            onCancel={() => {
-              cancelInquiry(inq.id);
+            onCancel={(reason) => {
+              requestCancellation(inq.id, reason, "client");
               pushNotif({
                 dept: "sales",
-                title: `Order cancelled by ${clientName}`,
-                body: `${inq.code} · ${inq.products[0]?.type ?? ""} · contact client to confirm`,
+                title: `🚨 Cancellation request from ${clientName}`,
+                body: `${inq.code} · Reason: ${reason} · awaiting your accept/decline`,
                 link: "sales",
                 recipients: ["owner", "operations", "sales"],
               });
+              toast.info("Cancellation request sent", { description: "Enter-Fil will accept or decline soon. You'll be notified." });
             }}
           />
         ))}
@@ -753,9 +754,10 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
   );
 }
 
-function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: () => void }) {
+function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void }) {
   const [open, setOpen] = useState(inquiry.stage === "quotation");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const total = quotationTotal(inquiry);
 
   const badge =
@@ -840,28 +842,74 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
             </div>
           )}
 
-          {/* Cancel order — only before PO is confirmed */}
-          {inquiry.stage !== "po" && (
+          {/* Cancel — pending approval */}
+          {inquiry.pendingCancellation && (
+            <div className="pt-3 border-t border-slate-200 mt-2">
+              <div className="rounded-lg p-3 font-dm flex items-start gap-2" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
+                <span style={{ fontSize: 16 }}>⏳</span>
+                <div>
+                  <div style={{ fontWeight: 700 }}>Cancellation pending Enter-Fil approval</div>
+                  <div className="mt-0.5">Reason: {inquiry.pendingCancellation.reason}</div>
+                  <div className="mt-0.5" style={{ color: "#B45309" }}>Requested {inquiry.pendingCancellation.requestedAt} · they may contact you via Viber/email if they decline.</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cancel order — only before PO is confirmed and not already pending */}
+          {inquiry.stage !== "po" && !inquiry.pendingCancellation && (
             <div className="pt-3 border-t border-slate-200 mt-2">
               {!confirmCancel ? (
                 <button
                   onClick={() => setConfirmCancel(true)}
-                  className="font-dm"
-                  style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8" }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-md font-dm border-2 hover:bg-red-50 transition-colors"
+                  style={{ fontSize: 12, fontWeight: 700, color: "#C8102E", borderColor: "#FECACA", backgroundColor: "white", letterSpacing: 0.4 }}
                 >
-                  Cancel this inquiry
+                  ⚠️ CANCEL THIS ORDER
                 </button>
               ) : (
-                <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>
-                  <span className="font-dm flex-1" style={{ fontSize: 12, color: "#991B1B" }}>Are you sure? This cannot be undone. For further details contact us via Viber or email.</span>
-                  <button onClick={() => setConfirmCancel(false)} className="font-dm px-3 py-1.5 rounded-md hover:bg-slate-100" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep</button>
-                  <button
-                    onClick={() => { onCancel(); toast.info("Inquiry cancelled", { description: "Management has been notified" }); }}
-                    className="font-dm px-3 py-1.5 rounded-md text-white hover:opacity-90"
-                    style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#C8102E" }}
-                  >
-                    Confirm Cancel
-                  </button>
+                <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA" }}>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: 16 }}>⚠️</span>
+                    <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#991B1B" }}>Cancel this order</span>
+                  </div>
+                  {/* Order details preview */}
+                  <div className="rounded-md p-3 font-dm bg-white" style={{ fontSize: 12, color: "#0F172A", border: "1px solid #FECACA" }}>
+                    <div><span style={{ color: "#64748B" }}>Order:</span> <span className="font-mono-jb" style={{ fontWeight: 700 }}>{inquiry.code}</span></div>
+                    <div><span style={{ color: "#64748B" }}>Submitted:</span> {inquiry.submittedDate}</div>
+                    <div><span style={{ color: "#64748B" }}>Items:</span> {inquiry.products.length} product(s) · {inquiry.products.reduce((s, p) => s + p.qty, 0)} pcs total</div>
+                    {total > 0 && <div><span style={{ color: "#64748B" }}>Total:</span> <span style={{ fontWeight: 700 }}>₱{total.toLocaleString("en-PH")}</span></div>}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#991B1B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason for cancellation *</label>
+                    <textarea
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="e.g. Order placed by mistake · changed requirements · budget constraints"
+                      rows={2}
+                      className="font-dm px-3 py-2 rounded border border-red-200 outline-none focus:border-red-400 bg-white resize-none"
+                      style={{ fontSize: 13, color: "#0F172A" }}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px dashed #FDE68A" }}>
+                    ℹ️ This will <strong>not</strong> cancel instantly. Enter-Fil will be notified and may accept or decline. If declined, they'll contact you via Viber/SMS/email.
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => { setConfirmCancel(false); setCancelReason(""); }} className="font-dm px-3 py-2 rounded-md hover:bg-white" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
+                    <button
+                      onClick={() => {
+                        if (!cancelReason.trim()) { toast.error("A reason is required"); return; }
+                        onCancel(cancelReason.trim());
+                        setConfirmCancel(false); setCancelReason("");
+                      }}
+                      disabled={!cancelReason.trim()}
+                      className="font-dm px-3 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
+                      style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#C8102E" }}
+                    >
+                      ⚠️ Send Cancellation Request
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

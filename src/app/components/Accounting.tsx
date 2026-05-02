@@ -92,7 +92,7 @@ export function Accounting() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
-  const { byClient, markPOCleared } = useOrders();
+  const { byClient, markPOCleared, confirmClientPayment } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [showOverdueModal, setShowOverdueModal] = useState(false);
 
@@ -166,7 +166,23 @@ export function Accounting() {
     };
     setPayments((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), entry] }));
     setNewPmt((prev) => ({ ...prev, [id]: { amount: "", method: "", ref: "", datePaid: "" } }));
-    toast.success("Payment recorded", { description: `₱${amt.toLocaleString("en-PH")} via ${f.method} · ${entryDate}` });
+    /* Sync to client portal — find matching inquiry by client name */
+    const inv = rows.find(r => r.id === id);
+    if (inv) {
+      const clientInqs = byClient(inv.client);
+      const target = clientInqs.find(i => i.poFileName?.includes(inv.po) || i.invoiceNo === inv.inv) ?? clientInqs[clientInqs.length - 1];
+      if (target) {
+        confirmClientPayment(target.id, { date: entryDate, amount: amt, method: f.method, ref: f.ref || "—" });
+        pushNotif({
+          dept: "payments",
+          title: `Payment confirmed for ${inv.client}`,
+          body: `₱${amt.toLocaleString("en-PH")} · ${inv.inv} · synced to client portal`,
+          link: "accounting",
+          recipients: ["client"],
+        });
+      }
+    }
+    toast.success("Payment recorded", { description: `₱${amt.toLocaleString("en-PH")} via ${f.method} · synced to client portal` });
   };
 
   const clearAccount = (id: string) => {

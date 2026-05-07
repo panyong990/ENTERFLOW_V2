@@ -1,4 +1,36 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
+import type { BOMLine, CostConfig } from "./materials";
+
+/* Quotation document — what the client sees */
+export interface QuotationLineItem {
+  no: number;
+  qty: number;
+  unit: string;             // "pcs"
+  description: string;      // "FILTER BAG"
+  subDescription?: string;  // "SIZE : 135mm × 99 INCHES"
+  unitPrice: number;
+}
+
+export interface QuotationDoc {
+  quotationNo: string;       // "Q-2026-001"
+  date: string;              // "Apr 26, 2026"
+  validUntil: string;        // "May 26, 2026"
+  lineItems: QuotationLineItem[];
+  note: string;
+  noteHighlighted: boolean;
+  /* Packaging add-on */
+  packaging?: { materialId: string; materialName: string; qty: number; unitPrice: number; includeInUnit: boolean };
+  /* Shipping add-on */
+  shipping?: { label: string; amount: number; includeInUnit: boolean };
+  /* Terms */
+  termsOfPayment: "COD" | "15-Day Terms" | "30-Day Terms";
+  timeOfDelivery: string;    // "3–4 working weeks upon receipt of P.O."
+  placeOfDelivery: string;
+  preparedBy: string;
+  /* Send tracking */
+  sentAt?: string;
+  sentBy?: string;
+}
 
 export type Stage =
   | "inquiry"
@@ -114,6 +146,15 @@ export interface Inquiry {
   confirmedPayments?: { id: string; date: string; amount: number; method: string; ref: string }[];
   /* — cancellation approval flow — */
   pendingCancellation?: { reason: string; requestedAt: string; requestedBy: "client" | "management" };
+  /* — bill of materials + cost config (set during quotation, carried into JO) — */
+  billOfMaterials?: BOMLine[];
+  costConfig?: CostConfig;
+  unitPrice?: number;
+  quotedTotal?: number;
+  /* — formal quotation document (Tab 3 output) — */
+  quotationDoc?: QuotationDoc;
+  /* — flag set when materials have been deducted (avoid double-deducting on stage replays) — */
+  inventoryDeducted?: boolean;
 }
 
 export interface FinalizeJOData {
@@ -209,6 +250,12 @@ interface Ctx {
   declineCancellation: (id: string) => void;
   /* Secretary confirms a client receipt — pushes it to confirmedPayments visible on client portal */
   confirmClientPayment: (inquiryId: string, payment: { date: string; amount: number; method: string; ref: string }) => void;
+  /* BOM lifecycle */
+  setBillOfMaterials: (id: string, bom: BOMLine[], costConfig: CostConfig, unitPrice: number, quotedTotal: number) => void;
+  markInventoryDeducted: (joNumber: string) => void;
+  /* Quotation document */
+  setQuotationDoc: (id: string, doc: QuotationDoc) => void;
+  generateQuotationNumber: () => string;
   addClientReceipt: (inquiryId: string, receipt: Omit<ClientReceipt, "id">) => void;
   markPOCleared: (po: string) => void;
   /* — pipeline progress — */
@@ -314,6 +361,29 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, pendingCancellation: undefined } : x));
   };
 
+  const setBillOfMaterials: Ctx["setBillOfMaterials"] = (id, bom, costConfig, unitPrice, quotedTotal) => {
+    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, billOfMaterials: bom, costConfig, unitPrice, quotedTotal } : x)));
+  };
+
+  const markInventoryDeducted: Ctx["markInventoryDeducted"] = (joNumber) => {
+    setAllInquiries((prev) => prev.map((x) => (x.joNumber === joNumber ? { ...x, inventoryDeducted: true } : x)));
+  };
+
+  const setQuotationDoc: Ctx["setQuotationDoc"] = (id, doc) => {
+    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, quotationDoc: doc } : x)));
+  };
+
+  const generateQuotationNumber: Ctx["generateQuotationNumber"] = () => {
+    /* Sequential within current year based on existing quotation docs */
+    const year = new Date().getFullYear();
+    const used = allInquiries
+      .map((i) => i.quotationDoc?.quotationNo)
+      .filter((n): n is string => !!n && n.startsWith(`Q-${year}-`))
+      .map((n) => parseInt(n.split("-")[2] ?? "0", 10));
+    const next = (used.length === 0 ? 1 : Math.max(...used) + 1).toString().padStart(3, "0");
+    return `Q-${year}-${next}`;
+  };
+
   const confirmClientPayment: Ctx["confirmClientPayment"] = (inquiryId, payment) => {
     const id = `cp-${Date.now()}`;
     setAllInquiries((prev) => prev.map((x) => x.id === inquiryId ? {
@@ -396,7 +466,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       addInquiry, sendQuotation, uploadPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
       requestCancellation, approveCancellation, declineCancellation,
-      confirmClientPayment,
+      confirmClientPayment, setBillOfMaterials, markInventoryDeducted,
+      setQuotationDoc, generateQuotationNumber,
       addClientReceipt, reorderToProduction, markPOCleared,
       setStage, setUrgent, setDueDate, markDelivered,
       byClient, isNewClient,

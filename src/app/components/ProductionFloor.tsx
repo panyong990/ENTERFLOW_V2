@@ -9,6 +9,7 @@ import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { useOrders, type Stage } from "../store/orders";
+import { useMaterials } from "../store/materials";
 
 const STAGES = [
   "Molding",
@@ -194,7 +195,8 @@ export function ProductionFloor() {
   const [cancelReason, setCancelReason] = useState("");
   const [qcFailed, setQcFailed] = useState<Set<string>>(new Set());
   const { push: pushNotif } = useNotifications();
-  const { completedJOs, setStage, cancelJOFromProduction } = useOrders();
+  const { completedJOs, setStage, cancelJOFromProduction, markInventoryDeducted } = useOrders();
+  const { deductForJO, restoreFromJO } = useMaterials();
 
   /* Map a production stageIndex to an inquiry Stage */
   const stageForIndex = (idx: number): Stage => {
@@ -271,6 +273,12 @@ export function ProductionFloor() {
     if (!confirmCancelJob) return;
     if (!cancelReason.trim()) { toast.error("A reason is required"); return; }
     const job = confirmCancelJob;
+    /* RESTORE INVENTORY if deducted */
+    const inq = completedJOs.find((i) => i.joNumber === job.jo);
+    if (inq?.inventoryDeducted && inq.billOfMaterials) {
+      restoreFromJO(job.jo, inq.billOfMaterials);
+      toast.info("Materials returned to stock", { description: `${inq.billOfMaterials.length} material(s) restored` });
+    }
     setJobs(prev => prev.filter(j => j.id !== job.id));
     /* archive the matching inquiry in the orders store */
     cancelJOFromProduction(job.jo, cancelReason.trim());
@@ -294,6 +302,31 @@ export function ProductionFloor() {
       prev.map((j) => {
         if (j.id !== id) return j;
         const newIdx = Math.min(j.stageIndex + 1, STAGES.length - 1);
+        /* INVENTORY DEDUCT — first stage advance (Production Started) */
+        if (j.stageIndex === 0 && newIdx === 1) {
+          const inq = completedJOs.find((i) => i.joNumber === j.jo);
+          const bom = inq?.billOfMaterials;
+          if (bom && bom.length > 0 && !inq?.inventoryDeducted) {
+            const result = deductForJO(j.jo, bom);
+            if (!result.ok) {
+              toast.error("⚠️ Insufficient materials", {
+                description: result.shortages.map((s) => `${s.name}: need ${s.needed.toFixed(2)} ${s.unit}, have ${s.available.toFixed(2)}`).join(" · "),
+                duration: 6000,
+              });
+              pushNotif({
+                dept: "system",
+                title: `🚨 Material shortage on ${j.jo}`,
+                body: `Production paused. ${result.shortages.length} material(s) below required: ${result.shortages.map(s => s.name).join(", ")}`,
+                link: "inventory",
+                recipients: ["owner", "operations", "warehouse", "production"],
+              });
+              /* Pause the job instead of advancing */
+              return { ...j, paused: true };
+            }
+            markInventoryDeducted(j.jo);
+            toast.success("Inventory auto-deducted", { description: `${bom.length} material(s) consumed for ${j.jo}` });
+          }
+        }
         const newHistory = [...j.stageHistory];
         newHistory[j.stageIndex] = { markedBy: "F. Santos · Warehouse", date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }), status: "done" };
         toast.success(`Stage complete: ${STAGES[j.stageIndex]}`, { description: `${j.jo} → ${STAGES[newIdx]}` });

@@ -2,9 +2,12 @@ import { useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
-import { useMaterials, type Material } from "../store/materials";
+import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
+import { CostEstimationPanel } from "./CostEstimationPanel";
+import { QuotationBuilder } from "./QuotationBuilder";
+import type { QuotationDoc } from "../store/orders";
 
 const columns: { id: Stage; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -15,7 +18,7 @@ const columns: { id: Stage; title: string; tint: string }[] = [
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeJO, rejectInquiry, approveCancellation, declineCancellation, isNewClient } = useOrders();
+  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeJO, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setQuotationDoc, isNewClient } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -195,17 +198,23 @@ export function SalesOrders() {
         <ReviewQuotationModal
           inquiry={reviewing}
           onClose={() => setReviewId(null)}
-          onSubmit={(q) => {
+          onSubmit={(q, bomData, quotationDoc) => {
             sendQuotation(reviewing.id, q);
+            if (bomData) {
+              setBillOfMaterials(reviewing.id, bomData.bom, bomData.costConfig, bomData.unitPrice, bomData.total);
+            }
+            if (quotationDoc) {
+              setQuotationDoc(reviewing.id, quotationDoc);
+            }
             pushNotif({
               dept: "sales",
-              title: `Quotation sent: ${reviewing.code}`,
-              body: `${reviewing.clientName} · awaiting PO · ${q.leadTimeDays} day lead time`,
+              title: `Quotation sent: ${quotationDoc?.quotationNo ?? reviewing.code}`,
+              body: `${reviewing.clientName} · awaiting PO · ${q.leadTimeDays} day lead time${bomData ? ` · ₱${bomData.unitPrice.toFixed(2)}/unit` : ""}`,
               link: "sales",
               recipients: ["owner", "operations", "sales", "client"],
             });
             setReviewId(null);
-            toast.success("Quotation sent to client", { description: `${reviewing.clientName} notified in portal` });
+            toast.success("Quotation sent to client", { description: `${reviewing.clientName} notified in portal${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}` });
           }}
         />
       )}
@@ -439,10 +448,11 @@ const blankPlan = (qty: number): MatPlan => ({
   others: [],
 });
 
-function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry; onClose: () => void; onSubmit: (q: Quotation) => void }) {
+function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry; onClose: () => void; onSubmit: (q: Quotation, bomData?: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number }, quotationDoc?: QuotationDoc) => void }) {
   const { isNewClient } = useOrders();
   const [leadDays, setLeadDays] = useState(inquiry.quotation?.leadTimeDays ?? 14);
-  const [activeTab, setActiveTab] = useState<"inquiry" | "quote">(isNewClient(inquiry.clientName) ? "inquiry" : "quote");
+  const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">(isNewClient(inquiry.clientName) ? "inquiry" : "cost");
+  const [bomData, setBomData] = useState<{ bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number } | null>(null);
   const [lines, setLines] = useState<QuotationLine[]>(
     inquiry.products.map((p) => {
       const existing = inquiry.quotation?.lines.find((l) => l.productId === p.id);
@@ -464,11 +474,14 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
   }, 0);
 
   const submit = () => {
-    onSubmit({
-      sentDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      leadTimeDays: leadDays,
-      lines,
-    });
+    onSubmit(
+      {
+        sentDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        leadTimeDays: leadDays,
+        lines,
+      },
+      bomData ?? undefined
+    );
   };
 
   return (
@@ -476,7 +489,8 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
       <div className="flex gap-1 border-b border-slate-200 mb-5 -mt-2">
         {[
           { id: "inquiry" as const, label: "1 · Inquiry Details" },
-          { id: "quote" as const, label: "2 · Quotation" },
+          { id: "cost" as const,    label: "2 · Cost & Material Estimation" },
+          { id: "quote" as const,   label: "3 · Quotation" },
         ].map((t) => (
           <button
             key={t.id}
@@ -502,91 +516,160 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
       )}
 
       {activeTab === "inquiry" && (
-        <InquiryDetailsTab inquiry={inquiry} isNew={isNewClient(inquiry.clientName)} onStart={() => setActiveTab("quote")} />
+        <InquiryDetailsTab inquiry={inquiry} isNew={isNewClient(inquiry.clientName)} onStart={() => setActiveTab("cost")} />
+      )}
+
+      {activeTab === "cost" && (
+        <CostEstimationPanel
+          inquiry={inquiry}
+          qty={inquiry.products.reduce((s, p) => s + p.qty, 0)}
+          onApply={(data) => {
+            setBomData(data);
+            /* Mirror the BOM-derived per-unit price into the existing simple Quotation lines so the legacy
+               "Send Quotation" computation lines up with the BOM result. */
+            setLines((prev) => prev.map((l) => ({
+              ...l,
+              materialCost: data.costConfig.includeLabor ? data.unitPrice / (1 + data.costConfig.markupPct / 100) - data.costConfig.laborCost : data.unitPrice / (1 + data.costConfig.markupPct / 100),
+              labor: data.costConfig.laborCost,
+              markupPct: data.costConfig.markupPct,
+            })));
+            setActiveTab("quote");
+          }}
+        />
       )}
 
       {activeTab === "quote" && (
-        <>
-          <div className="rounded-lg border border-slate-200 p-4 mb-4" style={{ backgroundColor: "#FAFBFC" }}>
-            <div className="font-syne mb-1" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>📋 Raw Materials Plan</div>
-            <div className="font-dm mb-3" style={{ fontSize: 12, color: "#64748B" }}>
-              Specify materials for this order. System will check stock levels automatically.
-            </div>
-            <div className="flex flex-col gap-3">
-              {inquiry.products.map((p, i) => (
-                <MaterialPlanBlock
-                  key={p.id}
-                  index={i}
-                  product={p}
-                  plan={plans[i]}
-                  onChange={(patch) => updatePlan(i, patch)}
-                  onAcceptLead={(d) => setLeadDays(d)}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4">
-            {inquiry.products.map((p, i) => (
-              <ProductCostBlock
-                key={p.id}
-                index={i}
-                product={p}
-                line={lines[i]}
-                onChange={(patch) => updateLine(i, patch)}
-              />
-            ))}
-          </div>
-          <div className="mt-3 font-dm rounded-md p-3" style={{ fontSize: 12, color: "#475569", backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-            💡 Raw material costs are estimated manually. Enter total cost for all materials combined (Filter Media + Adhesive + Box + others) in the Raw Materials field above.
-          </div>
-
-          <div className="mt-5 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Lead Time (days)</label>
-              <input type="number" value={leadDays} onChange={(e) => setLeadDays(Number(e.target.value))} className="form-input-sm w-20" />
-            </div>
-            <div className="flex items-center gap-3 px-4 py-3 rounded-lg" style={{ backgroundColor: "#1A2B4A" }}>
-              <span className="font-dm text-white/60" style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Quotation Total</span>
-              <span className="font-syne text-white" style={{ fontSize: 22, fontWeight: 800 }}>{peso(total)}</span>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4 mt-5 border-t border-slate-200">
-            <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-            <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>
-              Send Quotation to Client
-            </button>
-          </div>
-        </>
+        <QuotationBuilder
+          inquiry={inquiry}
+          manufacturingUnitCost={bomData?.unitPrice ?? inquiry.unitPrice ?? 0}
+          vatType={bomData?.costConfig.vatType ?? inquiry.costConfig?.vatType ?? "Exclusive"}
+          onBackToTab2={() => setActiveTab("cost")}
+          onSendToClient={(doc, total, leadTimeDays) => {
+            /* Sync the legacy quotation lines so the existing pipeline (kanban move, etc.) still works. */
+            const newLines: QuotationLine[] = inquiry.products.map((p) => ({
+              productId: p.id,
+              materialCost: bomData?.costConfig.includeLabor
+                ? (bomData?.unitPrice ?? 0) / (1 + (bomData?.costConfig.markupPct ?? 0) / 100) - (bomData?.costConfig.laborCost ?? 0)
+                : (bomData?.unitPrice ?? 0) / (1 + (bomData?.costConfig.markupPct ?? 0) / 100),
+              labor: bomData?.costConfig.laborCost ?? 0,
+              markupPct: bomData?.costConfig.markupPct ?? 0,
+            }));
+            setLines(newLines);
+            setLeadDays(leadTimeDays);
+            const q: Quotation = { sentDate: doc.date, leadTimeDays, lines: newLines };
+            onSubmit(q, bomData ?? undefined, doc);
+            void total;
+          }}
+        />
       )}
     </ModalShell>
   );
 }
 
 function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNew: boolean; onStart: () => void }) {
+  const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
+  const sketch = inquiry.inquirySketch;
+
   return (
     <div className="flex flex-col gap-4">
-      {isNew && (
-        <div className="rounded-lg p-4 flex items-start gap-3" style={{ backgroundColor: "#FFEDD5", border: "1px solid #FDBA74" }}>
-          <Info size={16} style={{ color: "#9A3412", marginTop: 2 }} />
-          <div className="font-dm" style={{ fontSize: 13, color: "#9A3412" }}>
-            <span style={{ fontWeight: 700 }}>New client · Custom filter order.</span> Their specifications are below. Review their specs, then:
-            <ol className="list-decimal pl-5 mt-1.5 flex flex-col gap-0.5" style={{ fontSize: 12 }}>
-              <li>Fill in the Raw Materials Plan</li>
-              <li>Enter your cost estimate</li>
-              <li>Set lead time</li>
-              <li>Send quotation</li>
-            </ol>
+      {/* RUSH banner */}
+      {inquiry.urgent && (
+        <div className="rounded-lg p-3 flex items-center gap-2.5" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA" }}>
+          <span style={{ fontSize: 18 }}>🚨</span>
+          <div>
+            <div className="font-dm" style={{ fontSize: 13, fontWeight: 800, color: "#991B1B", letterSpacing: 0.4 }}>RUSH ORDER — priority production</div>
+            {inquiry.dueDate && <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#7F1D1D" }}>Required by: <strong>{inquiry.dueDate}</strong></div>}
           </div>
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-200 overflow-hidden">
+      {/* New client banner */}
+      {isNew && (
+        <div className="rounded-lg p-4 flex items-start gap-3" style={{ backgroundColor: "#FFEDD5", border: "1px solid #FDBA74" }}>
+          <Info size={16} style={{ color: "#9A3412", marginTop: 2 }} />
+          <div className="font-dm" style={{ fontSize: 13, color: "#9A3412" }}>
+            <span style={{ fontWeight: 700 }}>New client · Custom filter order.</span> Review the full inquiry below — including any sketch the client uploaded — before pricing in Tab 2.
+          </div>
+        </div>
+      )}
+
+      {/* Client / submission card */}
+      <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
+        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
+          <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>📋 Client Submission</div>
+          <span className="font-mono-jb" style={{ fontSize: 11, color: "#64748B" }}>{inquiry.code} · submitted {inquiry.submittedDate}</span>
+        </div>
+        <div className="grid grid-cols-4 gap-4 p-5">
+          <DetailField label="Company">{inquiry.clientName}</DetailField>
+          <DetailField label="Contact Person">{inquiry.contactPerson}</DetailField>
+          <DetailField label="Payment Terms">{inquiry.paymentTerms}</DetailField>
+          <DetailField label="Total Qty">{totalQty} pcs across {inquiry.products.length} product{inquiry.products.length === 1 ? "" : "s"}</DetailField>
+        </div>
+        {inquiry.generalNotes && (
+          <div className="px-5 pb-5">
+            <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>General Notes from Client</div>
+            <div className="rounded-md p-3 font-dm" style={{ fontSize: 13, color: "#0F172A", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", lineHeight: 1.5 }}>
+              {inquiry.generalNotes}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Sketch viewer */}
+      <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
+        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#EFF6FF" }}>
+          <div className="font-syne flex items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: "#1E40AF" }}>
+            <Paperclip size={13} /> Engineer Sketch / Drawing
+            {sketch ? (
+              <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>ATTACHED</span>
+            ) : (
+              <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#64748B" }}>NOT ATTACHED</span>
+            )}
+          </div>
+          {sketch && (
+            <button onClick={() => toast.info(`Opening: ${sketch}`, { description: "In production, this opens the actual file" })} className="font-dm flex items-center gap-1 px-2.5 py-1 rounded-md hover:bg-blue-100" style={{ fontSize: 11, fontWeight: 700, color: "#1A2B4A", border: "1px solid #BFDBFE" }}>
+              <Eye size={11} /> Open Drawing
+            </button>
+          )}
+        </div>
+        <div className="p-5">
+          {sketch ? (
+            <div className="rounded-lg flex flex-col items-center justify-center py-8 gap-3" style={{ backgroundColor: "#F8FAFC", border: "1.5px dashed #93C5FD", minHeight: 200 }}>
+              {sketch.match(/\.(png|jpe?g|gif|webp|svg)$/i) ? (
+                <img src={sketch} alt="Client sketch" style={{ maxWidth: "100%", maxHeight: 320, objectFit: "contain" }} />
+              ) : (
+                <>
+                  <div style={{ width: 64, height: 80, backgroundColor: "white", border: "2px solid #1A2B4A", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    <span style={{ fontSize: 22 }}>📄</span>
+                    <span className="font-dm" style={{ fontSize: 8, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.5 }}>
+                      {sketch.match(/\.([a-z]+)$/i)?.[1].toUpperCase() ?? "FILE"}
+                    </span>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A", wordBreak: "break-all", maxWidth: 360 }}>{sketch}</div>
+                    <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Client-uploaded drawing — review before pricing</div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8", backgroundColor: "#F8FAFC", border: "1px dashed #CBD5E1" }}>
+              No sketch attached. The client described their requirements via the inquiry form fields above and notes below.
+              <br /><span style={{ fontSize: 11 }}>If a drawing is needed, request one via Viber/email before quoting.</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Product specs table */}
+      <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
+        <div className="px-5 py-3 border-b border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
+          <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Product Specifications · {inquiry.products.length} item{inquiry.products.length === 1 ? "" : "s"}</div>
+        </div>
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
             <tr>
-              {["#", "Type", "OD1/OD2", "ID1/ID2", "H", "Media", "Inner / Outer", "O-Ring / Gasket", "OEM", "Qty", "Notes"].map((h) => (
+              {["#", "Type", "OD1/OD2", "ID1/ID2", "H", "Media", "Inner / Outer", "O-Ring / Gasket", "OEM", "Qty", "Line Notes"].map((h) => (
                 <th key={h} className="font-dm text-left px-3 py-2" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr>
@@ -594,17 +677,17 @@ function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNe
           <tbody>
             {inquiry.products.map((p, i) => (
               <tr key={p.id} className="border-t border-slate-200 align-top">
-                <td className="px-3 py-2 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>#{i + 1}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{p.type}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.od1 || "—"} / {p.od2 || "—"}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.id1 || "—"} / {p.id2 || "—"}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.height || "—"}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.media || "—"}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.innerCore || "—"} / {p.outerCore || "—"}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.oring || "—"} / {p.gasket || "—"}</td>
-                <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.oem || "—"}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#0F172A", fontWeight: 700 }}>{p.qty}</td>
-                <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.notes || "—"}</td>
+                <td className="px-3 py-2.5 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>#{i + 1}</td>
+                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{p.type}</td>
+                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.od1 || "—"} / {p.od2 || "—"}</td>
+                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.id1 || "—"} / {p.id2 || "—"}</td>
+                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.height || "—"}</td>
+                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.media || "—"}</td>
+                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.innerCore || "—"} / {p.outerCore || "—"}</td>
+                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.oring || "—"} / {p.gasket || "—"}</td>
+                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.oem || "—"}</td>
+                <td className="px-3 py-2.5 font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{p.qty}</td>
+                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.notes || "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -620,6 +703,15 @@ function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNe
           📋 START QUOTATION <ArrowRight size={14} strokeWidth={2.5} />
         </button>
       </div>
+    </div>
+  );
+}
+
+function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</div>
+      <div className="font-dm mt-0.5" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{children}</div>
     </div>
   );
 }

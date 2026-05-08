@@ -8,7 +8,7 @@ import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
-import { useOrders, type Stage } from "../store/orders";
+import { useOrders, type Stage, type Inquiry } from "../store/orders";
 import { useMaterials } from "../store/materials";
 
 const STAGES = [
@@ -68,45 +68,65 @@ interface Job {
   activityLog: ActivityEntry[];
 }
 
-const makeHistory = (doneCount: number): (StageHistoryEntry | null)[] => {
-  const operators = ["F. Santos", "J. Reyes", "M. Tan", "J. Reyes", "M. Tan", "M. Tan", "J. Reyes", "J. Reyes", "F. Santos", "F. Santos"];
-  const dates = ["Apr 20", "Apr 21", "Apr 22", "Apr 23", "Apr 24", "Apr 24", "Apr 25", "Apr 25", "Apr 26", "Apr 26"];
-  return Array.from({ length: 10 }, (_, i) =>
-    i < doneCount ? { markedBy: operators[i], date: dates[i], status: "done" as const } : null
-  );
+/* Map a stage index to its visual badge bucket */
+const badgeForStage = (idx: number, paused: boolean): BadgeKind => {
+  if (paused) return "holding";
+  if (idx >= 7) return "quality";
+  if (idx >= 3) return "assembling";
+  if (idx >= 1) return "spotting";
+  return "molding";
 };
 
-const initial: Job[] = [
-  {
-    id: "j1", jo: "JO-2026-001", client: "B.E. AEROSPACE", product: "AIR FILTER", qty: 50,
-    due: "Apr 30", badge: "quality", stageIndex: 8, urgent: true,
-    sketch: "KF-OS.107.65.252_drawing.pdf",
-    specs: ["Item: KF-OS.107.65.252", "OD: 107mm · ID: 64.6mm · Height: 252mm", "Media: Microglass Fiber", "Inner Core: Expanded Metal Perfo 2mm", "End Cap: E.G. 1.0mm · Brand: Hitachi Comp."],
-    stageHistory: makeHistory(8),
+/* Build the visible Job shape from an Inquiry — single source of truth.
+   Only inquiries whose stage is in the production pipeline appear on the floor. */
+function inquiryToJob(inq: Inquiry): Job {
+  const product = inq.products[0];
+  const stageIdx = inq.currentStage ?? (inq.stage === "ready_for_dispatch" ? 9 : inq.stage === "quality_inspection" ? 8 : inq.stage === "in_production" ? 1 : 0);
+  const paused = !!inq.paused;
+  /* synthesize specs lines for the existing UI */
+  const specs: string[] = [];
+  if (inq.joSpecs?.oem || product?.oem) specs.push(`Item: ${inq.joSpecs?.oem ?? product?.oem ?? ""}`);
+  const dimParts = [
+    (inq.joSpecs?.od1 ?? product?.od1) && `OD: ${inq.joSpecs?.od1 ?? product?.od1}mm`,
+    (inq.joSpecs?.id1 ?? product?.id1) && `ID: ${inq.joSpecs?.id1 ?? product?.id1}mm`,
+    (inq.joSpecs?.height ?? product?.height) && `Height: ${inq.joSpecs?.height ?? product?.height}mm`,
+  ].filter(Boolean);
+  if (dimParts.length) specs.push(dimParts.join(" · "));
+  if (inq.joSpecs?.media ?? product?.media) specs.push(`Media: ${inq.joSpecs?.media ?? product?.media}`);
+  if (inq.joSpecs?.innerCore ?? product?.innerCore) specs.push(`Inner Core: ${inq.joSpecs?.innerCore ?? product?.innerCore}`);
+  if (inq.joSpecs?.endCap || inq.joSpecs?.brand) specs.push(`${inq.joSpecs?.endCap ? `End Cap: ${inq.joSpecs.endCap}` : ""}${inq.joSpecs?.endCap && inq.joSpecs?.brand ? " · " : ""}${inq.joSpecs?.brand ? `Brand: ${inq.joSpecs.brand}` : ""}`);
+  if (specs.length === 0) specs.push("Specs to be confirmed · awaiting material delivery");
+
+  /* Map persisted stageHistory (StageEntry from store) to the local UI shape */
+  const persisted = inq.stageHistory ?? [];
+  const stageHistory: (StageHistoryEntry | null)[] = Array.from({ length: 10 }, (_, i) => {
+    const e = persisted.find((h) => h.stage === i && h.status === "done");
+    if (!e) return null;
+    return {
+      markedBy: e.completedBy,
+      date: new Date(e.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      status: e.status,
+      reason: e.reason,
+    };
+  });
+
+  return {
+    id: inq.id,
+    jo: inq.joNumber ?? inq.code,
+    client: inq.clientName.toUpperCase(),
+    product: (product?.type ?? "FILTER").toUpperCase(),
+    qty: inq.products.reduce((s, p) => s + p.qty, 0),
+    due: inq.dueDate ?? "—",
+    badge: badgeForStage(stageIdx, paused),
+    stageIndex: stageIdx,
+    paused,
+    urgent: inq.urgent,
+    sketch: inq.joSketch,
+    specs,
+    stageHistory,
     activityLog: [],
-  },
-  {
-    id: "j2", jo: "JO-2026-002", client: "MAYNILAD", product: "FILTER", qty: 100,
-    due: "May 02", badge: "assembling", stageIndex: 3,
-    specs: ["Item: KF-OF.175.20.87", "OD: 175mm · ID: 20mm · Height: 87mm", "Media: Pleated ZS20 w/ Double Alum Screen"],
-    stageHistory: makeHistory(3),
-    activityLog: [],
-  },
-  {
-    id: "j3", jo: "JO-2026-003", client: "G.U. ENGINEERING", product: "OIL SEPARATOR", qty: 30,
-    due: "May 05", badge: "molding", stageIndex: 0,
-    specs: ["Item: KF-OS.200/167.108.160", "OD: 200mm · ID: 108mm", "Media: Microglass Fiber", "Outer Core: Perfo 6mm"],
-    stageHistory: makeHistory(0),
-    activityLog: [],
-  },
-  {
-    id: "j4", jo: "JO-2026-004", client: "EMERALD VINYL", product: "COLUMN FILTER", qty: 20,
-    due: "May 10", badge: "holding", stageIndex: 0, paused: true,
-    specs: ["Item: TBC · Awaiting material delivery"],
-    stageHistory: makeHistory(0),
-    activityLog: [],
-  },
-];
+  };
+}
 
 function DetailStat({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
@@ -182,11 +202,12 @@ function getJOTemplateData(job: Job): JOTemplateData {
 }
 
 export function ProductionFloor() {
-  const [jobs, setJobs] = useState<Job[]>(initial);
   const [tab, setTab] = useState("all");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [labelJob, setLabelJob] = useState<Job | null>(null);
   const [stageMonitorId, setStageMonitorId] = useState<string | null>(null);
+  /* Section K — confirm modal before archiving completed JO */
+  const [archiveConfirmJob, setArchiveConfirmJob] = useState<Job | null>(null);
   const [joFileJob, setJoFileJob] = useState<Job | null>(null);
   const [editingDueId, setEditingDueId] = useState<string | null>(null);
   const [editingDueValue, setEditingDueValue] = useState("");
@@ -195,10 +216,17 @@ export function ProductionFloor() {
   const [cancelReason, setCancelReason] = useState("");
   const [qcFailed, setQcFailed] = useState<Set<string>>(new Set());
   const { push: pushNotif } = useNotifications();
-  const { completedJOs, setStage, cancelJOFromProduction, markInventoryDeducted } = useOrders();
+  const { completedJOs, inquiriesByStage, updateInquiry, cancelJOFromProduction, markInventoryDeducted } = useOrders();
   const { deductForJO, restoreFromJO } = useMaterials();
 
-  /* Map a production stageIndex to an inquiry Stage */
+  /* DERIVED: jobs come from the orders store. Any inquiry whose stage is in the production pipeline shows up. */
+  const productionInquiries = useMemo(
+    () => inquiriesByStage(["jo", "in_production", "quality_inspection", "ready_for_dispatch"]),
+    [completedJOs] // re-derive whenever store changes
+  );
+  const jobs = useMemo(() => productionInquiries.map(inquiryToJob), [productionInquiries]);
+
+  /* Map a production stageIndex to an inquiry Stage enum */
   const stageForIndex = (idx: number): Stage => {
     if (idx >= 9) return "ready_for_dispatch";
     if (idx >= 8) return "quality_inspection";
@@ -206,42 +234,37 @@ export function ProductionFloor() {
     return "jo";
   };
 
-  /* Whenever a job advances, sync the matching inquiry's stage */
-  const syncInquiryStage = (job: Job, newIdx: number) => {
-    const inq = completedJOs.find(i => i.joNumber === job.jo);
-    if (inq) setStage(inq.id, stageForIndex(newIdx));
-  };
+  /* Find the inquiry behind a job — id is the inquiry id, so this is a direct lookup */
+  const inqOf = (jobId: string) => productionInquiries.find((i) => i.id === jobId);
 
   const toggleUrgent = (id: string) => {
-    setJobs(prev => prev.map(j => {
-      if (j.id !== id) return j;
-      const next = !j.urgent;
-      if (next) {
-        pushNotif({
-          dept: "production",
-          title: `${j.jo} marked URGENT mid-production`,
-          body: `${j.client} · ${j.product} · priority bumped`,
-          link: "production",
-          recipients: ["owner", "operations", "production"],
-        });
-        toast.success(`${j.jo} marked urgent`, { description: "Production team notified" });
-      } else {
-        toast(`${j.jo} urgency removed`);
-      }
-      return { ...j, urgent: next };
-    }));
+    const inq = inqOf(id);
+    if (!inq) return;
+    const next = !inq.urgent;
+    updateInquiry(id, { urgent: next });
+    if (next) {
+      pushNotif({
+        dept: "production",
+        title: `${inq.joNumber ?? inq.code} marked URGENT mid-production`,
+        body: `${inq.clientName} · ${inq.products[0]?.type ?? ""} · priority bumped`,
+        link: "production",
+        recipients: ["owner", "operations", "production"],
+      });
+      toast.success(`${inq.joNumber ?? inq.code} marked urgent`, { description: "Production team notified" });
+    } else {
+      toast(`${inq.joNumber ?? inq.code} urgency removed`);
+    }
   };
 
   const saveDue = (id: string, due: string) => {
     if (!due.trim()) { toast.error("Enter a valid date"); return; }
-    const job = jobs.find(j => j.id === id);
-    if (!job) return;
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, due } : j));
-    /* Notify both client and Enter-Fil with reason */
+    const inq = inqOf(id);
+    if (!inq) return;
+    updateInquiry(id, { dueDate: due });
     pushNotif({
       dept: "production",
-      title: `Due date updated: ${job.jo}`,
-      body: `${job.client} · ${job.product} · new due ${due}${editingDueReason ? ` · Reason: ${editingDueReason}` : ""}${editingDueReason ? "" : " · For details, contact via Viber/SMS/email."}`,
+      title: `Due date updated: ${inq.joNumber ?? inq.code}`,
+      body: `${inq.clientName} · ${inq.products[0]?.type ?? ""} · new due ${due}${editingDueReason ? ` · Reason: ${editingDueReason}` : " · For details, contact via email."}`,
       link: "production",
       recipients: ["owner", "operations", "production", "client"],
     });
@@ -251,12 +274,12 @@ export function ProductionFloor() {
 
   const markQCFailed = (id: string) => {
     setQcFailed(prev => new Set(prev).add(id));
-    const job = jobs.find(j => j.id === id);
-    if (!job) return;
+    const inq = inqOf(id);
+    if (!inq) return;
     pushNotif({
       dept: "production",
-      title: `❌ QC Failed: ${job.jo}`,
-      body: `${job.client} · ${job.product} · Stage stays at Quality Inspection until passed. Rework required.`,
+      title: `❌ QC Failed: ${inq.joNumber ?? inq.code}`,
+      body: `${inq.clientName} · Stage stays at Quality Inspection until passed. Rework required.`,
       link: "production",
       recipients: ["owner", "operations", "production", "warehouse"],
     });
@@ -273,14 +296,12 @@ export function ProductionFloor() {
     if (!confirmCancelJob) return;
     if (!cancelReason.trim()) { toast.error("A reason is required"); return; }
     const job = confirmCancelJob;
-    /* RESTORE INVENTORY if deducted */
-    const inq = completedJOs.find((i) => i.joNumber === job.jo);
+    const inq = inqOf(job.id);
     if (inq?.inventoryDeducted && inq.billOfMaterials) {
       restoreFromJO(job.jo, inq.billOfMaterials);
       toast.info("Materials returned to stock", { description: `${inq.billOfMaterials.length} material(s) restored` });
     }
-    setJobs(prev => prev.filter(j => j.id !== job.id));
-    /* archive the matching inquiry in the orders store */
+    /* archiving via cancelJOFromProduction sets archived=true on the inquiry, removing it from the derived job list */
     cancelJOFromProduction(job.jo, cancelReason.trim());
     pushNotif({
       dept: "production",
@@ -294,75 +315,85 @@ export function ProductionFloor() {
     setCancelReason("");
   };
 
-  const visible = useMemo(() => jobs.filter((j) => jobMatches(j, tab)), [jobs, tab]);
+  /* Rush orders sort to top, then by stage progress */
+  const sortedJobs = useMemo(
+    () => [...jobs].sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || b.stageIndex - a.stageIndex),
+    [jobs]
+  );
+  const visible = useMemo(() => sortedJobs.filter((j) => jobMatches(j, tab)), [sortedJobs, tab]);
   const pausedJob = jobs.find((j) => j.paused);
 
   const advanceStage = (id: string) => {
-    setJobs((prev) =>
-      prev.map((j) => {
-        if (j.id !== id) return j;
-        const newIdx = Math.min(j.stageIndex + 1, STAGES.length - 1);
-        /* INVENTORY DEDUCT — first stage advance (Production Started) */
-        if (j.stageIndex === 0 && newIdx === 1) {
-          const inq = completedJOs.find((i) => i.joNumber === j.jo);
-          const bom = inq?.billOfMaterials;
-          if (bom && bom.length > 0 && !inq?.inventoryDeducted) {
-            const result = deductForJO(j.jo, bom);
-            if (!result.ok) {
-              toast.error("⚠️ Insufficient materials", {
-                description: result.shortages.map((s) => `${s.name}: need ${s.needed.toFixed(2)} ${s.unit}, have ${s.available.toFixed(2)}`).join(" · "),
-                duration: 6000,
-              });
-              pushNotif({
-                dept: "system",
-                title: `🚨 Material shortage on ${j.jo}`,
-                body: `Production paused. ${result.shortages.length} material(s) below required: ${result.shortages.map(s => s.name).join(", ")}`,
-                link: "inventory",
-                recipients: ["owner", "operations", "warehouse", "production"],
-              });
-              /* Pause the job instead of advancing */
-              return { ...j, paused: true };
-            }
-            markInventoryDeducted(j.jo);
-            toast.success("Inventory auto-deducted", { description: `${bom.length} material(s) consumed for ${j.jo}` });
-          }
-        }
-        const newHistory = [...j.stageHistory];
-        newHistory[j.stageIndex] = { markedBy: "F. Santos · Warehouse", date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }), status: "done" };
-        toast.success(`Stage complete: ${STAGES[j.stageIndex]}`, { description: `${j.jo} → ${STAGES[newIdx]}` });
-        /* sync inquiry stage in store */
-        syncInquiryStage(j, newIdx);
-        /* notify on stage complete + ready-for-dispatch */
-        pushNotif({
-          dept: "production",
-          title: `${j.jo} → ${STAGES[newIdx]}`,
-          body: `${j.client} · ${j.product} · marked by F. Santos`,
-          link: "production",
-          recipients: ["owner", "operations", "production"],
-        });
-        if (newIdx === STAGES.length - 1) {
-          pushNotif({
-            dept: "logistics",
-            title: `Order ready for dispatch: ${j.jo}`,
-            body: `${j.client} · ${j.product} · ${j.qty} pcs`,
-            link: "waybill",
-            recipients: ["owner", "operations", "logistics", "warehouse"],
+    const inq = inqOf(id);
+    if (!inq) return;
+    const currentIdx = inq.currentStage ?? 0;
+    const newIdx = Math.min(currentIdx + 1, STAGES.length - 1);
+    const joNumber = inq.joNumber ?? inq.code;
+
+    /* INVENTORY DEDUCT — first stage advance (Production Started) */
+    if (currentIdx === 0 && newIdx === 1) {
+      const bom = inq.billOfMaterials;
+      if (bom && bom.length > 0 && !inq.inventoryDeducted) {
+        const result = deductForJO(joNumber, bom);
+        if (!result.ok) {
+          toast.error("⚠️ Insufficient materials", {
+            description: result.shortages.map((s) => `${s.name}: need ${s.needed.toFixed(2)} ${s.unit}, have ${s.available.toFixed(2)}`).join(" · "),
+            duration: 6000,
           });
+          pushNotif({
+            dept: "system",
+            title: `🚨 Material shortage on ${joNumber}`,
+            body: `Production paused. ${result.shortages.length} material(s) below required: ${result.shortages.map(s => s.name).join(", ")}`,
+            link: "inventory",
+            recipients: ["owner", "operations", "warehouse", "production"],
+          });
+          /* Pause the job instead of advancing — write to store */
+          updateInquiry(id, { paused: true, pauseReason: `Material shortage: ${result.shortages.map(s => s.name).join(", ")}` });
+          return;
         }
-        return { ...j, stageIndex: newIdx, stageHistory: newHistory };
-      })
-    );
+        markInventoryDeducted(joNumber);
+        toast.success("Inventory auto-deducted", { description: `${bom.length} material(s) consumed for ${joNumber}` });
+      }
+    }
+
+    /* Append the just-completed stage to stageHistory */
+    const newHistory = [
+      ...(inq.stageHistory ?? []),
+      { stage: currentIdx, completedAt: new Date().toISOString(), completedBy: "F. Santos · Warehouse", status: "done" as const },
+    ];
+
+    /* Single store write — derived UI updates automatically */
+    updateInquiry(id, { currentStage: newIdx, stage: stageForIndex(newIdx), stageHistory: newHistory });
+
+    toast.success(`Stage complete: ${STAGES[currentIdx]}`, { description: `${joNumber} → ${STAGES[newIdx]}` });
+    pushNotif({
+      dept: "production",
+      title: `${joNumber} → ${STAGES[newIdx]}`,
+      body: `${inq.clientName} · ${inq.products[0]?.type ?? ""} · marked by F. Santos`,
+      link: "production",
+      recipients: ["owner", "operations", "production"],
+    });
+    if (newIdx === STAGES.length - 1) {
+      pushNotif({
+        dept: "logistics",
+        title: `Order ready for dispatch: ${joNumber}`,
+        body: `${inq.clientName} · ${inq.products.reduce((s, p) => s + p.qty, 0)} pcs`,
+        link: "waybill",
+        recipients: ["owner", "operations", "logistics", "warehouse"],
+      });
+    }
   };
 
   const archive = (job: Job) => {
-    setJobs((prev) => prev.filter((j) => j.id !== job.id));
-    toast.success(`${job.jo} completed`, { description: "Archived to history", duration: 3500 });
+    /* Stage 10 reached → "Mark Complete & Archive" advances inquiry to ready_for_dispatch (handed off to Logistics) */
+    updateInquiry(job.id, { stage: "ready_for_dispatch" });
+    toast.success(`${job.jo} completed`, { description: "Handed off to Logistics", duration: 3500 });
   };
 
   const resumeJob = (id: string) => {
-    setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, paused: false } : j)));
-    const job = jobs.find((j) => j.id === id);
-    toast.success("Production resumed", { description: `${job?.jo} is back in progress` });
+    const inq = inqOf(id);
+    updateInquiry(id, { paused: false, pauseReason: undefined });
+    toast.success("Production resumed", { description: `${inq?.joNumber ?? inq?.code} is back in progress` });
   };
 
   const monitoringJob = jobs.find((j) => j.id === stageMonitorId);
@@ -481,7 +512,7 @@ export function ProductionFloor() {
                             />
                           </div>
                           <div className="flex items-center justify-between gap-1">
-                            <span className="font-dm" style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>For details, contact via Viber/SMS/email</span>
+                            <span className="font-dm" style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>For details, contact via email</span>
                             <div className="flex items-center gap-1">
                               <button onClick={() => { setEditingDueId(null); setEditingDueReason(""); }} className="font-dm px-1.5 py-0.5 rounded hover:bg-amber-100" style={{ fontSize: 10, color: "#64748B" }}>Cancel</button>
                               <button onClick={() => saveDue(job.id, editingDueValue)} className="font-dm px-2 py-0.5 rounded text-white flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#16A34A" }}>Save & Notify</button>
@@ -564,7 +595,7 @@ export function ProductionFloor() {
                       <button onClick={() => setLabelJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md font-dm border-2 hover:bg-white" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
                         <Printer size={14} strokeWidth={2.5} /> 🏷 PRINT DISPATCH LABEL
                       </button>
-                      <button onClick={() => archive(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
+                      <button onClick={() => setArchiveConfirmJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
                         <Archive size={14} strokeWidth={2.5} /> MARK COMPLETE &amp; ARCHIVE
                       </button>
                     </div>
@@ -711,7 +742,14 @@ export function ProductionFloor() {
           job={monitoringJob}
           onClose={() => setStageMonitorId(null)}
           onUpdate={(updatedJob) => {
-            setJobs((prev) => prev.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
+            /* Map UI Job patches back into Inquiry shape */
+            updateInquiry(updatedJob.id, {
+              currentStage: updatedJob.stageIndex,
+              stage: stageForIndex(updatedJob.stageIndex),
+              paused: updatedJob.paused,
+              urgent: updatedJob.urgent,
+              dueDate: updatedJob.due,
+            });
           }}
           onAdvance={() => {
             advanceStage(monitoringJob.id);
@@ -729,6 +767,36 @@ export function ProductionFloor() {
 
       {/* Dispatch Label Modal */}
       {labelJob && <DispatchLabelModal job={labelJob} onClose={() => setLabelJob(null)} />}
+
+      {/* Section K — Mark complete & archive confirmation */}
+      {archiveConfirmJob && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setArchiveConfirmJob(null)}>
+          <div className="bg-white rounded-xl w-full max-w-md flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF3C7" }}>
+              <Archive size={18} style={{ color: "#B45309" }} />
+              <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#92400E" }}>Mark Complete &amp; Archive</h3>
+            </div>
+            <div className="p-5 flex flex-col gap-3">
+              <p className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+                Are you sure? Make sure you have <strong>printed the dispatch label</strong>. Once archived, the JO will be moved to <strong>Logistics</strong>.
+              </p>
+              <div className="rounded-md p-3 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Job Order</span>
+                <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{archiveConfirmJob.jo}</span>
+              </div>
+              <button onClick={() => { setLabelJob(archiveConfirmJob); }} className="font-dm flex items-center justify-center gap-2 py-2.5 rounded-md border-2 hover:bg-white" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
+                <Printer size={14} /> Print Dispatch Label
+              </button>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setArchiveConfirmJob(null)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+                <button onClick={() => { archive(archiveConfirmJob); setArchiveConfirmJob(null); }} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>
+                  <Archive size={14} /> Confirm Archive
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cancel JO modal — required reason */}
       {confirmCancelJob && (

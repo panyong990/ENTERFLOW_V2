@@ -8,6 +8,7 @@ import { NotificationBell } from "./NotificationBell";
 import { CostEstimationPanel } from "./CostEstimationPanel";
 import { QuotationBuilder } from "./QuotationBuilder";
 import type { QuotationDoc } from "../store/orders";
+import { FILTER_TYPES as FILTER_TYPES_CATALOG, DIMENSION_LABELS as DIMENSION_LABELS_CATALOG, GROUP_TEMPLATES, groupForType } from "../store/filterTemplates";
 
 const columns: { id: Stage; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -18,7 +19,7 @@ const columns: { id: Stage; title: string; tint: string }[] = [
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeJO, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setQuotationDoc, isNewClient } = useOrders();
+  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeJO, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setQuotationDoc, isNewClient, updateInquiry } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -179,11 +180,11 @@ export function SalesOrders() {
                         pushNotif({
                           dept: "sales",
                           title: `Cancellation declined: ${c.code}`,
-                          body: `${c.clientName} · please reach out via Viber/SMS/email to discuss`,
+                          body: `${c.clientName} · please reach out via email to discuss`,
                           link: "sales",
                           recipients: ["client"],
                         });
-                        toast.info("Cancellation declined", { description: `Contact ${c.clientName} via Viber/SMS/email to discuss` });
+                        toast.info("Cancellation declined", { description: `Contact ${c.clientName} via email to discuss` });
                       }}
                     />
                   ))}
@@ -206,6 +207,20 @@ export function SalesOrders() {
             if (quotationDoc) {
               setQuotationDoc(reviewing.id, quotationDoc);
             }
+            /* Section C2 — when this is a revision response, archive the previous quotationDoc and clear the revisionNote */
+            if (reviewing.revisionNote) {
+              const previousVersions = reviewing.quotationHistory ?? [];
+              const archivedDoc = reviewing.quotationDoc;
+              const newHistory = archivedDoc ? [...previousVersions, archivedDoc] : previousVersions;
+              updateInquiry(reviewing.id, { quotationHistory: newHistory, revisionNote: undefined });
+              pushNotif({
+                dept: "sales",
+                title: `📝 Revised quotation sent to ${reviewing.clientName}`,
+                body: `${reviewing.code} · v${newHistory.length + 1}${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}`,
+                link: "orders",
+                recipients: ["client"],
+              });
+            }
             pushNotif({
               dept: "sales",
               title: `Quotation sent: ${quotationDoc?.quotationNo ?? reviewing.code}`,
@@ -214,7 +229,7 @@ export function SalesOrders() {
               recipients: ["owner", "operations", "sales", "client"],
             });
             setReviewId(null);
-            toast.success("Quotation sent to client", { description: `${reviewing.clientName} notified in portal${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}` });
+            toast.success(reviewing.revisionNote ? "Revised quotation sent" : "Quotation sent to client", { description: `${reviewing.clientName} notified in portal${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}` });
           }}
         />
       )}
@@ -293,7 +308,7 @@ function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGene
             <button onClick={onDeclineCancel} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border" style={{ fontSize: 11, fontWeight: 700, color: "#475569", borderColor: "#CBD5E1" }}>
               <X size={11} /> Decline
             </button>
-            <span className="font-dm ml-auto" style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>If decline, contact client via Viber/SMS/email</span>
+            <span className="font-dm ml-auto" style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>If decline, contact client via email</span>
           </div>
         </div>
       )}
@@ -347,7 +362,7 @@ function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGene
           {inquiry.products.map((p, i) => (
             <div key={p.id} className="font-dm flex items-start justify-between gap-2" style={{ fontSize: 12 }}>
               <span style={{ color: "#0F172A" }}>
-                <span style={{ fontWeight: 700 }}>#{i + 1} {p.type}</span>
+                <span style={{ fontWeight: 700 }}>#{i + 1} {p.filterName || p.type}</span>
                 {p.oem && <span style={{ color: "#64748B" }}> · {p.oem}</span>}
               </span>
               <span style={{ color: "#475569", fontWeight: 600, whiteSpace: "nowrap" }}>×{p.qty}</span>
@@ -363,6 +378,16 @@ function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGene
           style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}
         >
           <Calculator size={13} /> REVIEW &amp; SEND QUOTATION <ArrowRight size={14} />
+        </button>
+      )}
+      {inquiry.stage === "quotation" && inquiry.revisionNote && (
+        <button
+          onClick={onReview}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90 mb-2"
+          style={{ backgroundColor: "#D97706", fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}
+          title={`Client note: ${inquiry.revisionNote}`}
+        >
+          📝 Review Revision Request →
         </button>
       )}
       {inquiry.stage === "quotation" && (
@@ -451,7 +476,8 @@ const blankPlan = (qty: number): MatPlan => ({
 function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry; onClose: () => void; onSubmit: (q: Quotation, bomData?: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number }, quotationDoc?: QuotationDoc) => void }) {
   const { isNewClient } = useOrders();
   const [leadDays, setLeadDays] = useState(inquiry.quotation?.leadTimeDays ?? 14);
-  const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">(isNewClient(inquiry.clientName) ? "inquiry" : "cost");
+  /* Section H — default to inquiry tab for ALL clients, not just new ones */
+  const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">("inquiry");
   const [bomData, setBomData] = useState<{ bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number } | null>(null);
   const [lines, setLines] = useState<QuotationLine[]>(
     inquiry.products.map((p) => {
@@ -655,7 +681,7 @@ function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNe
           ) : (
             <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8", backgroundColor: "#F8FAFC", border: "1px dashed #CBD5E1" }}>
               No sketch attached. The client described their requirements via the inquiry form fields above and notes below.
-              <br /><span style={{ fontSize: 11 }}>If a drawing is needed, request one via Viber/email before quoting.</span>
+              <br /><span style={{ fontSize: 11 }}>If a drawing is needed, request one via email before quoting.</span>
             </div>
           )}
         </div>
@@ -938,7 +964,9 @@ function QuotationDetailModal({ inquiry, onClose }: { inquiry: Inquiry; onClose:
 
 /* ---- PO Upload Modal (management-side manual entry) ---- */
 function POUploadModal({ onClose, onUpload }: { onClose: () => void; onUpload: (name: string) => void }) {
-  const [name, setName] = useState("");
+  const { generatePONumber } = useOrders();
+  /* Section J — auto-fill the next PO number; staff can still edit if needed */
+  const [name, setName] = useState(() => `${generatePONumber()}.pdf`);
   return (
     <ModalShell title="Mark PO Received" subtitle="Record the client's purchase order reference" onClose={onClose}>
       <Field label="PO File Name / Reference">
@@ -966,6 +994,7 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   onClose: () => void;
   onConfirm: (data: FinalizeJOData) => void;
 }) {
+  const { generateJONumber } = useOrders();
   const [docs, setDocs] = useState<{ sketch: UploadedDoc[]; other: UploadedDoc[] }>({
     sketch: [], other: [],
   });
@@ -994,8 +1023,8 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   /* Sales-invoice issuance — some orders skip SI */
   const [issueSI, setIssueSI] = useState(true);
 
-  /* JO number (auto-generated but editable) */
-  const [joNumber, setJoNumber] = useState(() => `JO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 900) + 100)}`);
+  /* JO number — auto-generated PO-style sequence (Section J) */
+  const [joNumber, setJoNumber] = useState(() => generateJONumber());
 
   const sketchAttached = docs.sketch.length > 0;
   const allChecked = checks.verified && checks.matches && checks.terms && sketchAttached;
@@ -1327,7 +1356,7 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
                 <div className="flex flex-col gap-2">
                   {inquiry.products.map((p, i) => (
                     <div key={p.id} className="rounded-lg px-4 py-3 border border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
-                      <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>#{i + 1} {p.type}{p.oem ? ` · ${p.oem}` : ""}</div>
+                      <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>#{i + 1} {p.filterName || p.type}{p.oem ? ` · ${p.oem}` : ""}</div>
                       <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>
                         {[p.od1 && `OD ${p.od1}mm`, p.id1 && `ID ${p.id1}mm`, p.height && `H ${p.height}mm`, p.media].filter(Boolean).join(" · ")}
                       </div>
@@ -1445,11 +1474,10 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
   const [contactPerson, setContactPerson] = useState("");
   const [paymentTerms, setPaymentTerms] = useState<"COD" | "15-Day Terms" | "30-Day Terms">("30-Day Terms");
   const [generalNotes, setGeneralNotes] = useState("");
-  const [filterType, setFilterType] = useState("Air Filter");
-  const [od1, setOd1] = useState("");
-  const [od2, setOd2] = useState("");
-  const [id1, setId1] = useState("");
-  const [height, setHeight] = useState("");
+  /* Section A3/A4 — type code from FILTER_TYPES catalogue + filterName + dynamic dimensions */
+  const [filterType, setFilterType] = useState("AIRFIL");
+  const [filterName, setFilterName] = useState("");
+  const [dims, setDims] = useState<Record<string, string>>({});
   const [media, setMedia] = useState("");
   const [innerCore, setInnerCore] = useState("");
   const [oem, setOem] = useState("");
@@ -1458,19 +1486,23 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
   const [isRush, setIsRush] = useState(false);
   const [rushDate, setRushDate] = useState("");
 
-  /* Auto-due-date when NOT rush: today + 14 days (1–2 week production norm) */
+  /* Auto-due-date when NOT rush: today + 14 days */
   const autoDueDate = () => {
     const d = new Date();
     d.setDate(d.getDate() + 14);
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
+  const group = groupForType(filterType);
+  const dimensionList = GROUP_TEMPLATES[group].dimensions;
+
   const submit = () => {
     if (!clientName.trim()) { toast.error("Client name required"); return; }
     if (!contactPerson.trim()) { toast.error("Contact person required"); return; }
+    if (filterName.trim().length < 3) { toast.error("Filter name (≥3 characters) required"); return; }
     if (qty < 10) { toast.error("Minimum order quantity is 10 pcs"); return; }
     if (isRush && !rushDate.trim()) { toast.error("Required delivery date needed for rush order"); return; }
-    const product: ProductLine = { id: "p1", type: filterType, od1, od2, id1, height, media, innerCore, oem, qty };
+    const product: ProductLine = { id: "p1", type: filterType, filterName: filterName.trim(), ...dims, media, innerCore, oem, qty };
     const finalDueDate = isRush ? rushDate : autoDueDate();
     onSubmit({
       clientName, contactPerson, paymentTerms, generalNotes,
@@ -1514,22 +1546,33 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
             </div>
           </div>
 
-          {/* Product Spec */}
+          {/* Product Spec — Section A3 catalogue + Section A4 dynamic dimensions */}
           <div>
             <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.6, textTransform: "uppercase" }}>Product Specification</div>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Filter Type">
-                <select value={filterType} onChange={e => setFilterType(e.target.value)} className="form-input">
-                  <option>Air Filter</option><option>Oil Filter</option><option>Oil Separator</option><option>Column Filter</option><option>Water Filter</option>
+              <Field label="Filter Type *">
+                <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setDims({}); }} className="form-input">
+                  {Object.values(FILTER_TYPES_CATALOG).map((t) => (
+                    <option key={t.code} value={t.code}>{t.label}</option>
+                  ))}
                 </select>
+              </Field>
+              <Field label="Filter Name * (min 3 chars)">
+                <input value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="e.g. Air/Oil Separator Filter" className="form-input" />
               </Field>
               <Field label="OEM Reference / Part No.">
                 <input value={oem} onChange={e => setOem(e.target.value)} placeholder="e.g. KF-OS.107.65.252" className="form-input" />
               </Field>
-              <Field label="OD 1 (mm)"><input value={od1} onChange={e => setOd1(e.target.value)} type="number" className="form-input" /></Field>
-              <Field label="OD 2 (mm)"><input value={od2} onChange={e => setOd2(e.target.value)} type="number" className="form-input" /></Field>
-              <Field label="ID 1 (mm)"><input value={id1} onChange={e => setId1(e.target.value)} type="number" className="form-input" /></Field>
-              <Field label="Height (mm)"><input value={height} onChange={e => setHeight(e.target.value)} type="number" className="form-input" /></Field>
+              {dimensionList.map((d, i) => (
+                <Field key={d} label={`${DIMENSION_LABELS_CATALOG[d]}${i === 0 ? " *" : ""}`}>
+                  <input
+                    value={dims[d] ?? ""}
+                    onChange={(e) => setDims((prev) => ({ ...prev, [d]: e.target.value }))}
+                    type="number"
+                    className="form-input"
+                  />
+                </Field>
+              ))}
               <Field label="Filter Media"><input value={media} onChange={e => setMedia(e.target.value)} placeholder="e.g. Microglass Fiber" className="form-input" /></Field>
               <Field label="Inner Core"><input value={innerCore} onChange={e => setInnerCore(e.target.value)} placeholder="e.g. Expanded Metal Perfo 2mm" className="form-input" /></Field>
               <div className="flex flex-col gap-1.5">

@@ -1,22 +1,17 @@
 import { useState, Fragment } from "react";
-import { Save, Building2, Phone, Truck, FileText, Bell, Mail, MessageSquare } from "lucide-react";
+import { Save, Building2, Phone, Truck, FileText, Bell, Mail } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useSettings, type CompanySettings } from "../store/settings";
 import { NotificationBell } from "./NotificationBell";
 
 export function Settings() {
   const { settings, update, save } = useSettings();
+  // Email gateway not implemented
   const [emailAlerts, setEmailAlerts] = useState(true);
-  const [smsAlerts, setSmsAlerts] = useState(false);
   const [emailTriggers, setEmailTriggers] = useState({
     newInquiry: true, quotationSent: true, joCreated: true, stageComplete: false,
     readyForDispatch: true, deliveryConfirmed: true, invoiceOverdue: true,
     paymentCleared: true, lowStock: true, orderCancelled: true, orderRejected: true, rushAdded: true,
-  });
-  const [smsTriggers, setSmsTriggers] = useState({
-    newInquiry: false, quotationSent: false, joCreated: false, stageComplete: false,
-    readyForDispatch: false, deliveryConfirmed: true, invoiceOverdue: true,
-    paymentCleared: false, lowStock: true, orderCancelled: true, orderRejected: false, rushAdded: true,
   });
 
   const handleSave = () => {
@@ -90,20 +85,18 @@ export function Settings() {
           </div>
         </Section>
 
-        <Section icon={Bell} title="Notification Preferences" desc="Email and SMS alerts for system events">
-          {/* Master toggles */}
+        <Section icon={Bell} title="Notification Preferences" desc="Email alerts for system events">
+          {/* Master toggle */}
           <div className="grid grid-cols-2 gap-3">
             <ToggleRow icon={Mail} label="Email Alerts" subtitle="Sent via SendGrid (configure at deployment)" enabled={emailAlerts} onToggle={() => setEmailAlerts(v => !v)} accent="#2563EB" />
-            <ToggleRow icon={MessageSquare} label="SMS Alerts" subtitle="Sent via Semaphore PH (configure at deployment)" enabled={smsAlerts} onToggle={() => setSmsAlerts(v => !v)} accent="#16A34A" />
           </div>
 
           {/* Per-trigger matrix */}
           <div className="rounded-lg p-4" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
             <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Per-event channels</div>
-            <div className="grid gap-1.5" style={{ gridTemplateColumns: "1fr 80px 80px" }}>
+            <div className="grid gap-1.5" style={{ gridTemplateColumns: "1fr 80px" }}>
               <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", letterSpacing: 0.5, textTransform: "uppercase" }}>Trigger</span>
               <span className="font-dm text-center" style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", letterSpacing: 0.5, textTransform: "uppercase" }}>Email</span>
-              <span className="font-dm text-center" style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", letterSpacing: 0.5, textTransform: "uppercase" }}>SMS</span>
               {[
                 ["New inquiry submitted", "newInquiry"],
                 ["Quotation sent to client", "quotationSent"],
@@ -128,21 +121,13 @@ export function Settings() {
                       color="#2563EB"
                     />
                   </div>
-                  <div className="flex items-center justify-center">
-                    <Checkbox
-                      checked={smsTriggers[key as keyof typeof smsTriggers] && smsAlerts}
-                      disabled={!smsAlerts}
-                      onChange={() => setSmsTriggers(p => ({ ...p, [key]: !p[key as keyof typeof smsTriggers] }))}
-                      color="#16A34A"
-                    />
-                  </div>
                 </Fragment>
               ))}
             </div>
           </div>
 
           <div className="rounded-md p-3 font-dm" style={{ fontSize: 11, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-            ℹ️ Email alerts via <strong>SendGrid</strong> · SMS alerts via <strong>Semaphore (PH)</strong> · Configured at deployment. Each user account can override these defaults in their personal settings.
+            ℹ️ Email alerts via <strong>SendGrid</strong> · Configured at deployment. Each user account can override these defaults in their personal settings.
           </div>
         </Section>
 

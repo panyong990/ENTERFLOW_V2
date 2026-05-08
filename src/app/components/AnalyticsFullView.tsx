@@ -1,10 +1,13 @@
-import { useState } from "react";
-import { ArrowLeft, Download, Printer, TrendingUp, ShoppingCart, Factory, AlertTriangle, DollarSign, Inbox, Repeat2, Truck, Calculator } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, Download, Printer, TrendingUp, ShoppingCart, Factory, AlertTriangle, DollarSign, Repeat2, Truck, Calculator } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, Legend, AreaChart, Area,
+  PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from "recharts";
 import { Toaster, toast } from "sonner";
+import { useMaterials, partCategoryMeta, type RawMaterial } from "../store/materials";
+import { useOrders } from "../store/orders";
+import { useNotifications } from "../store/notifications";
 
 type ViewKey = "revenue" | "sales" | "production" | "inventory" | "logistics" | "payments" | "demand" | "all";
 
@@ -84,16 +87,95 @@ const paymentMix = [
   { method: "GCash", value: 45000, color: "#2563EB" },
 ];
 
-const inventoryStock = [
-  { item: "Adhesive (sets)", stock: 2, threshold: 3, status: "critical" },
-  { item: "Boxes (pcs)", stock: 45, threshold: 50, status: "low" },
-  { item: "Filter Media · Local (rolls)", stock: 12, threshold: 5, status: "ok" },
-  { item: "Filter Media · Imported (rolls)", stock: 8, threshold: 0, status: "ok" },
-];
+type StockStatus = "critical" | "low" | "ok";
+
+interface InventoryRow {
+  material: RawMaterial;
+  item: string;
+  unit: string;
+  stock: number;
+  threshold: number;
+  status: StockStatus;
+}
+
+function classifyStock(qty: number, threshold: number): StockStatus {
+  if (threshold > 0 && qty <= threshold * 0.5) return "critical";
+  if (qty <= threshold) return "low";
+  return "ok";
+}
 
 export function AnalyticsFullView({ onBack, initialView = "all" }: Props) {
   const [view, setView] = useState<ViewKey>(initialView);
   const [reportMonth, setReportMonth] = useState("2026-04");
+  const { rawMaterials } = useMaterials();
+  const { inquiries, completedJOs } = useOrders();
+  const { push: pushNotif } = useNotifications();
+
+  /* D2: live inventory grouped by part category. */
+  const inventoryGroups = useMemo(() => {
+    const groups: { category: string; label: string; icon: string; rows: InventoryRow[] }[] = [];
+    (Object.keys(partCategoryMeta) as (keyof typeof partCategoryMeta)[]).forEach((cat) => {
+      const meta = partCategoryMeta[cat];
+      const rows: InventoryRow[] = rawMaterials
+        .filter((m) => m.category === cat)
+        .map((m) => ({
+          material: m,
+          item: `${m.name} (${m.unit})`,
+          unit: m.unit,
+          stock: m.qtyInStock,
+          threshold: m.threshold,
+          status: classifyStock(m.qtyInStock, m.threshold),
+        }));
+      if (rows.length > 0) groups.push({ category: cat, label: meta.label, icon: meta.icon, rows });
+    });
+    return groups;
+  }, [rawMaterials]);
+
+  const reorderMaterial = (material: RawMaterial) => {
+    pushNotif({
+      dept: "system",
+      title: `📦 Reorder request for ${material.name}`,
+      body: `Stock at ${material.qtyInStock} ${material.unit} · below threshold ${material.threshold}`,
+      link: "inventory",
+      recipients: ["warehouse", "operations"],
+    });
+    toast.success(`Reorder request sent for ${material.name}`);
+  };
+
+  /* D3: demand forecast — group custom / OEM-bearing products by clientName, count + avg qty over last 90 days. */
+  const demandForecastLive = useMemo(() => {
+    const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    const all = [...inquiries, ...completedJOs];
+    type Acc = { product: string; clientCounts: Record<string, number>; clientQtys: Record<string, number>; totalQty: number; totalCount: number };
+    const map = new Map<string, Acc>();
+    for (const inq of all) {
+      const t = Date.parse(inq.submittedDate);
+      if (!isNaN(t) && t < cutoff) continue;
+      for (const p of inq.products) {
+        const isCustom = (p.type ?? "").toLowerCase().includes("custom") || !!(p.oem && p.oem.trim() !== "");
+        if (!isCustom) continue;
+        const productKey = p.filterName ?? p.type ?? "Custom";
+        const acc = map.get(productKey) ?? { product: productKey, clientCounts: {}, clientQtys: {}, totalQty: 0, totalCount: 0 };
+        acc.clientCounts[inq.clientName] = (acc.clientCounts[inq.clientName] ?? 0) + 1;
+        acc.clientQtys[inq.clientName] = (acc.clientQtys[inq.clientName] ?? 0) + p.qty;
+        acc.totalQty += p.qty;
+        acc.totalCount += 1;
+        map.set(productKey, acc);
+      }
+    }
+    const rows = Array.from(map.values()).map((acc) => {
+      const topClient = Object.entries(acc.clientCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
+      const avgMonthly = Math.round(acc.totalQty / 3); /* 90 days ≈ 3 months */
+      const recommendedBuffer = Math.round(avgMonthly * 0.5);
+      const trend = acc.totalCount >= 3 ? "+15%" : "Stable";
+      const urgency = avgMonthly >= 30 ? "HIGH" : "MONITOR";
+      return { product: acc.product, topClient, avgMonthly, recommendedBuffer, trend, urgency, count: acc.totalCount };
+    }).sort((a, b) => b.avgMonthly - a.avgMonthly);
+    return rows;
+  }, [inquiries, completedJOs]);
+
+  const topDemandClient = demandForecastLive[0]?.topClient ?? "—";
+  const topDemandAvg = demandForecastLive[0]?.avgMonthly ?? 0;
 
   const generateReport = () => {
     toast.success("Report generated", {
@@ -319,35 +401,47 @@ export function AnalyticsFullView({ onBack, initialView = "all" }: Props) {
         )}
 
         {(view === "all" || view === "inventory") && (
-          <Card title="Inventory & Critical Materials">
-            <table className="w-full">
-              <thead style={{ backgroundColor: "#F4F6F9" }}>
-                <tr>
-                  {["Item", "Stock", "Threshold", "Status", "Action"].map((h) => (
-                    <th key={h} className="font-dm text-left px-3 py-2.5" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {inventoryStock.map((s) => (
-                  <tr key={s.item} className="border-t border-slate-200/70">
-                    <td className="px-3 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{s.item}</td>
-                    <td className="px-3 py-3 font-syne" style={{ fontSize: 16, fontWeight: 800, color: s.status === "critical" ? "#C8102E" : s.status === "low" ? "#D97706" : "#16A34A" }}>{s.stock}</td>
-                    <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#64748B" }}>{s.threshold}</td>
-                    <td className="px-3 py-3">
-                      <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: s.status === "critical" ? "#FEE2E2" : s.status === "low" ? "#FEF3C7" : "#DCFCE7", color: s.status === "critical" ? "#991B1B" : s.status === "low" ? "#B45309" : "#15803D" }}>
-                        {s.status === "critical" ? "🔴 CRITICAL" : s.status === "low" ? "⚠️ LOW" : "✅ OK"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      {s.status !== "ok" && (
-                        <button className="font-dm px-3 py-1 rounded-md border border-red-200 hover:bg-red-50" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}>Reorder Now</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <Card title="Inventory & Critical Materials — Live Stock by Category">
+            <div className="flex flex-col gap-4">
+              {inventoryGroups.map((g) => (
+                <div key={g.category}>
+                  <div className="font-dm mb-2 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                    <span>{g.icon}</span> {g.label}
+                  </div>
+                  <table className="w-full">
+                    <thead style={{ backgroundColor: "#F4F6F9" }}>
+                      <tr>
+                        {["Item", "Stock", "Threshold", "Status", "Action"].map((h) => (
+                          <th key={h} className="font-dm text-left px-3 py-2.5" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.rows.map((s) => (
+                        <tr key={s.material.id} className="border-t border-slate-200/70">
+                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{s.item}</td>
+                          <td className="px-3 py-3 font-syne" style={{ fontSize: 16, fontWeight: 800, color: s.status === "critical" ? "#C8102E" : s.status === "low" ? "#D97706" : "#16A34A" }}>{s.stock}</td>
+                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#64748B" }}>{s.threshold}</td>
+                          <td className="px-3 py-3">
+                            <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: s.status === "critical" ? "#FEE2E2" : s.status === "low" ? "#FEF3C7" : "#DCFCE7", color: s.status === "critical" ? "#991B1B" : s.status === "low" ? "#B45309" : "#15803D" }}>
+                              {s.status === "critical" ? "🔴 CRITICAL" : s.status === "low" ? "⚠️ LOW" : "✅ OK"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            {s.status !== "ok" && (
+                              <button onClick={() => reorderMaterial(s.material)} className="font-dm px-3 py-1 rounded-md border border-red-200 hover:bg-red-50" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}>Reorder Now</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              {inventoryGroups.length === 0 && (
+                <div className="font-dm text-center py-6" style={{ fontSize: 12, color: "#94A3B8" }}>No materials on file.</div>
+              )}
+            </div>
           </Card>
         )}
 
@@ -398,6 +492,16 @@ export function AnalyticsFullView({ onBack, initialView = "all" }: Props) {
 
         {(view === "all" || view === "demand") && (
           <Card title="Demand Forecast — Top Recurring Items">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="rounded-md p-3" style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#15803D", letterSpacing: 0.4, textTransform: "uppercase" }}>Top demand client (live, last 90d)</div>
+                <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#15803D" }}>{topDemandClient}</div>
+              </div>
+              <div className="rounded-md p-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", letterSpacing: 0.4, textTransform: "uppercase" }}>Avg monthly qty (top item)</div>
+                <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#1E40AF" }}>{topDemandAvg} pcs</div>
+              </div>
+            </div>
             <table className="w-full">
               <thead style={{ backgroundColor: "#F4F6F9" }}>
                 <tr>
@@ -407,7 +511,7 @@ export function AnalyticsFullView({ onBack, initialView = "all" }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {demandForecast.map((d) => (
+                {(demandForecastLive.length > 0 ? demandForecastLive : demandForecast).map((d) => (
                   <tr key={d.product} className="border-t border-slate-200/70 hover:bg-slate-50">
                     <td className="px-3 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{d.product}</td>
                     <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{d.topClient}</td>
@@ -419,6 +523,9 @@ export function AnalyticsFullView({ onBack, initialView = "all" }: Props) {
                     </td>
                   </tr>
                 ))}
+                {demandForecastLive.length === 0 && (
+                  <tr><td colSpan={6} className="px-3 py-3 font-dm text-center" style={{ fontSize: 11, color: "#94A3B8", fontStyle: "italic" }}>Showing static seed (no custom/OEM orders in last 90 days)</td></tr>
+                )}
               </tbody>
             </table>
           </Card>

@@ -1,4 +1,4 @@
-import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, Users, LogOut, Building2, Settings as SettingsIcon, Boxes } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, Users, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3 } from "lucide-react";
 import type { Role } from "./Login";
 import { roleMetas } from "./Login";
 
@@ -10,6 +10,7 @@ const navItems = [
   { id: "waybill",    label: "Waybill Scanner",   icon: ScanLine },
   { id: "logistics",  label: "Logistics",         icon: Truck },
   { id: "accounting", label: "Payments Ledger",   icon: Calculator },
+  { id: "analytics",  label: "Analytics",         icon: BarChart3 },
   { id: "clients",    label: "Client Management", icon: Building2 },
   { id: "users",      label: "User Management",   icon: Users },
 ];
@@ -18,7 +19,7 @@ export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   /* Owner sees ONLY high-level: dashboard (all analytics + drill-down), client management, user management */
   owner:      ["dashboard", "analytics", "clients", "users", "notifications", "settings"],
   /* Operations Manager has full system access */
-  operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "accounting", "clients", "users", "notifications", "settings"],
+  operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "accounting", "analytics", "clients", "users", "notifications", "settings"],
   sales:      ["dashboard", "sales", "clients", "notifications"],
   accounting: ["dashboard", "sales", "logistics", "accounting", "notifications"],
   production: ["dashboard", "production", "notifications"],

@@ -27,18 +27,17 @@ interface User {
   joined: string;
   active: boolean;
   emailAlerts: boolean;
-  smsAlerts: boolean;
 }
 
 const initialUsers: User[] = [
-  { id: "u0", name: "T. Mendoza",  email: "owner@enter-fil.com",      phone: "+63 917 100 0000", initials: "TM", role: "owner",      joined: "Jan 15, 2024", active: true,  emailAlerts: true,  smsAlerts: true },
-  { id: "u1", name: "M. Aquino",   email: "ops@enter-fil.com",        phone: "+63 917 200 0000", initials: "MA", role: "operations", joined: "Apr 2, 2026",  active: true,  emailAlerts: true,  smsAlerts: true },
-  { id: "u2", name: "R. Santos",   email: "sales@enter-fil.com",      phone: "+63 917 300 0000", initials: "RS", role: "sales",      joined: "Apr 2, 2026",  active: true,  emailAlerts: true,  smsAlerts: false },
-  { id: "u3", name: "L. Cruz",     email: "finance@enter-fil.com",    phone: "+63 917 400 0000", initials: "LC", role: "accounting", joined: "Apr 2, 2026",  active: true,  emailAlerts: true,  smsAlerts: true },
-  { id: "u4", name: "J. Reyes",    email: "production@enter-fil.com", phone: "+63 917 500 0000", initials: "JR", role: "production", joined: "Apr 2, 2026",  active: true,  emailAlerts: true,  smsAlerts: false },
-  { id: "u5", name: "F. Santos",   email: "warehouse@enter-fil.com",  phone: "+63 917 600 0000", initials: "FS", role: "warehouse",  joined: "Apr 2, 2026",  active: true,  emailAlerts: false, smsAlerts: true },
-  { id: "u6", name: "P. Tan",      email: "logistics@enter-fil.com",  phone: "+63 917 700 0000", initials: "PT", role: "logistics",  joined: "Apr 2, 2026",  active: true,  emailAlerts: true,  smsAlerts: true },
-  { id: "u7", name: "A. Garcia",   email: "alicia@enter-fil.com",     phone: "—",                initials: "AG", role: "none",       joined: "Apr 3, 2026",  active: false, emailAlerts: false, smsAlerts: false },
+  { id: "u0", name: "T. Mendoza",  email: "owner@enter-fil.com",      phone: "+63 917 100 0000", initials: "TM", role: "owner",      joined: "Jan 15, 2024", active: true,  emailAlerts: true  },
+  { id: "u1", name: "M. Aquino",   email: "ops@enter-fil.com",        phone: "+63 917 200 0000", initials: "MA", role: "operations", joined: "Apr 2, 2026",  active: true,  emailAlerts: true  },
+  { id: "u2", name: "R. Santos",   email: "sales@enter-fil.com",      phone: "+63 917 300 0000", initials: "RS", role: "sales",      joined: "Apr 2, 2026",  active: true,  emailAlerts: true  },
+  { id: "u3", name: "L. Cruz",     email: "finance@enter-fil.com",    phone: "+63 917 400 0000", initials: "LC", role: "accounting", joined: "Apr 2, 2026",  active: true,  emailAlerts: true  },
+  { id: "u4", name: "J. Reyes",    email: "production@enter-fil.com", phone: "+63 917 500 0000", initials: "JR", role: "production", joined: "Apr 2, 2026",  active: true,  emailAlerts: true  },
+  { id: "u5", name: "F. Santos",   email: "warehouse@enter-fil.com",  phone: "+63 917 600 0000", initials: "FS", role: "warehouse",  joined: "Apr 2, 2026",  active: true,  emailAlerts: false },
+  { id: "u6", name: "P. Tan",      email: "logistics@enter-fil.com",  phone: "+63 917 700 0000", initials: "PT", role: "logistics",  joined: "Apr 2, 2026",  active: true,  emailAlerts: true  },
+  { id: "u7", name: "A. Garcia",   email: "alicia@enter-fil.com",     phone: "—",                initials: "AG", role: "none",       joined: "Apr 3, 2026",  active: false, emailAlerts: false },
 ];
 
 function RoleBadge({ role }: { role: RoleId }) {
@@ -83,11 +82,6 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
   const toggleEmailAlerts = (u: User) => {
     setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, emailAlerts: !x.emailAlerts } : x)));
     toast.success(`Email alerts ${u.emailAlerts ? "disabled" : "enabled"} for ${u.name}`);
-  };
-
-  const toggleSmsAlerts = (u: User) => {
-    setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, smsAlerts: !x.smsAlerts } : x)));
-    toast.success(`SMS alerts ${u.smsAlerts ? "disabled" : "enabled"} for ${u.name}`);
   };
 
   // Add User modal state
@@ -153,7 +147,6 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
       joined: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       active: true,
       emailAlerts: true,
-      smsAlerts: false,
     };
     setUsers((prev) => [...prev, newUser]);
     toast.success("Account created", { description: `Invite sent to ${newEmail.trim()}` });
@@ -238,7 +231,7 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
             <table className="w-full">
               <thead style={{ backgroundColor: "#F4F6F9" }}>
                 <tr>
-                  {["User", "Email", "Initials", "Current Role", "Status", "Email Alerts", "SMS Alerts", "Joined", "Actions"].map((h) => (
+                  {["User", "Email", "Initials", "Current Role", "Status", "Email Alerts", "Joined", "Actions"].map((h) => (
                     <th
                       key={h}
                       className="font-dm text-left px-4 py-3"
@@ -277,17 +270,6 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
                           title={u.emailAlerts ? `Email ON · ${u.email}` : "Email OFF"}
                         >
                           <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: u.emailAlerts ? 22 : 2, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => toggleSmsAlerts(u)}
-                          disabled={!u.active}
-                          className="relative w-10 h-5 rounded-full transition-colors disabled:opacity-40"
-                          style={{ backgroundColor: u.smsAlerts ? "#16A34A" : "#CBD5E1" }}
-                          title={u.smsAlerts ? `SMS ON · ${u.phone}` : "SMS OFF"}
-                        >
-                          <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: u.smsAlerts ? 22 : 2, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
                         </button>
                       </td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{u.joined}</td>

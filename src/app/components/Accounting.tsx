@@ -1,6 +1,6 @@
-import { Fragment, useState, useEffect } from "react";
+import { Fragment, useState, useEffect, useMemo } from "react";
 import { FileText, ClipboardList, Search, Plus, CheckCircle2, X, Send, AlertTriangle, ChevronDown, ChevronUp, PlusCircle, Receipt, Eye, History, Pencil, Download } from "lucide-react";
-import { useOrders } from "../store/orders";
+import { useOrders, type Inquiry } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
@@ -29,13 +29,23 @@ interface Invoice {
   dueDate?: string;
 }
 
-const initial: Invoice[] = [
-  { id: "i1", date: "2026-02-28", inv: "SI-2026-9805", po: "PO-2026-9805", client: "B.E. Aerospace", item: "Oil Separator Filter (20 pcs)", amount: 45000, payment: "Cash", status: "paid", deliveredDate: "Feb 28, 2026" },
-  { id: "i2", date: "2026-03-31", inv: "SI-2026-9901", po: "PO-2026-9901", client: "B.E. Aerospace", item: "Air Filter 115×103×500mm (50 pcs)", amount: 78000, payment: "Bank Transfer · BDO", status: "paid", deliveredDate: "Mar 31, 2026" },
-  { id: "i3", date: "2026-03-31", inv: "SI-2026-9531", po: "PO-2026-9531", client: "Maynilad", item: "Pleated Filter ZS20 (100 pcs)", amount: 50040, payment: "Bank Transfer · MetroBank", status: "paid", deliveredDate: "Mar 31, 2026" },
-  { id: "i4", date: "2026-03-30", inv: "SI-2026-9533", po: "PO-2026-9533", client: "Maynilad", item: "Pleated Filter 5-Micron (100 pcs)", amount: 46800, payment: "30-Day Terms", status: "pending", deliveredDate: "Mar 30, 2026", dueDate: "Apr 29, 2026" },
-  { id: "i5", date: "2026-04-10", inv: "SI-2026-0418", po: "PO-2026-0418", client: "B.E. Aerospace", item: "Air Filter KF-OS.107 (30 pcs)", amount: 46800, payment: "30-Day Terms", status: "pending", deliveredDate: "Apr 10, 2026", dueDate: "May 10, 2026" },
-];
+/* Derive an Invoice row from an Inquiry. Anything in delivered/paid/overdue stage is invoiced. */
+function inquiryToInvoice(inq: Inquiry): Invoice {
+  const isPaid = inq.stage === "paid";
+  return {
+    id: inq.id,
+    date: inq.deliveredDate ?? inq.submittedDate,
+    inv: inq.invoiceNo ?? `SI-${inq.code.replace("INQ-", "")}`,
+    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
+    client: inq.clientName,
+    item: `${inq.products[0]?.type ?? "Filter"} (${inq.products.reduce((s, p) => s + p.qty, 0)} pcs)`,
+    amount: inq.invoiceAmount ?? inq.quotedTotal ?? 0,
+    payment: isPaid ? "Cleared" : inq.paymentTerms,
+    status: isPaid ? "paid" : "pending",
+    deliveredDate: inq.deliveredDate,
+    dueDate: inq.invoiceDueDate,
+  };
+}
 
 type GranularStatus = "Paid" | "Partial" | "Overdue" | "Pending";
 function granularStatus(inv: Invoice, totalPaid: number): GranularStatus {
@@ -74,27 +84,39 @@ function KPI({ label, value, accent = "#0F172A" }: { label: string; value: strin
   );
 }
 
-const seedPayments: Record<string, PaymentEntry[]> = {
-  "i4": [
-    { id: "pe1", date: "Apr 10, 2026", amount: 23400, method: "BDO Bank Transfer", ref: "BDO-2026-04100" },
-  ],
-  "i5": [],
-};
-
 export function Accounting() {
-  const [rows, setRows] = useState<Invoice[]>(initial);
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [payments, setPayments] = useState<Record<string, PaymentEntry[]>>(seedPayments);
+  const [payments, setPayments] = useState<Record<string, PaymentEntry[]>>({});
   const [newPmt, setNewPmt] = useState<Record<string, { amount: string; method: string; ref: string; datePaid: string }>>({});
   const [viewReceiptsId, setViewReceiptsId] = useState<string | null>(null);
   const [view, setView] = useState<"active" | "history">("active");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
-  const { byClient, markPOCleared, confirmClientPayment } = useOrders();
+  const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [showOverdueModal, setShowOverdueModal] = useState(false);
+
+  /* DERIVED: invoices come from the orders store. Anything past delivery is invoiced. */
+  const invoiceInquiries = useMemo(
+    () => inquiriesByStage(["delivered", "overdue", "paid"]),
+    [inquiriesByStage]
+  );
+  const rows = useMemo(() => invoiceInquiries.map(inquiryToInvoice), [invoiceInquiries]);
+
+  /* Hydrate seeded confirmed payments from the inquiry into the local payments map (for the running-balance ledger UI) */
+  useEffect(() => {
+    setPayments((prev) => {
+      const next = { ...prev };
+      invoiceInquiries.forEach((inq) => {
+        if (inq.confirmedPayments && inq.confirmedPayments.length > 0 && !prev[inq.id]) {
+          next[inq.id] = inq.confirmedPayments.map((cp) => ({ id: cp.id, date: cp.date, amount: cp.amount, method: cp.method, ref: cp.ref }));
+        }
+      });
+      return next;
+    });
+  }, [invoiceInquiries]);
 
   const matchesSearch = (r: Invoice) =>
     query === "" || r.inv.toLowerCase().includes(query.toLowerCase()) || r.client.toLowerCase().includes(query.toLowerCase());
@@ -188,8 +210,9 @@ export function Accounting() {
   const clearAccount = (id: string) => {
     const inv = rows.find(r => r.id === id);
     if (!inv) return;
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "paid", payment: "Cleared" } : r)));
-    markPOCleared(inv.po); /* sync → auto-removes from Logistics active */
+    /* Single store write — `paid` stage triggers derived removal from active table everywhere */
+    updateInquiry(id, { stage: "paid", paidAt: new Date().toISOString(), amountPaid: inv.amount });
+    markPOCleared(inv.po); /* sync → auto-removes from Logistics active too */
     pushNotif({
       dept: "payments",
       title: `Payment cleared: ${inv.inv}`,
@@ -198,7 +221,7 @@ export function Accounting() {
       recipients: ["owner", "operations", "sales"],
     });
     setOpenId(null);
-    toast.success("Account cleared", { description: `${inv.client} · ${inv.inv} fully settled · Removed from Logistics active queue` });
+    toast.success("Account cleared", { description: `${inv.client} · ${inv.inv} fully settled · removed from active tables` });
   };
 
   const overdueRows = rows.filter(r => r.status === "pending");
@@ -587,7 +610,7 @@ export function Accounting() {
             </div>
             <div className="p-6 overflow-auto flex flex-col gap-3">
               <p className="font-dm" style={{ fontSize: 13, color: "#475569" }}>
-                Review pending invoices below. Click "Send Reminder" to notify the client via email/SMS.
+                Review pending invoices below. Click "Send Reminder" to notify the client via email.
               </p>
               {overdueRows.length === 0 ? (
                 <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 13, color: "#16A34A", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>

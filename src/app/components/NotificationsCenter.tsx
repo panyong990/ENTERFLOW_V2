@@ -1,18 +1,23 @@
 import { useState } from "react";
-import { Bell, CheckCheck, Trash2, Search, Filter } from "lucide-react";
+import { Bell, CheckCheck, Trash2, Search, Filter, Send } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useNotifications, deptStyle, type Department } from "../store/notifications";
 import { useSession } from "../store/session";
+import { useOrders } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
 
 export function NotificationsCenter() {
   const session = useSession();
   const role = session.role;
-  const { unreadFor, markRead, markAllRead, remove, removeAllRead } = useNotifications();
+  const { unreadFor, markRead, markAllRead, remove, removeAllRead, push: pushNotif } = useNotifications();
+  const { inquiries, completedJOs, updateInquiry } = useOrders();
+  const allInqs = [...inquiries, ...completedJOs];
   const items = unreadFor(role);
   const [query, setQuery] = useState("");
   const [filterDept, setFilterDept] = useState<"all" | Department>("all");
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all");
+  /* Section G — per-notification reply drafts for urgent-upgrade requests */
+  const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
 
   const visible = items.filter((n) => {
     const q = query.toLowerCase();
@@ -145,6 +150,27 @@ export function NotificationsCenter() {
           ) : (
             visible.map((n) => {
               const d = deptStyle[n.dept];
+              /* Section G — detect urgent-upgrade-request notifications and surface a reply input */
+              const isUrgent = n.title.includes("Urgent upgrade requested");
+              const inqCode = isUrgent ? n.body.split(" · ")[0] : "";
+              const linkedInq = isUrgent ? allInqs.find((i) => i.code === inqCode) : undefined;
+              const draft = replyDraft[n.id] ?? "";
+              const sendReply = () => {
+                if (draft.trim().length < 3) { toast.error("Type your reply first"); return; }
+                if (linkedInq) {
+                  updateInquiry(linkedInq.id, { urgentUpgradeResponse: draft.trim() });
+                  pushNotif({
+                    dept: "production",
+                    title: `Reply to your urgent upgrade request`,
+                    body: `${linkedInq.code} · ${draft.trim()}`,
+                    link: "status",
+                    recipients: ["client"],
+                  });
+                }
+                toast.success("Reply sent to client");
+                setReplyDraft((p) => ({ ...p, [n.id]: "" }));
+                markRead(n.id);
+              };
               return (
                 <div
                   key={n.id}
@@ -159,8 +185,28 @@ export function NotificationsCenter() {
                     </div>
                     <div className="font-dm" style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>{n.title}</div>
                     <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{n.body}</div>
-                    {n.link && (
+                    {n.link && !isUrgent && (
                       <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#C8102E", fontWeight: 600 }}>Click to view in {n.link} →</div>
+                    )}
+                    {isUrgent && (
+                      <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          value={draft}
+                          onChange={(e) => setReplyDraft((p) => ({ ...p, [n.id]: e.target.value }))}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder={linkedInq?.urgentUpgradeResponse ? "Update your reply..." : "Reply to client (e.g. \"Confirmed for May 5\" or \"Sorry, earliest is May 10\")"}
+                          className="flex-1 font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+                          style={{ fontSize: 12 }}
+                        />
+                        <button onClick={(e) => { e.stopPropagation(); sendReply(); }} className="font-dm flex items-center gap-1 px-3 py-2 rounded-md text-white hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E" }}>
+                          <Send size={11} /> Send Reply
+                        </button>
+                      </div>
+                    )}
+                    {isUrgent && linkedInq?.urgentUpgradeResponse && (
+                      <div className="mt-1 font-dm rounded-md px-2 py-1" style={{ fontSize: 11, color: "#15803D", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                        ✓ Last reply sent: {linkedInq.urgentUpgradeResponse}
+                      </div>
                     )}
                   </button>
                   <button
@@ -178,7 +224,7 @@ export function NotificationsCenter() {
         </div>
 
         <div className="rounded-md px-4 py-3 font-dm" style={{ fontSize: 11, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-          ℹ️ Notifications are role-filtered. Email alerts via <strong>SendGrid</strong> · SMS via <strong>Semaphore (PH)</strong> — toggle channels per event in Settings.
+          ℹ️ Notifications are role-filtered. Email alerts via <strong>SendGrid</strong> — toggle channels per event in Settings.
         </div>
       </div>
     </div>

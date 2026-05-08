@@ -82,9 +82,34 @@ const dashboardTitle: Partial<Record<Role, { title: string; subtitle: string }>>
 export function Dashboard({ variant = "operations", onNavigate }: { variant?: Role; onNavigate?: (id: string) => void }) {
   const role = variant;
   const isAcc = role === "accounting";
-  const { inquiries } = useOrders();
+  const { inquiries, completedJOs, archivedInquiries } = useOrders();
   const pendingInquiries = inquiries.filter(i => i.stage === "inquiry");
   const meta = dashboardTitle[role] ?? { title: "Dashboard", subtitle: "Real-time overview" };
+
+  /* DERIVED KPIs — single source of truth across the entire system */
+  const allActive = [...inquiries, ...completedJOs];
+  const activeOrdersCount = allActive.length;
+  const jobsInProgress = completedJOs.filter(i => i.stage === "in_production" || i.stage === "quality_inspection").length;
+  const rushOrdersCount = allActive.filter(i => i.urgent).length;
+  const onHoldCount = completedJOs.filter(i => i.paused).length;
+  const todayTargets = completedJOs.filter(i => (i.currentStage ?? 0) >= 8).length; /* QC + Completed */
+  const quotationsSent = inquiries.filter(i => i.stage === "quotation").length;
+  const posReceived = inquiries.filter(i => i.stage === "po").length;
+  const paidInquiries = completedJOs.filter(i => i.stage === "paid");
+  const revenueTotal = paidInquiries.reduce((s, i) => s + (i.amountPaid ?? i.invoiceAmount ?? 0), 0);
+  const totalReceivables = completedJOs.filter(i => i.stage === "delivered" || i.stage === "overdue").reduce((s, i) => s + ((i.invoiceAmount ?? 0) - (i.amountPaid ?? 0)), 0);
+  const collectedThisMonth = paidInquiries.reduce((s, i) => s + (i.amountPaid ?? i.invoiceAmount ?? 0), 0);
+  const overdueInvoices = completedJOs.filter(i => {
+    if (!i.invoiceDueDate) return false;
+    const due = new Date(i.invoiceDueDate);
+    return !isNaN(due.getTime()) && due.getTime() < Date.now() && i.stage !== "paid";
+  });
+  const overdueAmount = overdueInvoices.reduce((s, i) => s + ((i.invoiceAmount ?? 0) - (i.amountPaid ?? 0)), 0);
+  const partialPaymentsCount = completedJOs.filter(i => (i.amountPaid ?? 0) > 0 && i.stage !== "paid").length;
+  const todayDeliveries = completedJOs.filter(i => i.stage === "delivered").length;
+  const dispatchQueue = completedJOs.filter(i => i.stage === "ready_for_dispatch").length;
+
+  const formatPeso = (n: number) => n >= 1000000 ? `₱${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `₱${(n / 1000).toFixed(0)}K` : `₱${n.toFixed(0)}`;
 
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
@@ -99,15 +124,6 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {role === "owner" && (
-            <button
-              onClick={() => onNavigate?.("analytics")}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
-              style={{ backgroundColor: "#C9A84C", fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}
-            >
-              📊 View All Analytics →
-            </button>
-          )}
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
             <input
@@ -149,34 +165,34 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
         <div className="grid grid-cols-4 gap-6 mb-8">
           {(role === "owner" || role === "operations") && (
             <>
-              <KPICard label="Active Orders" value="12" delta="+8.3%" trend="up" icon={ShoppingCart} accent="#C8102E" />
-              <KPICard label="Jobs In Progress" value="8" delta="+2" trend="up" icon={Factory} accent="#1A2B4A" />
-              <KPICard label="Low Stock Alerts" value="3" delta="+1" trend="down" icon={AlertTriangle} accent="#D97706" />
-              <KPICard label="Revenue" value="₱1.2M" delta="+12.4%" trend="up" icon={DollarSign} accent="#16A34A" />
+              <KPICard label="Active Orders"     value={String(activeOrdersCount)} delta="live count"  trend="up"   icon={ShoppingCart}    accent="#C8102E" />
+              <KPICard label="Jobs In Progress"  value={String(jobsInProgress)}    delta="on the floor" trend="up"  icon={Factory}         accent="#1A2B4A" />
+              <KPICard label="Low Stock Alerts"  value="3"                          delta="see Inventory" trend="down" icon={AlertTriangle} accent="#D97706" />
+              <KPICard label="Revenue"           value={formatPeso(revenueTotal)}  delta={`${paidInquiries.length} paid orders`} trend="up" icon={DollarSign}  accent="#16A34A" />
             </>
           )}
           {role === "sales" && (
             <>
-              <KPICard label="Pending Inquiries" value={String(pendingInquiries.length)} delta="this week" trend="up" icon={Inbox} accent="#C8102E" />
-              <KPICard label="Quotations Sent" value="5" delta="this week" trend="up" icon={ShoppingCart} accent="#1A2B4A" />
-              <KPICard label="POs Received" value="3" delta="this week" trend="up" icon={Factory} accent="#C9A84C" />
-              <KPICard label="Monthly Revenue" value="₱1.2M" delta="+12.4%" trend="up" icon={DollarSign} accent="#16A34A" />
+              <KPICard label="Pending Inquiries" value={String(pendingInquiries.length)} delta="awaiting review" trend="up" icon={Inbox}  accent="#C8102E" />
+              <KPICard label="Quotations Sent"   value={String(quotationsSent)}    delta="awaiting PO"   trend="up"  icon={ShoppingCart}    accent="#1A2B4A" />
+              <KPICard label="POs Received"      value={String(posReceived)}       delta="ready for JO"  trend="up"  icon={Factory}         accent="#C9A84C" />
+              <KPICard label="Monthly Revenue"   value={formatPeso(revenueTotal)}  delta="paid orders"   trend="up"  icon={DollarSign}      accent="#16A34A" />
             </>
           )}
           {role === "accounting" && (
             <>
-              <KPICard label="Total Receivables" value="₱285K" delta="open balance" trend="down" icon={DollarSign} accent="#C8102E" />
-              <KPICard label="Collected This Month" value="₱923K" delta="+18.2%" trend="up" icon={DollarSign} accent="#16A34A" />
-              <KPICard label="Overdue Amount" value="₱46K" delta="2 invoices" trend="down" icon={AlertTriangle} accent="#D97706" />
-              <KPICard label="Partial Payments" value="3" delta="active" trend="up" icon={ShoppingCart} accent="#1A2B4A" />
+              <KPICard label="Total Receivables"   value={formatPeso(totalReceivables)}   delta="open balance"           trend="down" icon={DollarSign}      accent="#C8102E" />
+              <KPICard label="Collected This Month" value={formatPeso(collectedThisMonth)} delta={`${paidInquiries.length} paid`} trend="up"   icon={DollarSign}      accent="#16A34A" />
+              <KPICard label="Overdue Amount"      value={formatPeso(overdueAmount)}      delta={`${overdueInvoices.length} invoices`} trend="down" icon={AlertTriangle} accent="#D97706" />
+              <KPICard label="Partial Payments"    value={String(partialPaymentsCount)}   delta="active"                 trend="up"   icon={ShoppingCart}    accent="#1A2B4A" />
             </>
           )}
           {role === "production" && (
             <>
-              <KPICard label="Active JOs" value="8" delta="+2" trend="up" icon={Factory} accent="#C8102E" />
-              <KPICard label="Rush Orders" value="2" delta="priority" trend="up" icon={AlertTriangle} accent="#D97706" />
-              <KPICard label="On Hold" value="1" delta="material shortage" trend="down" icon={AlertTriangle} accent="#92400E" />
-              <KPICard label="Today's Targets" value="3" delta="completing" trend="up" icon={ShoppingCart} accent="#16A34A" />
+              <KPICard label="Active JOs"      value={String(jobsInProgress)} delta="on the floor"  trend="up"   icon={Factory}         accent="#C8102E" />
+              <KPICard label="Rush Orders"     value={String(rushOrdersCount)} delta="priority"     trend="up"   icon={AlertTriangle}   accent="#D97706" />
+              <KPICard label="On Hold"         value={String(onHoldCount)}    delta="paused"        trend="down" icon={AlertTriangle}   accent="#92400E" />
+              <KPICard label="Today's Targets" value={String(todayTargets)}   delta="QC + ready"    trend="up"   icon={ShoppingCart}    accent="#16A34A" />
             </>
           )}
           {role === "warehouse" && (
@@ -189,10 +205,10 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
           )}
           {role === "logistics" && (
             <>
-              <KPICard label="Pending Delivery" value="2" delta="active" trend="up" icon={ShoppingCart} accent="#C8102E" />
-              <KPICard label="Delivered Today" value="5" delta="+5" trend="up" icon={Factory} accent="#16A34A" />
-              <KPICard label="Lalamove Active" value="1" delta="in transit" trend="up" icon={ShoppingCart} accent="#7C3AED" />
-              <KPICard label="Co. Vehicle Active" value="1" delta="dispatched" trend="up" icon={ShoppingCart} accent="#1A2B4A" />
+              <KPICard label="Pending Delivery"  value={String(dispatchQueue)}   delta="ready to dispatch" trend="up" icon={ShoppingCart} accent="#C8102E" />
+              <KPICard label="Delivered"         value={String(todayDeliveries)} delta="awaiting payment"  trend="up" icon={Factory}      accent="#16A34A" />
+              <KPICard label="Rush in Queue"     value={String(rushOrdersCount)} delta="priority"           trend="up" icon={AlertTriangle} accent="#D97706" />
+              <KPICard label="Total Active"      value={String(activeOrdersCount)} delta="across pipeline" trend="up" icon={ShoppingCart} accent="#1A2B4A" />
             </>
           )}
         </div>

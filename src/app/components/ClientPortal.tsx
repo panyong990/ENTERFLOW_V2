@@ -7,16 +7,20 @@ import {
 import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, type Inquiry, type ProductLine } from "../store/orders";
 import { useNotifications } from "../store/notifications";
+import { useSettings } from "../store/settings";
 import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
+import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../store/filterTemplates";
 
-type Tab = "orders" | "status" | "logistics" | "accounting" | "settings";
+type Tab = "orders" | "status" | "logistics" | "accounting" | "joborders" | "transactions" | "settings";
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "orders", label: "Orders", icon: ClipboardList },
   { id: "status", label: "Status", icon: MapPin },
   { id: "logistics", label: "Logistics", icon: Truck },
   { id: "accounting", label: "Accounting", icon: CreditCard },
+  { id: "joborders", label: "Job Orders", icon: FileCheck },
+  { id: "transactions", label: "Transaction History", icon: ClipboardList },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -78,7 +82,12 @@ function Shell({ active, onChange, children, clientName, onLogout }: {
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 
 const blankProduct = (id: string): ProductLine => ({
-  id, type: "Air Filter", od1: "", od2: "", id1: "", id2: "", height: "",
+  id, type: "AIRFIL", filterName: "",
+  od1: "", od2: "", id1: "", id2: "", height: "", overallHeight: "",
+  length: "", width: "", thickness: "", depth: "", pocketCount: "",
+  diameter: "", clothCuttingWidth: "", clothCuttingLength: "",
+  springPlateCenterToCenter: "", springPlateWidth: "", springPlateLength: "",
+  padOd: "", padId: "",
   media: "", innerCore: "", outerCore: "", oring: "", gasket: "", oem: "",
   qty: 10, notes: "",
 });
@@ -88,14 +97,16 @@ const completedJobOrders = [
   { jo: "JO-2025-082", date: "Feb 14, 2026", po: "PO-2026-9805", item: "Oil Separator Filter", qty: 20, status: "Delivered", specs: { type: "Oil Separator", od1: "200", id1: "108", height: "160", media: "Microglass Fiber", innerCore: "Perfo Steel 2mm", oem: "KF-OS.200/167.108.160", qty: 20 } },
 ];
 
-const FILTER_TYPES = [
-  { id: "Air Filter",       icon: "💨", desc: "General air filtration" },
-  { id: "Oil Filter",       icon: "🛢️", desc: "Lubricant filtration" },
-  { id: "Oil Separator",    icon: "⚙️", desc: "Air/oil separation" },
-  { id: "Water Filter",     icon: "💧", desc: "Water purification" },
-  { id: "Industrial",       icon: "🏭", desc: "Heavy-duty industrial" },
-  { id: "Custom",           icon: "🛠️", desc: "Bring your own specs" },
-];
+/* Icon hint per filter type code — purely decorative */
+const FILTER_TYPE_ICON: Record<string, string> = {
+  OILSEP: "⚙️", WATSEP: "💧", SOLFIL: "🧪", HYDFIL: "🛢️",
+  AIRFIL: "💨", OILFIL: "🛢️", FUELFIL: "⛽", COALFIL: "🌫️",
+  SEPFIL: "🔀", PRIFIL: "🟦", PREFIL: "🟢", ACTIFIL: "⚫",
+  SECFIL: "👜", HEPFIL: "🛡️", BAGFIL: "🏭", PADFIL: "⚪",
+};
+
+/* All 16 filter types ordered by group, used by the Step-1 picker grid. The user picks one type — the group is derived internally. */
+const FILTER_TYPE_LIST = Object.values(FILTER_TYPE_CATALOG);
 
 const FILTRATION_RATINGS = [
   { value: "1-micron",   label: "1 micron",   desc: "Ultra-fine · pharmaceutical grade" },
@@ -107,63 +118,238 @@ const FILTRATION_RATINGS = [
 ];
 
 function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitted: () => void }) {
-  const { addInquiry, byClient, uploadPO, requestCancellation, reorderToProduction } = useOrders();
+  const { uploadPO, requestCancellation, byClient } = useOrders();
   const { push: pushNotif } = useNotifications();
-  const clientInqs = byClient(clientName);
-  const myOrders = byClient(clientName);
+  /* Active orders only — Job Orders and Transactions live in their own tabs now */
+  const myOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "inquiry" || i.stage === "quotation" || i.stage === "po"));
 
-  /* Wizard state */
+  const [poForId, setPoForId] = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+
+  return (
+    <div className="px-8 py-8 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Orders</h2>
+          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Active inquiries, quotations, and POs · click <strong>+ New Order</strong> to start a new inquiry.</p>
+        </div>
+        <button
+          onClick={() => setShowWizard(true)}
+          className="font-dm flex items-center gap-2 px-5 py-3 rounded-md text-white hover:opacity-90 shadow-sm"
+          style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
+        >
+          <Plus size={16} strokeWidth={3} /> + New Order
+        </button>
+      </div>
+
+      {myOrders.length === 0 && (
+        <div className="bg-white rounded-xl border border-slate-200/70 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
+          No active orders yet — click <strong>+ New Order</strong> to submit your first inquiry.
+        </div>
+      )}
+      {myOrders.map((inq) => (
+        <ClientOrderCard
+          key={inq.id}
+          inquiry={inq}
+          onUploadPO={() => setPoForId(inq.id)}
+          onCancel={(reason) => {
+            requestCancellation(inq.id, reason, "client");
+            pushNotif({
+              dept: "sales",
+              title: `🚨 Cancellation request from ${clientName}`,
+              body: `${inq.code} · Reason: ${reason} · awaiting your accept/decline`,
+              link: "sales",
+              recipients: ["owner", "operations", "sales"],
+            });
+            toast.info("Cancellation request sent", { description: "Enter-Fil will accept or decline soon. You'll be notified." });
+          }}
+        />
+      ))}
+
+      {showWizard && (
+        <NewOrderWizardModal
+          clientName={clientName}
+          onClose={() => setShowWizard(false)}
+          onSubmitted={() => { setShowWizard(false); onSubmitted(); }}
+        />
+      )}
+
+      {poForId && (
+        <POUploadOverlay
+          onClose={() => setPoForId(null)}
+          onSubmit={(name) => { uploadPO(poForId, name); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─────────── JobOrdersTab — paid/delivered JOs derived from store with reorder support ─────────── */
+function JobOrdersTab({ clientName }: { clientName: string }) {
+  const { byClient, addInquiry } = useOrders();
+  const { push: pushNotif } = useNotifications();
+  /* Derived: this client's JOs that have reached production (jo or beyond). */
+  const jobOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "jo" || i.stage === "in_production" || i.stage === "quality_inspection" || i.stage === "ready_for_dispatch" || i.stage === "dispatched" || i.stage === "delivered" || i.stage === "paid"));
+
+  const reorder = (inq: Inquiry) => {
+    const code = addInquiry({
+      clientName,
+      contactPerson: inq.contactPerson,
+      paymentTerms: inq.paymentTerms,
+      generalNotes: `Reorder of ${inq.joNumber ?? inq.code}`,
+      products: inq.products.map((p, i) => ({ ...p, id: `p${i + 1}` })),
+    });
+    pushNotif({
+      dept: "sales",
+      title: `🔁 Reorder from ${clientName}`,
+      body: `${code} · based on ${inq.joNumber ?? inq.code} · ${inq.products.reduce((s, p) => s + p.qty, 0)} pcs total · awaiting validation`,
+      link: "sales",
+      recipients: ["owner", "operations", "sales"],
+    });
+    toast.success(`Reorder submitted as ${code}`, { description: "Sent to Sales for validation." });
+  };
+
+  return (
+    <div className="px-8 py-8 flex flex-col gap-4">
+      <div>
+        <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Job Orders</h1>
+        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Click <strong>Reorder</strong> on any past production order to duplicate its specs.</p>
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+        <table className="w-full">
+          <thead style={{ backgroundColor: "#F4F6F9" }}>
+            <tr>
+              {["Job Order", "Date", "Item", "Qty", "Status", ""].map((h) => (
+                <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {jobOrders.length === 0 && (
+              <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No job orders yet.</td></tr>
+            )}
+            {jobOrders.map((inq) => {
+              const item = inq.products[0]?.filterName || labelForType(inq.products[0]?.type ?? "");
+              const qty = inq.products.reduce((s, p) => s + p.qty, 0);
+              return (
+                <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
+                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 700, color: "#1A2B4A" }}>{inq.joNumber ?? inq.code}</td>
+                  <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.deliveredDate ?? inq.submittedDate}</td>
+                  <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{item}</td>
+                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{qty} pcs</td>
+                  <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>{inq.stage}</span></td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => reorder(inq)} className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C9A84C", color: "white", letterSpacing: 0.3 }}>
+                      🔁 Reorder
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── TransactionsTab — paid invoices only, derived from store ─────────── */
+function TransactionsTab({ clientName }: { clientName: string }) {
+  const { byClient } = useOrders();
+  const paid = byClient(clientName).filter((i) => !i.archived && i.stage === "paid");
+  return (
+    <div className="px-8 py-8 flex flex-col gap-4">
+      <div>
+        <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>Transaction History</h1>
+        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Read-only history of fully cleared invoices.</p>
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+        <table className="w-full">
+          <thead style={{ backgroundColor: "#F4F6F9" }}>
+            <tr>
+              {["Date", "PO No.", "Item", "Amount", "Payment", "Status"].map((h) => (
+                <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {paid.length === 0 && (
+              <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No paid transactions yet.</td></tr>
+            )}
+            {paid.map((inq) => (
+              <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paidAt ?? inq.deliveredDate ?? inq.submittedDate}</td>
+                <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{inq.code}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{inq.products[0]?.filterName ?? labelForType(inq.products[0]?.type ?? "")}</td>
+                <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{(inq.invoiceAmount ?? inq.quotedTotal ?? 0).toLocaleString("en-PH")}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
+                <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>✅ Paid</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── NewOrderWizardModal — multi-product wizard with dynamic dimensions ─────────── */
+function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName: string; onClose: () => void; onSubmitted: () => void }) {
+  const { addInquiry } = useOrders();
+  const { push: pushNotif } = useNotifications();
+
   const [step, setStep] = useState(1);
   const [contactPerson, setContactPerson] = useState("");
   const [paymentTerms, setPaymentTerms] = useState<"COD" | "15-Day Terms" | "30-Day Terms">("30-Day Terms");
   const [generalNotes, setGeneralNotes] = useState("");
-  const [filterType, setFilterType] = useState("Air Filter");
-  const [od1, setOd1] = useState(""); const [od2, setOd2] = useState("");
-  const [id1, setId1] = useState(""); const [id2, setId2] = useState("");
-  const [height, setHeight] = useState("");
-  const [media, setMedia] = useState("");
+  /* Multi-product state — clients can add multiple filters per inquiry. */
+  const [products, setProducts] = useState<ProductLine[]>([blankProduct("p1")]);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [filtrationRating, setFiltrationRating] = useState("10-micron");
-  const [innerCore, setInnerCore] = useState("");
-  const [outerCore, setOuterCore] = useState("");
-  const [oring, setOring] = useState("");
-  const [gasket, setGasket] = useState("");
-  const [oem, setOem] = useState("");
-  const [qty, setQty] = useState(10);
-  const [poForId, setPoForId] = useState<string | null>(null);
   const [sketchFile, setSketchFile] = useState<File | null>(null);
   const [isRush, setIsRush] = useState(false);
   const [rushDate, setRushDate] = useState("");
-  /* Reorder review-and-modify modal */
-  const [reorderRow, setReorderRow] = useState<typeof completedJobOrders[0] | null>(null);
+
+  const active = products[activeIdx];
+  const updateActive = (patch: Partial<ProductLine>) => {
+    setProducts((prev) => prev.map((p, i) => (i === activeIdx ? { ...p, ...patch } : p)));
+  };
 
   const STEPS = [
-    { num: 1, label: "Filter Type", icon: "🎯" },
-    { num: 2, label: "Dimensions & Material", icon: "📐" },
-    { num: 3, label: "Filtration Rating", icon: "🔬" },
-    { num: 4, label: "Add-ons", icon: "⚙️" },
-    { num: 5, label: "Review", icon: "✅" },
+    { num: 1, label: "Filter Type" },
+    { num: 2, label: "Dimensions & Material" },
+    { num: 3, label: "Filtration Rating" },
+    { num: 4, label: "Add-ons" },
+    { num: 5, label: "Review" },
   ];
 
+  /* Whether step is complete based on current active product. */
   const canProceed = () => {
-    if (step === 1) return !!filterType;
-    if (step === 2) return od1.trim().length > 0 && height.trim().length > 0 && media.trim().length > 0;
+    if (step === 1) return !!active.type && (active.filterName?.trim().length ?? 0) >= 3;
+    if (step === 2) {
+      const dims = GROUP_TEMPLATES[groupForType(active.type)].dimensions;
+      const required = dims[0]; // first listed dim is the primary required field per group
+      return ((active as any)[required] ?? "").toString().trim().length > 0 && (active.media ?? "").trim().length > 0;
+    }
     if (step === 3) return !!filtrationRating;
-    if (step === 4) return qty >= 10;
+    if (step === 4) return active.qty >= 10;
     return true;
   };
 
   const submit = () => {
     if (!contactPerson.trim()) { toast.error("Contact person required"); return; }
-    if (qty < 10) { toast.error("Minimum order quantity is 10 pcs"); return; }
+    if (products.some((p) => p.qty < 10)) { toast.error("Each product must have qty ≥ 10"); return; }
     if (isRush && !rushDate.trim()) { toast.error("Please specify your required delivery date for rush orders"); return; }
-    const product: ProductLine = {
-      id: "p1", type: filterType, od1, od2, id1, id2, height,
-      media, innerCore, outerCore, oring, gasket, oem, qty,
-      notes: filtrationRating === "custom" ? `Custom filtration · ${generalNotes}` : `Filtration: ${filtrationRating} · ${generalNotes}`,
-    };
+
+    /* Stamp filtrationRating onto the active line's notes only if user entered nothing else. */
+    const finalProducts: ProductLine[] = products.map((p) => ({
+      ...p,
+      notes: p.notes || (filtrationRating === "custom" ? `Custom filtration · ${generalNotes}` : `Filtration: ${filtrationRating}`),
+    }));
+
     const code = addInquiry({
       clientName, contactPerson, paymentTerms, generalNotes,
-      products: [product],
+      products: finalProducts,
       urgent: isRush,
       dueDate: isRush ? rushDate : undefined,
       inquirySketch: sketchFile?.name,
@@ -171,28 +357,63 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
     pushNotif({
       dept: "sales",
       title: `New inquiry from ${clientName}${isRush ? " 🚨 RUSH" : ""}`,
-      body: `${code} · ${filterType} · ${qty} pcs · ${filtrationRating} · ${isRush ? `Required by ${rushDate}` : "Standard"}`,
+      body: `${code} · ${finalProducts.length} product${finalProducts.length > 1 ? "s" : ""} · ${finalProducts.reduce((s, p) => s + p.qty, 0)} pcs total · ${isRush ? `Required by ${rushDate}` : "Standard"}`,
       link: "sales",
       recipients: ["owner", "operations", "sales"],
     });
     toast.success(isRush ? "🚨 Rush inquiry submitted" : "Inquiry submitted", { description: `${code} sent — we'll respond within 1 business day` });
-    /* reset */
-    setStep(1); setContactPerson(""); setGeneralNotes("");
-    setOd1(""); setOd2(""); setId1(""); setId2(""); setHeight("");
-    setMedia(""); setFiltrationRating("10-micron");
-    setInnerCore(""); setOuterCore(""); setOring(""); setGasket(""); setOem("");
-    setQty(10); setSketchFile(null); setIsRush(false); setRushDate("");
     onSubmitted();
   };
 
+  const addAnotherFilter = () => {
+    const id = `p${products.length + 1}`;
+    setProducts((prev) => [...prev, blankProduct(id)]);
+    setActiveIdx(products.length);
+    setStep(1);
+  };
+  const removeProduct = (idx: number) => {
+    if (products.length === 1) return;
+    setProducts((prev) => prev.filter((_, i) => i !== idx));
+    setActiveIdx(Math.max(0, idx - 1));
+  };
+
   return (
-    <div className="px-8 py-8 grid gap-6" style={{ gridTemplateColumns: "5fr 6fr" }}>
-      <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        {/* Wizard header */}
-        <div className="px-6 py-5 border-b border-slate-200" style={{ backgroundColor: "#1A2B4A" }}>
-          <h2 className="font-syne text-white" style={{ fontSize: 18, fontWeight: 700 }}>New Order Inquiry</h2>
-          <p className="font-dm text-white/60 mt-0.5" style={{ fontSize: 12 }}>Step {step} of 5 — {STEPS[step - 1].label}</p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-3xl flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "92vh" }} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-200 flex items-start justify-between" style={{ backgroundColor: "#1A2B4A" }}>
+          <div>
+            <h2 className="font-syne text-white" style={{ fontSize: 18, fontWeight: 700 }}>New Order Inquiry</h2>
+            <p className="font-dm text-white/60 mt-0.5" style={{ fontSize: 12 }}>
+              Filter #{activeIdx + 1} of {products.length} · Step {step} of 5 — {STEPS[step - 1].label}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center" style={{ color: "white" }}><X size={16} /></button>
         </div>
+
+        {/* Product tabs (multi-product) */}
+        {products.length > 1 && (
+          <div className="px-6 py-3 border-b border-slate-200 flex items-center gap-2 overflow-auto" style={{ backgroundColor: "#FAFBFC" }}>
+            {products.map((p, i) => (
+              <button
+                key={p.id}
+                onClick={() => setActiveIdx(i)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md font-dm whitespace-nowrap"
+                style={{
+                  fontSize: 12, fontWeight: 700,
+                  border: i === activeIdx ? "2px solid #C8102E" : "1px solid #CBD5E1",
+                  backgroundColor: i === activeIdx ? "#FEF2F2" : "white",
+                  color: i === activeIdx ? "#C8102E" : "#475569",
+                }}
+              >
+                Filter #{i + 1}{p.filterName ? ` · ${p.filterName}` : ""}
+                {products.length > 1 && (
+                  <span onClick={(e) => { e.stopPropagation(); removeProduct(i); }} className="ml-1 hover:text-red-700"><X size={12} /></span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Stepper */}
         <div className="px-6 py-4 border-b border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
@@ -204,19 +425,10 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
                   disabled={s.num > step}
                   className="flex items-center gap-2 transition-opacity disabled:opacity-40"
                 >
-                  <span
-                    className="w-7 h-7 rounded-full flex items-center justify-center font-syne"
-                    style={{
-                      fontSize: 12, fontWeight: 800,
-                      backgroundColor: s.num === step ? "#C8102E" : s.num < step ? "#16A34A" : "#E2E8F0",
-                      color: s.num <= step ? "white" : "#94A3B8",
-                    }}
-                  >
+                  <span className="w-7 h-7 rounded-full flex items-center justify-center font-syne" style={{ fontSize: 12, fontWeight: 800, backgroundColor: s.num === step ? "#C8102E" : s.num < step ? "#16A34A" : "#E2E8F0", color: s.num <= step ? "white" : "#94A3B8" }}>
                     {s.num < step ? "✓" : s.num}
                   </span>
-                  <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: s.num === step ? "#C8102E" : s.num < step ? "#15803D" : "#94A3B8", letterSpacing: 0.3 }}>
-                    {s.label}
-                  </span>
+                  <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: s.num === step ? "#C8102E" : s.num < step ? "#15803D" : "#94A3B8", letterSpacing: 0.3 }}>{s.label}</span>
                 </button>
                 {i < STEPS.length - 1 && <div className="flex-1 h-0.5" style={{ backgroundColor: i < step - 1 ? "#16A34A" : "#E2E8F0" }} />}
               </Fragment>
@@ -224,8 +436,8 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
           </div>
         </div>
 
-        <div className="p-6 flex flex-col gap-5">
-          {/* Common header info — collapsed on later steps */}
+        <div className="p-6 overflow-auto flex flex-col gap-5" style={{ minHeight: 380 }}>
+          {/* Inquiry-level info shown only on step 1 */}
           {step === 1 && (
             <div className="rounded-lg p-4 grid grid-cols-2 gap-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
               <Field label="Company"><input value={clientName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-100" style={{ fontSize: 13, color: "#475569" }} /></Field>
@@ -242,84 +454,19 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
             </div>
           )}
 
-          {/* STEP 1 — Filter Type (with custom multi-select for dual/triple) */}
+          {/* STEP 1 — Filter Type (16 types grouped by category, single click) */}
           {step === 1 && (
-            <div>
-              <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>What type of filter do you need?</div>
-              <div className="grid grid-cols-3 gap-3">
-                {FILTER_TYPES.map((f) => {
-                  const isCustom = f.id === "Custom";
-                  const active = isCustom ? filterType.startsWith("Custom") : filterType === f.id;
-                  return (
-                    <button
-                      key={f.id}
-                      onClick={() => setFilterType(isCustom ? "Custom" : f.id)}
-                      className="rounded-lg p-3 flex flex-col items-start gap-1 text-left transition-all"
-                      style={{
-                        border: active ? "2px solid #C8102E" : "1px solid #E2E8F0",
-                        backgroundColor: active ? "#FEF2F2" : "white",
-                        padding: active ? 11 : 12,
-                      }}
-                    >
-                      <span style={{ fontSize: 22 }}>{f.icon}</span>
-                      <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: active ? "#C8102E" : "#0F172A" }}>{f.id}</span>
-                      <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{f.desc}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom multi-select picker */}
-              {filterType.startsWith("Custom") && (
-                <div className="mt-4 rounded-lg p-4" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
-                  <div className="font-dm mb-2" style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>🛠️ Custom — combine multiple filter functions</div>
-                  <p className="font-dm mb-3" style={{ fontSize: 11, color: "#B45309" }}>Some filters serve dual or three-in-one purposes. Pick all that apply:</p>
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    {["Air", "Oil", "Oil Separator", "Water", "Coolant", "Hydraulic", "Industrial", "Pleated"].map((cat) => {
-                      const tags = filterType.replace(/^Custom\s*/, "").replace(/^[(\s]+|[)\s]+$/g, "").split(/\s*\+\s*/).filter(Boolean);
-                      const selected = tags.includes(cat);
-                      return (
-                        <label key={cat} className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer" style={{ border: selected ? "1.5px solid #C8102E" : "1px solid #FCD34D", backgroundColor: selected ? "#FEF2F2" : "white" }}>
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => {
-                              const next = selected ? tags.filter(t => t !== cat) : [...tags, cat];
-                              setFilterType(next.length > 0 ? `Custom (${next.join(" + ")})` : "Custom");
-                            }}
-                            style={{ accentColor: "#C8102E" }}
-                          />
-                          <span className="font-dm" style={{ fontSize: 12, color: "#0F172A", fontWeight: selected ? 700 : 500 }}>{cat}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <div className="font-dm rounded-md px-3 py-2" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FEF3C7", border: "1px dashed #FBBF24" }}>
-                    Selected: <span className="font-mono-jb" style={{ fontWeight: 700 }}>{filterType}</span>
-                  </div>
-                </div>
-              )}
-            </div>
+            <FilterTypePicker
+              selectedType={active.type}
+              filterName={active.filterName ?? ""}
+              onTypeChange={(code) => updateActive({ type: code })}
+              onNameChange={(name) => updateActive({ filterName: name })}
+            />
           )}
 
-          {/* STEP 2 — Dimensions & Material */}
+          {/* STEP 2 — Dimensions & Material (group-driven dynamic fields) */}
           {step === 2 && (
-            <div className="flex flex-col gap-4">
-              <div>
-                <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Dimensions <span style={{ fontWeight: 400, color: "#94A3B8" }}>(in mm)</span></div>
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="OD 1 *"><input value={od1} onChange={(e) => setOd1(e.target.value)} type="number" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="OD 2"><input value={od2} onChange={(e) => setOd2(e.target.value)} type="number" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="ID 1"><input value={id1} onChange={(e) => setId1(e.target.value)} type="number" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="ID 2"><input value={id2} onChange={(e) => setId2(e.target.value)} type="number" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="Height *"><input value={height} onChange={(e) => setHeight(e.target.value)} type="number" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                </div>
-              </div>
-              <div>
-                <div className="font-dm mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Filter Media *</div>
-                <input value={media} onChange={(e) => setMedia(e.target.value)} placeholder="e.g. Microglass Fiber, Pleated ZS20, Cellulose, Stainless mesh..." className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
-              </div>
-            </div>
+            <DynamicDimensionFields product={active} onChange={updateActive} />
           )}
 
           {/* STEP 3 — Filtration Rating */}
@@ -328,19 +475,10 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
               <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>What filtration rating do you need?</div>
               <div className="grid grid-cols-2 gap-3">
                 {FILTRATION_RATINGS.map((r) => {
-                  const active = filtrationRating === r.value;
+                  const act = filtrationRating === r.value;
                   return (
-                    <button
-                      key={r.value}
-                      onClick={() => setFiltrationRating(r.value)}
-                      className="rounded-lg p-3 flex flex-col items-start gap-0.5 text-left transition-all"
-                      style={{
-                        border: active ? "2px solid #C8102E" : "1px solid #E2E8F0",
-                        backgroundColor: active ? "#FEF2F2" : "white",
-                        padding: active ? 11 : 12,
-                      }}
-                    >
-                      <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: active ? "#C8102E" : "#0F172A" }}>{r.label}</span>
+                    <button key={r.value} onClick={() => setFiltrationRating(r.value)} className="rounded-lg p-3 flex flex-col items-start gap-0.5 text-left" style={{ border: act ? "2px solid #C8102E" : "1px solid #E2E8F0", backgroundColor: act ? "#FEF2F2" : "white", padding: act ? 11 : 12 }}>
+                      <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: act ? "#C8102E" : "#0F172A" }}>{r.label}</span>
                       <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{r.desc}</span>
                     </button>
                   );
@@ -349,25 +487,24 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
             </div>
           )}
 
-          {/* STEP 4 — Add-ons */}
+          {/* STEP 4 — Add-ons (qty + optional + sketch + rush) */}
           {step === 4 && (
             <div className="flex flex-col gap-4">
               <div>
                 <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Quantity *</div>
-                <input type="number" min={10} value={qty} onChange={(e) => setQty(Number(e.target.value))} className="w-full font-syne px-4 py-3 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A" }} />
-                <div className="font-dm mt-1" style={{ fontSize: 11, color: qty < 10 ? "#C8102E" : "#94A3B8" }}>{qty < 10 ? "⚠️ Minimum order quantity is 10 pcs" : "Minimum 10 pcs"}</div>
+                <input type="number" min={10} value={active.qty} onChange={(e) => updateActive({ qty: Number(e.target.value) })} className="w-full font-syne px-4 py-3 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A" }} />
+                <div className="font-dm mt-1" style={{ fontSize: 11, color: active.qty < 10 ? "#C8102E" : "#94A3B8" }}>{active.qty < 10 ? "⚠️ Minimum order quantity is 10 pcs" : "Minimum 10 pcs"}</div>
               </div>
               <div>
                 <div className="font-dm mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Optional components</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Inner Core"><input value={innerCore} onChange={(e) => setInnerCore(e.target.value)} placeholder="e.g. Perforated 2mm" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="Outer Core"><input value={outerCore} onChange={(e) => setOuterCore(e.target.value)} placeholder="Optional" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="O-Ring"><input value={oring} onChange={(e) => setOring(e.target.value)} placeholder="Optional" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="Gasket"><input value={gasket} onChange={(e) => setGasket(e.target.value)} placeholder="Optional" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="OEM Reference"><input value={oem} onChange={(e) => setOem(e.target.value)} placeholder="e.g. KF-OS.107.65.252" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="Inner Core"><input value={active.innerCore ?? ""} onChange={(e) => updateActive({ innerCore: e.target.value })} placeholder="e.g. Perforated 2mm" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="Outer Core"><input value={active.outerCore ?? ""} onChange={(e) => updateActive({ outerCore: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="O-Ring"><input value={active.oring ?? ""} onChange={(e) => updateActive({ oring: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="Gasket"><input value={active.gasket ?? ""} onChange={(e) => updateActive({ gasket: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="OEM Reference"><input value={active.oem ?? ""} onChange={(e) => updateActive({ oem: e.target.value })} placeholder="e.g. KF-OS.107.65.252" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
                 </div>
               </div>
-              {/* Sketch */}
               <div className="rounded-lg p-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
                 <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>📎 Engineer Sketch (Optional)</div>
                 {sketchFile ? (
@@ -385,9 +522,8 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
                   </label>
                 )}
               </div>
-              {/* Rush */}
               <div className="rounded-lg p-3" style={{ backgroundColor: isRush ? "#FEF2F2" : "#F8FAFC", border: isRush ? "1.5px solid #FECACA" : "1px solid #E2E8F0" }}>
-                <label className="flex items-center gap-3 cursor-pointer" onClick={() => setIsRush(r => !r)}>
+                <label className="flex items-center gap-3 cursor-pointer" onClick={() => setIsRush((r) => !r)}>
                   <div className="w-10 h-6 rounded-full transition-colors flex items-center px-1" style={{ backgroundColor: isRush ? "#C8102E" : "#CBD5E1" }}>
                     <div className="w-4 h-4 bg-white rounded-full shadow transition-transform" style={{ transform: isRush ? "translateX(16px)" : "translateX(0)" }} />
                   </div>
@@ -399,7 +535,8 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
                 {isRush && (
                   <div className="mt-2 flex flex-col gap-1.5">
                     <input type="text" placeholder="e.g. May 5, 2026" value={rushDate} onChange={(e) => setRushDate(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-red-200 outline-none focus:border-red-400 bg-white" style={{ fontSize: 13 }} />
-                    <p className="font-dm" style={{ fontSize: 11, color: "#C8102E" }}>Confirmation within 4 hours via Viber or email.</p>
+                    {/* Email gateway not implemented */}
+                    <p className="font-dm" style={{ fontSize: 11, color: "#C8102E" }}>Confirmation within 4 hours via email.</p>
                   </div>
                 )}
               </div>
@@ -409,293 +546,123 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
           {/* STEP 5 — Review */}
           {step === 5 && (
             <div className="flex flex-col gap-3">
-              <div className="font-dm mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Review your order before submitting</div>
-              <div className="rounded-lg p-4 grid grid-cols-2 gap-y-2 gap-x-4" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                <ReviewLine label="Filter Type" value={filterType} />
-                <ReviewLine label="Filtration Rating" value={FILTRATION_RATINGS.find(r => r.value === filtrationRating)?.label ?? filtrationRating} />
-                <ReviewLine label="OD 1" value={od1 ? `${od1}mm` : "—"} />
-                <ReviewLine label="OD 2" value={od2 ? `${od2}mm` : "—"} />
-                <ReviewLine label="ID 1" value={id1 ? `${id1}mm` : "—"} />
-                <ReviewLine label="ID 2" value={id2 ? `${id2}mm` : "—"} />
-                <ReviewLine label="Height" value={height ? `${height}mm` : "—"} />
-                <ReviewLine label="Media" value={media} />
-                <ReviewLine label="Inner Core" value={innerCore || "—"} />
-                <ReviewLine label="Outer Core" value={outerCore || "—"} />
-                <ReviewLine label="O-Ring" value={oring || "—"} />
-                <ReviewLine label="Gasket" value={gasket || "—"} />
-                <ReviewLine label="OEM Ref" value={oem || "—"} />
-                <ReviewLine label="Quantity" value={`${qty} pcs`} />
+              <div className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Review your order before submitting</div>
+              {products.map((p, i) => (
+                <div key={p.id} className="rounded-lg p-4" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                  <div className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 800, color: "#1A2B4A" }}>Filter #{i + 1} — {labelForType(p.type)}</div>
+                  <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                    <ReviewLine label="Filter Name" value={p.filterName ?? "—"} />
+                    <ReviewLine label="Quantity" value={`${p.qty} pcs`} />
+                    {GROUP_TEMPLATES[groupForType(p.type)].dimensions.map((dim) => (
+                      <ReviewLine key={dim} label={DIMENSION_LABELS[dim]} value={(p as any)[dim] ? String((p as any)[dim]) : "—"} />
+                    ))}
+                    <ReviewLine label="Media" value={p.media || "—"} />
+                    <ReviewLine label="OEM Ref" value={p.oem || "—"} />
+                  </div>
+                </div>
+              ))}
+              <div className="rounded-lg p-4 grid grid-cols-2 gap-y-2 gap-x-4" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A" }}>
+                <ReviewLine label="Filtration Rating" value={FILTRATION_RATINGS.find((r) => r.value === filtrationRating)?.label ?? filtrationRating} />
                 <ReviewLine label="Payment Terms" value={paymentTerms} />
                 <ReviewLine label="Sketch" value={sketchFile?.name ?? "Not attached"} />
                 {isRush && <ReviewLine label="🚨 Rush Date" value={rushDate} accent="#C8102E" />}
               </div>
               {!contactPerson.trim() && (
-                <div className="rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#991B1B", backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>
-                  ⚠️ Please add your contact person on Step 1 before submitting.
-                </div>
+                <div className="rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#991B1B", backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>⚠️ Please add your contact person on Step 1 before submitting.</div>
               )}
             </div>
           )}
+        </div>
 
-          {/* Wizard nav */}
-          <div className="flex items-center justify-between mt-2">
-            <button
-              onClick={() => setStep(s => Math.max(1, s - 1))}
-              disabled={step === 1}
-              className="font-dm px-4 py-2.5 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}
-            >
-              ← Back
-            </button>
+        {/* Footer / nav */}
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
+          <button onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1} className="font-dm px-4 py-2.5 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>← Back</button>
+          <div className="flex items-center gap-2">
+            {step === 5 && (
+              <button onClick={addAnotherFilter} className="font-dm flex items-center gap-2 px-4 py-2.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>
+                <Plus size={14} /> Add Another Filter
+              </button>
+            )}
             {step < 5 ? (
-              <button
-                onClick={() => canProceed() ? setStep(s => s + 1) : toast.error("Please complete the required fields")}
-                disabled={!canProceed()}
-                className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-                style={{ backgroundColor: "#1A2B4A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
-              >
+              <button onClick={() => (canProceed() ? setStep((s) => s + 1) : toast.error("Please complete the required fields"))} disabled={!canProceed()} className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2" style={{ backgroundColor: "#1A2B4A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
                 Next: {STEPS[step].label} →
               </button>
             ) : (
-              <button
-                onClick={submit}
-                className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white hover:opacity-90"
-                style={{ backgroundColor: isRush ? "#991B1B" : "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}
-              >
+              <button onClick={submit} className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: isRush ? "#991B1B" : "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
                 <ClipboardList size={15} strokeWidth={2.5} /> {isRush ? "🚨 Submit Rush Inquiry" : "Submit Inquiry"}
               </button>
             )}
           </div>
         </div>
       </div>
-
-      <div className="flex flex-col gap-4">
-        <h2 className="font-syne" style={{ fontSize: 22, fontWeight: 700, color: "#0F172A" }}>My Orders</h2>
-        {myOrders.length === 0 && (
-          <div className="bg-white rounded-xl border border-slate-200/70 p-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-            No active orders yet. Submit an inquiry to get started.
-          </div>
-        )}
-        {myOrders.map((inq) => (
-          <ClientOrderCard
-            key={inq.id}
-            inquiry={inq}
-            onUploadPO={() => setPoForId(inq.id)}
-            onCancel={(reason) => {
-              requestCancellation(inq.id, reason, "client");
-              pushNotif({
-                dept: "sales",
-                title: `🚨 Cancellation request from ${clientName}`,
-                body: `${inq.code} · Reason: ${reason} · awaiting your accept/decline`,
-                link: "sales",
-                recipients: ["owner", "operations", "sales"],
-              });
-              toast.info("Cancellation request sent", { description: "Enter-Fil will accept or decline soon. You'll be notified." });
-            }}
-          />
-        ))}
-
-        {/* Past Job Orders — with Reorder */}
-        <div className="mt-2">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>My Job Orders</h3>
-            <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>Click Reorder to duplicate a previous production order</span>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <table className="w-full">
-              <thead style={{ backgroundColor: "#F4F6F9" }}>
-                <tr>
-                  {["Job Order", "Date", "Item", "Qty", "Status", ""].map(h => (
-                    <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {completedJobOrders.map((row, i) => (
-                  <tr key={i} className="border-t border-slate-200/70 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 700, color: "#1A2B4A" }}>{row.jo}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{row.date}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{row.item}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{row.qty} pcs</td>
-                    <td className="px-4 py-3">
-                      <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>✅ {row.status}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setReorderRow(row)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm hover:opacity-90"
-                        style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C9A84C", color: "white", letterSpacing: 0.3 }}
-                      >
-                        🔁 Reorder
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Transaction History — financial records only, no reorder */}
-        <div className="mt-2">
-          <h3 className="font-syne mb-3" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Transaction History</h3>
-          <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <table className="w-full">
-              <thead style={{ backgroundColor: "#F4F6F9" }}>
-                <tr>
-                  {["Date", "PO No.", "Item", "Amount", "Payment", "Status"].map(h => (
-                    <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { date: "Mar 31, 2026", po: "PO-2026-9901", item: "Air Filter 115×103×500mm (50 pcs)", amount: 78000, payment: "BDO Transfer", status: "Paid" },
-                  { date: "Feb 14, 2026", po: "PO-2026-9805", item: "Oil Separator Filter (20 pcs)", amount: 45000, payment: "Cash", status: "Paid" },
-                ].map((row, i) => (
-                  <tr key={i} className="border-t border-slate-200/70 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{row.date}</td>
-                    <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{row.po}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{row.item}</td>
-                    <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{row.amount.toLocaleString("en-PH")}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{row.payment}</td>
-                    <td className="px-4 py-3">
-                      <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>✅ {row.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {poForId && (
-        <POUploadOverlay
-          onClose={() => setPoForId(null)}
-          onSubmit={(name) => { uploadPO(poForId, name); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
-        />
-      )}
-
-      {reorderRow && (
-        <ReorderModal
-          row={reorderRow}
-          clientName={clientName}
-          onClose={() => setReorderRow(null)}
-          onSubmit={(modified) => {
-            const code = addInquiry({
-              clientName,
-              contactPerson: contactPerson || "—",
-              paymentTerms,
-              generalNotes: `Reorder of ${reorderRow.jo} · ${modified.notes}`,
-              products: [{
-                id: "p1", type: modified.type, od1: modified.od1, od2: "", id1: modified.id1, id2: "",
-                height: modified.height, media: modified.media, innerCore: modified.innerCore,
-                outerCore: "", oring: "", gasket: "", oem: modified.oem, qty: modified.qty,
-              }],
-              urgent: modified.isRush,
-              dueDate: modified.isRush ? modified.rushDate : undefined,
-            });
-            pushNotif({
-              dept: "sales",
-              title: `🔁 Reorder from ${clientName}`,
-              body: `${code} · based on ${reorderRow.jo} · ${modified.qty} pcs · awaiting validation`,
-              link: "sales",
-              recipients: ["owner", "operations", "sales"],
-            });
-            toast.success(`Reorder submitted as ${code}`, { description: "Sent to Sales for confirmation & validation. Track it in My Orders below." });
-            setReorderRow(null);
-          }}
-        />
-      )}
     </div>
   );
 }
 
-/* ───────── Reorder Review & Modify Modal ───────── */
-function ReorderModal({ row, clientName, onClose, onSubmit }: {
-  row: typeof completedJobOrders[0];
-  clientName: string;
-  onClose: () => void;
-  onSubmit: (modified: { type: string; od1: string; id1: string; height: string; media: string; innerCore: string; oem: string; qty: number; notes: string; isRush: boolean; rushDate: string }) => void;
-}) {
-  const s = row.specs;
-  const [type, setType] = useState(s.type);
-  const [od1, setOd1] = useState(s.od1 ?? "");
-  const [id1, setId1] = useState(s.id1 ?? "");
-  const [height, setHeight] = useState(s.height ?? "");
-  const [media, setMedia] = useState(s.media ?? "");
-  const [innerCore, setInnerCore] = useState(s.innerCore ?? "");
-  const [oem, setOem] = useState(s.oem ?? "");
-  const [qty, setQty] = useState(s.qty ?? 10);
-  const [notes, setNotes] = useState("");
-  const [isRush, setIsRush] = useState(false);
-  const [rushDate, setRushDate] = useState("");
-
+/* Renders the 16 filter types grouped visually but each clickable directly. After selection, asks for filter name (≥3 chars). */
+function FilterTypePicker({ selectedType, filterName, onTypeChange, onNameChange }: { selectedType: string; filterName: string; onTypeChange: (code: string) => void; onNameChange: (name: string) => void }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-2xl flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-slate-200 flex items-start justify-between" style={{ backgroundColor: "#FEF3C7" }}>
-          <div>
-            <h3 className="font-syne flex items-center gap-2" style={{ fontSize: 18, fontWeight: 700, color: "#92400E" }}>🔁 Reorder — Review & Modify</h3>
-            <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#B45309" }}>
-              Based on <span className="font-mono-jb" style={{ fontWeight: 700 }}>{row.jo}</span> · {row.item} · You can modify any field before submitting.
-            </p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-amber-100 flex items-center justify-center"><X size={16} /></button>
-        </div>
-
-        <div className="p-6 overflow-auto flex flex-col gap-4">
-          <div className="rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-            ℹ️ Reorders go to Sales as a new inquiry for confirmation. Once validated, it'll move into production. You'll see it in <strong>My Orders</strong>.
-          </div>
-          <div>
-            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Product Details</div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Filter Type"><input value={type} onChange={(e) => setType(e.target.value)} className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-              <Field label="OEM Reference"><input value={oem} onChange={(e) => setOem(e.target.value)} className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-              <Field label="OD 1 (mm)"><input value={od1} onChange={(e) => setOd1(e.target.value)} type="number" className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-              <Field label="ID 1 (mm)"><input value={id1} onChange={(e) => setId1(e.target.value)} type="number" className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-              <Field label="Height (mm)"><input value={height} onChange={(e) => setHeight(e.target.value)} type="number" className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-              <Field label="Filter Media"><input value={media} onChange={(e) => setMedia(e.target.value)} className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-              <Field label="Inner Core"><input value={innerCore} onChange={(e) => setInnerCore(e.target.value)} className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-              <Field label="Quantity (min 10)"><input value={qty} onChange={(e) => setQty(Number(e.target.value))} type="number" min={10} className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+    <div className="flex flex-col gap-4">
+      <div className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>What type of filter do you need?</div>
+      {GROUP_DISPLAY.map(({ group, label }) => {
+        const types = Object.values(FILTER_TYPE_CATALOG).filter((t) => t.group === group);
+        if (types.length === 0) return null;
+        return (
+          <div key={group}>
+            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</div>
+            <div className="grid grid-cols-3 gap-2">
+              {types.map((t) => {
+                const active = selectedType === t.code;
+                return (
+                  <button key={t.code} onClick={() => onTypeChange(t.code)} className="rounded-lg p-3 flex items-center gap-2 text-left transition-all" style={{ border: active ? "2px solid #C8102E" : "1px solid #E2E8F0", backgroundColor: active ? "#FEF2F2" : "white", padding: active ? 11 : 12 }}>
+                    <span style={{ fontSize: 18 }}>{FILTER_TYPE_ICON[t.code] ?? "🔧"}</span>
+                    <span className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: active ? "#C8102E" : "#0F172A" }}>{t.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <Field label="Changes / Notes (optional)">
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. increase qty to 100, change filter media, etc." rows={2} className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none" style={{ fontSize: 13 }} />
-          </Field>
-          <div className="rounded-lg p-3" style={{ backgroundColor: isRush ? "#FEF2F2" : "#F8FAFC", border: isRush ? "1.5px solid #FECACA" : "1px solid #E2E8F0" }}>
-            <label className="flex items-center gap-3 cursor-pointer" onClick={() => setIsRush(r => !r)}>
-              <div className="w-10 h-6 rounded-full transition-colors flex items-center px-1" style={{ backgroundColor: isRush ? "#C8102E" : "#CBD5E1" }}>
-                <div className="w-4 h-4 bg-white rounded-full shadow transition-transform" style={{ transform: isRush ? "translateX(16px)" : "translateX(0)" }} />
-              </div>
-              <div className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: isRush ? "#C8102E" : "#0F172A" }}>🚨 Mark as Rush</div>
-            </label>
-            {isRush && (
-              <input value={rushDate} onChange={(e) => setRushDate(e.target.value)} placeholder="Required by · e.g. May 5, 2026" className="font-dm px-3 py-2 rounded-md border border-red-200 outline-none focus:border-red-400 bg-white mt-2" style={{ fontSize: 13, width: "100%" }} />
-            )}
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-          <button
-            onClick={() => {
-              if (qty < 10) { toast.error("Minimum order quantity is 10"); return; }
-              if (isRush && !rushDate.trim()) { toast.error("Please specify your required delivery date"); return; }
-              onSubmit({ type, od1, id1, height, media, innerCore, oem, qty, notes, isRush, rushDate });
-            }}
-            className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 flex items-center gap-2"
-            style={{ backgroundColor: isRush ? "#991B1B" : "#C8102E", fontSize: 13, fontWeight: 700 }}
-          >
-            <ClipboardList size={14} /> {isRush ? "🚨 Submit Rush Reorder" : "Submit Reorder"}
-          </button>
-        </div>
+        );
+      })}
+      <div className="rounded-lg p-4" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+        <label className="font-dm block mb-2" style={{ fontSize: 12, fontWeight: 700, color: "#1E3A8A" }}>Filter Name * <span style={{ fontWeight: 400, color: "#64748B" }}>(at least 3 characters)</span></label>
+        <input value={filterName} onChange={(e) => onNameChange(e.target.value)} placeholder="e.g. Air/Oil Separator Filter" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
       </div>
     </div>
   );
 }
+
+/* Group-driven dimension fields. Reads the group from the selected filter type. */
+function DynamicDimensionFields({ product, onChange }: { product: ProductLine; onChange: (p: Partial<ProductLine>) => void }) {
+  const group = groupForType(product.type);
+  const dims = GROUP_TEMPLATES[group].dimensions;
+  const setDim = (key: DimensionKey, v: string) => onChange({ [key]: v } as Partial<ProductLine>);
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Dimensions <span style={{ fontWeight: 400, color: "#94A3B8" }}>· {labelForType(product.type)}</span></div>
+        <div className="grid grid-cols-3 gap-3">
+          {dims.map((dim, i) => (
+            <Field key={dim} label={`${DIMENSION_LABELS[dim]}${i === 0 ? " *" : ""}`}>
+              <input
+                type="number"
+                value={(product as any)[dim] ?? ""}
+                onChange={(e) => setDim(dim, e.target.value)}
+                className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+                style={{ fontSize: 13 }}
+              />
+            </Field>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="font-dm mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Filter Media *</div>
+        <input value={product.media ?? ""} onChange={(e) => onChange({ media: e.target.value })} placeholder="e.g. Microglass Fiber, Pleated ZS20, Cellulose, Stainless mesh..." className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+      </div>
+    </div>
+  );
+}
+
 
 function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
   index: number; product: ProductLine; isOpen: boolean;
@@ -755,10 +722,31 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
 }
 
 function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void }) {
+  const { updateInquiry } = useOrders();
+  const { push: pushNotif } = useNotifications();
   const [open, setOpen] = useState(inquiry.stage === "quotation");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  /* Section C — revision request modal */
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
+  const [revisionNoteDraft, setRevisionNoteDraft] = useState("");
   const total = quotationTotal(inquiry);
+
+  const submitRevision = () => {
+    const note = revisionNoteDraft.trim();
+    if (note.length < 5) { toast.error("Please describe what you'd like changed (at least a few words)"); return; }
+    updateInquiry(inquiry.id, { revisionNote: note });
+    pushNotif({
+      dept: "sales",
+      title: `📝 Revision request from ${inquiry.clientName}`,
+      body: `${inquiry.code} · ${note}`,
+      link: "sales",
+      recipients: ["sales"],
+    });
+    toast.success("Revision request sent", { description: "Sales will review and send a revised quotation soon." });
+    setShowRevisionModal(false);
+    setRevisionNoteDraft("");
+  };
 
   const badge =
     inquiry.stage === "inquiry" ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Quotation" } :
@@ -825,14 +813,21 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
                 Pricing based on Raw Materials + Labor + Markup. Lead time: <span style={{ fontWeight: 700, color: "#0F172A" }}>{inquiry.quotation.leadTimeDays} business days</span>. MOQ: 10 pcs per product.
               </div>
               {inquiry.stage === "quotation" && (
-                <div className="flex items-center gap-3">
-                  <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
-                    <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
-                  </button>
-                  <button onClick={() => toast("Revision request sent to sales")} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
-                    Request Revision
-                  </button>
-                </div>
+                <>
+                  {inquiry.revisionNote && !inquiry.quotationHistory?.length && (
+                    <div className="rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+                      ⏳ Revision requested: <em>{inquiry.revisionNote}</em> — Enter-Fil will send a revised quotation soon.
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+                      <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
+                    </button>
+                    <button onClick={() => setShowRevisionModal(true)} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
+                      Request Revision
+                    </button>
+                  </div>
+                </>
               )}
               {inquiry.stage === "po" && inquiry.poFileName && (
                 <div className="rounded-md p-3 font-dm" style={{ backgroundColor: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 13, color: "#166534" }}>
@@ -850,7 +845,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
                 <div>
                   <div style={{ fontWeight: 700 }}>Cancellation pending Enter-Fil approval</div>
                   <div className="mt-0.5">Reason: {inquiry.pendingCancellation.reason}</div>
-                  <div className="mt-0.5" style={{ color: "#B45309" }}>Requested {inquiry.pendingCancellation.requestedAt} · they may contact you via Viber/email if they decline.</div>
+                  <div className="mt-0.5" style={{ color: "#B45309" }}>Requested {inquiry.pendingCancellation.requestedAt} · they may contact you via email if they decline.</div>
                 </div>
               </div>
             </div>
@@ -893,7 +888,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
                     />
                   </div>
                   <div className="rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px dashed #FDE68A" }}>
-                    ℹ️ This will <strong>not</strong> cancel instantly. Enter-Fil will be notified and may accept or decline. If declined, they'll contact you via Viber/SMS/email.
+                    ℹ️ This will <strong>not</strong> cancel instantly. Enter-Fil will be notified and may accept or decline. If declined, they'll contact you via email.
                   </div>
                   <div className="flex justify-end gap-2">
                     <button onClick={() => { setConfirmCancel(false); setCancelReason(""); }} className="font-dm px-3 py-2 rounded-md hover:bg-white" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
@@ -916,13 +911,54 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
           )}
         </div>
       )}
+
+      {/* Section C — Revision Request Modal */}
+      {showRevisionModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setShowRevisionModal(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FFFBEB" }}>
+              <span style={{ fontSize: 18 }}>📝</span>
+              <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#92400E" }}>Request Quotation Revision</h3>
+              <button onClick={() => setShowRevisionModal(false)} className="ml-auto w-8 h-8 rounded-md hover:bg-amber-100 flex items-center justify-center"><X size={16} /></button>
+            </div>
+            <div className="p-5 overflow-auto flex flex-col gap-4">
+              <div className="rounded-lg p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Current Quotation</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>{peso(total)}</span>
+                  <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>· {inquiry.products.length} item{inquiry.products.length > 1 ? "s" : ""} · {inquiry.paymentTerms}</span>
+                </div>
+                <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Lead time: {inquiry.quotation?.leadTimeDays ?? "—"} days</div>
+              </div>
+              <div>
+                <label className="font-dm block mb-1.5" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>What would you like changed? *</label>
+                <textarea value={revisionNoteDraft} onChange={(e) => setRevisionNoteDraft(e.target.value)} placeholder="e.g. Reduce unit price · Adjust media spec · Increase quantity · etc." rows={5} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none" style={{ fontSize: 13 }} autoFocus />
+              </div>
+              {!!inquiry.quotationHistory?.length && (
+                <div className="rounded-md p-3 font-dm" style={{ fontSize: 11, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                  ℹ️ This quotation has been revised {inquiry.quotationHistory.length} time{inquiry.quotationHistory.length > 1 ? "s" : ""} already.
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+              <button onClick={() => setShowRevisionModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+              <button onClick={submitRevision} disabled={revisionNoteDraft.trim().length < 5} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}>
+                Send Revision Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
 
 function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit: (fileName: string) => void }) {
+  const { generatePONumber } = useOrders();
   const [file, setFile] = useState<File | null>(null);
   const [drag, setDrag] = useState(false);
+  /* Section J — auto-generated PO reference shown to the client; on submit, prefer the uploaded filename, but fall back to this reference. */
+  const [autoRef] = useState(() => generatePONumber());
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-lg" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
@@ -937,7 +973,11 @@ function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit:
             <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Accepts PDF, JPG, PNG</span>
             <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
-          <button onClick={() => onSubmit(file?.name ?? "PO.pdf")} disabled={!file} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+          <div className="rounded-md p-2 font-dm flex items-center justify-between" style={{ fontSize: 11, backgroundColor: "#F1F5F9", color: "#64748B" }}>
+            <span>Auto-generated reference</span>
+            <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
+          </div>
+          <button onClick={() => onSubmit(file?.name ?? `${autoRef}.pdf`)} disabled={!file} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
             SUBMIT PURCHASE ORDER
           </button>
         </div>
@@ -965,63 +1005,91 @@ interface ActiveOrder {
   steps: Step[];
 }
 
-const seedActiveOrders: ActiveOrder[] = [
-  {
-    po: "PO-2026-9901", product: "Air Filter 115×103×500mm", qty: 50, client: "B.E. Aerospace", paid: false,
-    badge: { label: "In Production", bg: "#DBEAFE", fg: "#1D4ED8" },
-    steps: [
-      { label: "Inquiry Submitted",    date: "Mar 28, 2026 · 10:14 AM", state: "done", detail: "Submitted via portal · Air Filter spec confirmed" },
-      { label: "Quotation Received",   date: "Mar 29, 2026 · 02:30 PM", state: "done", detail: "Total ₱78,000 · 14-day lead time · 30-Day Terms" },
-      { label: "PO Approved & Uploaded", date: "Mar 30, 2026 · 09:00 AM", state: "done", detail: "PO-2026-9901.pdf · approved by Enter-Fil" },
-      { label: "Job Order Created",    date: "Mar 30, 2026 · 11:45 AM", state: "done", detail: "JO-2026-001 · production queued · sketch attached" },
-      { label: "In Production",        date: "Stage 9 of 10 · Quality Inspection · Est. Apr 30", state: "current", detail: "F. Santos marked Stage 8 done at 2:15 PM today · Stage 9 in progress" },
-      { label: "Quality Inspection",   date: "—", state: "pending", detail: "Final QC checkpoint before dispatch" },
-      { label: "Ready for Dispatch",   date: "—", state: "pending", detail: "Waybill prepared · awaiting logistics pickup" },
-      { label: "Delivered",            date: "—", state: "pending", detail: "Signed DR confirms delivery · payment terms clock starts" },
-      { label: "Invoiced",             date: "—", state: "pending", detail: "Sales invoice issued · 30-day terms" },
-      { label: "Payment Cleared",      date: "—", state: "pending", detail: "Account fully settled · order archived" },
-    ],
-  },
-  {
-    po: "PO-2026-9531", product: "Filter", qty: 100, client: "Maynilad", paid: false,
-    badge: { label: "Quotation Received", bg: "#FEF3C7", fg: "#B45309" },
-    steps: [
-      { label: "Inquiry Submitted",    date: "Mar 25, 2026 · 03:20 PM", state: "done", detail: "Submitted via portal" },
-      { label: "Quotation Received",   date: "Awaiting your PO upload",  state: "current", detail: "Total ₱50,040 · please upload signed PO to proceed" },
-      { label: "PO Uploaded",          date: "—", state: "pending", detail: "—" },
-      { label: "Job Order Created",    date: "—", state: "pending", detail: "—" },
-      { label: "In Production",        date: "—", state: "pending", detail: "—" },
-      { label: "Delivered",            date: "—", state: "pending", detail: "—" },
-    ],
-  },
-  /* Already paid — hidden from active tracker */
-  {
-    po: "PO-2026-9805", product: "Oil Separator Filter", qty: 20, client: "B.E. Aerospace", paid: true,
-    badge: { label: "Paid & Closed", bg: "#DCFCE7", fg: "#15803D" },
-    steps: [],
-  },
-];
+/* DERIVED: build the live ActiveOrder timeline from a store inquiry. Each step's `state` (done/current/pending) is computed from the inquiry's stage. */
+function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
+  /* Stage progression maps to a 10-step timeline visible to the client */
+  const STAGE_ORDER: { key: string; label: string; matches: (i: Inquiry) => "done" | "current" | "pending"; detailFn: (i: Inquiry) => string }[] = [
+    { key: "inquiry",    label: "Inquiry Submitted",     matches: (i) => i.stage === "inquiry" ? "current" : "done",
+      detailFn: (i) => `Submitted ${i.submittedDate}${i.inquirySketch ? " · sketch attached" : ""}` },
+    { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
+    { key: "po",         label: "PO Approved & Uploaded", matches: (i) => i.stage === "po" ? "current" : (["jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: (i) => i.poFileName ? `${i.poFileName} · approved` : "Upload signed PO to proceed" },
+    { key: "jo",         label: "Job Order Created",      matches: (i) => i.stage === "jo" ? "current" : (["in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: (i) => i.joNumber ? `${i.joNumber} · production queued` : "Awaiting JO" },
+    { key: "in_production", label: "In Production",        matches: (i) => i.stage === "in_production" ? "current" : (["quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: (i) => `Stage ${(i.currentStage ?? 0) + 1} of 10${i.paused ? " · ⏸ ON HOLD" : ""}` },
+    { key: "quality_inspection", label: "Quality Inspection", matches: (i) => i.stage === "quality_inspection" ? "current" : (["ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: () => "Final QC checkpoint before dispatch" },
+    { key: "ready_for_dispatch", label: "Ready for Dispatch", matches: (i) => i.stage === "ready_for_dispatch" ? "current" : (["delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: () => "Waybill prepared · awaiting logistics" },
+    { key: "delivered",  label: "Delivered",              matches: (i) => i.stage === "delivered" ? "current" : (["paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: (i) => i.deliveredDate ? `Delivered ${i.deliveredDate}` : "Signed DR confirms delivery" },
+    { key: "invoiced",   label: "Invoiced",               matches: (i) => (i.invoiceNo && i.stage !== "paid") ? "current" : (i.stage === "paid" ? "done" : "pending"),
+      detailFn: (i) => i.invoiceNo ? `${i.invoiceNo}${i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Invoice will be issued" },
+    { key: "paid",       label: "Payment Cleared",        matches: (i) => i.stage === "paid" ? "done" : "pending",
+      detailFn: (i) => i.paidAt ? `Cleared ${new Date(i.paidAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "Account fully settled" },
+  ];
 
-function StatusTab() {
+  return {
+    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `INQ-${inq.code.replace("INQ-", "")}`,
+    product: `${inq.products[0]?.type ?? "Filter"}${inq.products[0]?.height ? ` ${inq.products[0].od1 ?? ""}×${inq.products[0].id1 ?? ""}×${inq.products[0].height}mm` : ""}`,
+    qty: inq.products.reduce((s, p) => s + p.qty, 0),
+    client: inq.clientName,
+    paid: inq.stage === "paid",
+    badge: stageBadgeForClient(inq),
+    steps: STAGE_ORDER.map((s) => ({
+      label: s.label,
+      date: s.matches(inq) === "done" ? "✓" : s.matches(inq) === "current" ? (inq.paused ? "On hold" : "now") : "—",
+      state: s.matches(inq),
+      detail: s.detailFn(inq),
+    })),
+  };
+}
+
+function stageBadgeForClient(inq: Inquiry): { label: string; bg: string; fg: string } {
+  switch (inq.stage) {
+    case "inquiry":            return { label: "Awaiting Quotation",  bg: "#E2E8F0", fg: "#475569" };
+    case "quotation":          return { label: "Quotation Received",  bg: "#FEF3C7", fg: "#B45309" };
+    case "po":                 return { label: "PO Submitted ✅",      bg: "#DCFCE7", fg: "#15803D" };
+    case "jo":                 return { label: "JO Created",          bg: "#FEE2E2", fg: "#991B1B" };
+    case "in_production":      return inq.paused
+      ? { label: "On Hold",                                            bg: "#FEF3C7", fg: "#92400E" }
+      : { label: "In Production",                                      bg: "#DBEAFE", fg: "#1D4ED8" };
+    case "quality_inspection": return { label: "Quality Inspection",   bg: "#EDE9FE", fg: "#6D28D9" };
+    case "ready_for_dispatch": return { label: "Ready for Dispatch",   bg: "#FFE4E6", fg: "#9F1239" };
+    case "delivered":          return { label: "Delivered",            bg: "#CCFBF1", fg: "#0F766E" };
+    case "paid":               return { label: "Paid & Closed",        bg: "#DCFCE7", fg: "#15803D" };
+    case "overdue":             return { label: "⚠️ Overdue",          bg: "#FEE2E2", fg: "#C8102E" };
+    default:                   return { label: inq.stage,              bg: "#E2E8F0", fg: "#475569" };
+  }
+}
+
+function StatusTab({ clientName }: { clientName: string }) {
+  const { byClient, updateInquiry } = useOrders();
   const [showJO, setShowJO] = useState(false);
   const [requestingUrgent, setRequestingUrgent] = useState<string | null>(null);
   const [urgentDate, setUrgentDate] = useState("");
-  const [expandedPO, setExpandedPO] = useState<string | null>(seedActiveOrders[0]?.po ?? null);
   const { push: pushNotif } = useNotifications();
 
-  /* Hide paid/cleared orders from tracker */
-  const activeOrders = seedActiveOrders.filter(o => !o.paid);
+  /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
+  const myInquiries = byClient(clientName).filter((i) => !i.archived && i.stage !== "paid");
+  const activeOrders = myInquiries.map(inquiryToActiveOrder);
+  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.po ?? null);
 
   const requestUrgentUpgrade = () => {
     if (!urgentDate.trim()) { toast.error("Please specify your required delivery date"); return; }
+    /* Section G — store the request flag on the inquiry so the button stays disabled and the response can be displayed. */
+    const inq = myInquiries.find((i) => i.code === requestingUrgent);
+    if (inq) updateInquiry(inq.id, { urgentUpgradeRequested: true });
     pushNotif({
       dept: "production",
       title: "🚨 Urgent upgrade requested by client",
-      body: `${requestingUrgent} · B.E. Aerospace · requested delivery by ${urgentDate}`,
+      body: `${requestingUrgent} · ${clientName} · requested delivery by ${urgentDate}`,
       link: "production",
       recipients: ["owner", "operations", "production"],
     });
-    toast.success("Urgent upgrade request sent", { description: "Production manager will review and confirm via Viber/email" });
+    toast.success("Urgent request sent — wait for Enter-Fil response.", { description: "You'll be notified when management replies." });
     setRequestingUrgent(null); setUrgentDate("");
   };
 
@@ -1041,9 +1109,12 @@ function StatusTab() {
         <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
           ✅ All your orders are fully paid and archived. Submit a new inquiry to track progress here.
         </div>
-      ) : activeOrders.map((order) => {
+      ) : activeOrders.map((order, idx) => {
         const expanded = expandedPO === order.po;
         const currentStep = order.steps.find(s => s.state === "current");
+        /* Section F — JO exists only once the inquiry reaches the "jo" stage or later. */
+        const inq = myInquiries[idx];
+        const hasJO = !!inq && (["jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"] as const).includes(inq.stage as any);
         return (
           <CollapsibleStatusCard
             key={order.po}
@@ -1053,11 +1124,32 @@ function StatusTab() {
             onViewJO={() => setShowJO(true)}
             onRequestUrgent={() => setRequestingUrgent(order.po)}
             currentStep={currentStep}
+            hasJO={hasJO}
+            urgentRequested={!!inq?.urgentUpgradeRequested}
+            urgentResponse={inq?.urgentUpgradeResponse}
           />
         );
       })}
 
-      {showJO && <JOTemplateModal data={DEMO_JO_DATA} onClose={() => setShowJO(false)} />}
+      {/* Section O — pass live inquiry data so the JO doc shows the user-entered filterName, not the type code */}
+      {showJO && (() => {
+        const jo = myInquiries.find((i) => i.joNumber);
+        if (!jo) return <JOTemplateModal data={DEMO_JO_DATA} onClose={() => setShowJO(false)} />;
+        const p0 = jo.products[0];
+        const liveData: JOTemplateData = {
+          jo: jo.joNumber!,
+          client: jo.clientName,
+          product: p0?.filterName || labelForType(p0?.type ?? ""),
+          qty: jo.products.reduce((s, p) => s + p.qty, 0),
+          date: jo.submittedDate,
+          itemCode: `${p0?.type ?? "FILTER"}-${jo.code.replace(/[^0-9]/g, "")}`,
+          enterFilPN: p0?.oem ?? "—",
+          poRef: jo.poFileName?.replace(/\.[^.]+$/, "") ?? "—",
+          specs: jo.joSpecs ?? { od1: p0?.od1, id1: p0?.id1, height: p0?.height, media: p0?.media, oem: p0?.oem },
+          preparedBy: "Enter-Fil Management",
+        };
+        return <JOTemplateModal data={liveData} onClose={() => setShowJO(false)} />;
+      })()}
 
       {/* Urgent upgrade modal */}
       {requestingUrgent && (
@@ -1069,7 +1161,7 @@ function StatusTab() {
             </div>
             <div className="p-5 flex flex-col gap-3">
               <p className="font-dm" style={{ fontSize: 13, color: "#475569" }}>
-                Need <span className="font-mono-jb" style={{ fontWeight: 700 }}>{requestingUrgent}</span> sooner? Tell us your required delivery date — we'll confirm via Viber or email within 4 hours.
+                Need <span className="font-mono-jb" style={{ fontWeight: 700 }}>{requestingUrgent}</span> sooner? Tell us your required delivery date — we'll confirm via email within 4 hours.
               </p>
               <div className="flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#991B1B", letterSpacing: 0.4, textTransform: "uppercase" }}>Required Delivery Date</label>
@@ -1099,13 +1191,16 @@ function StatusTab() {
   );
 }
 
-function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, onRequestUrgent, currentStep }: {
+function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, onRequestUrgent, currentStep, hasJO, urgentRequested, urgentResponse }: {
   order: ActiveOrder;
   expanded: boolean;
   onToggle: () => void;
   onViewJO: () => void;
   onRequestUrgent: () => void;
   currentStep?: Step;
+  hasJO?: boolean;
+  urgentRequested?: boolean;
+  urgentResponse?: string;
 }) {
   const stepCount = order.steps.length;
   const doneCount = order.steps.filter(s => s.state === "done").length;
@@ -1138,18 +1233,27 @@ function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, onRequestU
       {/* Expanded detail */}
       {expanded && (
         <div className="border-t border-slate-200">
+          {/* Section G — show response if Enter-Fil replied; disable button after first request */}
+          {urgentResponse && (
+            <div className="px-6 py-3 border-b border-slate-100 font-dm" style={{ fontSize: 12, color: "#15803D", backgroundColor: "#F0FDF4" }}>
+              <strong>Enter-Fil reply:</strong> {urgentResponse}
+            </div>
+          )}
           {/* Action bar */}
           <div className="px-6 py-3 flex items-center justify-end gap-2 border-b border-slate-100" style={{ backgroundColor: "#F8FAFC" }}>
             <button
               onClick={onRequestUrgent}
-              className="flex items-center gap-2 px-3 py-2 rounded-md font-dm hover:opacity-90"
+              disabled={urgentRequested}
+              className="flex items-center gap-2 px-3 py-2 rounded-md font-dm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E", letterSpacing: 0.3 }}
             >
-              🚨 Request Urgent Upgrade
+              {urgentRequested ? "🚨 Urgent request sent — wait for Enter-Fil response" : "🚨 Request Urgent Upgrade"}
             </button>
             <button
               onClick={onViewJO}
-              className="flex items-center gap-2 px-3 py-2 rounded-md font-dm border border-slate-200 hover:bg-white"
+              disabled={!hasJO}
+              title={hasJO ? undefined : "Job order not created yet"}
+              className="flex items-center gap-2 px-3 py-2 rounded-md font-dm border border-slate-200 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}
             >
               📄 View Job Order
@@ -1324,7 +1428,36 @@ interface LogisticsRow {
   dateISO?: string;
 }
 
-function LogisticsTab() {
+/* DERIVED: build a LogisticsRow from a store inquiry. Status maps cleanly off the inquiry stage. */
+function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
+  const method: DeliveryMethod = (inq.deliveryMethod ?? "Company Vehicle") as DeliveryMethod;
+  const isDelivered = inq.stage === "delivered" || inq.stage === "paid" || inq.stage === "overdue";
+  const isInTransit = inq.stage === "ready_for_dispatch" && !!inq.trackingRef;
+  const status = isDelivered ? "Delivered" : isInTransit ? "In Transit" : "Pending";
+  const statusBg = isDelivered ? "#DCFCE7" : isInTransit ? "#DBEAFE" : "#E2E8F0";
+  const statusFg = isDelivered ? "#15803D" : isInTransit ? "#1D4ED8" : "#475569";
+  const firstProduct = inq.products[0];
+  const item = firstProduct?.product ?? "—";
+  const qty = inq.products.reduce((s, p) => s + p.quantity, 0);
+  const dateISO = inq.deliveredDate ?? inq.dueDate ?? inq.submittedDate;
+  return {
+    po: inq.code,
+    item,
+    qty,
+    method,
+    status: status as any,
+    statusBg,
+    statusFg,
+    hasSignedDR: !!inq.drFileName,
+    driverName: method === "Company Vehicle" ? "D. Santos" : undefined,
+    estimatedDate: inq.deliveredDate ?? inq.dueDate ?? "—",
+    trackingNumber: inq.trackingRef,
+    dateISO,
+  };
+}
+
+function LogisticsTab({ clientName }: { clientName: string }) {
+  const { byClient } = useOrders();
   const [filter, setFilter] = useState("All");
   const [expandedPo, setExpandedPo] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState("");
@@ -1332,11 +1465,11 @@ function LogisticsTab() {
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "status">("date-desc");
   const filters = ["All", "Pending", "In Transit", "Delivered"];
 
-  const rows: LogisticsRow[] = [
-    { po: "PO-2026-9901", item: "Air Filter", qty: 50, method: "Company Vehicle", status: "Delivered", statusBg: "#DCFCE7", statusFg: "#15803D", hasSignedDR: true, driverName: "D. Santos", estimatedDate: "Mar 31, 2026", dateISO: "2026-03-31" },
-    { po: "PO-2026-9531", item: "Filter", qty: 100, method: "Lalamove", status: "In Transit", statusBg: "#DBEAFE", statusFg: "#1D4ED8", trackingNumber: "LL-2026-8821", dateISO: "2026-04-25" },
-    { po: "PO-2026-9533", item: "Filter", qty: 100, method: "Client Pick-up", status: "Pending", statusBg: "#E2E8F0", statusFg: "#475569", dateISO: "2026-04-22" },
-  ];
+  /* DERIVED: this client's inquiries that have entered the logistics phase (jo onward) — exclude inquiry/quotation/po stages */
+  const myInquiries = byClient(clientName).filter((i) =>
+    !i.archived && ["in_production", "quality_inspection", "ready_for_dispatch", "delivered", "paid", "overdue"].includes(i.stage)
+  );
+  const rows: LogisticsRow[] = myInquiries.map(inquiryToLogisticsRow);
 
   const methodIcon = (m: DeliveryMethod) => m === "Company Vehicle" ? Building2 : m === "Lalamove" ? Truck : UserIcon;
   const methodColor = (m: DeliveryMethod) => m === "Company Vehicle" ? "#1A2B4A" : m === "Lalamove" ? "#7C3AED" : "#0D9488";
@@ -1501,48 +1634,58 @@ function InfoPair({ label, value }: { label: string; value: string }) {
   );
 }
 
+/* DERIVED: build an invoice row for the client portal from a store inquiry. Reads confirmedPayments off the inquiry. */
+function inquiryToClientInvoice(inq: Inquiry) {
+  const amount = inq.invoiceAmount ?? inq.quotedTotal ?? 0;
+  const isPaid = inq.stage === "paid";
+  return {
+    id: inq.id,
+    inv: inq.invoiceNo ?? `SI-${inq.code.replace("PO-", "")}`,
+    po: inq.code,
+    item: inq.products[0]?.product ?? "—",
+    amount,
+    payment: inq.paymentTerms,
+    due: inq.invoiceDueDate ?? "—",
+    status: (isPaid ? "paid" : "pending") as "paid" | "pending",
+    paidDate: inq.paidAt ?? "",
+    confirmedPayments: inq.confirmedPayments ?? [],
+  };
+}
+
 /* ---------- Accounting Tab ---------- */
 function ClientAccountingTab({ clientName }: { clientName: string }) {
   const { byClient, addClientReceipt } = useOrders();
+  /* Section M — payment instructions come from the Settings store, not hardcoded */
+  const { settings } = useSettings();
+  const bank = settings.bankDetails;
   const { push: pushNotif } = useNotifications();
-  const [openId, setOpenId] = useState<string | null>("a3");
   const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; note: string; file: string }>>({});
   const [view, setView] = useState<"active" | "history">("active");
 
-  /* Track partial-payment progress per invoice — secretary-confirmed payments */
-  const [confirmedPayments, setConfirmedPayments] = useState<Record<string, { amount: number; date: string; method: string; ref: string }[]>>({
-    /* a3 already has one partial payment confirmed by secretary */
-    a3: [{ amount: 23400, date: "Apr 10, 2026", method: "BDO Bank Transfer", ref: "BDO-2026-04100" }],
-  });
-
-  const rows = [
-    { id: "a1", inv: "SI-2026-9905", po: "PO-2026-9905", item: "Air Filter", amount: 78000, payment: "Bank Transfer · BDO", due: "—",            status: "paid" as const,    paidDate: "Apr 2, 2026" },
-    { id: "a2", inv: "SI-2026-9531", po: "PO-2026-9531", item: "Pleated Filter ZS20", amount: 50040, payment: "30-Day Terms",  due: "Apr 30, 2026", status: "paid" as const,    paidDate: "Apr 28, 2026" },
-    { id: "a3", inv: "SI-2026-9533", po: "PO-2026-9533", item: "Pleated Filter 5-Micron", amount: 46800, payment: "30-Day Terms", due: "Apr 29, 2026", status: "pending" as const, paidDate: "" },
-  ];
+  /* DERIVED: pull this client's invoiced inquiries (delivered / overdue / paid). PO/quotation/in-production aren't yet billable. */
+  const myInvoiced = byClient(clientName).filter((i) =>
+    !i.archived && ["delivered", "overdue", "paid"].includes(i.stage)
+  );
+  const rows = myInvoiced.map(inquiryToClientInvoice);
 
   const activeRows = rows.filter(r => r.status === "pending");
   const historyRows = rows.filter(r => r.status === "paid");
   const visibleRows = view === "active" ? activeRows : historyRows;
 
-  /* Match client's inquiries to link receipt to the right inquiry */
-  const clientInqs = byClient(clientName);
+  const [openId, setOpenId] = useState<string | null>(activeRows[0]?.id ?? null);
 
   const submitReceipt = (rowId: string, invNo: string) => {
     const f = receiptForm[rowId];
     if (!f?.file) { toast.error("Please attach a receipt file first"); return; }
     const amt = parseFloat(f.amount);
     if (isNaN(amt) || amt <= 0) { toast.error("Please enter the amount paid"); return; }
-    /* Link to the most recent inquiry of this client */
-    const targetInq = clientInqs[clientInqs.length - 1];
-    if (targetInq) {
-      addClientReceipt(targetInq.id, {
-        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        filename: f.file,
-        amount: amt,
-        note: f.note || invNo,
-      });
-    }
+    /* Link to the specific inquiry being paid */
+    addClientReceipt(rowId, {
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      filename: f.file,
+      amount: amt,
+      note: f.note || invNo,
+    });
     pushNotif({
       dept: "payments",
       title: `Receipt uploaded by ${clientName}`,
@@ -1587,7 +1730,7 @@ function ClientAccountingTab({ clientName }: { clientName: string }) {
         {pill("Total Invoices", String(rows.length))}
         {pill("Paid", String(historyRows.length), "#16A34A")}
         {pill("Pending", String(activeRows.length), "#D97706")}
-        {pill("Amount Due", `₱${activeRows.reduce((s, r) => s + r.amount - (confirmedPayments[r.id] ?? []).reduce((p, c) => p + c.amount, 0), 0).toLocaleString("en-PH")}`, "#C8102E")}
+        {pill("Amount Due", `₱${activeRows.reduce((s, r) => s + r.amount - r.confirmedPayments.reduce((p, c) => p + c.amount, 0), 0).toLocaleString("en-PH")}`, "#C8102E")}
       </div>
       <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
         <table className="w-full">
@@ -1610,7 +1753,7 @@ function ClientAccountingTab({ clientName }: { clientName: string }) {
             {visibleRows.map((r) => {
               const isOpen = openId === r.id;
               const isPending = r.status === "pending";
-              const confirmed = confirmedPayments[r.id] ?? [];
+              const confirmed = r.confirmedPayments;
               const totalConfirmed = confirmed.reduce((s, p) => s + p.amount, 0);
               const remaining = r.amount - totalConfirmed;
               const isPartial = isPending && totalConfirmed > 0;
@@ -1680,13 +1823,13 @@ function ClientAccountingTab({ clientName }: { clientName: string }) {
                             {/* Payment instructions */}
                             <div className="rounded-lg p-4 flex flex-col gap-2 mb-3" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0" }}>
                               <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Payment Instructions</div>
-                              <Row label="Bank" value="BDO Savings Account" />
-                              <Row label="Account Name" value="Enter-Fil Industrial Products" />
-                              <Row label="Account No." value="XXXX-XXXX-XXXX" mono />
+                              <Row label="Bank" value={bank.bankName} />
+                              <Row label="Account Name" value={bank.accountName} />
+                              <Row label="Account No." value={bank.accountNumber} mono />
                             </div>
                             <div className="rounded-lg p-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
                               <div className="font-dm" style={{ fontSize: 12, color: "#92400E", fontWeight: 600 }}>Payment terms run from delivery date.</div>
-                              <div className="font-dm mt-1" style={{ fontSize: 11, color: "#92400E" }}>Due: {r.due} · Contact us via Viber or email for disputes.</div>
+                              <div className="font-dm mt-1" style={{ fontSize: 11, color: "#92400E" }}>Due: {r.due} · Contact us via email for disputes.</div>
                             </div>
                           </div>
 
@@ -1802,7 +1945,6 @@ function SettingsTab({ clientName }: { clientName: string }) {
   const [pickupPhone, setPickupPhone] = useState("");
   /* Notification preferences */
   const [emailAlerts, setEmailAlerts] = useState(true);
-  const [smsAlerts, setSmsAlerts] = useState(true);
   const [notifTriggers, setNotifTriggers] = useState({
     quotationReceived: true,
     joCreated: true,
@@ -1952,14 +2094,6 @@ function SettingsTab({ clientName }: { clientName: string }) {
             onToggle={() => setEmailAlerts(v => !v)}
             accent="#2563EB"
           />
-          <ChannelToggle
-            icon="📱"
-            label="SMS Alerts"
-            email={phone}
-            enabled={smsAlerts}
-            onToggle={() => setSmsAlerts(v => !v)}
-            accent="#16A34A"
-          />
         </div>
 
         <div className="rounded-lg p-4" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
@@ -1989,7 +2123,7 @@ function SettingsTab({ clientName }: { clientName: string }) {
         </div>
 
         <div className="rounded-md p-3 mt-3 font-dm" style={{ fontSize: 11, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-          ℹ️ Email alerts via SendGrid · SMS via Semaphore PH. You can unsubscribe anytime.
+          ℹ️ Email alerts via SendGrid. You can unsubscribe anytime.
         </div>
       </section>
 
@@ -2056,9 +2190,11 @@ export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLo
   return (
     <Shell active={tab} onChange={setTab} clientName={clientName} onLogout={onLogout}>
       {tab === "orders" && <OrdersTab clientName={clientName} onSubmitted={() => setTab("status")} />}
-      {tab === "status" && <StatusTab />}
-      {tab === "logistics" && <LogisticsTab />}
+      {tab === "status" && <StatusTab clientName={clientName} />}
+      {tab === "logistics" && <LogisticsTab clientName={clientName} />}
       {tab === "accounting" && <ClientAccountingTab clientName={clientName} />}
+      {tab === "joborders" && <JobOrdersTab clientName={clientName} />}
+      {tab === "transactions" && <TransactionsTab clientName={clientName} />}
       {tab === "settings" && <SettingsTab clientName={clientName} />}
     </Shell>
   );

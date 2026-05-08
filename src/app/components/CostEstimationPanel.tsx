@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Pencil, Plus, Save, Sparkles, Trash2, Info } from "lucide-react";
+import { Pencil, Plus, Sparkles, Trash2, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
   useMaterials,
@@ -11,6 +11,7 @@ import {
   type RawMaterial,
 } from "../store/materials";
 import type { Inquiry, ProductLine } from "../store/orders";
+import { GROUP_TEMPLATES, groupForType, PART_TO_CATEGORY } from "../store/filterTemplates";
 
 /* Categories shown in the chip list — Packaging is excluded; it's a delivery add-on, not a manufacturing component */
 const STANDARD_PART_CATEGORIES: PartCategory[] = [
@@ -46,17 +47,27 @@ interface Props {
 }
 
 export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
-  const { rawMaterials, templates, saveBOMTemplate, findBOMTemplate } = useMaterials();
+  const { rawMaterials, templates, findBOMTemplate } = useMaterials();
   const product = inquiry.products[0];
   const filterType = product?.type ?? "Air Filter";
   const size = inferSize(product);
 
-  /* Initial BOM: from existing inquiry, else from matching template, else empty (staff fills manually) */
+  /* Initial BOM: from existing inquiry, else from matching template, else seeded from the group's mandatory parts (Section A5). */
   const initial = useMemo(() => {
     if (inquiry.billOfMaterials && inquiry.billOfMaterials.length > 0) return inquiry.billOfMaterials;
     const tpl = findBOMTemplate(filterType, size);
     if (tpl) return tpl.bom;
-    return [] as BOMLine[];
+    /* Seed from filter group template: pick the first available material per mandatory part category. */
+    const group = groupForType(filterType);
+    const required = GROUP_TEMPLATES[group].parts.always;
+    const seeded: BOMLine[] = [];
+    required.forEach((partKey) => {
+      const cat = PART_TO_CATEGORY[partKey] as PartCategory | undefined;
+      if (!cat) return;
+      const mat = rawMaterials.find((m) => m.partCategory === cat);
+      if (mat) seeded.push({ materialId: mat.id, partCategory: cat, qtyConsumed: 0 });
+    });
+    return seeded;
   }, []);
 
   const [bom, setBom] = useState<BOMLine[]>(initial);
@@ -73,8 +84,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
   );
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState(0);
-  const [tplName, setTplName] = useState("");
-  const [showSaveTpl, setShowSaveTpl] = useState(false);
+  /* Section I — tplName/showSaveTpl state removed */
 
   const matchingTemplate = findBOMTemplate(filterType, size);
   const computed = computeUnitPrice(bom, cfg, rawMaterials);
@@ -108,19 +118,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
     toast.success(`Loaded template: ${tpl.name}`);
   };
 
-  const handleSaveTemplate = () => {
-    if (!tplName.trim()) { toast.error("Template name is required"); return; }
-    saveBOMTemplate({
-      name: tplName.trim(),
-      filterType,
-      size,
-      bom,
-      costConfig: cfg,
-    });
-    toast.success("Configuration saved as template", { description: "Will pre-fill on repeat orders for this filter type" });
-    setShowSaveTpl(false);
-    setTplName("");
-  };
+  /* Section I — handleSaveTemplate removed (Save Configuration as Template feature deprecated) */
 
   const handleApply = () => {
     onApply({
@@ -335,20 +333,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
             </div>
 
             <div className="flex flex-col gap-2 pt-1">
-              {showSaveTpl ? (
-                <div className="rounded-md p-3 flex flex-col gap-2" style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
-                  <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#15803D", letterSpacing: 0.4, textTransform: "uppercase" }}>Template name</label>
-                  <input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder={`${filterType}${size ? " — " + size : ""} (custom)`} className="font-dm px-3 py-2 rounded-md border border-green-200 outline-none focus:border-green-400 bg-white" style={{ fontSize: 13 }} autoFocus />
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => { setShowSaveTpl(false); setTplName(""); }} className="font-dm px-2.5 py-1 rounded hover:bg-white" style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>Cancel</button>
-                    <button onClick={handleSaveTemplate} className="font-dm px-2.5 py-1 rounded text-white" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#16A34A" }}>Save Template</button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => setShowSaveTpl(true)} className="font-dm flex items-center justify-center gap-1.5 py-2 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#15803D", border: "1.5px dashed #86EFAC" }}>
-                  <Save size={12} /> Save Configuration as Template
-                </button>
-              )}
+              {/* Section I — "Save Configuration as Template" feature removed per spec */}
               <button onClick={handleApply} className="font-dm flex items-center justify-center gap-2 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
                 Apply to Quotation →
               </button>

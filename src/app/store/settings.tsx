@@ -1,5 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
+export interface BankDetails {
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+}
+
 export interface CompanySettings {
   companyName: string;
   addressLine1: string;
@@ -14,6 +20,7 @@ export interface CompanySettings {
   defaultDriver: string;
   defaultDriverContact: string;
   documentFooter: string;
+  bankDetails: BankDetails;
 }
 
 const defaults: CompanySettings = {
@@ -31,6 +38,11 @@ const defaults: CompanySettings = {
   defaultDriverContact: "+63 (917) 555-2244",
   documentFooter:
     "Enter-Fil Industrial Products · Block 12 Lot 4 Diamond St., Carmona Industrial Estate, Cavite 4116 · +63 (046) 430-1234 · sales@enter-fil.ph",
+  bankDetails: {
+    bankName: "BDO Unibank",
+    accountName: "Enter-Fil Industrial Products, Inc.",
+    accountNumber: "0012-3456-7890",
+  },
 };
 
 interface Ctx {

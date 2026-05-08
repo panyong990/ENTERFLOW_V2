@@ -1,12 +1,11 @@
-import { useState, Fragment } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { Printer, FileDown, CheckCircle2, X, ScanLine, Info, Eye, Paperclip, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useSettings } from "../store/settings";
-import { useOrders } from "../store/orders";
+import { useOrders, type Inquiry } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
 
-interface CompletedJO {
-  id: string;
+interface DispatchRow {
+  id: string;          // inquiry id (single source of truth)
   jo: string;
   po: string;
   si: string;
@@ -20,40 +19,13 @@ interface CompletedJO {
   qty: number;
   method: string;
   barcode: string;
-  status?: "Ready for Dispatch" | "Delivered";
+  status: "Ready for Dispatch" | "Dispatched" | "Delivered" | "Paid";
   sketch?: string;
   specs?: { od1?: string; od2?: string; id1?: string; id2?: string; height?: string; overallHeight?: string; media?: string; innerCore?: string; outerCore?: string; oring?: string; gasket?: string; oem?: string; brand?: string };
 }
 
-const completedSeed: CompletedJO[] = [
-  {
-    id: "c1", jo: "JO-2026-001", po: "PO-2026-9901", si: "SI-2026-9901",
-    client: "B.E. AEROSPACE", contact: "M. Rivera",
-    clientAddress: "FAB Bldg., Clark Freeport Zone, Pampanga",
-    clientPhone: "+63 917 555 1212",
-    item: "Air Filter — KF-OS.107.65.252",
-    itemCode: "OILSEP-00001", enterFilPN: "KF-OS.107.65.252",
-    qty: 50, method: "Company Vehicle", barcode: "EF-2026-09901",
-    status: "Ready for Dispatch",
-    sketch: "KF-OS.107.65.252_drawing.pdf",
-    specs: { od1: "115", od2: "103", id1: "64.6", height: "500", overallHeight: "512", media: "Microglass Fiber / Inside", innerCore: "Expanded Metal Perfo 2mm", brand: "Hitachi Comp.", oem: "KF-OS.107.65.252" },
-  },
-  {
-    id: "c2", jo: "JO-2026-002", po: "PO-2026-9531", si: "SI-2026-9531",
-    client: "MAYNILAD WATER SERVICES", contact: "J. Domingo",
-    clientAddress: "MWSS Compound, Katipunan Ave., Quezon City",
-    clientPhone: "+63 2 8888 5555",
-    item: "Pleated Filter ZS20 — KF-OF.175.20.87",
-    itemCode: "OILFIL-00181", enterFilPN: "KF-OF.175.20.87",
-    qty: 100, method: "Lalamove", barcode: "EF-2026-09531",
-    status: "Ready for Dispatch",
-    sketch: "KF-OF.175.20.87_drawing.pdf",
-    specs: { od1: "175", od2: "175", id1: "20", id2: "20", height: "87", overallHeight: "93", media: "Pleated ZS20 w/ Double Alum Screen", innerCore: "Perforated 3mm Ø, 0.6mm T", oring: "Top & Bottom", oem: "KF-OF.175.20.87" },
-  },
-];
-
-interface WaybillLog {
-  id: string;
+interface LogRow {
+  id: string;          // synthetic key per log entry
   date: string;
   waybillNo: string;
   jo: string;
@@ -62,23 +34,54 @@ interface WaybillLog {
   qty: number;
   method: string;
   status: string;
+  note?: string;
   processedBy: string;
+  matchedJob?: DispatchRow;
 }
 
-const seedLog: WaybillLog[] = [
-  { id: "wl1", date: "Apr 25, 2026", waybillNo: "EF-2026-09533", jo: "JO-2026-002", client: "Maynilad", item: "Pleated Filter 5-Micron", qty: 100, method: "Lalamove", status: "Delivered", processedBy: "P. Tan" },
-  { id: "wl2", date: "Apr 22, 2026", waybillNo: "EF-2026-09805", jo: "JO-2025-082", client: "B.E. Aerospace", item: "Oil Separator Filter", qty: 20, method: "Company Vehicle", status: "Delivered", processedBy: "P. Tan" },
-];
+const stageStatus = (s: Inquiry["stage"]): DispatchRow["status"] => {
+  if (s === "ready_for_dispatch") return "Ready for Dispatch";
+  if (s === "dispatched") return "Dispatched";
+  if (s === "paid") return "Paid";
+  return "Delivered";
+};
+
+function inquiryToDispatchRow(inq: Inquiry): DispatchRow {
+  const p = inq.products[0];
+  const oem = p?.oem;
+  const desc = p?.filterName ?? p?.type ?? "—";
+  return {
+    id: inq.id,
+    jo: inq.joNumber ?? `JO-${inq.code}`,
+    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
+    si: inq.invoiceNo ?? `SI-${inq.code}`,
+    client: inq.clientName,
+    contact: inq.contactPerson,
+    clientAddress: "—",
+    clientPhone: "—",
+    item: oem ? `${desc} — ${oem}` : desc,
+    itemCode: p?.type,
+    enterFilPN: oem,
+    qty: inq.products.reduce((s, x) => s + x.qty, 0),
+    method: inq.deliveryMethod ?? "—",
+    barcode: `EF-${(inq.joNumber ?? inq.code).replace(/\D/g, "")}`,
+    status: stageStatus(inq.stage),
+    sketch: inq.joSketch,
+    specs: inq.joSpecs ? {
+      od1: inq.joSpecs.od1, od2: inq.joSpecs.od2, id1: inq.joSpecs.id1, id2: inq.joSpecs.id2,
+      height: inq.joSpecs.height, overallHeight: inq.joSpecs.overallHeight,
+      media: inq.joSpecs.media, innerCore: inq.joSpecs.innerCore, outerCore: inq.joSpecs.outerCore,
+      oring: inq.joSpecs.oring, gasket: inq.joSpecs.gasket, oem: inq.joSpecs.oem, brand: inq.joSpecs.brand,
+    } : undefined,
+  };
+}
 
 export function WaybillScanner() {
-  const { settings } = useSettings();
-  const { completedJOs } = useOrders();
-  const [completed] = useState<CompletedJO[]>(completedSeed);
+  const { inquiriesByStage, updateInquiry } = useOrders();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanInput, setScanInput] = useState("");
-  const [scanPopup, setScanPopup] = useState<CompletedJO | null>(null);
+  const [scanPopup, setScanPopup] = useState<DispatchRow | null>(null);
   const [waybillNo, setWaybillNo] = useState("");
-  const [log, setLog] = useState<WaybillLog[]>(seedLog);
   const [confirmDispatch, setConfirmDispatch] = useState(false);
   const [logQuery, setLogQuery] = useState("");
   const [logFrom, setLogFrom] = useState("");
@@ -86,37 +89,89 @@ export function WaybillScanner() {
   const [logStatusFilter, setLogStatusFilter] = useState<"all" | "Delivered" | "Dispatched">("all");
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
-  const selected = completed.find((c) => c.id === selectedId);
+  /* DERIVED: live ready-for-dispatch JOs from production */
+  const readyInquiries = useMemo(() => inquiriesByStage(["ready_for_dispatch"]), [inquiriesByStage]);
+  const ready: DispatchRow[] = useMemo(() => readyInquiries.map(inquiryToDispatchRow), [readyInquiries]);
+
+  /* History rows: any inquiry with a non-empty waybillLog. Older rows fall back to stageHistory entries. */
+  const allInquiriesForHistory = useMemo(
+    () => inquiriesByStage(["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"]),
+    [inquiriesByStage]
+  );
+  const log: LogRow[] = useMemo(() => {
+    const out: LogRow[] = [];
+    for (const inq of allInquiriesForHistory) {
+      const row = inquiryToDispatchRow(inq);
+      const wl = inq.waybillLog ?? [];
+      if (wl.length > 0) {
+        for (let i = 0; i < wl.length; i++) {
+          const e = wl[i];
+          out.push({
+            id: `${inq.id}-wl-${i}`,
+            date: new Date(e.ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+            waybillNo: inq.waybillNumber ?? row.barcode,
+            jo: row.jo,
+            client: row.client,
+            item: row.item,
+            qty: row.qty,
+            method: row.method,
+            status: e.status,
+            note: e.note,
+            processedBy: "P. Tan",
+            matchedJob: row,
+          });
+        }
+      } else if (inq.stageHistory && inq.stageHistory.length > 0 && (inq.stage === "delivered" || inq.stage === "paid" || inq.stage === "dispatched")) {
+        /* Fallback for older orders without a waybillLog */
+        const last = inq.stageHistory[inq.stageHistory.length - 1];
+        out.push({
+          id: `${inq.id}-sh`,
+          date: new Date(last.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          waybillNo: inq.waybillNumber ?? row.barcode,
+          jo: row.jo,
+          client: row.client,
+          item: row.item,
+          qty: row.qty,
+          method: row.method,
+          status: row.status,
+          processedBy: last.completedBy,
+          matchedJob: row,
+        });
+      }
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date));
+  }, [allInquiriesForHistory]);
+
+  const selected = ready.find((c) => c.id === selectedId) ?? null;
 
   const onScanKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     const q = scanInput.trim().toUpperCase();
-    const hit = completed.find((c) => c.barcode === q || c.jo === q || c.po === q);
+    const hit = ready.find((c) => c.barcode === q || c.jo === q || c.po === q);
     if (hit) {
       setSelectedId(hit.id);
       setScanPopup(hit);
     } else {
-      /* check completed JOs from orders store */
-      const inq = completedJOs.find(i => i.joNumber === q || i.poFileName?.includes(q));
-      if (inq) {
-        toast.success(`Matched ${inq.joNumber}`, { description: `${inq.clientName} · ${inq.products[0]?.type}` });
-      } else {
-        toast.error("No matching JO/PO/barcode — check the waybill number and try again");
-      }
+      toast.error("No matching JO/PO/barcode — check the waybill number and try again");
     }
     setScanInput("");
   };
 
   const markDispatched = () => {
     if (!selected) return;
-    const wl: WaybillLog = {
-      id: `wl-${Date.now()}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      waybillNo: waybillNo || selected.barcode, jo: selected.jo, client: selected.client, item: selected.item,
-      qty: selected.qty, method: selected.method, status: "Dispatched", processedBy: "P. Tan",
-    };
-    setLog((prev) => [wl, ...prev]);
+    const inqId = selected.id;
+    const ts = new Date().toISOString();
+    const wb = waybillNo || selected.barcode;
+    const inq = readyInquiries.find((i) => i.id === inqId);
+    const prevLog = inq?.waybillLog ?? [];
+    updateInquiry(inqId, {
+      stage: "dispatched",
+      waybillNumber: wb,
+      dispatchedAt: ts,
+      waybillLog: [...prevLog, { ts, status: "Dispatched", note: wb }],
+    });
     setSelectedId(null); setWaybillNo(""); setConfirmDispatch(false);
-    toast.success(`${selected.jo} dispatched`, { description: `Logistics → In Transit · Waybill ${wl.waybillNo}` });
+    toast.success(`${selected.jo} dispatched`, { description: `Logistics → In Transit · Waybill ${wb}` });
   };
 
   return (
@@ -136,54 +191,7 @@ export function WaybillScanner() {
       </header>
 
       <div className="px-8 py-8 flex flex-col gap-8">
-        {/* Dispatch Labels — for finished production items ready to pack & ship */}
-        <section>
-          <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
-            <div>
-              <h2 className="font-syne" style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>📦 Dispatch Labels — Ready for Packing</h2>
-              <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Print or reprint dispatch labels for finished production items before they ship.</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <table className="w-full">
-              <thead style={{ backgroundColor: "#F4F6F9" }}>
-                <tr>
-                  {["JO No.", "Client", "Item", "Qty", "Method", "Status", "Action"].map((h) => (
-                    <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {completed.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No items ready for dispatch.</td></tr>
-                ) : completed.map((c) => (
-                  <tr key={c.id} className="border-t border-slate-200/70 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{c.jo}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{c.client}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.item}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.qty} pcs</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.method}</td>
-                    <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>Ready for Dispatch</span></td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => { window.print(); toast.success(`Reprinting dispatch label for ${c.jo}`); }}
-                        className="font-dm flex items-center gap-1 px-3 py-1.5 rounded-md border-2 hover:bg-slate-50"
-                        style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 11, fontWeight: 700 }}
-                      >
-                        <Printer size={11} /> Print Dispatch Label
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="px-4 py-2.5 font-dm border-t border-slate-200" style={{ fontSize: 11, color: "#94A3B8", fontStyle: "italic", backgroundColor: "#F8FAFC" }}>
-              💡 Forgot to print on the production floor? You can re-print the dispatch label here.
-            </div>
-          </div>
-        </section>
-
-        {/* Scanner */}
+        {/* TOP: Scanner input + manual dropdown */}
         <section className="flex flex-col gap-4">
           <div className="bg-white rounded-xl overflow-hidden" style={{ border: "2px solid #1A2B4A" }}>
             <div className="px-5 py-3 flex items-center gap-3" style={{ backgroundColor: "#1A2B4A" }}>
@@ -226,15 +234,62 @@ export function WaybillScanner() {
               style={{ fontSize: 13, color: "#0F172A", minWidth: 360 }}
             >
               <option value="">— Choose JO —</option>
-              {completed.map((c) => (
+              {ready.map((c) => (
                 <option key={c.id} value={c.id}>{c.jo} · {c.client} · {c.item} · {c.qty} pcs</option>
               ))}
             </select>
           </div>
         </section>
 
-        {/* Lookup details panel */}
-        {selected ? (
+        {/* BELOW: Dispatch Labels — Ready for Dispatch JOs from production */}
+        <section>
+          <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
+            <div>
+              <h2 className="font-syne" style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>📦 Dispatch Labels — Ready for Packing</h2>
+              <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Print or reprint dispatch labels for finished production items before they ship.</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <table className="w-full">
+              <thead style={{ backgroundColor: "#F4F6F9" }}>
+                <tr>
+                  {["JO No.", "Client", "Item", "Qty", "Method", "Status", "Action"].map((h) => (
+                    <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ready.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No items ready for dispatch.</td></tr>
+                ) : ready.map((c) => (
+                  <tr key={c.id} className="border-t border-slate-200/70 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{c.jo}</td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{c.client}</td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.item}</td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.qty} pcs</td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.method}</td>
+                    <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>Ready for Dispatch</span></td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => { window.print(); toast.success(`Reprinting dispatch label for ${c.jo}`); }}
+                        className="font-dm flex items-center gap-1 px-3 py-1.5 rounded-md border-2 hover:bg-slate-50"
+                        style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 11, fontWeight: 700 }}
+                      >
+                        <Printer size={11} /> Print Dispatch Label
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-2.5 font-dm border-t border-slate-200" style={{ fontSize: 11, color: "#94A3B8", fontStyle: "italic", backgroundColor: "#F8FAFC" }}>
+              💡 Forgot to print on the production floor? You can re-print the dispatch label here.
+            </div>
+          </div>
+        </section>
+
+        {/* Lookup details panel — only shown when a row is selected */}
+        {selected && (
           <section className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
             <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: "#1A2B4A" }}>
               <div>
@@ -242,12 +297,11 @@ export function WaybillScanner() {
                 <div className="font-dm text-white/70" style={{ fontSize: 12 }}>{selected.client} · {selected.contact}</div>
               </div>
               <span className="font-dm px-3 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>
-                {selected.status ?? "Ready for Dispatch"}
+                {selected.status}
               </span>
             </div>
 
             <div className="grid gap-6 p-6" style={{ gridTemplateColumns: "3fr 2fr" }}>
-              {/* Specs + sketch */}
               <div className="flex flex-col gap-5">
                 <div className="grid grid-cols-2 gap-3">
                   {[
@@ -265,27 +319,20 @@ export function WaybillScanner() {
                   ))}
                 </div>
 
-                <div>
-                  <div className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Technical Specifications</div>
-                  <div className="rounded-lg p-3 grid grid-cols-3 gap-2" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                    {selected.specs && Object.entries(selected.specs).filter(([, v]) => v).map(([k, v]) => (
-                      <div key={k} className="font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>
-                        <span style={{ color: "#94A3B8", textTransform: "uppercase" }}>{k}: </span>
-                        <span style={{ color: "#0F172A", fontWeight: 600 }}>{v}</span>
-                      </div>
-                    ))}
+                {selected.specs && (
+                  <div>
+                    <div className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Technical Specifications</div>
+                    <div className="rounded-lg p-3 grid grid-cols-3 gap-2" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                      {Object.entries(selected.specs).filter(([, v]) => v).map(([k, v]) => (
+                        <div key={k} className="font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>
+                          <span style={{ color: "#94A3B8", textTransform: "uppercase" }}>{k}: </span>
+                          <span style={{ color: "#0F172A", fontWeight: 600 }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div>
-                  <div className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Client Address</div>
-                  <div className="rounded-lg p-3 font-dm" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 13, color: "#0F172A" }}>
-                    {selected.clientAddress}
-                    <div style={{ color: "#64748B", fontSize: 12, marginTop: 4 }}>📞 {selected.clientPhone}</div>
-                  </div>
-                </div>
-
-                {/* Waybill input */}
                 <div>
                   <label className="font-dm block mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Waybill Number (editable)</label>
                   <input
@@ -298,7 +345,6 @@ export function WaybillScanner() {
                 </div>
               </div>
 
-              {/* Sketch + actions */}
               <div className="flex flex-col gap-3">
                 {selected.sketch && (
                   <div className="rounded-lg p-4" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
@@ -309,9 +355,6 @@ export function WaybillScanner() {
                       <button onClick={() => toast.info(`Opening: ${selected.sketch}`)} className="font-dm flex items-center gap-1 px-3 py-1.5 mt-2 rounded-md hover:bg-blue-100" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A", border: "1px solid #BFDBFE" }}>
                         <Eye size={11} /> View Drawing
                       </button>
-                    </div>
-                    <div className="font-dm mt-2" style={{ fontSize: 11, color: "#1E40AF", textAlign: "center" }}>
-                      Verify the physical item matches this drawing before dispatch
                     </div>
                   </div>
                 )}
@@ -343,13 +386,9 @@ export function WaybillScanner() {
               </div>
             </div>
           </section>
-        ) : (
-          <div className="bg-white rounded-xl border border-dashed border-slate-300 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-            Scan a barcode or pick a Job Order above to view dispatch details, sketch, and waybill controls.
-          </div>
         )}
 
-        {/* History log */}
+        {/* BELOW: Waybill History Log */}
         <section>
           <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
             <div className="px-5 py-4 border-b border-slate-200/70 flex items-center justify-between gap-3 flex-wrap">
@@ -386,7 +425,7 @@ export function WaybillScanner() {
             <table className="w-full">
               <thead style={{ backgroundColor: "#F4F6F9" }}>
                 <tr>
-                  {["", "Date", "Waybill No.", "JO", "Client", "Item", "Qty", "Method", "Status", "Processed By"].map((h, i) => (
+                  {["", "Date", "Waybill No.", "JO", "Client", "Item", "Qty", "Method", "Status", "Note"].map((h, i) => (
                     <th key={i} className="font-dm text-left px-4 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
@@ -397,7 +436,6 @@ export function WaybillScanner() {
                     const q = logQuery.toLowerCase();
                     const searchOk = !q || r.waybillNo.toLowerCase().includes(q) || r.jo.toLowerCase().includes(q) || r.client.toLowerCase().includes(q);
                     const statusOk = logStatusFilter === "all" || r.status === logStatusFilter;
-                    /* No strict date parsing — match by raw string includes */
                     return searchOk && statusOk;
                   });
                   if (filtered.length === 0) {
@@ -405,7 +443,9 @@ export function WaybillScanner() {
                   }
                   return filtered.map((r) => {
                     const isExpanded = expandedLogId === r.id;
-                    const matchedJob = completed.find(c => c.jo === r.jo);
+                    const matchedJob = r.matchedJob;
+                    const statusBg = r.status === "Delivered" ? "#DCFCE7" : r.status === "Dispatched" ? "#DBEAFE" : "#E2E8F0";
+                    const statusFg = r.status === "Delivered" ? "#15803D" : r.status === "Dispatched" ? "#1D4ED8" : "#475569";
                     return (
                       <Fragment key={r.id}>
                         <tr className="border-t border-slate-200/70 hover:bg-slate-50 cursor-pointer" onClick={() => setExpandedLogId(isExpanded ? null : r.id)}>
@@ -417,8 +457,8 @@ export function WaybillScanner() {
                           <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
                           <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.qty}</td>
                           <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.method}</td>
-                          <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: r.status === "Delivered" ? "#DCFCE7" : "#DBEAFE", color: r.status === "Delivered" ? "#15803D" : "#1D4ED8" }}>{r.status}</span></td>
-                          <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.processedBy}</td>
+                          <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: statusBg, color: statusFg }}>{r.status}</span></td>
+                          <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, color: "#64748B" }}>{r.note ?? "—"}</td>
                         </tr>
                         {isExpanded && (
                           <tr style={{ backgroundColor: "#F8FAFC" }}>
@@ -434,8 +474,6 @@ export function WaybillScanner() {
                                         ["PO", matchedJob.po],
                                         ["SI", matchedJob.si],
                                         ["Contact", matchedJob.contact],
-                                        ["Phone", matchedJob.clientPhone],
-                                        ["Address", matchedJob.clientAddress],
                                       ].map(([k, v]) => (
                                         <div key={k}>
                                           <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: 0.4, textTransform: "uppercase" }}>{k}</div>
@@ -513,7 +551,7 @@ export function WaybillScanner() {
                 {[
                   ["Job Order", scanPopup.jo], ["PO", scanPopup.po], ["Client", scanPopup.client],
                   ["Contact", scanPopup.contact], ["Item", scanPopup.item], ["Qty", `${scanPopup.qty} pcs`],
-                  ["Method", scanPopup.method], ["Address", scanPopup.clientAddress],
+                  ["Method", scanPopup.method],
                 ].map(([lbl, val]) => (
                   <div key={lbl}>
                     <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>{lbl}</div>

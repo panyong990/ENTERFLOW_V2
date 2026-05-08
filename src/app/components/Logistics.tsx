@@ -1,7 +1,7 @@
-import { Fragment, useMemo, useState } from "react";
-import { Search, Download, FileText, ChevronDown, ChevronUp, Camera, X, ArrowLeft, History } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, Download, ChevronRight, Camera, X, History, CheckCircle2 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders } from "../store/orders";
+import { useOrders, type Inquiry } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 
@@ -13,7 +13,7 @@ const statusStyle: Record<Status, { bg: string; fg: string; label: string }> = {
 };
 
 interface Row {
-  id: string;
+  id: string;          // inquiry id (single source of truth)
   date: string;
   po: string;
   si: string;
@@ -23,21 +23,55 @@ interface Row {
   qty: number;
   amount: number;
   status: Status;
+  statusBg: string;
+  statusFg: string;
+  statusLabel: string;
   delivery?: string;
+  trackingRef?: string;
+  drFileName?: string;
+  inq: Inquiry;
 }
 
-const initial: Row[] = [
-  { id: "r1", date: "2026-03-31", po: "PO-2026-9901", si: "SI-2026-9901", dr: "DR-2026-0901", customer: "B.E. Aerospace", item: "Air Filter 115×103×500mm", qty: 50, amount: 78000, status: "delivered" },
-  { id: "r2", date: "2026-03-31", po: "PO-2026-9531", si: "SI-2026-9531", dr: "DR-2026-9531", customer: "Maynilad", item: "Pleated Filter ZS20", qty: 100, amount: 50040, status: "delivered" },
-  { id: "r3", date: "2026-03-30", po: "PO-2026-9533", si: "SI-2026-9533", dr: "DR-2026-9533", customer: "Maynilad", item: "Pleated Filter 5-Micron", qty: 100, amount: 46800, status: "delivered" },
-  { id: "r4", date: "2026-02-28", po: "PO-2026-9805", si: "SI-2026-9805", dr: "DR-2026-9805", customer: "B.E. Aerospace", item: "Oil Separator Filter", qty: 20, amount: 45000, status: "delivered" },
-  { id: "r5", date: "2026-04-10", po: "PO-2026-0418", si: "SI-2026-0418", dr: "—", customer: "B.E. Aerospace", item: "Air Filter KF-OS.107", qty: 30, amount: 46800, status: "pending" },
-  { id: "r6", date: "2026-04-12", po: "PO-2026-0421", si: "SI-2026-0421", dr: "—", customer: "G.U. Engineering", item: "Oil Separator Filter", qty: 30, amount: 67500, status: "pending" },
-];
+/* Derive a Logistics row from an Inquiry. Pending = ready_for_dispatch. Delivered = delivered/paid. */
+function inquiryToRow(inq: Inquiry): Row {
+  const isPending = inq.stage === "ready_for_dispatch";
+  const status: Status = isPending ? "pending" : "delivered";
+  const s = statusStyle[status];
+  return {
+    id: inq.id,
+    date: isPending ? inq.submittedDate : (inq.deliveredDate ?? inq.submittedDate),
+    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
+    si: inq.invoiceNo ?? "—",
+    dr: inq.drFileName ? `DR-${inq.code.replace("INQ-", "")}` : "—",
+    customer: inq.clientName,
+    item: inq.products[0]?.type ?? "—",
+    qty: inq.products.reduce((s, p) => s + p.qty, 0),
+    amount: inq.invoiceAmount ?? inq.quotedTotal ?? 0,
+    status,
+    statusBg: s.bg,
+    statusFg: s.fg,
+    statusLabel: s.label,
+    delivery: inq.deliveryMethod,
+    trackingRef: inq.trackingRef,
+    drFileName: inq.drFileName,
+    inq,
+  };
+}
 
-function DeliveryPicker({ rowId }: { rowId: string }) {
-  const [method, setMethod] = useState("Lalamove");
-  const [link, setLink] = useState("");
+/* Delivery method picker. Reports method + tracking link back to the parent. */
+function DeliveryPicker({
+  rowId,
+  initialMethod,
+  initialLink,
+  onChange,
+}: {
+  rowId: string;
+  initialMethod?: string;
+  initialLink?: string;
+  onChange?: (method: string, link: string) => void;
+}) {
+  const [method, setMethod] = useState(initialMethod ?? "Lalamove");
+  const [link, setLink] = useState(initialLink ?? "");
   const methods = [
     { id: "Lalamove",        help: "Local · urgent" },
     { id: "AP Cargo",        help: "Cagayan / Isabela / N. provinces" },
@@ -45,11 +79,15 @@ function DeliveryPicker({ rowId }: { rowId: string }) {
     { id: "Company Vehicle", help: "Batangas / Laguna / nearby" },
     { id: "Client Pick-up",  help: "Customer collects" },
   ];
+
+  const setM = (m: string) => { setMethod(m); onChange?.(m, link); };
+  const setL = (l: string) => { setLink(l); onChange?.(method, l); };
+
   return (
     <div className="flex flex-col gap-2">
       {methods.map((opt) => (
         <label key={opt.id} className="flex items-center gap-2 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-          <input type="radio" name={`delivery-${rowId}`} checked={method === opt.id} onChange={() => setMethod(opt.id)} style={{ accentColor: "#C8102E" }} />
+          <input type="radio" name={`delivery-${rowId}`} checked={method === opt.id} onChange={() => setM(opt.id)} style={{ accentColor: "#C8102E" }} />
           <span style={{ fontWeight: 600 }}>{opt.id}</span>
           <span style={{ color: "#94A3B8", fontSize: 11 }}>· {opt.help}</span>
         </label>
@@ -57,20 +95,20 @@ function DeliveryPicker({ rowId }: { rowId: string }) {
       {method === "Lalamove" && (
         <div className="mt-1 rounded-md p-3" style={{ backgroundColor: "#F5F3FF", border: "1px solid #DDD6FE" }}>
           <label className="font-dm flex items-center gap-1 mb-1.5" style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", letterSpacing: 0.4, textTransform: "uppercase" }}>🚚 Lalamove Tracking Link</label>
-          <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://share.lalamove.com/..." className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-purple-400 bg-white" style={{ fontSize: 12 }} />
+          <input value={link} onChange={(e) => setL(e.target.value)} placeholder="https://share.lalamove.com/..." className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-purple-400 bg-white" style={{ fontSize: 12 }} />
           <p className="font-dm mt-1.5" style={{ fontSize: 11, color: "#7C3AED" }}>Paste the share link so the client can track in real time.</p>
         </div>
       )}
       {(method === "AP Cargo" || method === "Fast Cargo") && (
         <div className="mt-1 rounded-md p-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
           <label className="font-dm flex items-center gap-1 mb-1.5" style={{ fontSize: 11, fontWeight: 700, color: "#92400E", letterSpacing: 0.4, textTransform: "uppercase" }}>📦 {method} Waybill Number</label>
-          <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="e.g. APC-2026-04823" className="w-full font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-amber-500 bg-white" style={{ fontSize: 12 }} />
+          <input value={link} onChange={(e) => setL(e.target.value)} placeholder="e.g. APC-2026-04823" className="w-full font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-amber-500 bg-white" style={{ fontSize: 12 }} />
         </div>
       )}
       {method === "Company Vehicle" && (
         <div className="mt-1 rounded-md p-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
           <label className="font-dm flex items-center gap-1 mb-1.5" style={{ fontSize: 11, fontWeight: 700, color: "#1E40AF", letterSpacing: 0.4, textTransform: "uppercase" }}>🚐 Driver / ETA</label>
-          <input placeholder="Driver name · ETA" className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-blue-400 bg-white" style={{ fontSize: 12 }} />
+          <input value={link} onChange={(e) => setL(e.target.value)} placeholder="Driver name · ETA" className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-blue-400 bg-white" style={{ fontSize: 12 }} />
         </div>
       )}
       {method === "Client Pick-up" && (
@@ -83,8 +121,116 @@ function DeliveryPicker({ rowId }: { rowId: string }) {
   );
 }
 
+/* Full-screen detail modal — replaces the in-row expansion. */
+function DeliveryDetailModal({
+  row,
+  onClose,
+  onSetStatus,
+  onMethodChange,
+}: {
+  row: Row;
+  onClose: () => void;
+  onSetStatus: (id: string, status: Status, drFileName?: string) => void;
+  onMethodChange: (method: string, link: string) => void;
+}) {
+  const [methodDraft, setMethodDraft] = useState({ method: row.delivery ?? "Lalamove", link: row.trackingRef ?? "" });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center" style={{ backgroundColor: "rgba(15,23,42,0.6)" }}>
+      <div className="bg-white w-full h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
+        <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-center justify-between">
+          <div>
+            <button onClick={onClose} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
+              ← Back to Logistics
+            </button>
+            <h1 className="font-syne" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+              Delivery Detail — {row.po}
+            </h1>
+            <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
+              {row.customer} · {row.item} · {row.qty} pcs · ₱{row.amount.toLocaleString("en-PH")}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: row.statusBg, color: row.statusFg }}>
+              {row.statusLabel}
+            </span>
+            <button onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-md border border-slate-200 hover:bg-slate-100 flex items-center justify-center">
+              <X size={16} />
+            </button>
+          </div>
+        </header>
+
+        <div className="px-8 py-8 grid gap-6" style={{ gridTemplateColumns: "1.2fr 1fr 1fr" }}>
+          {/* Delivery method + tracking */}
+          <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Delivery Method</div>
+            <DeliveryPicker
+              rowId={row.id}
+              initialMethod={methodDraft.method}
+              initialLink={methodDraft.link}
+              onChange={(method, link) => { setMethodDraft({ method, link }); onMethodChange(method, link); }}
+            />
+            {row.trackingRef && (
+              <div className="mt-4 rounded-md p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Saved Tracking Link</div>
+                <div className="font-mono-jb break-all" style={{ fontSize: 11, color: "#1A2B4A" }}>{row.trackingRef}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Signed DR */}
+          <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <div className="font-dm mb-3 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>
+              Signed DR Photo {row.status === "pending" && <span className="font-dm ml-1 px-1.5 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E", letterSpacing: 0.3, textTransform: "none" }}>triggers Delivered</span>}
+            </div>
+            <label
+              className="block w-full h-40 rounded-lg border-2 border-dashed cursor-pointer hover:bg-slate-50 flex flex-col items-center justify-center gap-1 font-dm transition-colors"
+              style={{ borderColor: row.status === "delivered" ? "#16A34A" : "#CBD5E1", color: row.status === "delivered" ? "#16A34A" : "#64748B", fontSize: 12 }}
+            >
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  onSetStatus(row.id, "delivered", f.name);
+                  toast.success(`Signed DR uploaded · ${f.name}`, { description: "Status → Delivered · Payments Ledger ingested" });
+                  e.currentTarget.value = "";
+                }}
+              />
+              {row.status === "delivered" ? (
+                <>
+                  <CheckCircle2 size={22} />
+                  <span style={{ fontWeight: 700 }}>Signed DR on file</span>
+                  <span className="font-dm" style={{ fontSize: 10 }}>{row.drFileName ?? "Click to replace"}</span>
+                </>
+              ) : (
+                <>
+                  <Camera size={22} />
+                  <span>Upload signed DR photo</span>
+                  <span className="font-dm" style={{ fontSize: 10 }}>Marks order as Delivered</span>
+                </>
+              )}
+            </label>
+          </div>
+
+          {/* Notes */}
+          <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Notes</div>
+            <textarea
+              placeholder="Add delivery or payment notes..."
+              className="w-full h-40 rounded-lg border border-slate-300 p-3 outline-none focus:border-slate-400 font-dm resize-none bg-white"
+              style={{ fontSize: 13 }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Logistics() {
-  const [rows, setRows] = useState<Row[]>(initial);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | Status>("all");
   const [query, setQuery] = useState("");
@@ -92,12 +238,15 @@ export function Logistics() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  const { clearedPOs, completedJOs, markDelivered } = useOrders();
+  const { inquiriesByStage, updateInquiry, markDelivered } = useOrders();
   const { push: pushNotif } = useNotifications();
 
-  /* Active = pending and PO not yet cleared by Accounting. History = delivered + paid. */
-  const activeRows = rows.filter((r) => r.status === "pending" && !clearedPOs.includes(r.po));
-  const historyRows = rows.filter((r) => r.status === "delivered" || clearedPOs.includes(r.po));
+  /* DERIVED: rows come from the orders store. Active = ready_for_dispatch. History = delivered, paid, overdue. */
+  const activeInquiries = useMemo(() => inquiriesByStage(["ready_for_dispatch"]), [inquiriesByStage]);
+  const historyInquiries = useMemo(() => inquiriesByStage(["delivered", "paid", "overdue"]), [inquiriesByStage]);
+  const rows = useMemo(() => [...activeInquiries, ...historyInquiries].map(inquiryToRow), [activeInquiries, historyInquiries]);
+  const activeRows = useMemo(() => rows.filter((r) => r.status === "pending"), [rows]);
+  const historyRows = useMemo(() => rows.filter((r) => r.status === "delivered"), [rows]);
 
   const visible = useMemo(
     () => {
@@ -112,39 +261,56 @@ export function Logistics() {
         return statusOk && searchOk && fromOk && toOk;
       });
     },
-    [rows, filter, query, view, dateFrom, dateTo, activeRows, historyRows]
+    [filter, query, view, dateFrom, dateTo, activeRows, historyRows]
   );
 
   const counts = useMemo(() => ({
     billed: rows.reduce((s, r) => s + r.amount, 0),
     pending: activeRows.length,
     delivered: historyRows.length,
-  }), [rows]);
+  }), [rows, activeRows, historyRows]);
 
-  const setStatus = (id: string, status: Status) => {
-    const inv = rows.find(r => r.id === id);
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
-    if (status === "delivered" && inv) {
-      /* Sync to orders store: mark inquiry as delivered, generate invoice */
-      const matchInquiry = completedJOs.find(c => c.poFileName?.includes(inv.po) || c.poFileName === inv.po);
-      if (matchInquiry) {
-        markDelivered(
-          matchInquiry.id,
-          new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          inv.si,
-          inv.amount,
-        );
-      }
+  /* Track per-row method/link drafts so we can persist them on delivery confirmation. */
+  const [methodDrafts, setMethodDrafts] = useState<Record<string, { method: string; link: string }>>({});
+
+  const setStatus = (id: string, status: Status, drFileName?: string) => {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    if (status === "delivered") {
+      const invoiceNo = `SI-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+      const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      markDelivered(id, today, invoiceNo, row.amount);
+      const draft = methodDrafts[id];
+      const trackingRef = draft?.link || row.trackingRef;
+      const deliveryMethod = (draft?.method || row.delivery) as Inquiry["deliveryMethod"];
+      const patch: Partial<Inquiry> = {};
+      if (drFileName) { patch.drFileName = drFileName; patch.drUploadedAt = new Date().toISOString(); }
+      if (trackingRef) patch.trackingRef = trackingRef;
+      if (deliveryMethod) patch.deliveryMethod = deliveryMethod;
+      /* Append a Delivered entry to the waybillLog so Waybill Scanner history reflects the lifecycle. */
+      const ts = new Date().toISOString();
+      patch.waybillLog = [...(row.inq.waybillLog ?? []), { ts, status: "Delivered", note: drFileName ?? invoiceNo }];
+      updateInquiry(id, patch);
       toast.success("Status: Delivered", { description: "Payments Ledger ingested · Terms clock starts now" });
       pushNotif({
         dept: "payments",
-        title: `Delivery confirmed: ${inv.po}`,
-        body: `${inv.customer} · ₱${inv.amount.toLocaleString("en-PH")} · invoice ${inv.si} · payment terms clock starts now`,
+        title: `Delivery confirmed: ${row.po}`,
+        body: `${row.customer} · ₱${row.amount.toLocaleString("en-PH")} · invoice ${invoiceNo} · payment terms clock starts now`,
         link: "accounting",
         recipients: ["owner", "operations", "accounting"],
       });
     }
   };
+
+  const onMethodChange = (id: string) => (method: string, link: string) => {
+    setMethodDrafts((prev) => ({ ...prev, [id]: { method, link } }));
+    /* Persist tracking link as it's typed so the client portal sees it live. */
+    const patch: Partial<Inquiry> = { deliveryMethod: method as Inquiry["deliveryMethod"] };
+    if (link) patch.trackingRef = link;
+    updateInquiry(id, patch);
+  };
+
+  const openRow = visible.find((r) => r.id === openId);
 
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
@@ -158,7 +324,7 @@ export function Logistics() {
             </button>
           )}
           <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
-            {view === "active" ? "Logistics" : "Delivered & Paid History"}
+            {view === "active" ? "Logistics" : "Delivered History"}
           </h1>
           <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
             {view === "active"
@@ -173,7 +339,7 @@ export function Logistics() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white font-dm hover:bg-slate-50"
               style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}
             >
-              <History size={14} /> View Delivered & Paid History →
+              <History size={14} /> Delivered History →
             </button>
           )}
           <NotificationBell />
@@ -181,7 +347,7 @@ export function Logistics() {
       </header>
 
       <div className="px-8 py-8 flex flex-col gap-6">
-        {/* Summary pills (no Delivered filter — that's in History) */}
+        {/* Summary pill — only "All" remains; Pending tab dropped per spec. */}
         {view === "active" && (
           <div className="flex items-center gap-2 border-b border-slate-200">
             <button
@@ -194,19 +360,7 @@ export function Logistics() {
                 marginBottom: -1,
               }}
             >
-              S · TOTAL BILLED — ₱{counts.billed.toLocaleString("en-PH")}
-            </button>
-            <button
-              onClick={() => setFilter("pending")}
-              className="font-dm px-4 py-2.5 transition-colors flex items-center gap-2"
-              style={{
-                fontSize: 12, fontWeight: 700, letterSpacing: 0.5,
-                borderBottom: filter === "pending" ? "3px solid #D97706" : "3px solid transparent",
-                color: filter === "pending" ? "#D97706" : "#64748B",
-                marginBottom: -1,
-              }}
-            >
-              PENDING <span className="font-syne px-2 py-0.5 rounded-full text-white" style={{ fontSize: 10, backgroundColor: "#D97706" }}>{counts.pending}</span>
+              ALL · TOTAL BILLED — ₱{counts.billed.toLocaleString("en-PH")}
             </button>
           </div>
         )}
@@ -260,7 +414,7 @@ export function Logistics() {
           </div>
         )}
 
-        {/* Table */}
+        {/* Flat summary table — clicking a row opens the full-screen detail modal. */}
         <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
           <table className="w-full">
             <thead style={{ backgroundColor: "#F4F6F9" }}>
@@ -273,103 +427,52 @@ export function Logistics() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((r) => {
-                const isOpen = openId === r.id;
-                const s = statusStyle[r.status];
-                return (
-                  <Fragment key={r.id}>
-                    <tr className="border-t border-slate-200/70 hover:bg-slate-50">
-                      <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
-                      <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.po}</td>
-                      <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.si}</td>
-                      <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.dr}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.customer}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.qty}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{r.amount.toLocaleString("en-PH")}</td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={r.status}
-                          onChange={(e) => setStatus(r.id, e.target.value as Status)}
-                          className="font-dm rounded-full px-3 py-1 outline-none cursor-pointer"
-                          style={{ fontSize: 11, fontWeight: 600, backgroundColor: s.bg, color: s.fg, border: "none" }}
-                        >
-                          <option value="pending">Pending Delivery</option>
-                          <option value="delivered">Delivered</option>
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setOpenId(isOpen ? null : r.id)}
-                          aria-label={isOpen ? "Collapse row" : "Expand row"}
-                          className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center"
-                        >
-                          {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr style={{ backgroundColor: "#FAFBFC" }}>
-                        <td colSpan={10} className="px-6 py-5">
-                          <div className="grid gap-6" style={{ gridTemplateColumns: "1.2fr 1fr 1fr" }}>
-                            <div>
-                              <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Delivery Method</div>
-                              <DeliveryPicker rowId={r.id} />
-                            </div>
-                            <div>
-                              <div className="font-dm mb-2 flex items-center gap-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>
-                                Signed DR Photo {r.status === "pending" && <span className="font-dm ml-1 px-1.5 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E", letterSpacing: 0.3, textTransform: "none" }}>triggers Delivered</span>}
-                              </div>
-                              <label className="block w-full h-32 rounded-lg border-2 border-dashed cursor-pointer hover:bg-white flex flex-col items-center justify-center gap-1 font-dm transition-colors"
-                                style={{ borderColor: r.status === "delivered" ? "#16A34A" : "#CBD5E1", color: r.status === "delivered" ? "#16A34A" : "#64748B", fontSize: 12 }}>
-                                <input
-                                  type="file"
-                                  accept="image/*,.pdf"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const f = e.target.files?.[0];
-                                    if (!f) return;
-                                    /* Upload triggers Delivered */
-                                    setStatus(r.id, "delivered");
-                                    toast.success(`Signed DR uploaded · ${f.name}`, { description: "Status → Delivered · Payments Ledger ingested" });
-                                    e.currentTarget.value = "";
-                                  }}
-                                />
-                                {r.status === "delivered" ? (
-                                  <>
-                                    <CheckCircle2 size={20} />
-                                    <span style={{ fontWeight: 700 }}>Signed DR on file</span>
-                                    <span className="font-dm" style={{ fontSize: 10 }}>Click to replace</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Camera size={20} />
-                                    <span>Upload signed DR photo</span>
-                                    <span className="font-dm" style={{ fontSize: 10 }}>Marks order as Delivered</span>
-                                  </>
-                                )}
-                              </label>
-                            </div>
-                            <div>
-                              <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Notes</div>
-                              <textarea
-                                placeholder="Add delivery or payment notes..."
-                                className="w-full h-24 rounded-lg border border-slate-300 p-3 outline-none focus:border-slate-400 font-dm resize-none bg-white"
-                                style={{ fontSize: 13 }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
+              {visible.map((r) => (
+                <tr
+                  key={r.id}
+                  className="border-t border-slate-200/70 hover:bg-slate-50 cursor-pointer"
+                  onClick={() => setOpenId(r.id)}
+                >
+                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
+                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.po}</td>
+                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.si}</td>
+                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.dr}</td>
+                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.customer}</td>
+                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
+                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.qty}</td>
+                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: r.statusBg, color: r.statusFg }}>
+                      {r.statusLabel}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      aria-label="Open delivery detail"
+                      className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center"
+                      onClick={(e) => { e.stopPropagation(); setOpenId(r.id); }}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {visible.length === 0 && (
+                <tr><td colSpan={10} className="px-4 py-8 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No deliveries match your filters.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
+      {openRow && (
+        <DeliveryDetailModal
+          row={openRow}
+          onClose={() => setOpenId(null)}
+          onSetStatus={setStatus}
+          onMethodChange={onMethodChange(openRow.id)}
+        />
+      )}
     </div>
   );
 }

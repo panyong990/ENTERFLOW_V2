@@ -147,10 +147,24 @@ const txStyle: Record<string, { bg: string; fg: string }> = {
 };
 
 export function Clients() {
-  const [clients, setClients] = useState<Client[]>(CLIENTS_DATA);
+  const { byClient } = useOrders();
+  const [rawClients, setClients] = useState<Client[]>(CLIENTS_DATA);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Client | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+
+  /* DERIVED: override totalOrders + totalRevenue with live values from the orders store. The seed values are used only as a baseline for clients with historical orders that pre-date the store seed. */
+  const clients = rawClients.map((c) => {
+    const inqs = byClient(c.name).filter((i) => !i.archived);
+    const liveOrders = inqs.length;
+    const livePaidRevenue = inqs
+      .filter((i) => i.stage === "paid")
+      .reduce((s, i) => s + (i.invoiceAmount ?? i.quotedTotal ?? 0), 0);
+    /* Use live count when this client has any orders in the store; otherwise keep historical seed */
+    return liveOrders > 0
+      ? { ...c, totalOrders: liveOrders, totalRevenue: livePaidRevenue || c.totalRevenue }
+      : c;
+  });
 
   const visible = clients.filter((c) =>
     c.name.toLowerCase().includes(query.toLowerCase()) ||

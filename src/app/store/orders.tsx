@@ -40,6 +40,7 @@ export type Stage =
   | "in_production"
   | "quality_inspection"
   | "ready_for_dispatch"
+  | "dispatched"
   | "delivered"
   | "paid"
   | "overdue";
@@ -52,6 +53,7 @@ export const stageLabel: Record<Stage, string> = {
   in_production: "In Production",
   quality_inspection: "Quality Inspection",
   ready_for_dispatch: "Ready for Dispatch",
+  dispatched: "Dispatched",
   delivered: "Delivered",
   paid: "Paid",
   overdue: "Overdue",
@@ -65,6 +67,7 @@ export const stageColor: Record<Stage, { bg: string; fg: string }> = {
   in_production:     { bg: "#DBEAFE", fg: "#1D4ED8" },
   quality_inspection:{ bg: "#EDE9FE", fg: "#6D28D9" },
   ready_for_dispatch:{ bg: "#FFE4E6", fg: "#9F1239" },
+  dispatched:        { bg: "#FDE68A", fg: "#92400E" },
   delivered:         { bg: "#CCFBF1", fg: "#0F766E" },
   paid:              { bg: "#DCFCE7", fg: "#166534" },
   overdue:           { bg: "#FEE2E2", fg: "#C8102E" },
@@ -72,8 +75,21 @@ export const stageColor: Record<Stage, { bg: string; fg: string }> = {
 
 export interface ProductLine {
   id: string;
+  /* Filter type code from FILTER_TYPES (e.g. "OILSEP"). Legacy seeds may have human strings. */
   type: string;
-  od1?: string; od2?: string; id1?: string; id2?: string; height?: string;
+  /* Human-readable name entered by the client/staff (e.g. "Air/Oil Separator Filter"). Required for new orders. */
+  filterName?: string;
+  /* Cylindrical group dimensions (also used by legacy seeds) */
+  od1?: string; od2?: string; id1?: string; id2?: string; height?: string; overallHeight?: string;
+  /* Flat-panel / pocket-bag / HEPA dimensions */
+  length?: string; width?: string; thickness?: string; depth?: string; pocketCount?: string;
+  /* Bag / dust collector dimensions */
+  diameter?: string;
+  clothCuttingWidth?: string; clothCuttingLength?: string;
+  springPlateCenterToCenter?: string; springPlateWidth?: string; springPlateLength?: string;
+  /* Pad / disc dimensions (padOd / padId — avoid colliding with the row id field) */
+  padOd?: string; padId?: string;
+  /* Common spec fields */
   media?: string; innerCore?: string; outerCore?: string;
   oring?: string; gasket?: string; oem?: string;
   qty: number;
@@ -107,6 +123,29 @@ export interface ClientReceipt {
   amount: number;
   note?: string;
 }
+
+/* Production stage history entry */
+export interface StageEntry {
+  stage: number;            // 0-9 (10 stages, see PRODUCTION_STAGES below)
+  completedAt: string;      // ISO timestamp
+  completedBy: string;
+  reason?: string;          // for reverts
+  status: "done" | "reverted";
+}
+
+/* The 10 production stages — single source of truth */
+export const PRODUCTION_STAGES = [
+  "Molding",
+  "Cutting of Steel Plate",
+  "Spotting of Filter Core",
+  "Assembling",
+  "Inserting of Filter Media",
+  "Trimming",
+  "Top/Bottom Cap Sealing (Heating)",
+  "Gasket / O-Ring Fitting",
+  "Quality / Product Inspection",
+  "Completed",
+] as const;
 
 export interface Inquiry {
   id: string;
@@ -155,6 +194,29 @@ export interface Inquiry {
   quotationDoc?: QuotationDoc;
   /* — flag set when materials have been deducted (avoid double-deducting on stage replays) — */
   inventoryDeducted?: boolean;
+  /* — production tracking — */
+  currentStage?: number;             // 0-9 index into PRODUCTION_STAGES
+  stageHistory?: StageEntry[];
+  paused?: boolean;
+  pauseReason?: string;
+  /* — payment tracking — */
+  amountPaid?: number;
+  paidAt?: string;
+  /* — logistics — */
+  deliveryMethod?: "Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up";
+  trackingRef?: string;
+  drFileName?: string;
+  drUploadedAt?: string;
+  /* — quotation revision flow (client requests, sales reviews, version history) — */
+  revisionNote?: string;
+  quotationHistory?: QuotationDoc[];
+  /* — urgent upgrade two-way comm — */
+  urgentUpgradeRequested?: boolean;
+  urgentUpgradeResponse?: string;
+  /* — waybill / dispatch (used by WaybillScanner) — */
+  waybillNumber?: string;
+  waybillLog?: { ts: string; status: string; note?: string }[];
+  dispatchedAt?: string;
 }
 
 export interface FinalizeJOData {
@@ -215,11 +277,11 @@ const seed: Inquiry[] = [
       { id: "p1", type: "Column Filter", height: "350", media: "Microglass Fiber", innerCore: "Perfo Steel 1.5mm", qty: 20 },
     ],
   },
-  /* — already-generated JO (seed for demo) — */
+  /* — already-generated JO (seed for demo, currently in production at stage 8) — */
   {
     id: "i0", code: "INQ-001", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
-    paymentTerms: "30-Day Terms", submittedDate: "Mar 28, 2026", stage: "jo",
-    poFileName: "PO-2026-9901.pdf", urgent: false,
+    paymentTerms: "30-Day Terms", submittedDate: "Mar 28, 2026", stage: "in_production",
+    poFileName: "PO-2026-9901.pdf", urgent: true, dueDate: "Apr 30, 2026",
     products: [
       { id: "p1", type: "Air Filter", od1: "115", od2: "103", id1: "64.6", height: "500", media: "Microglass Fiber", innerCore: "Expanded Metal Perfo 2mm", oem: "KF-OS.107.65.252", qty: 50 },
     ],
@@ -229,6 +291,55 @@ const seed: Inquiry[] = [
     joSketch: "KF-OS.107.65.252_drawing.pdf",
     signedQuotationFile: "QT-2026-9901-signed.pdf",
     dpReceiptFile: "DP-receipt-BE-Mar2026.jpg",
+    currentStage: 8,
+    stageHistory: Array.from({ length: 8 }, (_, i) => ({
+      stage: i, completedAt: new Date(Date.now() - (8 - i) * 24 * 60 * 60 * 1000).toISOString(),
+      completedBy: ["F. Santos", "J. Reyes", "M. Tan", "J. Reyes", "M. Tan", "M. Tan", "J. Reyes", "F. Santos"][i],
+      status: "done" as const,
+    })),
+    inventoryDeducted: true,
+    invoiceAmount: 78000,
+  },
+  /* — Maynilad — ready for dispatch, demo for Logistics — */
+  {
+    id: "i6", code: "INQ-002", clientName: "Maynilad", contactPerson: "J. Domingo",
+    paymentTerms: "30-Day Terms", submittedDate: "Mar 25, 2026", stage: "ready_for_dispatch",
+    poFileName: "PO-2026-9531.pdf", urgent: false, dueDate: "Apr 30, 2026",
+    products: [
+      { id: "p1", type: "Pleated Filter ZS20", od1: "175", id1: "20", height: "87", media: "Pleated ZS20 w/ Double Alum Screen", oem: "KF-OF.175.20.87", qty: 100 },
+    ],
+    quotation: { sentDate: "Mar 26, 2026", leadTimeDays: 18, lines: [{ productId: "p1", materialCost: 320, labor: 180, markupPct: 35 }] },
+    joNumber: "JO-2026-002",
+    joSpecs: { od1: "175", id1: "20", height: "87", media: "Pleated ZS20 w/ Double Alum Screen", oem: "KF-OF.175.20.87" },
+    joSketch: "KF-OF.175.20.87_drawing.pdf",
+    currentStage: 9,
+    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (10 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    inventoryDeducted: true,
+    invoiceAmount: 50040,
+    deliveryMethod: "Lalamove",
+  },
+  /* — Maynilad delivered — pending payment, demo for Payments Ledger — */
+  {
+    id: "i7", code: "INQ-003", clientName: "Maynilad", contactPerson: "J. Domingo",
+    paymentTerms: "30-Day Terms", submittedDate: "Mar 18, 2026", stage: "delivered",
+    poFileName: "PO-2026-9533.pdf",
+    products: [
+      { id: "p1", type: "Pleated Filter 5-Micron", od1: "175", id1: "20", height: "87", media: "Pleated 5-Micron", oem: "KF-OF.175.20.87-5M", qty: 100 },
+    ],
+    quotation: { sentDate: "Mar 19, 2026", leadTimeDays: 14, lines: [{ productId: "p1", materialCost: 280, labor: 160, markupPct: 35 }] },
+    joNumber: "JO-2026-003",
+    joSpecs: { od1: "175", id1: "20", height: "87", media: "Pleated 5-Micron", oem: "KF-OF.175.20.87-5M" },
+    currentStage: 9,
+    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (15 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    inventoryDeducted: true,
+    deliveredDate: "Mar 30, 2026",
+    invoiceNo: "SI-2026-9533",
+    invoiceAmount: 46800,
+    invoiceDueDate: "Apr 29, 2026",
+    deliveryMethod: "Lalamove",
+    drFileName: "DR-2026-9533-signed.jpg",
+    amountPaid: 23400,
+    confirmedPayments: [{ id: "cp-seed-1", date: "Apr 10, 2026", amount: 23400, method: "BDO Bank Transfer", ref: "BDO-2026-04100" }],
   },
 ];
 
@@ -256,8 +367,15 @@ interface Ctx {
   /* Quotation document */
   setQuotationDoc: (id: string, doc: QuotationDoc) => void;
   generateQuotationNumber: () => string;
+  /* Auto-incrementing PO + JO numbers (PO-YYYY-NNNN / JO-YYYY-NNNN) */
+  generatePONumber: () => string;
+  generateJONumber: () => string;
   addClientReceipt: (inquiryId: string, receipt: Omit<ClientReceipt, "id">) => void;
   markPOCleared: (po: string) => void;
+  /* — Generic update — write any field on an inquiry. The single write-through used by all modules. */
+  updateInquiry: (id: string, patch: Partial<Inquiry>) => void;
+  /* — Filter helper for derived tables in modules — */
+  inquiriesByStage: (stages: Stage[]) => Inquiry[];
   /* — pipeline progress — */
   setStage: (id: string, stage: Stage) => void;
   setUrgent: (id: string, urgent: boolean, dueDate?: string) => void;
@@ -280,7 +398,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   );
   const archivedInquiries = allInquiries.filter((i) => i.archived);
   const completedJOs = allInquiries.filter(
-    (i) => !i.archived && (i.stage === "jo" || i.stage === "in_production" || i.stage === "quality_inspection" || i.stage === "ready_for_dispatch" || i.stage === "delivered" || i.stage === "paid" || i.stage === "overdue")
+    (i) => !i.archived && (i.stage === "jo" || i.stage === "in_production" || i.stage === "quality_inspection" || i.stage === "ready_for_dispatch" || i.stage === "dispatched" || i.stage === "delivered" || i.stage === "paid" || i.stage === "overdue")
   );
 
   const markPOCleared: Ctx["markPOCleared"] = (po) => {
@@ -384,12 +502,47 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     return `Q-${year}-${next}`;
   };
 
+  /* PO-YYYY-NNNN — sequential within year, scans existing poFileName prefixes */
+  const generatePONumber: Ctx["generatePONumber"] = () => {
+    const year = new Date().getFullYear();
+    const used = allInquiries
+      .map((i) => i.poFileName ?? "")
+      .map((n) => {
+        const m = n.match(new RegExp(`PO-${year}-(\\d+)`));
+        return m ? parseInt(m[1], 10) : 0;
+      });
+    const next = ((used.length ? Math.max(...used) : 0) + 1).toString().padStart(4, "0");
+    return `PO-${year}-${next}`;
+  };
+
+  /* JO-YYYY-NNNN — sequential within year */
+  const generateJONumber: Ctx["generateJONumber"] = () => {
+    const year = new Date().getFullYear();
+    const used = allInquiries
+      .map((i) => i.joNumber ?? "")
+      .map((n) => {
+        const m = n.match(new RegExp(`JO-${year}-(\\d+)`));
+        return m ? parseInt(m[1], 10) : 0;
+      });
+    const next = ((used.length ? Math.max(...used) : 0) + 1).toString().padStart(4, "0");
+    return `JO-${year}-${next}`;
+  };
+
   const confirmClientPayment: Ctx["confirmClientPayment"] = (inquiryId, payment) => {
     const id = `cp-${Date.now()}`;
     setAllInquiries((prev) => prev.map((x) => x.id === inquiryId ? {
       ...x,
       confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, id }],
     } : x));
+  };
+
+  const updateInquiry: Ctx["updateInquiry"] = (id, patch) => {
+    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  };
+
+  const inquiriesByStage: Ctx["inquiriesByStage"] = (stages) => {
+    const set = new Set(stages);
+    return allInquiries.filter((i) => !i.archived && set.has(i.stage));
   };
 
   const setStage: Ctx["setStage"] = (id, stage) => {
@@ -421,7 +574,16 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     const id = `inq-${Date.now()}`;
     const num = String(allInquiries.length + 4).padStart(3, "0");
     const code = `INQ-${num}`;
-    const joNum = `JO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 900) + 100)}`;
+    /* Section J — sequential JO number, not random */
+    const year = new Date().getFullYear();
+    const used = allInquiries
+      .map((i) => i.joNumber ?? "")
+      .map((n) => {
+        const m = n.match(new RegExp(`JO-${year}-(\\d+)`));
+        return m ? parseInt(m[1], 10) : 0;
+      });
+    const next = ((used.length ? Math.max(...used) : 0) + 1).toString().padStart(4, "0");
+    const joNum = `JO-${year}-${next}`;
     setAllInquiries((prev) => [
       ...prev,
       {
@@ -467,8 +629,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
       requestCancellation, approveCancellation, declineCancellation,
       confirmClientPayment, setBillOfMaterials, markInventoryDeducted,
-      setQuotationDoc, generateQuotationNumber,
+      setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber,
       addClientReceipt, reorderToProduction, markPOCleared,
+      updateInquiry, inquiriesByStage,
       setStage, setUrgent, setDueDate, markDelivered,
       byClient, isNewClient,
     }}>

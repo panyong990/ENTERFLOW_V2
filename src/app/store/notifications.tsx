@@ -80,7 +80,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       { ...n, id, time: "just now", read: false },
       ...prev,
     ]);
-    /* Mock email/SMS dispatch confirmation — at deployment this becomes real SendGrid + Semaphore calls */
+    /* Mock email dispatch confirmation — Email gateway not implemented */
     const channels = pickChannels(n.dept);
     if (channels.length > 0) {
       setTimeout(() => {
@@ -100,8 +100,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const map: Record<Department, string[]> = {
       sales: ["Email"],
       production: ["Email"],
-      logistics: ["Email", "SMS"],
-      payments: ["Email", "SMS"],
+      logistics: ["Email"],
+      payments: ["Email"],
       system: ["Email"],
     };
     return map[dept];

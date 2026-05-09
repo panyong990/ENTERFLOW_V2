@@ -12,15 +12,13 @@ import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../store/filterTemplates";
 
-type Tab = "orders" | "status" | "logistics" | "accounting" | "joborders" | "transactions" | "settings";
+type Tab = "orders" | "status" | "logistics" | "accounting" | "settings";
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "orders", label: "Orders", icon: ClipboardList },
   { id: "status", label: "Status", icon: MapPin },
   { id: "logistics", label: "Logistics", icon: Truck },
   { id: "accounting", label: "Accounting", icon: CreditCard },
-  { id: "joborders", label: "Job Orders", icon: FileCheck },
-  { id: "transactions", label: "Transaction History", icon: ClipboardList },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -125,6 +123,8 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
 
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [showJobs, setShowJobs] = useState(false);
+  const [showTransactions, setShowTransactions] = useState(false);
 
   return (
     <div className="px-8 py-8 flex flex-col gap-4">
@@ -139,6 +139,15 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
           style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
         >
           <Plus size={16} strokeWidth={3} /> + New Order
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setShowTransactions(true)} className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
+          <ClipboardList size={14} /> View Transaction History
+        </button>
+        <button onClick={() => setShowJobs(true)} className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
+          <FileCheck size={14} /> View Job Orders
         </button>
       </div>
 
@@ -180,11 +189,35 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
           onSubmit={(name) => { uploadPO(poForId, name); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
         />
       )}
+      {showJobs && (
+        <ClientTableModal title="Job Orders" onClose={() => setShowJobs(false)}>
+          <JobOrdersTab clientName={clientName} />
+        </ClientTableModal>
+      )}
+      {showTransactions && (
+        <ClientTableModal title="Transaction History" onClose={() => setShowTransactions(false)}>
+          <TransactionsTab clientName={clientName} />
+        </ClientTableModal>
+      )}
     </div>
   );
 }
 
 /* ─────────── JobOrdersTab — paid/delivered JOs derived from store with reorder support ─────────── */
+function ClientTableModal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.55)" }} onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-6xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between">
+          <h3 className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center" aria-label="Close"><X size={16} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function JobOrdersTab({ clientName }: { clientName: string }) {
   const { byClient, addInquiry } = useOrders();
   const { push: pushNotif } = useNotifications();
@@ -300,7 +333,7 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
 
   const [step, setStep] = useState(1);
   const [contactPerson, setContactPerson] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState<"COD" | "15-Day Terms" | "30-Day Terms">("30-Day Terms");
+  const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">("30-Day Terms");
   const [generalNotes, setGeneralNotes] = useState("");
   /* Multi-product state — clients can add multiple filters per inquiry. */
   const [products, setProducts] = useState<ProductLine[]>([blankProduct("p1")]);
@@ -444,7 +477,7 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
               <Field label="Contact Person *"><input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Full name" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
               <Field label="Payment Terms">
                 <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value as any)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }}>
-                  <option>COD</option><option>15-Day Terms</option><option>30-Day Terms</option>
+                  <option>15-Day Terms</option><option>30-Day Terms</option>
                 </select>
               </Field>
               <div className="col-span-2 flex flex-col gap-1.5">
@@ -977,8 +1010,9 @@ function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit:
             <span>Auto-generated reference</span>
             <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
           </div>
-          <button onClick={() => onSubmit(file?.name ?? `${autoRef}.pdf`)} disabled={!file} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-            SUBMIT PURCHASE ORDER
+          {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
+          <button onClick={() => onSubmit(autoRef)} disabled={!file} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+            SUBMIT PURCHASE ORDER ({autoRef})
           </button>
         </div>
       </div>
@@ -1458,6 +1492,8 @@ function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
 
 function LogisticsTab({ clientName }: { clientName: string }) {
   const { byClient } = useOrders();
+  /* Section H — client contact pulled from settings (email only, no phone). */
+  const { settings } = useSettings();
   const [filter, setFilter] = useState("All");
   const [expandedPo, setExpandedPo] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState("");
@@ -1550,7 +1586,7 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                     <div className="flex flex-col gap-3">
                       <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Company Vehicle Delivery</div>
                       <div className="grid grid-cols-2 gap-3">
-                        <InfoPair label="Enter-Fil Contact" value="+63 2 8721 9000" />
+                        <InfoPair label="Enter-Fil Contact" value={settings.email} />
                         <InfoPair label="Driver" value={r.driverName ?? "—"} />
                         <InfoPair label="Estimated Delivery" value={r.estimatedDate ?? "—"} />
                         <InfoPair label="Signed DR" value={r.hasSignedDR ? "Available" : "Not yet uploaded"} />
@@ -1568,7 +1604,7 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                       <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Lalamove Delivery</div>
                       <div className="grid grid-cols-2 gap-3">
                         <InfoPair label="Tracking Number" value={r.trackingNumber ?? "—"} />
-                        <InfoPair label="Enter-Fil Contact" value="+63 2 8721 9000" />
+                        <InfoPair label="Enter-Fil Contact" value={settings.email} />
                       </div>
                       {r.trackingNumber && (
                         <button
@@ -1591,7 +1627,7 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                       <div className="rounded-lg p-4 flex flex-col gap-2" style={{ backgroundColor: "#F4F6F9", border: "1px solid #E2E8F0" }}>
                         <div className="font-dm" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>📍 Enter-Fil Industrial Products</div>
                         <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>123 Industrial Ave., Valenzuela City, Metro Manila 1440</div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>📞 +63 2 8721 9000</div>
+                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>✉️ {settings.email}</div>
                         <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>🕐 Mon–Sat, 8:00 AM – 5:00 PM</div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1659,7 +1695,7 @@ function ClientAccountingTab({ clientName }: { clientName: string }) {
   const { settings } = useSettings();
   const bank = settings.bankDetails;
   const { push: pushNotif } = useNotifications();
-  const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; note: string; file: string }>>({});
+  const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; note: string; file: string; methodId?: string }>>({});
   const [view, setView] = useState<"active" | "history">("active");
 
   /* DERIVED: pull this client's invoiced inquiries (delivered / overdue / paid). PO/quotation/in-production aren't yet billable. */
@@ -1694,7 +1730,7 @@ function ClientAccountingTab({ clientName }: { clientName: string }) {
       recipients: ["owner", "operations", "accounting"],
     });
     toast.success("Receipt sent to Enter-Fil", { description: "The secretary will verify and update your account." });
-    setReceiptForm((prev) => ({ ...prev, [rowId]: { amount: "", note: "", file: "" } }));
+    setReceiptForm((prev) => ({ ...prev, [rowId]: { amount: "", note: "", file: "", methodId: settings.paymentMethods[0]?.id } }));
   };
 
   const pill = (label: string, value: string, color = "#0F172A") => (
@@ -1762,7 +1798,8 @@ function ClientAccountingTab({ clientName }: { clientName: string }) {
                 : isPending
                 ? { bg: "#FEF3C7", fg: "#B45309", label: "Pending" }
                 : { bg: "#DCFCE7", fg: "#15803D", label: "Paid" };
-              const rf = receiptForm[r.id] ?? { amount: "", note: "", file: "" };
+              const rf = receiptForm[r.id] ?? { amount: "", note: "", file: "", methodId: settings.paymentMethods[0]?.id };
+              const selectedMethod = settings.paymentMethods.find((m) => m.id === rf.methodId) ?? settings.paymentMethods[0];
               return (
                 <Fragment key={r.id}>
                   <tr className="border-t border-slate-200/70 hover:bg-slate-50" style={{ cursor: isPending ? "pointer" : "default" }} onClick={() => isPending && setOpenId(isOpen ? null : r.id)}>
@@ -1823,9 +1860,21 @@ function ClientAccountingTab({ clientName }: { clientName: string }) {
                             {/* Payment instructions */}
                             <div className="rounded-lg p-4 flex flex-col gap-2 mb-3" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0" }}>
                               <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Payment Instructions</div>
-                              <Row label="Bank" value={bank.bankName} />
-                              <Row label="Account Name" value={bank.accountName} />
-                              <Row label="Account No." value={bank.accountNumber} mono />
+                              <select value={rf.methodId ?? selectedMethod?.id ?? ""} onChange={(e) => setReceiptForm(p => ({ ...p, [r.id]: { ...rf, methodId: e.target.value } }))} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
+                                {settings.paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                              </select>
+                              {selectedMethod ? (
+                                <>
+                                  <Row label="Method" value={selectedMethod.label} />
+                                  <Row label="Instructions" value={selectedMethod.details} />
+                                </>
+                              ) : (
+                                <>
+                                  <Row label="Bank" value={bank.bankName} />
+                                  <Row label="Account Name" value={bank.accountName} />
+                                  <Row label="Account No." value={bank.accountNumber} mono />
+                                </>
+                              )}
                             </div>
                             <div className="rounded-lg p-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
                               <div className="font-dm" style={{ fontSize: 12, color: "#92400E", fontWeight: 600 }}>Payment terms run from delivery date.</div>
@@ -2193,8 +2242,6 @@ export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLo
       {tab === "status" && <StatusTab clientName={clientName} />}
       {tab === "logistics" && <LogisticsTab clientName={clientName} />}
       {tab === "accounting" && <ClientAccountingTab clientName={clientName} />}
-      {tab === "joborders" && <JobOrdersTab clientName={clientName} />}
-      {tab === "transactions" && <TransactionsTab clientName={clientName} />}
       {tab === "settings" && <SettingsTab clientName={clientName} />}
     </Shell>
   );

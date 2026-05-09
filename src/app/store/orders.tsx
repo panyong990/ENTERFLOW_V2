@@ -23,13 +23,16 @@ export interface QuotationDoc {
   /* Shipping add-on */
   shipping?: { label: string; amount: number; includeInUnit: boolean };
   /* Terms */
-  termsOfPayment: "COD" | "15-Day Terms" | "30-Day Terms";
+  termsOfPayment: "15-Day Terms" | "30-Day Terms";
   timeOfDelivery: string;    // "3–4 working weeks upon receipt of P.O."
   placeOfDelivery: string;
   preparedBy: string;
   /* Send tracking */
   sentAt?: string;
   sentBy?: string;
+  /* Downpayment (Section D) — staff sets this in Tab 3 of the quotation builder */
+  downpaymentPercent?: number;
+  downpaymentAmount?: number;
 }
 
 export type Stage =
@@ -112,6 +115,11 @@ export interface Quotation {
 export interface JOSpecs {
   od1?: string; od2?: string; id1?: string; id2?: string;
   height?: string; overallHeight?: string;
+  length?: string; width?: string; thickness?: string; depth?: string; pocketCount?: string;
+  diameter?: string;
+  clothCuttingWidth?: string; clothCuttingLength?: string;
+  springPlateCenterToCenter?: string; springPlateWidth?: string; springPlateLength?: string;
+  padOd?: string; padId?: string;
   endCap?: string; media?: string; innerCore?: string; outerCore?: string;
   oring?: string; gasket?: string; oem?: string; brand?: string; others?: string;
 }
@@ -153,13 +161,14 @@ export interface Inquiry {
   clientName: string;
   contactPerson: string;
   generalNotes?: string;
-  paymentTerms: "COD" | "15-Day Terms" | "30-Day Terms";
+  paymentTerms: "15-Day Terms" | "30-Day Terms";
   products: ProductLine[];
   stage: Stage;
   submittedDate: string;
   quotation?: Quotation;
   poUploaded?: boolean;
   poFileName?: string;
+  poNumber?: string;
   urgent?: boolean;
   dueDate?: string;
   /* — sketch optionally uploaded at inquiry stage — */
@@ -217,6 +226,20 @@ export interface Inquiry {
   waybillNumber?: string;
   waybillLog?: { ts: string; status: string; note?: string }[];
   dispatchedAt?: string;
+  /* — Downpayment workflow (Section D) — */
+  downpaymentPercent?: number;          // e.g. 30 for 30%
+  downpaymentAmount?: number;           // computed at quotation time
+  downpaymentConfirmed?: boolean;       // set true once secretary confirms the DP receipt
+  downpaymentConfirmedAt?: string;
+  downpaymentReceiptFile?: string;      // client-uploaded proof
+  /* — Multiple JOs per inquiry (Section F) — */
+  parentInquiryId?: string;             // child JOs reference the original inquiry's id
+  /* — Per-product BOM/cost data (Sections C/N) — */
+  productsBillOfMaterials?: (BOMLine[] | null)[];
+  productsCostConfig?: (CostConfig | null)[];
+  productsUnitPrice?: (number | null)[];
+  productsQuotedTotal?: (number | null)[];
+  productIndex?: number;
 }
 
 export interface FinalizeJOData {
@@ -264,7 +287,7 @@ const seed: Inquiry[] = [
   },
   {
     id: "i4", code: "INQ-007", clientName: "Monaco", contactPerson: "P. Garcia",
-    paymentTerms: "COD", submittedDate: "Apr 22, 2026", stage: "inquiry",
+    paymentTerms: "15-Day Terms", submittedDate: "Apr 22, 2026", stage: "inquiry",
     products: [
       { id: "p1", type: "Air Oil Separator", media: "Microglass Fiber", oem: "MNC-AOS-3.0", qty: 50 },
       { id: "p2", type: "Oil Filter", media: "Pleated 5-micron", qty: 30 },
@@ -272,7 +295,7 @@ const seed: Inquiry[] = [
   },
   {
     id: "i5", code: "INQ-008", clientName: "Emerald Vinyl", contactPerson: "R. Lim",
-    paymentTerms: "COD", submittedDate: "Apr 25, 2026", stage: "inquiry",
+    paymentTerms: "15-Day Terms", submittedDate: "Apr 25, 2026", stage: "inquiry",
     products: [
       { id: "p1", type: "Column Filter", height: "350", media: "Microglass Fiber", innerCore: "Perfo Steel 1.5mm", qty: 20 },
     ],
@@ -363,6 +386,7 @@ interface Ctx {
   confirmClientPayment: (inquiryId: string, payment: { date: string; amount: number; method: string; ref: string }) => void;
   /* BOM lifecycle */
   setBillOfMaterials: (id: string, bom: BOMLine[], costConfig: CostConfig, unitPrice: number, quotedTotal: number) => void;
+  setProductsCosting: (id: string, data: { boms: (BOMLine[] | null)[]; configs: (CostConfig | null)[]; unitPrices: (number | null)[]; totals: (number | null)[] }) => void;
   markInventoryDeducted: (joNumber: string) => void;
   /* Quotation document */
   setQuotationDoc: (id: string, doc: QuotationDoc) => void;
@@ -370,6 +394,7 @@ interface Ctx {
   /* Auto-incrementing PO + JO numbers (PO-YYYY-NNNN / JO-YYYY-NNNN) */
   generatePONumber: () => string;
   generateJONumber: () => string;
+  finalizeProductJOs: (id: string, data: FinalizeJOData[]) => string[];
   addClientReceipt: (inquiryId: string, receipt: Omit<ClientReceipt, "id">) => void;
   markPOCleared: (po: string) => void;
   /* — Generic update — write any field on an inquiry. The single write-through used by all modules. */
@@ -425,7 +450,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   const uploadPO: Ctx["uploadPO"] = (id, fileName) => {
-    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, stage: "po", poUploaded: true, poFileName: fileName } : x)));
+    const poNumber = fileName.match(/PO-\d{4}-\d+/)?.[0] ?? fileName.replace(/\.\w+$/, "");
+    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, stage: "po", poUploaded: true, poFileName: fileName, poNumber } : x)));
   };
 
   const finalizeJO: Ctx["finalizeJO"] = (id, data) => {
@@ -483,6 +509,20 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, billOfMaterials: bom, costConfig, unitPrice, quotedTotal } : x)));
   };
 
+  const setProductsCosting: Ctx["setProductsCosting"] = (id, data) => {
+    setAllInquiries((prev) => prev.map((x) => (x.id === id ? {
+      ...x,
+      productsBillOfMaterials: data.boms,
+      productsCostConfig: data.configs,
+      productsUnitPrice: data.unitPrices,
+      productsQuotedTotal: data.totals,
+      billOfMaterials: data.boms[0] ?? x.billOfMaterials,
+      costConfig: data.configs[0] ?? x.costConfig,
+      unitPrice: data.unitPrices[0] ?? x.unitPrice,
+      quotedTotal: data.totals.reduce((s, v) => s + (v ?? 0), 0),
+    } : x)));
+  };
+
   const markInventoryDeducted: Ctx["markInventoryDeducted"] = (joNumber) => {
     setAllInquiries((prev) => prev.map((x) => (x.joNumber === joNumber ? { ...x, inventoryDeducted: true } : x)));
   };
@@ -526,6 +566,43 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
     const next = ((used.length ? Math.max(...used) : 0) + 1).toString().padStart(4, "0");
     return `JO-${year}-${next}`;
+  };
+
+  const finalizeProductJOs: Ctx["finalizeProductJOs"] = (id, data) => {
+    const src = allInquiries.find((i) => i.id === id);
+    if (!src) return [];
+    const parentInquiryId = src.parentInquiryId ?? src.id;
+    const childIds: string[] = [];
+    setAllInquiries((prev) => {
+      const withoutSrc = prev.filter((x) => x.id !== id);
+      const children = src.products.map((product, idx) => {
+        const jo = data[idx] ?? data[0];
+        const childId = idx === 0 ? id : `${id}-jo-${idx + 1}-${Date.now()}`;
+        childIds.push(childId);
+        return {
+          ...src,
+          id: childId,
+          products: [product],
+          productIndex: idx,
+          parentInquiryId,
+          stage: "jo" as Stage,
+          joNumber: jo.joNumber,
+          joSpecs: jo.joSpecs,
+          joSketch: jo.joSketch,
+          dpReceiptFile: jo.dpReceiptFile,
+          signedQuotationFile: jo.signedQuotationFile,
+          billOfMaterials: src.productsBillOfMaterials?.[idx] ?? src.billOfMaterials,
+          costConfig: src.productsCostConfig?.[idx] ?? src.costConfig,
+          unitPrice: src.productsUnitPrice?.[idx] ?? src.unitPrice,
+          quotedTotal: src.productsQuotedTotal?.[idx] ?? ((src.productsUnitPrice?.[idx] ?? src.unitPrice ?? 0) * product.qty),
+          currentStage: 0,
+          stageHistory: [],
+          inventoryDeducted: false,
+        };
+      });
+      return [...withoutSrc, ...children];
+    });
+    return childIds;
   };
 
   const confirmClientPayment: Ctx["confirmClientPayment"] = (inquiryId, payment) => {
@@ -628,8 +705,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       addInquiry, sendQuotation, uploadPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
       requestCancellation, approveCancellation, declineCancellation,
-      confirmClientPayment, setBillOfMaterials, markInventoryDeducted,
-      setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber,
+      confirmClientPayment, setBillOfMaterials, setProductsCosting, markInventoryDeducted,
+      setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, finalizeProductJOs,
       addClientReceipt, reorderToProduction, markPOCleared,
       updateInquiry, inquiriesByStage,
       setStage, setUrgent, setDueDate, markDelivered,

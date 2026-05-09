@@ -62,12 +62,14 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBa
   const [shippingInUnit, setShippingInUnit] = useState(inquiry.quotationDoc?.shipping?.includeInUnit ?? false);
 
   /* Terms */
-  const [termsOfPayment, setTermsOfPayment] = useState<"COD" | "15-Day Terms" | "30-Day Terms">(
-    inquiry.quotationDoc?.termsOfPayment ?? inquiry.paymentTerms
+  const [termsOfPayment, setTermsOfPayment] = useState<"15-Day Terms" | "30-Day Terms">(
+    (inquiry.quotationDoc?.termsOfPayment as any) ?? inquiry.paymentTerms
   );
   const [timeOfDelivery, setTimeOfDelivery] = useState(inquiry.quotationDoc?.timeOfDelivery ?? defaultDelivery);
   const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? clientAddress(inquiry.clientName));
   const [validUntil, setValidUntil] = useState(inquiry.quotationDoc?.validUntil ?? defaultValidUntil);
+  const [requireDownpayment, setRequireDownpayment] = useState((inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 0) > 0);
+  const [downpaymentPercent, setDownpaymentPercent] = useState(inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 30);
 
   const [showPreview, setShowPreview] = useState(false);
 
@@ -136,6 +138,8 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBa
     preparedBy: session.name,
     sentAt: inquiry.quotationDoc?.sentAt,
     sentBy: inquiry.quotationDoc?.sentBy,
+    downpaymentPercent: requireDownpayment ? downpaymentPercent : undefined,
+    downpaymentAmount: requireDownpayment ? grandTotal * (downpaymentPercent / 100) : undefined,
   });
 
   const handlePreview = () => {
@@ -331,7 +335,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBa
             <div className="flex flex-col gap-2.5">
               <Field label="Terms of Payment">
                 <select value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value as any)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
-                  <option value="COD">COD</option>
                   <option value="15-Day Terms">15 Days</option>
                   <option value="30-Day Terms">30 Days</option>
                 </select>

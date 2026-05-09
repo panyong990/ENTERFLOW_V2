@@ -127,7 +127,7 @@ const CLIENTS_DATA: Client[] = [
     email: "purchasing@emeraldvinyl.ph", phone: "+63 2 8721 9000",
     address: "Marikina City", since: "Nov 2025",
     totalOrders: 2, totalRevenue: 85200, status: "active",
-    paymentTerms: "COD",
+    paymentTerms: "15-Day Terms",
     transactions: [],
     jobs: [{ id: "j1", jo: "JO-2026-004", product: "Column Filter", qty: 20, stage: "Holding", status: "active", progress: 5 }],
   },
@@ -401,7 +401,7 @@ export function Clients() {
               <div className="flex flex-col gap-2">
                 <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Payment Terms</label>
                 <div className="flex flex-col gap-2">
-                  {(["COD", "15-Day Terms", "30-Day Terms"] as const).map((term) => {
+                  {(["15-Day Terms", "30-Day Terms"] as const).map((term) => {
                     const active = addForm.paymentTerms === term;
                     return (
                       <label
@@ -423,8 +423,7 @@ export function Clients() {
                         <div className="flex-1">
                           <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{term}</div>
                           <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>
-                            {term === "COD" ? "Cash on delivery — payment collected upon receipt" :
-                             term === "15-Day Terms" ? "Invoice due 15 days after delivery" :
+                            {term === "15-Day Terms" ? "Invoice due 15 days after delivery" :
                              "Invoice due 30 days after delivery"}
                           </div>
                         </div>

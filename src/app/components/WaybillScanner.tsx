@@ -200,7 +200,9 @@ export function WaybillScanner() {
                 <div className="font-syne text-white" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>Barcode / Waybill Scanner</div>
                 <div className="font-dm text-white/60" style={{ fontSize: 11 }}>Connect physical barcode scanner — input appears here automatically</div>
               </div>
-              <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: "#16A34A" }}>
+              {/* Section I — 2D Barcode / QR Ready indicator */}
+              <span className="font-dm px-2 py-0.5 rounded-full ml-auto" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEF3C7", color: "#92400E", letterSpacing: 0.5 }}>2D BARCODE / QR READY</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: "#16A34A" }}>
                 <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
                 <span className="font-dm text-white" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>READY</span>
               </div>

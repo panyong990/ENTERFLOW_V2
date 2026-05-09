@@ -19,7 +19,7 @@ const columns: { id: Stage; title: string; tint: string }[] = [
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeJO, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setQuotationDoc, isNewClient, updateInquiry } = useOrders();
+  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -204,8 +204,21 @@ export function SalesOrders() {
             if (bomData) {
               setBillOfMaterials(reviewing.id, bomData.bom, bomData.costConfig, bomData.unitPrice, bomData.total);
             }
+            if (reviewing.products.length > 1) {
+              setProductsCosting(reviewing.id, {
+                boms: reviewing.products.map((_, i) => i === (bomData as any)?.productIndex ? bomData?.bom ?? null : reviewing.productsBillOfMaterials?.[i] ?? null),
+                configs: reviewing.products.map((_, i) => i === (bomData as any)?.productIndex ? bomData?.costConfig ?? null : reviewing.productsCostConfig?.[i] ?? null),
+                unitPrices: reviewing.products.map((_, i) => i === (bomData as any)?.productIndex ? bomData?.unitPrice ?? null : reviewing.productsUnitPrice?.[i] ?? null),
+                totals: reviewing.products.map((_, i) => i === (bomData as any)?.productIndex ? bomData?.total ?? null : reviewing.productsQuotedTotal?.[i] ?? null),
+              });
+            }
             if (quotationDoc) {
               setQuotationDoc(reviewing.id, quotationDoc);
+              updateInquiry(reviewing.id, {
+                downpaymentPercent: quotationDoc.downpaymentPercent,
+                downpaymentAmount: quotationDoc.downpaymentAmount,
+                downpaymentConfirmed: quotationDoc.downpaymentPercent ? false : undefined,
+              });
             }
             /* Section C2 — when this is a revision response, archive the previous quotationDoc and clear the revisionNote */
             if (reviewing.revisionNote) {
@@ -254,10 +267,11 @@ export function SalesOrders() {
           inquiry={generating}
           onClose={() => setGenerateId(null)}
           onConfirm={(joData) => {
-            finalizeJO(generating.id, joData);
+            const joPayload = Array.isArray(joData) ? joData : [joData];
+            const joIds = finalizeProductJOs(generating.id, joPayload);
             pushNotif({
               dept: "production",
-              title: `JO created: ${joData.joNumber}`,
+              title: `JO created: ${joPayload.map((j) => j.joNumber).join(", ")}`,
               body: `${generating.clientName} · ${generating.products[0]?.type} · Files attached`,
               link: "production",
               recipients: ["owner", "operations", "production"],
@@ -473,12 +487,12 @@ const blankPlan = (qty: number): MatPlan => ({
   others: [],
 });
 
-function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry; onClose: () => void; onSubmit: (q: Quotation, bomData?: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number }, quotationDoc?: QuotationDoc) => void }) {
+function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry; onClose: () => void; onSubmit: (q: Quotation, bomData?: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex?: number }, quotationDoc?: QuotationDoc) => void }) {
   const { isNewClient } = useOrders();
   const [leadDays, setLeadDays] = useState(inquiry.quotation?.leadTimeDays ?? 14);
   /* Section H — default to inquiry tab for ALL clients, not just new ones */
   const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">("inquiry");
-  const [bomData, setBomData] = useState<{ bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number } | null>(null);
+  const [bomData, setBomData] = useState<{ bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex?: number } | null>(null);
   const [lines, setLines] = useState<QuotationLine[]>(
     inquiry.products.map((p) => {
       const existing = inquiry.quotation?.lines.find((l) => l.productId === p.id);
@@ -992,7 +1006,7 @@ interface UploadedDoc { id: string; name: string; size: number; ts: string; labe
 function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   inquiry: Inquiry;
   onClose: () => void;
-  onConfirm: (data: FinalizeJOData) => void;
+  onConfirm: (data: FinalizeJOData | FinalizeJOData[]) => void;
 }) {
   const { generateJONumber } = useOrders();
   const [docs, setDocs] = useState<{ sketch: UploadedDoc[]; other: UploadedDoc[] }>({
@@ -1017,7 +1031,7 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   const setSpec = (k: keyof JOSpecs, v: string) => setSpecs((s) => ({ ...s, [k]: v }));
 
   /* Payment terms (set by Enter-Fil during quotation, can be edited here after negotiation) */
-  const [paymentTerms, setPaymentTerms] = useState<"COD" | "15-Day Terms" | "30-Day Terms">(inquiry.paymentTerms);
+  const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(inquiry.paymentTerms);
   /* Delivery method (Enter-Fil's final say) */
   const [deliveryMethod, setDeliveryMethod] = useState<"Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up">("Company Vehicle");
   /* Sales-invoice issuance — some orders skip SI */
@@ -1051,6 +1065,15 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
     joSpecs: specs,
     joSketch: docs.sketch[0]?.name,
   });
+  const buildFinalizePayload = (): FinalizeJOData[] => {
+    if (inquiry.products.length <= 1) return [buildFinalizeData()];
+    const match = joNumber.match(/^(JO-\d{4}-)(\d+)$/);
+    return inquiry.products.map((product, idx) => ({
+      joNumber: match ? `${match[1]}${String(Number(match[2]) + idx).padStart(match[2].length, "0")}` : `${joNumber}-${idx + 1}`,
+      joSpecs: { ...specs, ...product },
+      joSketch: docs.sketch[0]?.name,
+    }));
+  };
 
   const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
   const summary = inquiry.products.map((p) => `${p.type}${p.od1 ? ` ${p.od1}×${p.id1}×${p.height}mm` : ""} · Qty ${p.qty}`).join(" · ");
@@ -1224,7 +1247,6 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
         <div className="grid grid-cols-2 gap-4">
           <Field label="Payment Terms (Enter-Fil's decision)">
             <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value as any)} className="form-input">
-              <option value="COD">COD — Downpayment first</option>
               <option value="15-Day Terms">15-Day Terms · post-delivery</option>
               <option value="30-Day Terms">30-Day Terms · post-delivery</option>
             </select>
@@ -1306,7 +1328,7 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           Cancel
         </button>
         <button
-          onClick={() => onConfirm(buildFinalizeData())}
+          onClick={() => onConfirm(buildFinalizePayload())}
           disabled={!allChecked}
           className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
           style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
@@ -1468,11 +1490,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ─── Management: New Inquiry Modal ─── */
 function ManagementNewInquiryModal({ onClose, onSubmit }: {
   onClose: () => void;
-  onSubmit: (data: { clientName: string; contactPerson: string; paymentTerms: "COD" | "15-Day Terms" | "30-Day Terms"; generalNotes: string; products: ProductLine[]; urgent?: boolean; dueDate?: string; inquirySketch?: string }) => void;
+  onSubmit: (data: { clientName: string; contactPerson: string; paymentTerms: "15-Day Terms" | "30-Day Terms"; generalNotes: string; products: ProductLine[]; urgent?: boolean; dueDate?: string; inquirySketch?: string }) => void;
 }) {
   const [clientName, setClientName] = useState("");
   const [contactPerson, setContactPerson] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState<"COD" | "15-Day Terms" | "30-Day Terms">("30-Day Terms");
+  const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">("30-Day Terms");
   const [generalNotes, setGeneralNotes] = useState("");
   /* Section A3/A4 — type code from FILTER_TYPES catalogue + filterName + dynamic dimensions */
   const [filterType, setFilterType] = useState("AIRFIL");
@@ -1537,7 +1559,7 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
               </Field>
               <Field label="Payment Terms">
                 <select value={paymentTerms} onChange={e => setPaymentTerms(e.target.value as any)} className="form-input">
-                  <option>COD</option><option>15-Day Terms</option><option>30-Day Terms</option>
+                  <option>15-Day Terms</option><option>30-Day Terms</option>
                 </select>
               </Field>
               <Field label="General Notes">
@@ -1649,4 +1671,3 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
     </div>
   );
 }
-

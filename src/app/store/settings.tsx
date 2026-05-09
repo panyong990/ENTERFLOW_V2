@@ -6,6 +6,14 @@ export interface BankDetails {
   accountNumber: string;
 }
 
+/* Section G — payment methods configurable in Settings, surfaced to clients in their portal. */
+export interface PaymentMethod {
+  id: string;
+  label: string;
+  type: "bank_transfer" | "gcash" | "cash" | "check" | "other";
+  details: string;          // multi-line plain text shown to the client
+}
+
 export interface CompanySettings {
   companyName: string;
   addressLine1: string;
@@ -21,6 +29,7 @@ export interface CompanySettings {
   defaultDriverContact: string;
   documentFooter: string;
   bankDetails: BankDetails;
+  paymentMethods: PaymentMethod[];
 }
 
 const defaults: CompanySettings = {
@@ -43,6 +52,32 @@ const defaults: CompanySettings = {
     accountName: "Enter-Fil Industrial Products, Inc.",
     accountNumber: "0012-3456-7890",
   },
+  paymentMethods: [
+    {
+      id: "pm-bdo",
+      label: "BDO Bank Transfer",
+      type: "bank_transfer",
+      details: "Bank: BDO Unibank\nAccount Name: Enter-Fil Industrial Products, Inc.\nAccount No: 0012-3456-7890\nBranch: Carmona Cavite",
+    },
+    {
+      id: "pm-metrobank",
+      label: "MetroBank Transfer",
+      type: "bank_transfer",
+      details: "Bank: MetroBank\nAccount Name: Enter-Fil Industrial Products, Inc.\nAccount No: 7891-23456-78\nBranch: Pasig City",
+    },
+    {
+      id: "pm-gcash",
+      label: "GCash",
+      type: "gcash",
+      details: "GCash Number: 0917-555-0140\nAccount Name: Enter-Fil Industrial",
+    },
+    {
+      id: "pm-cash",
+      label: "Cash on Pickup",
+      type: "cash",
+      details: "Pay in person at:\nBlock 12 Lot 4 Diamond St., Carmona Industrial Estate, Cavite\nMon-Sat 8:00 AM – 5:00 PM",
+    },
+  ],
 };
 
 interface Ctx {

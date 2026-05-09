@@ -1,9 +1,11 @@
 import { X, Download, Paperclip, FileText } from "lucide-react";
+import { DIMENSION_LABELS, GROUP_TEMPLATES, groupForType, type DimensionKey } from "../store/filterTemplates";
 
 export interface JOTemplateData {
   jo: string;
   client: string;
   product: string;
+  filterType?: string;
   qty: number;
   date: string;
   itemCode: string;
@@ -15,6 +17,11 @@ export interface JOTemplateData {
     id2?: string;
     height?: string;
     overallHeight?: string;
+    length?: string; width?: string; thickness?: string; depth?: string; pocketCount?: string;
+    diameter?: string;
+    clothCuttingWidth?: string; clothCuttingLength?: string;
+    springPlateCenterToCenter?: string; springPlateWidth?: string; springPlateLength?: string;
+    padOd?: string; padId?: string;
     endCap?: string;
     media?: string;
     innerCore?: string;
@@ -67,6 +74,10 @@ function SpecRow({ label, value, bold, indent }: { label: string; value: string;
 }
 
 export function JOTemplateModal({ data, onClose }: Props) {
+  const dimensionKeys = GROUP_TEMPLATES[groupForType(data.filterType ?? data.product)].dimensions;
+  const dimensionRows = dimensionKeys
+    .map((key) => [DIMENSION_LABELS[key] ?? key, data.specs[key as keyof typeof data.specs]] as [string, string | undefined])
+    .filter(([, value]) => val(value) !== "â€”");
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4"
@@ -158,11 +169,16 @@ export function JOTemplateModal({ data, onClose }: Props) {
                   {/* Dimension */}
                   <div style={{ ...D, fontWeight: 800, marginBottom: 4, color: "#0F172A" }}>DIMENSION</div>
                   <div style={{ marginBottom: 6 }}>
+                    {dimensionRows.length > 0 && dimensionRows.map(([label, value]) => (
+                      <SpecRow key={label} label={label.toUpperCase()} value={`${value} ${label.toLowerCase().includes("count") ? "" : "mm"}`.trim()} indent />
+                    ))}
+                    {dimensionRows.length === 0 && (<>
                     <SpecRow label="OD 1" value={val(data.specs.od1) !== "—" ? `${data.specs.od1} mm` : "—"} indent />
                     <SpecRow label="OD 2" value={val(data.specs.od2) !== "—" ? `${data.specs.od2} mm` : "—"} indent />
                     <SpecRow label="ID 1" value={val(data.specs.id1) !== "—" ? `${data.specs.id1} mm` : "—"} indent />
                     <SpecRow label="ID 2" value={val(data.specs.id2) !== "—" ? `${data.specs.id2} mm` : "—"} indent />
                     <SpecRow label="HEIGHT" value={val(data.specs.height) !== "—" ? `${data.specs.height} mm` : "—"} indent />
+                    </>)}
                   </div>
                   <SpecRow label="OVERALL HEIGHT" value={val(data.specs.overallHeight) !== "—" ? `${data.specs.overallHeight} mm` : "—"} />
 

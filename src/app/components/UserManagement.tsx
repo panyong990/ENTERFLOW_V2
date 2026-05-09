@@ -221,7 +221,7 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
             </h2>
           </div>
           <p className="font-dm mt-1 mb-4" style={{ fontSize: 13, color: "#64748B" }}>
-            Click "Edit Role" to assign or change a user's access level.
+            Click "Edit" to assign or change a user's access level and notification preferences.
           </p>
 
           <div
@@ -231,7 +231,8 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
             <table className="w-full">
               <thead style={{ backgroundColor: "#F4F6F9" }}>
                 <tr>
-                  {["User", "Email", "Initials", "Current Role", "Status", "Email Alerts", "Joined", "Actions"].map((h) => (
+                  {/* Section J — remove "Email Alerts" column from main table; toggle moves to Edit modal */}
+                  {["User", "Email", "Initials", "Current Role", "Status", "Joined", "Actions"].map((h) => (
                     <th
                       key={h}
                       className="font-dm text-left px-4 py-3"
@@ -261,17 +262,6 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
                           {u.active ? "Active" : "Deactivated"}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => toggleEmailAlerts(u)}
-                          disabled={!u.active}
-                          className="relative w-10 h-5 rounded-full transition-colors disabled:opacity-40"
-                          style={{ backgroundColor: u.emailAlerts ? "#2563EB" : "#CBD5E1" }}
-                          title={u.emailAlerts ? `Email ON · ${u.email}` : "Email OFF"}
-                        >
-                          <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: u.emailAlerts ? 22 : 2, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
-                        </button>
-                      </td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{u.joined}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -282,7 +272,7 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
                             style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}
                             title={protectedRow ? "Only the Owner can edit this account" : ""}
                           >
-                            {protectedRow ? <Lock size={12} /> : <Pencil size={12} />} Edit Role
+                            {protectedRow ? <Lock size={12} /> : <Pencil size={12} />} Edit
                           </button>
                           <button
                             onClick={() => toggleActive(u)}
@@ -498,6 +488,22 @@ export function UserManagement({ currentRole = "operations" }: { currentRole?: A
                     <input value={draftPhone} onChange={(e) => setDraftPhone(e.target.value)} placeholder="+63..." className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                   </div>
                 </div>
+              </div>
+
+              {/* Section J — Email Alerts toggle moved into Edit modal */}
+              <div className="rounded-lg p-3 flex items-center justify-between" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                <div>
+                  <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#1E3A8A" }}>Email Alerts</div>
+                  <div className="font-dm" style={{ fontSize: 11, color: "#1E40AF" }}>Receive in-app + email notifications for events targeting this role.</div>
+                </div>
+                <button
+                  onClick={() => editing && toggleEmailAlerts(editing)}
+                  className="relative w-12 h-6 rounded-full transition-colors"
+                  style={{ backgroundColor: editing.emailAlerts ? "#2563EB" : "#CBD5E1" }}
+                  title={editing.emailAlerts ? "Email ON" : "Email OFF"}
+                >
+                  <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" style={{ left: editing.emailAlerts ? 26 : 2, boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                </button>
               </div>
 
               {/* Role */}

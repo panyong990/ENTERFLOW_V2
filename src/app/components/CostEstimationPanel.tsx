@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Pencil, Plus, Sparkles, Trash2, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
   useMaterials,
   partCategoryMeta,
   computeUnitPrice,
+  autofillBOMForType,
   type PartCategory,
   type BOMLine,
   type CostConfig,
@@ -13,14 +14,15 @@ import {
 import type { Inquiry, ProductLine } from "../store/orders";
 import { GROUP_TEMPLATES, groupForType, PART_TO_CATEGORY } from "../store/filterTemplates";
 
-/* Categories shown in the chip list — Packaging is excluded; it's a delivery add-on, not a manufacturing component */
+/* Categories shown in the chip list — O-Ring and Gasket are now distinct (Section B5). Packaging stays excluded. */
 const STANDARD_PART_CATEGORIES: PartCategory[] = [
   "filter_media",
   "endcap",
   "inner_core",
   "outer_core",
   "bonding_adhesive",
-  "oring_gasket",
+  "oring",
+  "gasket",
 ];
 
 /* Reference values shown in the ⓘ tooltip per filter part */
@@ -35,28 +37,39 @@ const REFERENCE_NOTES: Partial<Record<PartCategory, string>> = {
     "Reference — Small Air Filter: ~0.111 plates/filter\nMedium: ~0.167 plates/filter\nLarge: ~0.5 plates/filter",
   bonding_adhesive:
     "Reference — Small Air Filter: ~0.04 gal/filter (25 filters per gallon)\nMedium: ~0.05 gal (20 per gal)\nLarge: ~0.17 gal (6 per gal)",
-  oring_gasket:
-    "Reference — Pocket Bag: 2 pcs (TOP & BOTTOM)\nAir Filter: 0–2 pcs depending on design",
+  oring:
+    "Reference — Air Filter: 0–2 pcs depending on design",
+  gasket:
+    "Reference — Pocket Bag: 2 pcs (TOP & BOTTOM)",
 };
 
 interface Props {
   inquiry: Inquiry;
   qty: number;
   /* Returns the final BOM + cost config + computed prices when user clicks "Apply to Quotation" */
-  onApply: (data: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number }) => void;
+  onApply: (data: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex: number }) => void;
 }
 
 export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
   const { rawMaterials, templates, findBOMTemplate } = useMaterials();
-  const product = inquiry.products[0];
+  const [activeProductIndex, setActiveProductIndex] = useState(0);
+  const product = inquiry.products[activeProductIndex] ?? inquiry.products[0];
   const filterType = product?.type ?? "Air Filter";
   const size = inferSize(product);
 
   /* Initial BOM: from existing inquiry, else from matching template, else seeded from the group's mandatory parts (Section A5). */
   const initial = useMemo(() => {
-    if (inquiry.billOfMaterials && inquiry.billOfMaterials.length > 0) return inquiry.billOfMaterials;
+    const savedProductBom = inquiry.productsBillOfMaterials?.[activeProductIndex];
+    if (savedProductBom && savedProductBom.length > 0) return savedProductBom;
+    if (activeProductIndex === 0 && inquiry.billOfMaterials && inquiry.billOfMaterials.length > 0) return inquiry.billOfMaterials;
     const tpl = findBOMTemplate(filterType, size);
     if (tpl) return tpl.bom;
+    const auto = autofillBOMForType(filterType, size, {
+      depthMm: num(product?.depth),
+      pockets: num(product?.pocketCount),
+      heightMm: num(product?.height),
+    }, rawMaterials).map((x) => x.line);
+    if (auto.length > 0) return auto;
     /* Seed from filter group template: pick the first available material per mandatory part category. */
     const group = groupForType(filterType);
     const required = GROUP_TEMPLATES[group].parts.always;
@@ -64,15 +77,15 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
     required.forEach((partKey) => {
       const cat = PART_TO_CATEGORY[partKey] as PartCategory | undefined;
       if (!cat) return;
-      const mat = rawMaterials.find((m) => m.partCategory === cat);
+      const mat = rawMaterials.find((m) => m.category === cat);
       if (mat) seeded.push({ materialId: mat.id, partCategory: cat, qtyConsumed: 0 });
     });
     return seeded;
-  }, []);
+  }, [activeProductIndex, filterType, size, inquiry, findBOMTemplate, product, rawMaterials]);
 
   const [bom, setBom] = useState<BOMLine[]>(initial);
   const [cfg, setCfg] = useState<CostConfig>(
-    inquiry.costConfig ?? {
+    inquiry.productsCostConfig?.[activeProductIndex] ?? inquiry.costConfig ?? {
       laborCost: 380,
       markupPct: 30,
       vatType: "Exclusive",
@@ -88,7 +101,21 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
 
   const matchingTemplate = findBOMTemplate(filterType, size);
   const computed = computeUnitPrice(bom, cfg, rawMaterials);
-  const orderTotal = computed.withVat * qty;
+  const selectedQty = product?.qty ?? qty;
+  const orderTotal = computed.withVat * selectedQty;
+
+  useEffect(() => {
+    setBom(initial);
+    setCfg(inquiry.productsCostConfig?.[activeProductIndex] ?? inquiry.costConfig ?? {
+      laborCost: 380,
+      markupPct: 30,
+      vatType: "Exclusive",
+      vatRate: 12,
+      includeLabor: true,
+      applyMarkup: true,
+      applyVAT: true,
+    });
+  }, [activeProductIndex, initial, inquiry.productsCostConfig, inquiry.costConfig]);
 
   /* All materials referenced by the current BOM (for the left "Raw Materials" panel) */
   const bomMaterials = bom
@@ -126,12 +153,28 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
       costConfig: cfg,
       unitPrice: computed.withVat,
       total: orderTotal,
+      productIndex: activeProductIndex,
     });
     toast.success("Cost configuration applied to quotation");
   };
 
   return (
     <div className="flex flex-col gap-4">
+      {inquiry.products.length > 1 && (
+        <div className="rounded-lg p-3 flex flex-wrap items-center gap-2" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+          <span className="font-dm mr-1" style={{ fontSize: 11, fontWeight: 800, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Product</span>
+          {inquiry.products.map((p, idx) => (
+            <button
+              key={p.id}
+              onClick={() => setActiveProductIndex(idx)}
+              className="font-dm px-3 py-1.5 rounded-md"
+              style={{ fontSize: 12, fontWeight: 700, backgroundColor: idx === activeProductIndex ? "#1A2B4A" : "white", color: idx === activeProductIndex ? "white" : "#475569", border: "1px solid #CBD5E1" }}
+            >
+              #{idx + 1} {p.filterName || p.type} · {p.qty} pcs
+            </button>
+          ))}
+        </div>
+      )}
       {/* Suggestion banner */}
       {matchingTemplate && initial !== matchingTemplate.bom && (
         <div className="rounded-lg p-3 flex items-center gap-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
@@ -327,7 +370,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
                 <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#C8102E" }}>₱{computed.withVat.toFixed(2)}</span>
               </div>
               <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 11, backgroundColor: "#1A2B4A", color: "white" }}>
-                <span style={{ opacity: 0.7 }}>× {qty} pcs = Order Total</span>
+                <span style={{ opacity: 0.7 }}>× {selectedQty} pcs = Product Total</span>
                 <span className="font-syne" style={{ fontSize: 16, fontWeight: 800 }}>₱{orderTotal.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</span>
               </div>
             </div>
@@ -354,6 +397,12 @@ function inferSize(p?: ProductLine): "Large" | "Medium" | "Small" | undefined {
   if (h >= 400) return "Large";
   if (h >= 200) return "Medium";
   return "Small";
+}
+
+function num(v?: string): number | undefined {
+  if (!v) return undefined;
+  const parsed = parseFloat(v);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function ToggleRow({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {

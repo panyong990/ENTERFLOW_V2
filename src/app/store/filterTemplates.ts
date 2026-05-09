@@ -70,11 +70,11 @@ export interface GroupTemplate {
 export const GROUP_TEMPLATES: Record<FilterGroup, GroupTemplate> = {
   cylindrical: {
     dimensions: ["od1", "od2", "id1", "id2", "height", "overallHeight"],
-    parts: { always: ["filter_media", "endcap", "inner_core", "outer_core"], optional: ["oring_gasket", "bonding_adhesive"] },
+    parts: { always: ["filter_media", "endcap", "inner_core", "outer_core"], optional: ["oring", "gasket", "bonding_adhesive"] },
   },
   flatPanel: {
     dimensions: ["length", "width", "thickness"],
-    parts: { always: ["filter_media", "endcap", "gasket"], optional: [] },
+    parts: { always: ["filter_media", "endcap", "gasket"], optional: ["oring"] },
   },
   pocketBag: {
     dimensions: ["length", "width", "thickness", "depth", "pocketCount"],
@@ -82,7 +82,7 @@ export const GROUP_TEMPLATES: Record<FilterGroup, GroupTemplate> = {
   },
   hepa: {
     dimensions: ["length", "width", "depth"],
-    parts: { always: ["filter_media", "endcap"], optional: ["inner_core", "outer_core", "gasket"] },
+    parts: { always: ["filter_media", "endcap"], optional: ["inner_core", "outer_core", "gasket", "oring"] },
   },
   bagCollector: {
     dimensions: ["diameter", "length", "clothCuttingWidth", "clothCuttingLength", "springPlateCenterToCenter", "springPlateWidth", "springPlateLength"],
@@ -118,12 +118,13 @@ export const DIMENSION_LABELS: Record<DimensionKey, string> = {
 };
 
 /* For the cost-estimation BOM mapper. Maps a "part" key (used in GROUP_TEMPLATES) to a material partCategory key in the materials store. */
+/* Maps a "part" key (used in GROUP_TEMPLATES) to a material partCategory (the discriminator in the materials store). */
 export const PART_TO_CATEGORY: Record<string, string> = {
   filter_media: "filter_media",
-  endcap: "end_cap",
+  endcap: "endcap",
   inner_core: "inner_core",
   outer_core: "outer_core",
-  oring_gasket: "oring_gasket",
-  bonding_adhesive: "adhesive",
+  oring: "oring",
   gasket: "gasket",
+  bonding_adhesive: "bonding_adhesive",
 };

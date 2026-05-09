@@ -3,7 +3,9 @@
     "allow": [
       "Bash(pnpm install *)",
       "PowerShell(Start-Process -FilePath \"npm\" -ArgumentList \"run\",\"dev\" -WorkingDirectory \"C:\\\\Users\\\\hp\\\\OneDrive\\\\Documents\\\\ENTER-FLOW\" -WindowStyle Hidden)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(claude mcp *)",
+      "mcp__figma__generate_figma_design"
     ]
   }
 }

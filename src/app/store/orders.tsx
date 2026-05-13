@@ -97,6 +97,9 @@ export interface ProductLine {
   oring?: string; gasket?: string; oem?: string;
   qty: number;
   notes?: string;
+  /* Per-product wizard state — stored so each filter keeps its own settings */
+  filtrationRating?: string;   // e.g. "5-micron" / "custom"
+  sketchFileName?: string;     // filename of the engineer sketch attached to THIS product
 }
 
 export interface QuotationLine {
@@ -130,6 +133,19 @@ export interface ClientReceipt {
   filename: string;
   amount: number;
   note?: string;
+}
+
+/* Replacement request — submitted by client, processed by operations */
+export interface ReplacementRequest {
+  id: string;
+  requestedAt: string;         // ISO timestamp
+  reason: string;              // why they want replacement
+  defectDescription: string;   // what's wrong
+  qty: number;                 // how many pcs to replace
+  proofFileName?: string;      // photo of defect
+  status: "pending" | "processing" | "resolved";
+  resolvedAt?: string;
+  joNumber?: string;           // replacement JO number once created
 }
 
 /* Production stage history entry */
@@ -229,9 +245,22 @@ export interface Inquiry {
   /* — Downpayment workflow (Section D) — */
   downpaymentPercent?: number;          // e.g. 30 for 30%
   downpaymentAmount?: number;           // computed at quotation time
+  /* Accounting → Client: payment details sent for downpayment */
+  downpaymentPaymentDetails?: {
+    method: "Bank Transfer" | "GCash" | "Check" | "Other";
+    accountName?: string;
+    accountNumber?: string;
+    bankName?: string;
+    note?: string;
+    sentAt: string;
+  };
+  /* Client → Accounting: receipt uploaded */
+  downpaymentReceiptFile?: string;      // client-uploaded proof
+  downpaymentReceiptUploadedAt?: string;
+  /* Accounting confirms DP received; ops/sales can then mark "received" badge */
   downpaymentConfirmed?: boolean;       // set true once secretary confirms the DP receipt
   downpaymentConfirmedAt?: string;
-  downpaymentReceiptFile?: string;      // client-uploaded proof
+  downpaymentConfirmedBy?: string;
   /* — Multiple JOs per inquiry (Section F) — */
   parentInquiryId?: string;             // child JOs reference the original inquiry's id
   /* — Per-product BOM/cost data (Sections C/N) — */
@@ -240,6 +269,11 @@ export interface Inquiry {
   productsUnitPrice?: (number | null)[];
   productsQuotedTotal?: (number | null)[];
   productIndex?: number;
+  /* — Replacement requests (client-initiated, max 2 per order) — */
+  replacementRequests?: ReplacementRequest[];
+  /* — This inquiry is itself a replacement JO — */
+  isReplacement?: boolean;
+  replacementParentId?: string;   // id of the original inquiry
 }
 
 export interface FinalizeJOData {
@@ -364,6 +398,103 @@ const seed: Inquiry[] = [
     amountPaid: 23400,
     confirmedPayments: [{ id: "cp-seed-1", date: "Apr 10, 2026", amount: 23400, method: "BDO Bank Transfer", ref: "BDO-2026-04100" }],
   },
+  /* ── DEMO: freshly delivered B.E. Aerospace transaction with NO replacement filed yet.
+        Drops into the client portal's Transactions tab inside the open replacement window
+        (30-Day Terms → 2-week window). Click "Request Replacement" on this row to walk
+        the full flow: client files request → sales creates replacement JO → production picks it up. ── */
+  {
+    id: "i10", code: "INQ-009", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
+    paymentTerms: "30-Day Terms",
+    submittedDate: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    stage: "delivered",
+    poFileName: "PO-2026-9560.pdf",
+    products: [
+      { id: "p1", type: "Oil Filter", od1: "95", id1: "30", height: "180", media: "Cellulose / Resin Impregnated", oem: "KF-OF.95.30.180", qty: 25 },
+    ],
+    quotation: { sentDate: new Date(Date.now() - 17 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), leadTimeDays: 12, lines: [{ productId: "p1", materialCost: 520, labor: 250, markupPct: 30 }] },
+    joNumber: "JO-2026-009",
+    joSpecs: { od1: "95", id1: "30", height: "180", media: "Cellulose / Resin Impregnated", oem: "KF-OF.95.30.180" },
+    joSketch: "KF-OF.95.30.180_drawing.pdf",
+    billOfMaterials: [],
+    costConfig: { laborCost: 250, markupPct: 30, vatType: "Exclusive", includeLabor: true },
+    unitPrice: 1001,
+    quotedTotal: 25025,
+    currentStage: 9,
+    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (10 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    inventoryDeducted: true,
+    /* Delivered 3 days ago → still well inside the 2-week replacement window */
+    deliveredDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    invoiceNo: "SI-2026-9560",
+    invoiceAmount: 25025,
+    invoiceDueDate: new Date(Date.now() + 27 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    deliveryMethod: "Lalamove",
+    drFileName: "DR-2026-9560-signed.jpg",
+  },
+  /* ── DEMO: delivered B.E. Aerospace order WITH a replacement request already filed.
+        Pair with i9 (the replacement JO in production) to demo the full replacement flow
+        without having to walk through inquiry → quotation → PO → JO → delivery. ── */
+  {
+    id: "i8", code: "INQ-005", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
+    paymentTerms: "30-Day Terms", submittedDate: "Apr 2, 2026", stage: "delivered",
+    poFileName: "PO-2026-9551.pdf",
+    products: [
+      { id: "p1", type: "Air Filter", od1: "107", id1: "64.6", height: "252", media: "Microglass Fiber", innerCore: "Expanded Metal Perfo 2mm", oem: "KF-OS.107.65.252", qty: 40 },
+    ],
+    quotation: { sentDate: "Apr 3, 2026", leadTimeDays: 14, lines: [{ productId: "p1", materialCost: 800, labor: 400, markupPct: 30 }] },
+    joNumber: "JO-2026-005",
+    joSpecs: { od1: "107", id1: "64.6", height: "252", media: "Microglass Fiber", innerCore: "Expanded Metal Perfo 2mm", oem: "KF-OS.107.65.252" },
+    joSketch: "KF-OS.107.65.252_drawing.pdf",
+    billOfMaterials: [],
+    costConfig: { laborCost: 400, markupPct: 30, vatType: "Exclusive", includeLabor: true },
+    unitPrice: 1560,
+    quotedTotal: 62400,
+    currentStage: 9,
+    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (12 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    inventoryDeducted: true,
+    deliveredDate: "Apr 28, 2026",
+    invoiceNo: "SI-2026-9551",
+    invoiceAmount: 62400,
+    invoiceDueDate: "May 28, 2026",
+    deliveryMethod: "Lalamove",
+    drFileName: "DR-2026-9551-signed.jpg",
+    /* Client filed a replacement request 5 days after delivery — within 30-Day window */
+    replacementRequests: [
+      {
+        id: "rr-seed-1",
+        requestedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        reason: "Defective seals on 5 units — air leaks during pressure test",
+        defectDescription: "Endcap adhesive failure causing perimeter leak on 5/40 units. Photos attached.",
+        qty: 5,
+        proofFileName: "BE-defect-photo-Apr30.jpg",
+        status: "processing",
+        joNumber: "JO-2026-005R",
+      },
+    ],
+  },
+  /* ── DEMO: the replacement JO created from i8's request — already in production, stage 4 ── */
+  {
+    id: "i9", code: "INQ-005R", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
+    paymentTerms: "30-Day Terms",
+    submittedDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    stage: "in_production",
+    generalNotes: "REPLACEMENT for INQ-005 — Defective seals on 5 units — air leaks during pressure test",
+    products: [
+      { id: "p1-r", type: "Air Filter", od1: "107", id1: "64.6", height: "252", media: "Microglass Fiber", innerCore: "Expanded Metal Perfo 2mm", oem: "KF-OS.107.65.252", qty: 5 },
+    ],
+    joNumber: "JO-2026-005R",
+    joSpecs: { od1: "107", id1: "64.6", height: "252", media: "Microglass Fiber", innerCore: "Expanded Metal Perfo 2mm", oem: "KF-OS.107.65.252" },
+    joSketch: "KF-OS.107.65.252_drawing.pdf",
+    billOfMaterials: [],
+    costConfig: { laborCost: 400, markupPct: 30, vatType: "Exclusive", includeLabor: true },
+    unitPrice: 1560,
+    quotedTotal: 7800,
+    urgent: true,
+    isReplacement: true,
+    replacementParentId: "i8",
+    currentStage: 4,
+    stageHistory: Array.from({ length: 4 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (4 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: ["F. Santos", "J. Reyes", "M. Tan", "J. Reyes"][i], status: "done" as const })),
+    inventoryDeducted: true,
+  },
 ];
 
 interface Ctx {
@@ -396,6 +527,8 @@ interface Ctx {
   generateJONumber: () => string;
   finalizeProductJOs: (id: string, data: FinalizeJOData[]) => string[];
   addClientReceipt: (inquiryId: string, receipt: Omit<ClientReceipt, "id">) => void;
+  addReplacementRequest: (inquiryId: string, req: Omit<ReplacementRequest, "id" | "status" | "requestedAt">) => void;
+  resolveReplacement: (inquiryId: string, requestId: string) => void;
   markPOCleared: (po: string) => void;
   /* — Generic update — write any field on an inquiry. The single write-through used by all modules. */
   updateInquiry: (id: string, patch: Partial<Inquiry>) => void;
@@ -406,6 +539,12 @@ interface Ctx {
   setUrgent: (id: string, urgent: boolean, dueDate?: string) => void;
   setDueDate: (id: string, due: string) => void;
   markDelivered: (id: string, deliveredDate: string, invoiceNo: string, invoiceAmount: number) => void;
+  /* — Downpayment workflow (Section D) — */
+  sendDownpaymentDetails: (id: string, details: NonNullable<Inquiry["downpaymentPaymentDetails"]>) => void;
+  uploadDownpaymentReceipt: (id: string, fileName: string) => void;
+  confirmDownpayment: (id: string, confirmedBy?: string) => void;
+  /* — Replacement: create a JO directly from a parent inquiry's replacement request — */
+  createReplacementJO: (parentInquiryId: string, requestId: string, qty: number, reason: string) => string;
   reorderToProduction: (sourceInquiryId: string) => string;
   byClient: (name: string) => Inquiry[];
   isNewClient: (name: string) => boolean;
@@ -644,6 +783,74 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  /* — Downpayment workflow actions — */
+  const sendDownpaymentDetails: Ctx["sendDownpaymentDetails"] = (id, details) => {
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, downpaymentPaymentDetails: details } : x));
+  };
+  const uploadDownpaymentReceipt: Ctx["uploadDownpaymentReceipt"] = (id, fileName) => {
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+      ...x,
+      downpaymentReceiptFile: fileName,
+      downpaymentReceiptUploadedAt: new Date().toISOString(),
+    } : x));
+  };
+  const confirmDownpayment: Ctx["confirmDownpayment"] = (id, confirmedBy) => {
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+      ...x,
+      downpaymentConfirmed: true,
+      downpaymentConfirmedAt: new Date().toISOString(),
+      downpaymentConfirmedBy: confirmedBy,
+    } : x));
+  };
+
+  /* Atomically create a replacement JO from a parent inquiry's replacement request.
+     Mirrors product specs/BOM, jumps straight to "jo" stage, and updates the parent's
+     replacement request to "processing" with the new JO number. */
+  const createReplacementJO: Ctx["createReplacementJO"] = (parentInquiryId, requestId, qty, reason) => {
+    const parent = allInquiries.find((i) => i.id === parentInquiryId);
+    if (!parent) return "";
+    const id = `inq-${Date.now()}`;
+    const num = String(allInquiries.length + 4).padStart(3, "0");
+    const code = `INQ-${num}`;
+    const joNumber = `JO-${new Date().getFullYear()}-${String(allInquiries.filter((i) => i.joNumber).length + 1).padStart(3, "0")}`;
+    const newInq: Inquiry = {
+      id, code,
+      clientName: parent.clientName,
+      contactPerson: parent.contactPerson,
+      paymentTerms: parent.paymentTerms,
+      generalNotes: `REPLACEMENT for ${parent.code} — ${reason}`,
+      submittedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      products: parent.products.map((p) => ({ ...p, id: `${p.id}-r`, qty })),
+      /* Carry over costing/BOM so production has materials info */
+      billOfMaterials: parent.billOfMaterials,
+      costConfig: parent.costConfig,
+      unitPrice: parent.unitPrice,
+      quotedTotal: parent.unitPrice ? parent.unitPrice * qty : undefined,
+      productsBillOfMaterials: parent.productsBillOfMaterials,
+      productsCostConfig: parent.productsCostConfig,
+      productsUnitPrice: parent.productsUnitPrice,
+      stage: "jo",
+      joNumber,
+      urgent: true,
+      isReplacement: true,
+      replacementParentId: parentInquiryId,
+      currentStage: 0,
+      stageHistory: [],
+    };
+    setAllInquiries((prev) => [
+      ...prev.map((x) => x.id === parentInquiryId
+        ? {
+            ...x,
+            replacementRequests: (x.replacementRequests ?? []).map((r) =>
+              r.id === requestId ? { ...r, status: "processing" as const, joNumber } : r
+            ),
+          }
+        : x),
+      newInq,
+    ]);
+    return joNumber;
+  };
+
   const reorderToProduction: Ctx["reorderToProduction"] = (sourceInquiryId) => {
     /* For known repeat items: clone an existing JO inquiry, skip inquiry/quotation, mark stage "jo" with a fresh JO number */
     const src = allInquiries.find((i) => i.id === sourceInquiryId);
@@ -690,6 +897,38 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const addReplacementRequest: Ctx["addReplacementRequest"] = (inquiryId, req) => {
+    const id = `rr-${Date.now()}`;
+    setAllInquiries((prev) =>
+      prev.map((x) =>
+        x.id === inquiryId
+          ? {
+              ...x,
+              replacementRequests: [
+                ...(x.replacementRequests ?? []),
+                { ...req, id, status: "pending" as const, requestedAt: new Date().toISOString() },
+              ],
+            }
+          : x
+      )
+    );
+  };
+
+  const resolveReplacement: Ctx["resolveReplacement"] = (inquiryId, requestId) => {
+    setAllInquiries((prev) =>
+      prev.map((x) =>
+        x.id === inquiryId
+          ? {
+              ...x,
+              replacementRequests: (x.replacementRequests ?? []).map((r) =>
+                r.id === requestId ? { ...r, status: "resolved" as const, resolvedAt: new Date().toISOString() } : r
+              ),
+            }
+          : x
+      )
+    );
+  };
+
   const byClient: Ctx["byClient"] = (name) =>
     allInquiries.filter((i) => i.clientName === name);
 
@@ -707,9 +946,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       requestCancellation, approveCancellation, declineCancellation,
       confirmClientPayment, setBillOfMaterials, setProductsCosting, markInventoryDeducted,
       setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, finalizeProductJOs,
-      addClientReceipt, reorderToProduction, markPOCleared,
+      addClientReceipt, addReplacementRequest, resolveReplacement, reorderToProduction, markPOCleared,
       updateInquiry, inquiriesByStage,
       setStage, setUrgent, setDueDate, markDelivered,
+      sendDownpaymentDetails, uploadDownpaymentReceipt, confirmDownpayment,
+      createReplacementJO,
       byClient, isNewClient,
     }}>
       {children}

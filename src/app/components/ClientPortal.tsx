@@ -5,11 +5,12 @@ import {
   ChevronUp, FileCheck, X, Settings, ExternalLink,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, type Inquiry, type ProductLine } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, type Inquiry, type ProductLine, type ReplacementRequest } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { useSettings } from "../store/settings";
 import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
+import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../store/filterTemplates";
 
 type Tab = "orders" | "status" | "logistics" | "accounting" | "settings";
@@ -287,40 +288,289 @@ function JobOrdersTab({ clientName }: { clientName: string }) {
 }
 
 /* ─────────── TransactionsTab — paid invoices only, derived from store ─────────── */
+/* ── Replacement window helpers ── */
+function replacementWindowDays(paymentTerms: string): number {
+  return paymentTerms === "15-Day Terms" ? 7 : 14;
+}
+function isInReplacementWindow(inq: Inquiry): boolean {
+  if (!inq.deliveredDate) return false;
+  const d = new Date(inq.deliveredDate);
+  if (isNaN(d.getTime())) return false;
+  const windowDays = replacementWindowDays(inq.paymentTerms);
+  const expires = new Date(d); expires.setDate(expires.getDate() + windowDays);
+  return new Date() <= expires;
+}
+function replacementWindowExpiry(inq: Inquiry): string {
+  if (!inq.deliveredDate) return "—";
+  const d = new Date(inq.deliveredDate);
+  if (isNaN(d.getTime())) return "—";
+  const windowDays = replacementWindowDays(inq.paymentTerms);
+  const expires = new Date(d); expires.setDate(expires.getDate() + windowDays);
+  return expires.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function TransactionsTab({ clientName }: { clientName: string }) {
-  const { byClient } = useOrders();
-  const paid = byClient(clientName).filter((i) => !i.archived && i.stage === "paid");
+  const { byClient, addReplacementRequest, resolveReplacement, updateInquiry } = useOrders();
+  const { push: pushNotif } = useNotifications();
+
+  /* Include delivered + paid orders */
+  const allOrders = byClient(clientName).filter((i) => !i.archived && ["delivered", "paid"].includes(i.stage));
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [replacementModal, setReplacementModal] = useState<Inquiry | null>(null);
+
   return (
     <div className="px-8 py-8 flex flex-col gap-4">
       <div>
         <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>Transaction History</h1>
-        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Read-only history of fully cleared invoices.</p>
+        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>
+          Delivered and paid orders · Replacement requests can be made within the replacement window.
+        </p>
       </div>
+
       <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
             <tr>
-              {["Date", "PO No.", "Item", "Amount", "Payment", "Status"].map((h) => (
+              {["Date", "PO No.", "Item", "Amount", "Payment Terms", "Status", "Replace Window", ""].map((h) => (
                 <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {paid.length === 0 && (
-              <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No paid transactions yet.</td></tr>
+            {allOrders.length === 0 && (
+              <tr><td colSpan={8} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
             )}
-            {paid.map((inq) => (
-              <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
-                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paidAt ?? inq.deliveredDate ?? inq.submittedDate}</td>
-                <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{inq.code}</td>
-                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{inq.products[0]?.filterName ?? labelForType(inq.products[0]?.type ?? "")}</td>
-                <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{(inq.invoiceAmount ?? inq.quotedTotal ?? 0).toLocaleString("en-PH")}</td>
-                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
-                <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>✅ Paid</span></td>
-              </tr>
-            ))}
+            {allOrders.map((inq) => {
+              const inWindow = isInReplacementWindow(inq);
+              const reqCount = (inq.replacementRequests ?? []).length;
+              const maxReached = reqCount >= 2;
+              const canRequest = inWindow && !maxReached;
+              const isExpanded = expandedId === inq.id;
+              const pendingRequests = (inq.replacementRequests ?? []).filter(r => r.status !== "resolved");
+
+              return (
+                <Fragment key={inq.id}>
+                  <tr className="border-t border-slate-200/70 hover:bg-slate-50 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : inq.id)}>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.deliveredDate ?? inq.submittedDate}</td>
+                    <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{inq.code}</td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{inq.products[0]?.filterName ?? labelForType(inq.products[0]?.type ?? "")}</td>
+                    <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{(inq.invoiceAmount ?? inq.quotedTotal ?? 0).toLocaleString("en-PH")}</td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: inq.stage === "paid" ? "#DCFCE7" : "#DBEAFE", color: inq.stage === "paid" ? "#15803D" : "#1D4ED8" }}>
+                        {inq.stage === "paid" ? "✅ Paid" : "📦 Delivered"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {inWindow ? (
+                        <span className="font-dm" style={{ fontSize: 11, color: "#15803D", fontWeight: 600 }}>Open · until {replacementWindowExpiry(inq)}</span>
+                      ) : (
+                        <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Closed</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {canRequest ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setReplacementModal(inq); }}
+                          className="font-dm px-3 py-1.5 rounded-md text-white hover:opacity-90"
+                          style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E" }}
+                        >
+                          Request Replacement
+                        </button>
+                      ) : maxReached ? (
+                        <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Max 2 replacements</span>
+                      ) : null}
+                      {pendingRequests.length > 0 && (
+                        <span className="font-dm ml-2 px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEF3C7", color: "#B45309" }}>
+                          {pendingRequests.length} pending
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                  {isExpanded && (inq.replacementRequests ?? []).length > 0 && (
+                    <tr key={`${inq.id}-expanded`}>
+                      <td colSpan={8} className="px-4 py-3 bg-slate-50">
+                        <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Replacement Requests</div>
+                        <div className="flex flex-col gap-2">
+                          {(inq.replacementRequests ?? []).map((req) => (
+                            <div key={req.id} className="rounded-md p-3 bg-white border border-slate-200 flex items-start justify-between gap-4">
+                              <div className="flex flex-col gap-1">
+                                <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
+                                  Replace {req.qty} pcs · {req.reason}
+                                </div>
+                                <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{req.defectDescription}</div>
+                                <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>
+                                  Requested {new Date(req.requestedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  {req.proofFileName && ` · Photo: ${req.proofFileName}`}
+                                  {req.joNumber && ` · Replacement JO: ${req.joNumber}`}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-dm px-2.5 py-1 rounded-full shrink-0" style={{ fontSize: 10, fontWeight: 700,
+                                  backgroundColor: req.status === "resolved" ? "#DCFCE7" : req.status === "processing" ? "#DBEAFE" : "#FEF3C7",
+                                  color: req.status === "resolved" ? "#15803D" : req.status === "processing" ? "#1D4ED8" : "#B45309" }}>
+                                  {req.status === "resolved" ? "✅ Resolved" : req.status === "processing" ? "🔧 Processing" : "⏳ Pending"}
+                                </span>
+                                {req.status === "processing" && (
+                                  <button
+                                    onClick={() => {
+                                      resolveReplacement(inq.id, req.id);
+                                      toast.success("Marked as resolved", { description: "Thank you! The replacement has been received." });
+                                    }}
+                                    className="font-dm px-3 py-1.5 rounded-md text-white hover:opacity-90"
+                                    style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#16A34A" }}
+                                  >
+                                    Mark as Received
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
+      </div>
+
+      {/* Replacement Request Modal */}
+      {replacementModal && (
+        <ReplacementRequestModal
+          inquiry={replacementModal}
+          onClose={() => setReplacementModal(null)}
+          onSubmit={(req) => {
+            addReplacementRequest(replacementModal.id, req);
+            pushNotif({
+              dept: "operations",
+              title: `Replacement request: ${replacementModal.code}`,
+              body: `${replacementModal.clientName} · ${req.qty} pcs · ${req.reason}`,
+              link: "production",
+              recipients: ["owner", "operations"],
+            });
+            toast.success("Replacement request submitted", { description: "Operations will process your request within 1-2 business days." });
+            setReplacementModal(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReplacementRequestModal({ inquiry, onClose, onSubmit }: {
+  inquiry: Inquiry;
+  onClose: () => void;
+  onSubmit: (req: { reason: string; defectDescription: string; qty: number; proofFileName?: string }) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [defect, setDefect] = useState("");
+  const [qty, setQty] = useState(1);
+  const [proofFile, setProofFile] = useState("");
+  const maxQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
+
+  const submit = () => {
+    if (!reason.trim()) { toast.error("Please select a reason"); return; }
+    if (!defect.trim()) { toast.error("Please describe the issue"); return; }
+    if (qty <= 0 || qty > maxQty) { toast.error(`Qty must be between 1 and ${maxQty}`); return; }
+    onSubmit({ reason, defectDescription: defect, qty, proofFileName: proofFile || undefined });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-lg flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF2F2" }}>
+          <span style={{ fontSize: 18 }}>🔄</span>
+          <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#991B1B" }}>Request Item Replacement</h3>
+          <button onClick={onClose} className="ml-auto w-8 h-8 rounded-md hover:bg-red-100 flex items-center justify-center"><X size={16} /></button>
+        </div>
+        <div className="p-5 overflow-auto flex flex-col gap-4">
+          {/* Order summary */}
+          <div className="rounded-lg p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+            <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
+              {inquiry.code} · {inquiry.products[0]?.filterName ?? inquiry.products[0]?.type}
+            </div>
+            <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>
+              Delivered: {inquiry.deliveredDate ?? "—"} · Window expires: {replacementWindowExpiry(inquiry)}
+            </div>
+            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#C8102E", fontWeight: 600 }}>
+              Max 2 replacement requests per order ({(inquiry.replacementRequests ?? []).length}/2 used)
+            </div>
+          </div>
+
+          {/* T&C reminder */}
+          <div className="rounded-md p-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+            <div className="font-dm" style={{ fontSize: 11, color: "#92400E", lineHeight: 1.5 }}>
+              <span style={{ fontWeight: 700 }}>Reminder:</span> No refunds. Replacements only. Defect/damage photos are required. Enter-Fil reserves the right to inspect the claim before processing.
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason *</label>
+            <select value={reason} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }}>
+              <option value="">Select a reason...</option>
+              <option value="Defective / damaged on arrival">Defective / damaged on arrival</option>
+              <option value="Wrong specifications received">Wrong specifications received</option>
+              <option value="Quality does not match sample">Quality does not match sample</option>
+              <option value="Premature failure during installation">Premature failure during installation</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          {/* Defect description */}
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Describe the issue *</label>
+            <textarea
+              value={defect}
+              onChange={(e) => setDefect(e.target.value)}
+              placeholder="e.g. Filter media has tears, seams are not properly sealed, dimensions don't match the JO specs..."
+              rows={3}
+              className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none"
+              style={{ fontSize: 13 }}
+            />
+          </div>
+
+          {/* Qty */}
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
+              Pieces to Replace * (max {maxQty})
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={maxQty}
+              value={qty}
+              onChange={(e) => setQty(Math.min(maxQty, Math.max(1, Number(e.target.value))))}
+              className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+              style={{ fontSize: 13 }}
+            />
+          </div>
+
+          {/* Proof photo upload */}
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
+              Photo of Defect / Damage
+            </label>
+            <label className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-dashed border-slate-300 cursor-pointer hover:bg-slate-50 font-dm" style={{ fontSize: 12, color: proofFile ? "#16A34A" : "#64748B" }}>
+              <Camera size={14} />
+              {proofFile ? proofFile : "Upload photo (JPG, PNG, PDF)"}
+              <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) setProofFile(f.name);
+                e.currentTarget.value = "";
+              }} />
+            </label>
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+          <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}>
+            Submit Replacement Request
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -336,10 +586,10 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">("30-Day Terms");
   const [generalNotes, setGeneralNotes] = useState("");
   /* Multi-product state — clients can add multiple filters per inquiry. */
-  const [products, setProducts] = useState<ProductLine[]>([blankProduct("p1")]);
+  const [products, setProducts] = useState<ProductLine[]>([{ ...blankProduct("p1"), filtrationRating: "10-micron" }]);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [filtrationRating, setFiltrationRating] = useState("10-micron");
-  const [sketchFile, setSketchFile] = useState<File | null>(null);
+  /* Per-product sketch files — keyed by product id (File objects can't live in the store) */
+  const [sketchFiles, setSketchFiles] = useState<Record<string, File | null>>({});
   const [isRush, setIsRush] = useState(false);
   const [rushDate, setRushDate] = useState("");
 
@@ -364,7 +614,7 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
       const required = dims[0]; // first listed dim is the primary required field per group
       return ((active as any)[required] ?? "").toString().trim().length > 0 && (active.media ?? "").trim().length > 0;
     }
-    if (step === 3) return !!filtrationRating;
+    if (step === 3) return !!(active.filtrationRating ?? "10-micron");
     if (step === 4) return active.qty >= 10;
     return true;
   };
@@ -374,18 +624,24 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
     if (products.some((p) => p.qty < 10)) { toast.error("Each product must have qty ≥ 10"); return; }
     if (isRush && !rushDate.trim()) { toast.error("Please specify your required delivery date for rush orders"); return; }
 
-    /* Stamp filtrationRating onto the active line's notes only if user entered nothing else. */
-    const finalProducts: ProductLine[] = products.map((p) => ({
-      ...p,
-      notes: p.notes || (filtrationRating === "custom" ? `Custom filtration · ${generalNotes}` : `Filtration: ${filtrationRating}`),
-    }));
+    /* Stamp per-product filtrationRating and sketchFileName, then build the finalProducts array. */
+    const finalProducts: ProductLine[] = products.map((p) => {
+      const rating = p.filtrationRating ?? "10-micron";
+      const sketchFileObj = sketchFiles[p.id] ?? null;
+      return {
+        ...p,
+        sketchFileName: sketchFileObj?.name ?? p.sketchFileName,
+        notes: p.notes || (rating === "custom" ? `Custom filtration · ${generalNotes}` : `Filtration: ${rating}`),
+      };
+    });
 
     const code = addInquiry({
       clientName, contactPerson, paymentTerms, generalNotes,
       products: finalProducts,
       urgent: isRush,
       dueDate: isRush ? rushDate : undefined,
-      inquirySketch: sketchFile?.name,
+      /* Legacy single-sketch field — show comma-joined list for multi-product */
+      inquirySketch: finalProducts.map((p) => p.sketchFileName).filter(Boolean).join(", ") || undefined,
     });
     pushNotif({
       dept: "sales",
@@ -399,8 +655,8 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
   };
 
   const addAnotherFilter = () => {
-    const id = `p${products.length + 1}`;
-    setProducts((prev) => [...prev, blankProduct(id)]);
+    const id = `p${Date.now()}`;
+    setProducts((prev) => [...prev, { ...blankProduct(id), filtrationRating: "10-micron" }]);
     setActiveIdx(products.length);
     setStep(1);
   };
@@ -424,29 +680,37 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
           <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center" style={{ color: "white" }}><X size={16} /></button>
         </div>
 
-        {/* Product tabs (multi-product) */}
-        {products.length > 1 && (
-          <div className="px-6 py-3 border-b border-slate-200 flex items-center gap-2 overflow-auto" style={{ backgroundColor: "#FAFBFC" }}>
-            {products.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => setActiveIdx(i)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md font-dm whitespace-nowrap"
-                style={{
-                  fontSize: 12, fontWeight: 700,
-                  border: i === activeIdx ? "2px solid #C8102E" : "1px solid #CBD5E1",
-                  backgroundColor: i === activeIdx ? "#FEF2F2" : "white",
-                  color: i === activeIdx ? "#C8102E" : "#475569",
-                }}
-              >
-                Filter #{i + 1}{p.filterName ? ` · ${p.filterName}` : ""}
-                {products.length > 1 && (
-                  <span onClick={(e) => { e.stopPropagation(); removeProduct(i); }} className="ml-1 hover:text-red-700"><X size={12} /></span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Product tabs (multi-product) — always visible, with + Add Another */}
+        <div className="px-6 py-3 border-b border-slate-200 flex items-center gap-2 overflow-auto" style={{ backgroundColor: "#FAFBFC" }}>
+          {products.map((p, i) => (
+            <button
+              key={p.id}
+              onClick={() => setActiveIdx(i)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md font-dm whitespace-nowrap transition-all"
+              style={{
+                fontSize: 12, fontWeight: 700,
+                border: i === activeIdx ? "2px solid #C8102E" : "1px solid #CBD5E1",
+                backgroundColor: i === activeIdx ? "#FEF2F2" : "white",
+                color: i === activeIdx ? "#C8102E" : "#475569",
+              }}
+            >
+              {FILTER_TYPE_ICON[p.type] ?? "🔩"} Filter #{i + 1}{p.filterName ? ` · ${p.filterName}` : ""}
+              {/* Show sketch indicator */}
+              {(sketchFiles[p.id] ?? p.sketchFileName) && <span title="Sketch attached" style={{ fontSize: 10 }}>📎</span>}
+              {products.length > 1 && (
+                <span onClick={(e) => { e.stopPropagation(); removeProduct(i); }} className="ml-1 hover:text-red-700"><X size={12} /></span>
+              )}
+            </button>
+          ))}
+          {/* Always-visible + Add Another Filter button */}
+          <button
+            onClick={addAnotherFilter}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm whitespace-nowrap hover:bg-slate-100 transition-all"
+            style={{ fontSize: 12, fontWeight: 700, color: "#475569", border: "1px dashed #CBD5E1", backgroundColor: "white" }}
+          >
+            <Plus size={11} /> Add Filter
+          </button>
+        </div>
 
         {/* Stepper */}
         <div className="px-6 py-4 border-b border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
@@ -502,15 +766,18 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
             <DynamicDimensionFields product={active} onChange={updateActive} />
           )}
 
-          {/* STEP 3 — Filtration Rating */}
+          {/* STEP 3 — Filtration Rating (per-product) */}
           {step === 3 && (
             <div>
-              <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>What filtration rating do you need?</div>
+              <div className="font-dm mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>What filtration rating do you need?</div>
+              <div className="font-dm mb-3" style={{ fontSize: 11, color: "#94A3B8" }}>
+                This rating applies to <span style={{ fontWeight: 700, color: "#1A2B4A" }}>Filter #{activeIdx + 1}{active.filterName ? ` · ${active.filterName}` : ""}</span> only.
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {FILTRATION_RATINGS.map((r) => {
-                  const act = filtrationRating === r.value;
+                  const act = (active.filtrationRating ?? "10-micron") === r.value;
                   return (
-                    <button key={r.value} onClick={() => setFiltrationRating(r.value)} className="rounded-lg p-3 flex flex-col items-start gap-0.5 text-left" style={{ border: act ? "2px solid #C8102E" : "1px solid #E2E8F0", backgroundColor: act ? "#FEF2F2" : "white", padding: act ? 11 : 12 }}>
+                    <button key={r.value} onClick={() => updateActive({ filtrationRating: r.value })} className="rounded-lg p-3 flex flex-col items-start gap-0.5 text-left" style={{ border: act ? "2px solid #C8102E" : "1px solid #E2E8F0", backgroundColor: act ? "#FEF2F2" : "white", padding: act ? 11 : 12 }}>
                       <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: act ? "#C8102E" : "#0F172A" }}>{r.label}</span>
                       <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{r.desc}</span>
                     </button>
@@ -539,21 +806,34 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
                 </div>
               </div>
               <div className="rounded-lg p-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>📎 Engineer Sketch (Optional)</div>
-                {sketchFile ? (
-                  <div className="flex items-center gap-3 bg-white rounded-md px-3 py-2 border border-blue-200">
-                    <FileCheck size={14} style={{ color: "#2563EB" }} />
-                    <span className="font-dm flex-1" style={{ fontSize: 12, color: "#0F172A", fontWeight: 600 }}>{sketchFile.name}</span>
-                    <button onClick={() => setSketchFile(null)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
-                  </div>
-                ) : (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setSketchFile(f); }} />
-                    <span className="flex items-center gap-2 px-3 py-2 rounded-md font-dm hover:bg-blue-100" style={{ fontSize: 12, fontWeight: 600, color: "#1D4ED8", border: "1.5px dashed #93C5FD" }}>
-                      <Camera size={13} /> Browse JPG / PNG / PDF
-                    </span>
-                  </label>
-                )}
+                <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>📎 Engineer Sketch (Optional)</div>
+                <div className="font-dm mb-2" style={{ fontSize: 10, color: "#3B82F6" }}>
+                  Sketch for <span style={{ fontWeight: 700 }}>Filter #{activeIdx + 1}{active.filterName ? ` · ${active.filterName}` : ""}</span> only — each filter has its own sketch.
+                </div>
+                {(() => {
+                  const sketchFile = sketchFiles[active.id] ?? null;
+                  const savedName = active.sketchFileName;
+                  return sketchFile ? (
+                    <div className="flex items-center gap-3 bg-white rounded-md px-3 py-2 border border-blue-200">
+                      <FileCheck size={14} style={{ color: "#2563EB" }} />
+                      <span className="font-dm flex-1" style={{ fontSize: 12, color: "#0F172A", fontWeight: 600 }}>{sketchFile.name}</span>
+                      <button onClick={() => { setSketchFiles((prev) => ({ ...prev, [active.id]: null })); updateActive({ sketchFileName: undefined }); }} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                    </div>
+                  ) : savedName ? (
+                    <div className="flex items-center gap-3 bg-white rounded-md px-3 py-2 border border-blue-200">
+                      <FileCheck size={14} style={{ color: "#2563EB" }} />
+                      <span className="font-dm flex-1" style={{ fontSize: 12, color: "#0F172A", fontWeight: 600 }}>{savedName}</span>
+                      <button onClick={() => updateActive({ sketchFileName: undefined })} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setSketchFiles((prev) => ({ ...prev, [active.id]: f })); updateActive({ sketchFileName: f.name }); } }} />
+                      <span className="flex items-center gap-2 px-3 py-2 rounded-md font-dm hover:bg-blue-100" style={{ fontSize: 12, fontWeight: 600, color: "#1D4ED8", border: "1.5px dashed #93C5FD" }}>
+                        <Camera size={13} /> Browse JPG / PNG / PDF
+                      </span>
+                    </label>
+                  );
+                })()}
               </div>
               <div className="rounded-lg p-3" style={{ backgroundColor: isRush ? "#FEF2F2" : "#F8FAFC", border: isRush ? "1.5px solid #FECACA" : "1px solid #E2E8F0" }}>
                 <label className="flex items-center gap-3 cursor-pointer" onClick={() => setIsRush((r) => !r)}>
@@ -595,11 +875,23 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
                 </div>
               ))}
               <div className="rounded-lg p-4 grid grid-cols-2 gap-y-2 gap-x-4" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A" }}>
-                <ReviewLine label="Filtration Rating" value={FILTRATION_RATINGS.find((r) => r.value === filtrationRating)?.label ?? filtrationRating} />
                 <ReviewLine label="Payment Terms" value={paymentTerms} />
-                <ReviewLine label="Sketch" value={sketchFile?.name ?? "Not attached"} />
                 {isRush && <ReviewLine label="🚨 Rush Date" value={rushDate} accent="#C8102E" />}
               </div>
+              {/* Per-product filtration + sketch summary */}
+              {products.map((p, i) => (
+                <div key={p.id} className="rounded-md px-3 py-2 flex items-center gap-3 flex-wrap" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                  <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#1A2B4A" }}>Filter #{i + 1}{p.filterName ? ` · ${p.filterName}` : ""}</span>
+                  <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>
+                    Filtration: <span style={{ fontWeight: 600, color: "#0F172A" }}>{FILTRATION_RATINGS.find((r) => r.value === (p.filtrationRating ?? "10-micron"))?.label ?? p.filtrationRating ?? "10 micron"}</span>
+                  </span>
+                  <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>
+                    Sketch: <span style={{ fontWeight: 600, color: (sketchFiles[p.id] ?? p.sketchFileName) ? "#16A34A" : "#94A3B8" }}>
+                      {sketchFiles[p.id]?.name ?? p.sketchFileName ?? "Not attached"}
+                    </span>
+                  </span>
+                </div>
+              ))}
               {!contactPerson.trim() && (
                 <div className="rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#991B1B", backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>⚠️ Please add your contact person on Step 1 before submitting.</div>
               )}
@@ -611,11 +903,6 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
           <button onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1} className="font-dm px-4 py-2.5 rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>← Back</button>
           <div className="flex items-center gap-2">
-            {step === 5 && (
-              <button onClick={addAnotherFilter} className="font-dm flex items-center gap-2 px-4 py-2.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>
-                <Plus size={14} /> Add Another Filter
-              </button>
-            )}
             {step < 5 ? (
               <button onClick={() => (canProceed() ? setStep((s) => s + 1) : toast.error("Please complete the required fields"))} disabled={!canProceed()} className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2" style={{ backgroundColor: "#1A2B4A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
                 Next: {STEPS[step].label} →
@@ -755,7 +1042,7 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
 }
 
 function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void }) {
-  const { updateInquiry } = useOrders();
+  const { updateInquiry, uploadDownpaymentReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [open, setOpen] = useState(inquiry.stage === "quotation");
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -763,6 +1050,10 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
   /* Section C — revision request modal */
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [revisionNoteDraft, setRevisionNoteDraft] = useState("");
+  /* View full quotation doc */
+  const [showQuotationDoc, setShowQuotationDoc] = useState(false);
+  /* View terms & conditions */
+  const [showTerms, setShowTerms] = useState(false);
   const total = quotationTotal(inquiry);
 
   const submitRevision = () => {
@@ -845,6 +1136,79 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
               <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>
                 Pricing based on Raw Materials + Labor + Markup. Lead time: <span style={{ fontWeight: 700, color: "#0F172A" }}>{inquiry.quotation.leadTimeDays} business days</span>. MOQ: 10 pcs per product.
               </div>
+
+              {/* View Full Quotation Document — available when quotationDoc is set */}
+              {inquiry.quotationDoc && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setShowQuotationDoc(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md font-dm hover:bg-blue-50"
+                    style={{ fontSize: 12, fontWeight: 700, color: "#1D4ED8", border: "1px solid #BFDBFE", backgroundColor: "#EFF6FF" }}
+                  >
+                    📄 View Full Quotation Document ({inquiry.quotationDoc.quotationNo})
+                  </button>
+                  <button
+                    onClick={() => setShowTerms((v) => !v)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-md font-dm hover:bg-amber-50 transition-colors"
+                    style={{ fontSize: 12, fontWeight: 700, color: "#92400E", border: "1px solid #FDE68A", backgroundColor: showTerms ? "#FEF3C7" : "#FFFBEB" }}
+                  >
+                    📋 {showTerms ? "Hide" : "View"} Terms &amp; Conditions
+                    {showTerms ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  </button>
+                </div>
+              )}
+
+              {/* Collapsible T&C panel */}
+              {showTerms && inquiry.quotationDoc && (
+                <div className="rounded-xl p-4 flex flex-col gap-2" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
+                  <div className="font-dm flex items-center gap-2 mb-1" style={{ fontSize: 11, fontWeight: 800, color: "#92400E", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                    📋 Terms &amp; Conditions — Included with Quotation
+                  </div>
+
+                  {/* Downpayment note — only when set */}
+                  {inquiry.quotationDoc.downpaymentPercent && inquiry.quotationDoc.downpaymentAmount ? (
+                    <div className="rounded-lg px-3 py-2.5 flex items-start gap-2" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+                      <span style={{ fontSize: 16, lineHeight: 1 }}>💳</span>
+                      <div className="font-dm" style={{ fontSize: 12, color: "#1E3A8A", lineHeight: 1.5 }}>
+                        <span style={{ fontWeight: 800 }}>Downpayment Required — {inquiry.quotationDoc.downpaymentPercent}%:</span>{" "}
+                        A downpayment of{" "}
+                        <span className="font-mono-jb" style={{ fontWeight: 800, color: "#1D4ED8" }}>
+                          ₱{inquiry.quotationDoc.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>{" "}
+                        is required before production begins. The remaining balance of{" "}
+                        <span className="font-mono-jb" style={{ fontWeight: 700 }}>
+                          ₱{(inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0) - inquiry.quotationDoc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>{" "}
+                        is due upon delivery.
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="font-dm flex flex-col gap-1.5" style={{ fontSize: 12, color: "#78350F", lineHeight: 1.6 }}>
+                    <div>
+                      <span style={{ fontWeight: 700 }}>Replacement Policy:</span>{" "}
+                      Clients on <strong>15-Day Terms</strong> may request item replacement within <strong>1 week</strong> of delivery.
+                      Clients on <strong>30-Day Terms</strong> may request replacement within <strong>2 weeks</strong> of delivery.
+                      {inquiry.quotationDoc.termsOfPayment && (
+                        <> Currently selected: <span style={{ fontWeight: 700, color: "#C8102E" }}>{inquiry.quotationDoc.termsOfPayment}</span>
+                        {" "}— replacement window: <span style={{ fontWeight: 700, color: "#C8102E" }}>{inquiry.quotationDoc.termsOfPayment === "15-Day Terms" ? "1 week" : "2 weeks"}</span> from delivery date.</>
+                      )}
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 700 }}>No Refunds.</span>{" "}
+                      All sales are final. Replacement requests only — no monetary refunds will be issued.
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 700 }}>For replacement requests or concerns, contact Enter-Fil:</span>{" "}
+                      Tel: +63 (2) 8861-5737 / +63 (2) 8653-3750 · Mobile: +63 (956) 657-3837 · Email: enterfil.filtration@yahoo.com / zuluetaellen@gmail.com
+                    </div>
+                    <div style={{ color: "#92400E", fontSize: 11 }}>
+                      Office Hours: Monday – Friday, 8:00 AM – 6:00 PM · Sitio Hulo, Brgy. Balasing – San Jose Rd, Santa Maria, 3022 Bulacan
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {inquiry.stage === "quotation" && (
                 <>
                   {inquiry.revisionNote && !inquiry.quotationHistory?.length && (
@@ -865,6 +1229,90 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
               {inquiry.stage === "po" && inquiry.poFileName && (
                 <div className="rounded-md p-3 font-dm" style={{ backgroundColor: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 13, color: "#166534" }}>
                   ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span> — production will begin shortly.
+                </div>
+              )}
+
+              {/* ── Downpayment action card — shown when DP is required but not yet confirmed ── */}
+              {(inquiry.downpaymentAmount ?? 0) > 0 && !inquiry.downpaymentConfirmed && inquiry.stage !== "inquiry" && inquiry.stage !== "quotation" && (
+                <div className="rounded-xl p-4 flex flex-col gap-3" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="font-dm flex items-center gap-2" style={{ fontSize: 12, fontWeight: 800, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>
+                      💳 Downpayment Required — {inquiry.downpaymentPercent}%
+                    </div>
+                    <div className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}>
+                      ₱{(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+
+                  {!inquiry.downpaymentPaymentDetails && (
+                    <div className="font-dm rounded-md p-3" style={{ fontSize: 12, color: "#475569", backgroundColor: "#fff", border: "1px solid #BFDBFE" }}>
+                      ⏳ Awaiting payment details from Enter-Fil Accounting. You will be notified here once details are sent.
+                    </div>
+                  )}
+
+                  {inquiry.downpaymentPaymentDetails && (
+                    <div className="rounded-md p-3 flex flex-col gap-1.5" style={{ backgroundColor: "#fff", border: "1px solid #BFDBFE" }}>
+                      <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Payment Details</div>
+                      <div className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+                        <span style={{ fontWeight: 700 }}>Method:</span> {inquiry.downpaymentPaymentDetails.method}
+                        {inquiry.downpaymentPaymentDetails.bankName ? ` · ${inquiry.downpaymentPaymentDetails.bankName}` : ""}
+                      </div>
+                      {inquiry.downpaymentPaymentDetails.accountName && (
+                        <div className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+                          <span style={{ fontWeight: 700 }}>Account Name:</span> {inquiry.downpaymentPaymentDetails.accountName}
+                        </div>
+                      )}
+                      <div className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+                        <span style={{ fontWeight: 700 }}>{inquiry.downpaymentPaymentDetails.method === "GCash" ? "GCash Number" : inquiry.downpaymentPaymentDetails.method === "Check" ? "Reference" : "Account Number"}:</span>{" "}
+                        <span className="font-mono-jb">{inquiry.downpaymentPaymentDetails.accountNumber}</span>
+                      </div>
+                      {inquiry.downpaymentPaymentDetails.note && (
+                        <div className="font-dm mt-1 rounded p-2" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px dashed #FDE68A" }}>
+                          📝 {inquiry.downpaymentPaymentDetails.note}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Receipt upload — only when payment details have been sent */}
+                  {inquiry.downpaymentPaymentDetails && !inquiry.downpaymentReceiptFile && (
+                    <label className="block w-full rounded-md border-2 border-dashed cursor-pointer hover:bg-white p-4 flex flex-col items-center justify-center gap-1 font-dm transition-colors" style={{ borderColor: "#BFDBFE", color: "#1D4ED8", fontSize: 12 }}>
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          uploadDownpaymentReceipt(inquiry.id, f.name);
+                          pushNotif({
+                            dept: "payments",
+                            title: `Downpayment receipt uploaded: ${inquiry.code}`,
+                            body: `${inquiry.clientName} · ₱${(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH")} · ${f.name}`,
+                            link: "accounting",
+                            recipients: ["owner", "operations", "accounting"],
+                          });
+                          toast.success("Downpayment receipt uploaded", { description: "Enter-Fil Accounting will confirm shortly." });
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                      <span style={{ fontWeight: 700 }}>📤 Upload Downpayment Receipt</span>
+                      <span style={{ fontSize: 10, color: "#64748B" }}>PNG, JPG or PDF · proof of transfer / GCash screenshot</span>
+                    </label>
+                  )}
+
+                  {inquiry.downpaymentReceiptFile && !inquiry.downpaymentConfirmed && (
+                    <div className="rounded-md p-3 font-dm flex items-center gap-2" style={{ fontSize: 12, color: "#1E40AF", backgroundColor: "#fff", border: "1px solid #BFDBFE" }}>
+                      ⏳ Receipt uploaded: <strong>{inquiry.downpaymentReceiptFile}</strong> — awaiting confirmation from Accounting.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Downpayment confirmed — success badge */}
+              {(inquiry.downpaymentAmount ?? 0) > 0 && inquiry.downpaymentConfirmed && (
+                <div className="rounded-md p-3 font-dm flex items-center gap-2" style={{ fontSize: 13, color: "#166534", backgroundColor: "#DCFCE7", border: "1px solid #86EFAC" }}>
+                  ✅ Downpayment received & confirmed by Accounting — ₱{(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({inquiry.downpaymentPercent}%). Production is greenlit.
                 </div>
               )}
             </div>
@@ -943,6 +1391,18 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
             </div>
           )}
         </div>
+      )}
+
+      {/* Full Quotation Document Modal */}
+      {showQuotationDoc && inquiry.quotationDoc && (
+        <QuotationPreviewModal
+          inquiry={inquiry}
+          doc={inquiry.quotationDoc}
+          vatLabel={inquiry.quotationDoc.termsOfPayment === "15-Day Terms" ? "VAT EXCLUSIVE" : "VAT EXCLUSIVE"}
+          total={inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
+          preparedBy={inquiry.quotationDoc.preparedBy ?? "Enter-Fil"}
+          onClose={() => setShowQuotationDoc(false)}
+        />
       )}
 
       {/* Section C — Revision Request Modal */}
@@ -1067,8 +1527,12 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
 
   return {
     po: inq.poFileName?.replace(/\.\w+$/, "") ?? `INQ-${inq.code.replace("INQ-", "")}`,
-    product: `${inq.products[0]?.type ?? "Filter"}${inq.products[0]?.height ? ` ${inq.products[0].od1 ?? ""}×${inq.products[0].id1 ?? ""}×${inq.products[0].height}mm` : ""}`,
-    qty: inq.products.reduce((s, p) => s + p.qty, 0),
+    product: inq.products.length > 1
+      ? `${inq.products.length} filters · ${inq.products.map((p) => p.type).join(", ")}`
+      : `${inq.products[0]?.type ?? "Filter"}${inq.products[0]?.height ? ` ${inq.products[0].od1 ?? ""}×${inq.products[0].id1 ?? ""}×${inq.products[0].height}mm` : ""}`,
+    qty: inq.products.length > 1
+      ? inq.products.reduce((s, p) => s + p.qty, 0)
+      : (inq.products[0]?.qty ?? 0),
     client: inq.clientName,
     paid: inq.stage === "paid",
     badge: stageBadgeForClient(inq),

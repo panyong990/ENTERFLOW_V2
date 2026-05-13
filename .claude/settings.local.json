@@ -5,7 +5,15 @@
       "PowerShell(Start-Process -FilePath \"npm\" -ArgumentList \"run\",\"dev\" -WorkingDirectory \"C:\\\\Users\\\\hp\\\\OneDrive\\\\Documents\\\\ENTER-FLOW\" -WindowStyle Hidden)",
       "Bash(npm run *)",
       "Bash(claude mcp *)",
-      "mcp__figma__generate_figma_design"
+      "mcp__figma__generate_figma_design",
+      "PowerShell(Start-Process \"http://localhost:5174/#figmacapture=b305ff64-e15b-4712-a61a-894a2924b26c&figmaendpoint=https%3A%2F%2Fmcp.figma.com%2Fmcp%2Fcapture%2Fb305ff64-e15b-4712-a61a-894a2924b26c%2Fsubmit&figmadelay=8000\")",
+      "PowerShell(Start-Process \"http://localhost:5174/#figmacapture=60537793-842d-4f4b-8dcf-47397c5cac9a&figmaendpoint=https%3A%2F%2Fmcp.figma.com%2Fmcp%2Fcapture%2F60537793-842d-4f4b-8dcf-47397c5cac9a%2Fsubmit&figmadelay=10000\")",
+      "PowerShell(Start-Process \"http://localhost:5174/#figmacapture=c76ec2c3-035c-485b-96b2-35e4ffd7b115&figmaendpoint=https%3A%2F%2Fmcp.figma.com%2Fmcp%2Fcapture%2Fc76ec2c3-035c-485b-96b2-35e4ffd7b115%2Fsubmit&figmadelay=10000\")",
+      "PowerShell(Start-Process \"http://localhost:5174/#figmacapture=f37b9ae0-4a43-4384-9991-6c2b0d3b2bd4&figmaendpoint=https%3A%2F%2Fmcp.figma.com%2Fmcp%2Fcapture%2Ff37b9ae0-4a43-4384-9991-6c2b0d3b2bd4%2Fsubmit&figmadelay=10000\")",
+      "PowerShell(Start-Process \"http://localhost:5174/#figmacapture=245922b6-c522-463b-b00f-a5900268e47d&figmaendpoint=https%3A%2F%2Fmcp.figma.com%2Fmcp%2Fcapture%2F245922b6-c522-463b-b00f-a5900268e47d%2Fsubmit&figmadelay=10000\")",
+      "mcp__figma__get_metadata",
+      "PowerShell(Start-Process \"http://localhost:5173/#figmacapture=9c586b74-d466-4b93-b8d8-2d6e9de1991d&figmaendpoint=https%3A%2F%2Fmcp.figma.com%2Fmcp%2Fcapture%2F9c586b74-d466-4b93-b8d8-2d6e9de1991d%2Fsubmit&figmadelay=1000\")",
+      "PowerShell(Start-Process \"http://localhost:5173/#figmacapture=b935e1b3-eaa5-4bc2-8d13-d0cc8e1c6180&figmaendpoint=https%3A%2F%2Fmcp.figma.com%2Fmcp%2Fcapture%2Fb935e1b3-eaa5-4bc2-8d13-d0cc8e1c6180%2Fsubmit&figmadelay=1000\")"
     ]
   }
 }

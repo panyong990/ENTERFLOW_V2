@@ -60,8 +60,9 @@ export function Inventory() {
   const [collapsedCats, setCollapsedCats] = useState<Set<PartCategory>>(new Set());
   const [query, setQuery] = useState("");
 
-  const [fg] = useState<FinishedGood[]>(finishedSeed);
+  const [fg, setFg] = useState<FinishedGood[]>(finishedSeed);
   const [fgQuery, setFgQuery] = useState("");
+  const [fgEditing, setFgEditing] = useState<FinishedGood | null>(null);
 
   /* group by category */
   const grouped = useMemo(() => {
@@ -263,7 +264,7 @@ export function Inventory() {
               <table className="w-full">
                 <thead style={{ backgroundColor: "#F4F6F9" }}>
                   <tr>
-                    {["Item Code", "Enter-Fil PN", "Item Name", "Client", "Qty in Stock", "Buffer Min", "Demand", "Last Updated"].map((h) => (
+                    {["Item Code", "Enter-Fil PN", "Item Name", "Client", "Qty in Stock", "Buffer Min", "Demand", "Last Updated", ""].map((h) => (
                       <th key={h} className="font-dm text-left px-3 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
@@ -282,6 +283,15 @@ export function Inventory() {
                         <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{f.bufferMin}</td>
                         <td className="px-3 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: ds.bg, color: ds.fg }}>{f.demand}</span></td>
                         <td className="px-3 py-3 font-dm" style={{ fontSize: 11, color: "#64748B" }}>{f.lastUpdated} · {f.updatedBy}</td>
+                        <td className="px-3 py-3">
+                          <button
+                            onClick={() => setFgEditing(f)}
+                            className="font-dm flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 hover:bg-white"
+                            style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+                          >
+                            <Pencil size={11} /> Update
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -298,9 +308,27 @@ export function Inventory() {
         )}
       </div>
 
-      {/* Update Stock Modal */}
+      {/* Update Stock Modal (raw materials) */}
       {editing && (
         <UpdateStockModal m={editing} onClose={() => setEditing(null)} onSave={saveStock} />
+      )}
+
+      {/* Update Finished Good Modal */}
+      {fgEditing && (
+        <FinishedGoodUpdateModal
+          item={fgEditing}
+          onClose={() => setFgEditing(null)}
+          onSave={(id, newQty, reason) => {
+            setFg((prev) => prev.map((f) => f.id === id ? {
+              ...f,
+              qtyInStock: newQty,
+              lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+              updatedBy: "F. Santos",
+            } : f));
+            toast.success(`Stock updated: ${fgEditing.itemName} → ${newQty} pcs · Reason: ${reason}`);
+            setFgEditing(null);
+          }}
+        />
       )}
 
       {/* Add Material Modal */}
@@ -497,6 +525,78 @@ function HistoryDrawer({ m, onClose }: { m: RawMaterial; onClose: () => void }) 
               })}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── Finished Good Update Modal ─────────── */
+function FinishedGoodUpdateModal({ item, onClose, onSave }: {
+  item: FinishedGood;
+  onClose: () => void;
+  onSave: (id: string, newQty: number, reason: string) => void;
+}) {
+  const [newQty, setNewQty] = useState(item.qtyInStock);
+  const [reason, setReason] = useState("");
+  const change = newQty - item.qtyInStock;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.55)" }} onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Update Finished Good Stock</h3>
+            <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{item.itemName} · {item.itemCode}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
+        </div>
+        <div className="p-5 flex flex-col gap-4">
+          <div className="rounded-lg p-3 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+            <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>Current stock</span>
+            <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>{item.qtyInStock} pcs</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>New Quantity (pcs)</label>
+            <input
+              type="number"
+              min={0}
+              value={newQty}
+              onChange={(e) => setNewQty(Number(e.target.value))}
+              className="font-syne w-full px-3 py-2.5 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white"
+              style={{ fontSize: 22, fontWeight: 800, color: "#0F172A" }}
+            />
+            {change !== 0 && (
+              <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: change > 0 ? "#16A34A" : "#C8102E" }}>
+                {change > 0 ? "↑ Added" : "↓ Removed"} {Math.abs(change)} pcs
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason *</label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Received from production · Shipped to client · Damaged/scrapped"
+              rows={2}
+              className="font-dm w-full px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none"
+              style={{ fontSize: 13 }}
+            />
+          </div>
+        </div>
+        <div className="px-5 pb-5 flex justify-end gap-2">
+          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+          <button
+            onClick={() => {
+              if (!reason.trim()) { toast.error("Please provide a reason"); return; }
+              onSave(item.id, newQty, reason.trim());
+            }}
+            disabled={newQty < 0}
+            className="font-dm px-5 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40"
+            style={{ backgroundColor: "#1A2B4A", fontSize: 13, fontWeight: 700 }}
+          >
+            Save Update
+          </button>
         </div>
       </div>
     </div>

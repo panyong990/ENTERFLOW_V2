@@ -62,6 +62,7 @@ interface Job {
   stageIndex: number;
   paused?: boolean;
   urgent?: boolean;
+  isReplacement?: boolean;
   sketch?: string;
   specs: string[];
   stageHistory: (StageHistoryEntry | null)[];
@@ -121,6 +122,7 @@ function inquiryToJob(inq: Inquiry): Job {
     stageIndex: stageIdx,
     paused,
     urgent: inq.urgent,
+    isReplacement: inq.isReplacement,
     sketch: inq.joSketch,
     specs,
     stageHistory,
@@ -449,6 +451,12 @@ export function ProductionFloor() {
                 className="bg-white rounded-xl overflow-hidden flex flex-col"
                 style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)", border: job.urgent ? "2px solid #C8102E" : "1px solid rgba(226,232,240,0.7)" }}
               >
+                {/* Replacement banner */}
+                {job.isReplacement && (
+                  <div className="px-5 py-1.5 flex items-center gap-2" style={{ backgroundColor: "#7C3AED" }}>
+                    <span className="font-dm text-white" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6 }}>🔄 REPLACEMENT JO — CLIENT REPLACEMENT ORDER</span>
+                  </div>
+                )}
                 {/* Rush banner */}
                 {job.urgent && (
                   <div className="px-5 py-1.5 flex items-center gap-2" style={{ backgroundColor: "#C8102E" }}>

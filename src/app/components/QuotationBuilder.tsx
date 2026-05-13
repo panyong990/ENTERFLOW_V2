@@ -8,8 +8,10 @@ import { useSession } from "../store/session";
 
 interface Props {
   inquiry: Inquiry;
-  /* Manufacturing unit cost (locked from Tab 2) */
+  /* Manufacturing unit cost (locked from Tab 2) — used as fallback for single-product */
   manufacturingUnitCost: number;
+  /* Per-product unit costs from Tab 2 — overrides manufacturingUnitCost per index */
+  productsManufacturingUnitCosts?: (number | null)[];
   vatType: "Exclusive" | "Inclusive" | "Zero-Rated";
   /* Navigates back to Tab 2 to revise */
   onBackToTab2: () => void;
@@ -19,7 +21,7 @@ interface Props {
 
 const NOTE_PRESETS = ["REPEAT ORDER", "NEW ORDER", "RUSH ORDER", "PARTIAL DELIVERY"];
 
-export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBackToTab2, onSendToClient }: Props) {
+export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, vatType, onBackToTab2, onSendToClient }: Props) {
   const { rawMaterials } = useMaterials();
   const { generateQuotationNumber } = useOrders();
   const session = useSession();
@@ -34,14 +36,14 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBa
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   })();
 
-  /* Initial line items: from saved doc, else build from inquiry + Tab 2 unit cost */
+  /* Initial line items: from saved doc, else build from inquiry + per-product unit cost from Tab 2 */
   const initialLineItems: QuotationLineItem[] = inquiry.quotationDoc?.lineItems ?? inquiry.products.map((p, i) => ({
     no: i + 1,
     qty: p.qty,
     unit: "pcs",
     description: p.type.toUpperCase(),
     subDescription: [p.od1 && `OD ${p.od1}mm`, p.id1 && `ID ${p.id1}mm`, p.height && `H ${p.height}mm`].filter(Boolean).join(" × "),
-    unitPrice: manufacturingUnitCost,
+    unitPrice: productsManufacturingUnitCosts?.[i] ?? inquiry.productsUnitPrice?.[i] ?? manufacturingUnitCost,
   }));
 
   const [lineItems, setLineItems] = useState<QuotationLineItem[]>(initialLineItems);
@@ -166,20 +168,36 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBa
   return (
     <div className="flex flex-col gap-4">
       {/* ── SECTION A — Internal cost summary (locked) ── */}
-      <div className="rounded-lg p-3 flex items-center justify-between" style={{ backgroundColor: "#F1F5F9", border: "1px solid #CBD5E1" }}>
-        <div>
-          <div className="font-dm" style={{ fontSize: 10, fontWeight: 800, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>
-            Cost Summary from Estimation <span style={{ color: "#94A3B8", fontWeight: 600 }}>(staff-only · not visible to client)</span>
+      <div className="rounded-lg p-3" style={{ backgroundColor: "#F1F5F9", border: "1px solid #CBD5E1" }}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>
+              Cost Summary from Estimation <span style={{ color: "#94A3B8", fontWeight: 600 }}>(staff-only · not visible to client)</span>
+            </div>
+            {inquiry.products.length === 1 ? (
+              <div className="flex items-center gap-2">
+                <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>Manufacturing unit cost</span>
+                <span className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>₱{(productsManufacturingUnitCosts?.[0] ?? inquiry.productsUnitPrice?.[0] ?? manufacturingUnitCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / unit</span>
+                <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>locked</span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {inquiry.products.map((p, i) => (
+                  <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ backgroundColor: "white", border: "1px solid #CBD5E1" }}>
+                    <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>{p.type}</span>
+                    <span className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>—</span>
+                    <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>₱{(productsManufacturingUnitCosts?.[i] ?? inquiry.productsUnitPrice?.[i] ?? manufacturingUnitCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>/unit</span>
+                    <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 8, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>locked</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>Manufacturing unit cost</span>
-            <span className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>₱{manufacturingUnitCost.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / unit</span>
-            <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>locked</span>
-          </div>
+          <button onClick={onBackToTab2} className="font-dm flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-white shrink-0" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A", border: "1px solid #CBD5E1" }}>
+            <ArrowLeft size={12} /> Edit in Tab 2
+          </button>
         </div>
-        <button onClick={onBackToTab2} className="font-dm flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-white" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A", border: "1px solid #CBD5E1" }}>
-          <ArrowLeft size={12} /> Edit in Tab 2
-        </button>
       </div>
 
       {/* ── SECTION B — Quotation builder ── */}
@@ -348,6 +366,57 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBa
               <Field label="Validity">
                 <input value={validUntil} onChange={(e) => setValidUntil(e.target.value)} placeholder="e.g. 30 days · May 26, 2026" className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
               </Field>
+
+              {/* ── Downpayment ── */}
+              <div className="pt-2 mt-1 border-t border-slate-200 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Require Downpayment</span>
+                  <button
+                    onClick={() => setRequireDownpayment((v) => !v)}
+                    className="font-dm px-3 py-1 rounded-full transition-all"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      backgroundColor: requireDownpayment ? "#1A2B4A" : "#F1F5F9",
+                      color: requireDownpayment ? "white" : "#64748B",
+                      border: requireDownpayment ? "1.5px solid #1A2B4A" : "1.5px solid #CBD5E1",
+                    }}
+                  >
+                    {requireDownpayment ? "✓ Required" : "Not Required"}
+                  </button>
+                </div>
+                {requireDownpayment && (
+                  <div className="rounded-lg p-3 flex flex-col gap-2" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-dm" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 600 }}>Downpayment:</span>
+                      <button
+                        onClick={() => setDownpaymentPercent(20)}
+                        className="font-dm px-2.5 py-1 rounded-md"
+                        style={{ fontSize: 12, fontWeight: 700, backgroundColor: downpaymentPercent === 20 ? "#1D4ED8" : "white", color: downpaymentPercent === 20 ? "white" : "#1D4ED8", border: "1.5px solid #93C5FD" }}
+                      >
+                        20%
+                      </button>
+                      <button
+                        onClick={() => setDownpaymentPercent(50)}
+                        className="font-dm px-2.5 py-1 rounded-md"
+                        style={{ fontSize: 12, fontWeight: 700, backgroundColor: downpaymentPercent === 50 ? "#1D4ED8" : "white", color: downpaymentPercent === 50 ? "white" : "#1D4ED8", border: "1.5px solid #93C5FD" }}
+                      >
+                        50%
+                      </button>
+                    </div>
+                    <div className="font-dm" style={{ fontSize: 12, color: "#1E3A8A" }}>
+                      <span style={{ fontWeight: 600 }}>Amount due before production: </span>
+                      <span className="font-mono-jb" style={{ fontWeight: 800, fontSize: 14, color: "#1D4ED8" }}>
+                        ₱{(grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span style={{ color: "#60A5FA", fontSize: 11, marginLeft: 4 }}>({downpaymentPercent}% of ₱{grandTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                    </div>
+                    <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6", lineHeight: 1.5 }}>
+                      This downpayment requirement will be visible to the client on their quotation document and in the Client Portal.
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           {/* Totals */}
@@ -371,11 +440,47 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, vatType, onBa
                 </div>
               )}
             </div>
+            {requireDownpayment && (
+              <div className="px-4 py-3 flex flex-col gap-1" style={{ backgroundColor: "#EFF6FF", borderTop: "1.5px solid #BFDBFE" }}>
+                <div className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 700 }}>
+                  <span>⬇ Downpayment required ({downpaymentPercent}%)</span>
+                  <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 800 }}>₱{(grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6" }}>Balance upon delivery: <span className="font-mono-jb">₱{(grandTotal * (1 - downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── SECTION C — Actions ── */}
+      {/* ── SECTION C — Terms & Conditions Notice ── */}
+      <div className="rounded-xl p-4" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
+        <div className="font-dm mb-2 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 800, color: "#92400E", letterSpacing: 0.5, textTransform: "uppercase" }}>
+          📋 Terms &amp; Conditions — Included with Quotation
+        </div>
+        <div className="flex flex-col gap-1.5 font-dm" style={{ fontSize: 12, color: "#78350F", lineHeight: 1.6 }}>
+          <div>
+            <span style={{ fontWeight: 700 }}>Replacement Policy:</span>{" "}
+            Clients on <strong>15-Day Terms</strong> may request item replacement within <strong>1 week</strong> of delivery.
+            Clients on <strong>30-Day Terms</strong> may request replacement within <strong>2 weeks</strong> of delivery.
+            {" "}Currently selected terms: <span style={{ fontWeight: 700, color: "#C8102E" }}>{termsOfPayment}</span>
+            {" "}— replacement window: <span style={{ fontWeight: 700, color: "#C8102E" }}>{termsOfPayment === "15-Day Terms" ? "1 week" : "2 weeks"}</span> from delivery date.
+          </div>
+          <div>
+            <span style={{ fontWeight: 700 }}>No Refunds.</span>{" "}
+            All sales are final. Replacement requests only — no monetary refunds will be issued.
+          </div>
+          <div>
+            <span style={{ fontWeight: 700 }}>For replacement requests or concerns, contact Enter-Fil:</span>{" "}
+            Tel: +63 (2) 8861-5737 / +63 (2) 8653-3750 · Mobile: +63 (956) 657-3837 · Email: enterfil.filtration@yahoo.com / zuluetaellen@gmail.com
+          </div>
+          <div style={{ color: "#92400E", fontSize: 11 }}>
+            Office Hours: Monday – Friday, 8:00 AM – 6:00 PM · Sitio Hulo, Brgy. Balasing – San Jose Rd, Santa Maria, 3022 Bulacan
+          </div>
+        </div>
+      </div>
+
+      {/* ── SECTION D — Actions ── */}
       <div className="flex items-center justify-end gap-3">
         <button onClick={handlePreview} className="flex items-center gap-2 px-5 py-2.5 rounded-md font-dm hover:bg-slate-50" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A", border: "2px solid #1A2B4A", letterSpacing: 0.4 }}>
           <Eye size={14} /> Preview Quotation

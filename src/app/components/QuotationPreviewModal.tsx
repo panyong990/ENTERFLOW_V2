@@ -174,6 +174,13 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                   <Term label="Time of delivery" value={doc.timeOfDelivery} />
                   <Term label="Place of delivery" value={doc.placeOfDelivery || "—"} />
                   <Term label="Validity" value={doc.validUntil} />
+                  {doc.downpaymentPercent && doc.downpaymentAmount ? (
+                    <Term
+                      label="Downpayment"
+                      value={`${doc.downpaymentPercent}% — ₱${doc.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} required`}
+                      highlight
+                    />
+                  ) : null}
                 </div>
               </div>
               {/* Totals */}
@@ -189,6 +196,22 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                 <div className="font-syne mt-2 px-3 py-1 rounded" style={{ fontSize: 12, fontWeight: 800, color: "#C8102E", backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", letterSpacing: 0.6 }}>
                   {vatLabel}
                 </div>
+                {doc.downpaymentPercent && doc.downpaymentAmount ? (
+                  <div className="rounded mt-2 font-dm" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE", padding: "8px 14px", minWidth: 220 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", letterSpacing: 0.4, textTransform: "uppercase" }}>
+                      Downpayment Required — {doc.downpaymentPercent}%
+                    </div>
+                    <div className="font-mono-jb mt-0.5" style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8", textAlign: "right" }}>
+                      ₱ {doc.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#3B82F6", marginTop: 2 }}>
+                      due before production begins
+                    </div>
+                    <div style={{ fontSize: 10, color: "#60A5FA", marginTop: 1 }}>
+                      Balance: ₱{(total - doc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} upon delivery
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -228,11 +251,11 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
   );
 }
 
-function Term({ label, value }: { label: string; value: string }) {
+function Term({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <span style={{ minWidth: 130, color: "#64748B", fontWeight: 600 }}>{label}:</span>
-      <span style={{ color: "#0F172A", fontWeight: 600 }}>{value}</span>
+    <div className="flex items-baseline gap-2" style={highlight ? { backgroundColor: "#EFF6FF", borderRadius: 4, padding: "2px 4px", marginLeft: -4 } : undefined}>
+      <span style={{ minWidth: 130, color: highlight ? "#1E40AF" : "#64748B", fontWeight: 700 }}>{label}:</span>
+      <span style={{ color: highlight ? "#1D4ED8" : "#0F172A", fontWeight: highlight ? 800 : 600 }}>{value}</span>
     </div>
   );
 }

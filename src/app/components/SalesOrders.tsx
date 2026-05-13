@@ -19,7 +19,7 @@ const columns: { id: Stage; title: string; tint: string }[] = [
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry } = useOrders();
+  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage, generateJONumber } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -99,6 +99,9 @@ export function SalesOrders() {
         </div>
       </div>
 
+      {/* ── Replacement Requests Panel ── */}
+      <ReplacementRequestsPanel />
+
       <div className="px-8 pt-4 pb-0">
         {archivedInquiries.length > 0 && (
           <details className="rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -153,6 +156,20 @@ export function SalesOrders() {
                       onViewQuote={() => setViewQuoteId(c.id)}
                       onUploadPO={() => setPoDropId(c.id)}
                       onGenerateJO={() => setGenerateId(c.id)}
+                      onConfirmDP={() => {
+                        updateInquiry(c.id, {
+                          downpaymentConfirmed: true,
+                          downpaymentConfirmedAt: new Date().toISOString(),
+                        });
+                        pushNotif({
+                          dept: "payments",
+                          title: `Downpayment confirmed: ${c.code}`,
+                          body: `${c.clientName} · ${c.downpaymentPercent}%${c.downpaymentAmount ? ` = ₱${c.downpaymentAmount.toLocaleString("en-PH")}` : ""} · Ready to generate JO`,
+                          link: "accounting",
+                          recipients: ["owner", "accounting", "operations"],
+                        });
+                        toast.success("Downpayment confirmed", { description: `${c.code} · Accounting notified · JO can now be generated` });
+                      }}
                       onReject={(reason) => {
                         rejectInquiry(c.id, reason);
                         pushNotif({
@@ -296,8 +313,8 @@ export function SalesOrders() {
 }
 
 /* ---- Inquiry Card with collapsible product list ---- */
-function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGenerateJO, onReject, onAcceptCancel, onDeclineCancel }: {
-  inquiry: Inquiry; isNew: boolean; onReview: () => void; onViewQuote: () => void; onUploadPO: () => void; onGenerateJO: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
+function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGenerateJO, onReject, onAcceptCancel, onDeclineCancel, onConfirmDP }: {
+  inquiry: Inquiry; isNew: boolean; onReview: () => void; onViewQuote: () => void; onUploadPO: () => void; onGenerateJO: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void; onConfirmDP?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
@@ -414,13 +431,41 @@ function InquiryCard({ inquiry, isNew, onReview, onViewQuote, onUploadPO, onGene
         </button>
       )}
       {inquiry.stage === "po" && (
-        <button
-          onClick={onGenerateJO}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90"
-          style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
-        >
-          <FileText size={14} strokeWidth={2.5} /> GENERATE JO <ArrowRight size={14} strokeWidth={2.5} />
-        </button>
+        <>
+          {/* ── Downpayment Banner ── */}
+          {(inquiry.downpaymentPercent ?? 0) > 0 && (
+            <div className="mb-2 rounded-md p-3" style={{ backgroundColor: inquiry.downpaymentConfirmed ? "#F0FDF4" : "#FFFBEB", border: `1.5px solid ${inquiry.downpaymentConfirmed ? "#86EFAC" : "#FDE68A"}` }}>
+              <div className="font-dm flex items-center gap-1.5 mb-1" style={{ fontSize: 11, fontWeight: 800, color: inquiry.downpaymentConfirmed ? "#15803D" : "#92400E", letterSpacing: 0.4, textTransform: "uppercase" }}>
+                {inquiry.downpaymentConfirmed ? "✅ Downpayment Confirmed" : "⏳ Downpayment Required"}
+              </div>
+              <div className="font-dm" style={{ fontSize: 12, color: inquiry.downpaymentConfirmed ? "#166534" : "#78350F" }}>
+                {inquiry.downpaymentPercent}% of total
+                {inquiry.downpaymentAmount ? ` = ₱${inquiry.downpaymentAmount.toLocaleString("en-PH")}` : ""}
+              </div>
+              {!inquiry.downpaymentConfirmed && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onConfirmDP?.(); }}
+                  className="mt-2 w-full font-dm px-2.5 py-1.5 rounded-md text-white hover:opacity-90"
+                  style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#16A34A" }}
+                >
+                  ✓ Confirm Downpayment Received
+                </button>
+              )}
+              {inquiry.downpaymentConfirmed && inquiry.downpaymentConfirmedAt && (
+                <div className="font-dm mt-1" style={{ fontSize: 10, color: "#64748B" }}>
+                  Confirmed {new Date(inquiry.downpaymentConfirmedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            onClick={onGenerateJO}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90"
+            style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
+          >
+            <FileText size={14} strokeWidth={2.5} /> GENERATE JO <ArrowRight size={14} strokeWidth={2.5} />
+          </button>
+        </>
       )}
 
       {/* Reject inquiry — only on New Inquiry stage. Prominent red button with warning icon. */}
@@ -492,7 +537,10 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
   const [leadDays, setLeadDays] = useState(inquiry.quotation?.leadTimeDays ?? 14);
   /* Section H — default to inquiry tab for ALL clients, not just new ones */
   const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">("inquiry");
-  const [bomData, setBomData] = useState<{ bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex?: number } | null>(null);
+  /* Per-product BOM data — one slot per product, null until that product's Tab 2 is applied */
+  const [perProductBomData, setPerProductBomData] = useState<Array<{ bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex?: number } | null>>(
+    inquiry.products.map(() => null)
+  );
   const [lines, setLines] = useState<QuotationLine[]>(
     inquiry.products.map((p) => {
       const existing = inquiry.quotation?.lines.find((l) => l.productId === p.id);
@@ -512,6 +560,9 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
     const p = inquiry.products.find((pp) => pp.id === l.productId);
     return sum + (p ? unitPrice(l) * p.qty : 0);
   }, 0);
+
+  /* Derive a single bomData reference for legacy callers — use the last non-null product entry */
+  const bomData = perProductBomData.reduce<typeof perProductBomData[0]>((acc, d) => d ?? acc, null);
 
   const submit = () => {
     onSubmit(
@@ -564,15 +615,16 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
           inquiry={inquiry}
           qty={inquiry.products.reduce((s, p) => s + p.qty, 0)}
           onApply={(data) => {
-            setBomData(data);
-            /* Mirror the BOM-derived per-unit price into the existing simple Quotation lines so the legacy
-               "Send Quotation" computation lines up with the BOM result. */
-            setLines((prev) => prev.map((l) => ({
+            const idx = data.productIndex ?? 0;
+            /* Store BOM result only for this product — don't overwrite other products */
+            setPerProductBomData((prev) => prev.map((d, i) => i === idx ? data : d));
+            /* Mirror the BOM-derived per-unit price into ONLY this product's quotation line */
+            setLines((prev) => prev.map((l, i) => i === idx ? {
               ...l,
               materialCost: data.costConfig.includeLabor ? data.unitPrice / (1 + data.costConfig.markupPct / 100) - data.costConfig.laborCost : data.unitPrice / (1 + data.costConfig.markupPct / 100),
               labor: data.costConfig.laborCost,
               markupPct: data.costConfig.markupPct,
-            })));
+            } : l));
             setActiveTab("quote");
           }}
         />
@@ -582,18 +634,22 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
         <QuotationBuilder
           inquiry={inquiry}
           manufacturingUnitCost={bomData?.unitPrice ?? inquiry.unitPrice ?? 0}
+          productsManufacturingUnitCosts={perProductBomData.map((d) => d?.unitPrice ?? null)}
           vatType={bomData?.costConfig.vatType ?? inquiry.costConfig?.vatType ?? "Exclusive"}
           onBackToTab2={() => setActiveTab("cost")}
           onSendToClient={(doc, total, leadTimeDays) => {
-            /* Sync the legacy quotation lines so the existing pipeline (kanban move, etc.) still works. */
-            const newLines: QuotationLine[] = inquiry.products.map((p) => ({
-              productId: p.id,
-              materialCost: bomData?.costConfig.includeLabor
-                ? (bomData?.unitPrice ?? 0) / (1 + (bomData?.costConfig.markupPct ?? 0) / 100) - (bomData?.costConfig.laborCost ?? 0)
-                : (bomData?.unitPrice ?? 0) / (1 + (bomData?.costConfig.markupPct ?? 0) / 100),
-              labor: bomData?.costConfig.laborCost ?? 0,
-              markupPct: bomData?.costConfig.markupPct ?? 0,
-            }));
+            /* Sync quotation lines per-product using the per-product BOM data */
+            const newLines: QuotationLine[] = inquiry.products.map((p, i) => {
+              const pd = perProductBomData[i];
+              return {
+                productId: p.id,
+                materialCost: pd?.costConfig.includeLabor
+                  ? (pd.unitPrice) / (1 + (pd.costConfig.markupPct) / 100) - (pd.costConfig.laborCost)
+                  : (pd?.unitPrice ?? 0) / (1 + ((pd?.costConfig.markupPct ?? 0)) / 100),
+                labor: pd?.costConfig.laborCost ?? 0,
+                markupPct: pd?.costConfig.markupPct ?? 0,
+              };
+            });
             setLines(newLines);
             setLeadDays(leadTimeDays);
             const q: Quotation = { sentDate: doc.date, leadTimeDays, lines: newLines };
@@ -1009,26 +1065,61 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   onConfirm: (data: FinalizeJOData | FinalizeJOData[]) => void;
 }) {
   const { generateJONumber } = useOrders();
-  const [docs, setDocs] = useState<{ sketch: UploadedDoc[]; other: UploadedDoc[] }>({
-    sketch: [], other: [],
-  });
+  const [otherDocs, setOtherDocs] = useState<UploadedDoc[]>([]);
   const [otherLabel, setOtherLabel] = useState("");
-  const [checks, setChecks] = useState({ verified: false, matches: false, terms: false });
+  const [checks, setChecks] = useState({ verified: false, matches: false, terms: false, dpConfirmed: false });
   const [poFullscreen, setPoFullscreen] = useState(false);
   const [showSpecs, setShowSpecs] = useState(true);
+  /* Active product tab for multi-product JO editing */
+  const [activeProductTab, setActiveProductTab] = useState(0);
 
-  /* Pre-fill specs from the inquiry product */
-  const p0 = inquiry.products[0];
-  const [specs, setSpecs] = useState<JOSpecs>({
-    od1: p0?.od1 ?? "", od2: p0?.od2 ?? "",
-    id1: p0?.id1 ?? "", id2: p0?.id2 ?? "",
-    height: p0?.height ?? "", overallHeight: "",
-    endCap: "", media: p0?.media ?? "",
-    innerCore: p0?.innerCore ?? "", outerCore: p0?.outerCore ?? "",
-    oring: p0?.oring ?? "", gasket: p0?.gasket ?? "",
-    oem: p0?.oem ?? "", brand: "", others: "",
-  });
-  const setSpec = (k: keyof JOSpecs, v: string) => setSpecs((s) => ({ ...s, [k]: v }));
+  /* ── Per-product state: JO numbers, specs, sketches, Enter-Fil PN ── */
+  const initJoNumbers = (): string[] => {
+    const base = generateJONumber();
+    const match = base.match(/^(JO-\d{4}-)(\d+)$/);
+    return inquiry.products.map((_, idx) =>
+      match ? `${match[1]}${String(Number(match[2]) + idx).padStart(match[2].length, "0")}` : idx === 0 ? base : `${base}-${idx + 1}`
+    );
+  };
+  const [joNumbers, setJoNumbers] = useState<string[]>(initJoNumbers);
+
+  const initProductSpecs = (): JOSpecs[] =>
+    inquiry.products.map((p) => ({
+      od1: p.od1 ?? "", od2: p.od2 ?? "",
+      id1: p.id1 ?? "", id2: p.id2 ?? "",
+      height: p.height ?? "", overallHeight: "",
+      endCap: "", media: p.media ?? "",
+      innerCore: p.innerCore ?? "", outerCore: p.outerCore ?? "",
+      oring: p.oring ?? "", gasket: p.gasket ?? "",
+      oem: p.oem ?? "", brand: "", others: "",
+      length: p.length ?? "", width: p.width ?? "", thickness: p.thickness ?? "",
+      depth: p.depth ?? "", pocketCount: p.pocketCount ?? "",
+      diameter: p.diameter ?? "",
+      clothCuttingWidth: p.clothCuttingWidth ?? "", clothCuttingLength: p.clothCuttingLength ?? "",
+      springPlateCenterToCenter: p.springPlateCenterToCenter ?? "",
+      springPlateWidth: p.springPlateWidth ?? "", springPlateLength: p.springPlateLength ?? "",
+      padOd: p.padOd ?? "", padId: p.padId ?? "",
+    }));
+  const [productSpecs, setProductSpecs] = useState<JOSpecs[]>(initProductSpecs);
+  const setSpecForProduct = (pIdx: number, k: keyof JOSpecs, v: string) =>
+    setProductSpecs((prev) => prev.map((s, i) => i === pIdx ? { ...s, [k]: v } : s));
+
+  /* Per-product sketch docs */
+  const [productSketches, setProductSketches] = useState<UploadedDoc[][]>(() => inquiry.products.map(() => []));
+  const addSketch = (pIdx: number, file: File) => {
+    const doc: UploadedDoc = {
+      id: `sketch-${pIdx}-${Date.now()}`,
+      name: file.name,
+      size: file.size,
+      ts: new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    };
+    setProductSketches((prev) => prev.map((arr, i) => i === pIdx ? [...arr, doc] : arr));
+  };
+  const removeSketch = (pIdx: number, id: string) =>
+    setProductSketches((prev) => prev.map((arr, i) => i === pIdx ? arr.filter((d) => d.id !== id) : arr));
+
+  /* Per-product Enter-Fil PN */
+  const [enterFilPNs, setEnterFilPNs] = useState<string[]>(() => inquiry.products.map((p) => p.oem ?? ""));
 
   /* Payment terms (set by Enter-Fil during quotation, can be edited here after negotiation) */
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(inquiry.paymentTerms);
@@ -1037,43 +1128,30 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   /* Sales-invoice issuance — some orders skip SI */
   const [issueSI, setIssueSI] = useState(true);
 
-  /* JO number — auto-generated PO-style sequence (Section J) */
-  const [joNumber, setJoNumber] = useState(() => generateJONumber());
-
-  const sketchAttached = docs.sketch.length > 0;
-  const allChecked = checks.verified && checks.matches && checks.terms && sketchAttached;
+  const allSketchesAttached = productSketches.every((s) => s.length > 0);
+  const dpRequired = (inquiry.downpaymentPercent ?? 0) > 0;
+  const dpOk = !dpRequired || inquiry.downpaymentConfirmed === true || checks.dpConfirmed;
+  const allChecked = checks.verified && checks.matches && checks.terms && allSketchesAttached && dpOk;
 
   const poFile = inquiry.poFileName ?? null;
   const isImage = poFile ? /\.(jpe?g|png|gif|webp)$/i.test(poFile) : false;
 
-  const addFile = (slot: keyof typeof docs, file: File, label?: string) => {
+  const addOtherDoc = (file: File, label?: string) => {
     const doc: UploadedDoc = {
-      id: `${slot}-${Date.now()}`,
-      name: file.name,
-      size: file.size,
+      id: `other-${Date.now()}`,
+      name: file.name, size: file.size,
       ts: new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
       label,
     };
-    setDocs((prev) => ({ ...prev, [slot]: [...prev[slot], doc] }));
-  };
-  const remove = (slot: keyof typeof docs, id: string) => {
-    setDocs((prev) => ({ ...prev, [slot]: prev[slot].filter((d) => d.id !== id) }));
+    setOtherDocs((prev) => [...prev, doc]);
   };
 
-  const buildFinalizeData = (): FinalizeJOData => ({
-    joNumber,
-    joSpecs: specs,
-    joSketch: docs.sketch[0]?.name,
-  });
-  const buildFinalizePayload = (): FinalizeJOData[] => {
-    if (inquiry.products.length <= 1) return [buildFinalizeData()];
-    const match = joNumber.match(/^(JO-\d{4}-)(\d+)$/);
-    return inquiry.products.map((product, idx) => ({
-      joNumber: match ? `${match[1]}${String(Number(match[2]) + idx).padStart(match[2].length, "0")}` : `${joNumber}-${idx + 1}`,
-      joSpecs: { ...specs, ...product },
-      joSketch: docs.sketch[0]?.name,
+  const buildFinalizePayload = (): FinalizeJOData[] =>
+    inquiry.products.map((_, idx) => ({
+      joNumber: joNumbers[idx] ?? `${joNumbers[0]}-${idx + 1}`,
+      joSpecs: { ...productSpecs[idx], oem: enterFilPNs[idx] || productSpecs[idx]?.oem },
+      joSketch: productSketches[idx]?.[0]?.name,
     }));
-  };
 
   const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
   const summary = inquiry.products.map((p) => `${p.type}${p.od1 ? ` ${p.od1}×${p.id1}×${p.height}mm` : ""} · Qty ${p.qty}`).join(" · ");
@@ -1154,88 +1232,140 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
         </div>
       )}
 
-      {/* ── JO Number ── */}
-      <div className="rounded-lg border border-slate-200 p-4 mb-5" style={{ backgroundColor: "#F8FAFC" }}>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Job Order Number</div>
-            <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Auto-generated · edit if needed</div>
-          </div>
-          <input
-            value={joNumber}
-            onChange={(e) => setJoNumber(e.target.value)}
-            className="form-input"
-            style={{ maxWidth: 200, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#1A2B4A" }}
-          />
-        </div>
-      </div>
-
-      {/* ── Final Technical Specifications ── */}
+      {/* ── Per-product JO tabs (one tab per filter product) ── */}
       <div className="rounded-lg border border-slate-200 mb-5 overflow-hidden">
-        <button
-          onClick={() => setShowSpecs((v) => !v)}
-          className="w-full px-5 py-3.5 flex items-center justify-between"
-          style={{ backgroundColor: "#1A2B4A" }}
-        >
-          <span className="font-syne text-white" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-            📐 FINAL TECHNICAL SPECIFICATIONS
-          </span>
-          <span className="text-white/70 font-dm" style={{ fontSize: 11 }}>
-            {showSpecs ? "▲ collapse" : "▼ expand"} · Pre-filled from inquiry
-          </span>
-        </button>
-        {showSpecs && (
-          <div className="p-5" style={{ backgroundColor: "#FAFBFC" }}>
-            <div className="font-dm mb-4" style={{ fontSize: 12, color: "#64748B" }}>
-              Confirm or adjust the final specs before generating. These will appear on the digital JO document and on the Production Floor.
-            </div>
-            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Dimensions</div>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              {([["OD 1 (mm)", "od1"], ["OD 2 (mm)", "od2"], ["ID 1 (mm)", "id1"], ["ID 2 (mm)", "id2"], ["Height (mm)", "height"], ["Overall Height (mm)", "overallHeight"]] as [string, keyof JOSpecs][]).map(([lbl, k]) => (
-                <div key={k} className="flex flex-col gap-1">
-                  <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{lbl}</label>
-                  <input value={specs[k] ?? ""} onChange={(e) => setSpec(k, e.target.value)} className="form-input-sm" placeholder="—" />
-                </div>
-              ))}
-            </div>
-            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Components</div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              {([["End Cap", "endCap"], ["Filter Media", "media"], ["Inner Core", "innerCore"], ["Outer Core", "outerCore"], ["O-Ring", "oring"], ["Gasket", "gasket"]] as [string, keyof JOSpecs][]).map(([lbl, k]) => (
-                <div key={k} className="flex flex-col gap-1">
-                  <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{lbl}</label>
-                  <input value={specs[k] ?? ""} onChange={(e) => setSpec(k, e.target.value)} className="form-input-sm" placeholder="—" />
-                </div>
-              ))}
-            </div>
-            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Other Technical Specs</div>
-            <div className="grid grid-cols-3 gap-3">
-              {([["OEM PN", "oem"], ["Brand", "brand"], ["Others", "others"]] as [string, keyof JOSpecs][]).map(([lbl, k]) => (
-                <div key={k} className="flex flex-col gap-1">
-                  <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{lbl}</label>
-                  <input value={specs[k] ?? ""} onChange={(e) => setSpec(k, e.target.value)} className="form-input-sm" placeholder="—" />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+        <div className="px-5 py-3 flex items-center gap-3 flex-wrap" style={{ backgroundColor: "#1A2B4A" }}>
+          <span className="font-syne text-white" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>JOB ORDERS</span>
+          <span className="font-dm text-white/60" style={{ fontSize: 11 }}>— {inquiry.products.length} filter{inquiry.products.length > 1 ? "s" : ""} · {inquiry.products.length} separate JO{inquiry.products.length > 1 ? "s" : ""} · delivered together</span>
+          {inquiry.products.map((p, i) => (
+            <button
+              key={p.id}
+              onClick={() => setActiveProductTab(i)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md font-dm whitespace-nowrap"
+              style={{
+                fontSize: 11, fontWeight: 700,
+                backgroundColor: i === activeProductTab ? "white" : "rgba(255,255,255,0.1)",
+                color: i === activeProductTab ? "#1A2B4A" : "rgba(255,255,255,0.7)",
+              }}
+            >
+              #{i + 1} {p.filterName ?? p.type}
+              {productSketches[i]?.length > 0 && <span style={{ fontSize: 9 }}>📎</span>}
+            </button>
+          ))}
+        </div>
 
-      {/* ── Final Sketch (REQUIRED) ── */}
-      <div className="rounded-lg border-2 p-5 mb-5" style={{ backgroundColor: sketchAttached ? "#F0FDF4" : "#FEF2F2", borderColor: sketchAttached ? "#86EFAC" : "#FECACA" }}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: sketchAttached ? "#15803D" : "#991B1B" }}>📎 Final Sketch / Drawing</span>
-          <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 800, backgroundColor: "#C8102E", color: "white", letterSpacing: 0.5 }}>REQUIRED</span>
-        </div>
-        <div className="font-dm mb-3" style={{ fontSize: 12, color: sketchAttached ? "#15803D" : "#7F1D1D" }}>
-          The approved technical drawing must be uploaded — this is what production will follow and what the client agreed to.
-        </div>
-        <UploadSlot
-          label="Upload Final Sketch / Drawing"
-          help="PDF, JPG, or PNG · the actual drawing that production will reference"
-          files={docs.sketch}
-          onAdd={(f) => addFile("sketch", f)}
-          onRemove={(id) => remove("sketch", id)}
-        />
+        {/* Active product panel */}
+        {inquiry.products.map((product, pIdx) => pIdx !== activeProductTab ? null : (
+          <div key={product.id} className="p-5 flex flex-col gap-4" style={{ backgroundColor: "#FAFBFC" }}>
+            {/* JO Number for this product */}
+            <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200">
+              <div>
+                <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>JO Number — Filter #{pIdx + 1}</div>
+                <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{product.filterName ?? product.type} · Qty {product.qty}</div>
+              </div>
+              <input
+                value={joNumbers[pIdx] ?? ""}
+                onChange={(e) => setJoNumbers((prev) => prev.map((n, i) => i === pIdx ? e.target.value : n))}
+                className="form-input"
+                style={{ maxWidth: 200, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#1A2B4A" }}
+              />
+            </div>
+
+            {/* Enter-Fil PN (required) */}
+            <div className="flex flex-col gap-1">
+              <label className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
+                Enter-Fil PN
+                <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 8, fontWeight: 800, backgroundColor: "#C8102E", color: "white" }}>REQUIRED</span>
+              </label>
+              <input
+                value={enterFilPNs[pIdx] ?? ""}
+                onChange={(e) => setEnterFilPNs((prev) => prev.map((n, i) => i === pIdx ? e.target.value : n))}
+                className="form-input"
+                placeholder="e.g. KF-OS.107.65.252"
+              />
+            </div>
+
+            {/* Specs */}
+            <button
+              onClick={() => setShowSpecs((v) => !v)}
+              className="w-full px-4 py-2.5 flex items-center justify-between rounded-md"
+              style={{ backgroundColor: "#E2E8F0", border: "1px solid #CBD5E1" }}
+            >
+              <span className="font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>📐 Technical Specifications</span>
+              <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{showSpecs ? "▲ collapse" : "▼ expand"} · pre-filled from inquiry</span>
+            </button>
+            {showSpecs && (
+              <div>
+                {/* Group-specific dimension fields */}
+                {(() => {
+                  const group = groupForType(product.type ?? "AIRFIL");
+                  const dimKeys = GROUP_TEMPLATES[group]?.dimensions ?? GROUP_TEMPLATES.cylindrical.dimensions;
+                  const curSpecs = productSpecs[pIdx] ?? {};
+                  return (
+                    <>
+                      <div className="font-dm mb-1 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                        Dimensions
+                        <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#EDE9FE", color: "#7C3AED" }}>{group}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 mb-4">
+                        {dimKeys.map((k) => (
+                          <div key={k} className="flex flex-col gap-1">
+                            <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{DIMENSION_LABELS_CATALOG[k] ?? k}</label>
+                            <input value={(curSpecs as any)[k] ?? ""} onChange={(e) => setSpecForProduct(pIdx, k as keyof JOSpecs, e.target.value)} className="form-input-sm" placeholder="—" />
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+                <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Components</div>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {([["End Cap", "endCap"], ["Filter Media", "media"], ["Inner Core", "innerCore"], ["Outer Core", "outerCore"], ["O-Ring", "oring"], ["Gasket", "gasket"]] as [string, keyof JOSpecs][]).map(([lbl, k]) => (
+                    <div key={k} className="flex flex-col gap-1">
+                      <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{lbl}</label>
+                      <input value={(productSpecs[pIdx] as any)?.[k] ?? ""} onChange={(e) => setSpecForProduct(pIdx, k, e.target.value)} className="form-input-sm" placeholder="—" />
+                    </div>
+                  ))}
+                </div>
+                <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Other Technical Specs</div>
+                <div className="grid grid-cols-3 gap-3">
+                  {([["OEM PN", "oem"], ["Brand", "brand"], ["Others", "others"]] as [string, keyof JOSpecs][]).map(([lbl, k]) => (
+                    <div key={k} className="flex flex-col gap-1">
+                      <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{lbl}</label>
+                      <input value={(productSpecs[pIdx] as any)?.[k] ?? ""} onChange={(e) => setSpecForProduct(pIdx, k, e.target.value)} className="form-input-sm" placeholder="—" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Per-product sketch (REQUIRED) */}
+            {(() => {
+              const sketches = productSketches[pIdx] ?? [];
+              const attached = sketches.length > 0;
+              return (
+                <div className="rounded-lg border-2 p-4" style={{ backgroundColor: attached ? "#F0FDF4" : "#FEF2F2", borderColor: attached ? "#86EFAC" : "#FECACA" }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: attached ? "#15803D" : "#991B1B" }}>
+                      📎 Sketch / Drawing — Filter #{pIdx + 1}
+                    </span>
+                    <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 800, backgroundColor: "#C8102E", color: "white" }}>REQUIRED</span>
+                  </div>
+                  <div className="font-dm mb-3" style={{ fontSize: 12, color: attached ? "#15803D" : "#7F1D1D" }}>
+                    Each filter needs its own approved drawing — production will follow this exact sketch.
+                  </div>
+                  <UploadSlot
+                    label="Upload Sketch / Drawing"
+                    help="PDF, JPG, or PNG · the approved drawing for this specific filter"
+                    files={sketches}
+                    onAdd={(f) => addSketch(pIdx, f)}
+                    onRemove={(id) => removeSketch(pIdx, id)}
+                  />
+                </div>
+              );
+            })()}
+          </div>
+        ))}
       </div>
 
       {/* ── Payment Terms + Delivery Method (Enter-Fil's final say) ── */}
@@ -1286,9 +1416,9 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           <UploadSlot
             label="Upload any other document"
             help="Label it above so it's searchable later"
-            files={docs.other}
-            onAdd={(f) => addFile("other", f, otherLabel || "Other document")}
-            onRemove={(id) => remove("other", id)}
+            files={otherDocs}
+            onAdd={(f) => addOtherDoc(f, otherLabel || "Other document")}
+            onRemove={(id) => setOtherDocs((prev) => prev.filter((d) => d.id !== id))}
             compact
           />
         </div>
@@ -1301,6 +1431,42 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           <Check label="PO document verified and matches client's quotation" checked={checks.verified} onChange={(v) => setChecks((p) => ({ ...p, verified: v }))} />
           <Check label="Product specifications & quantities match" checked={checks.matches} onChange={(v) => setChecks((p) => ({ ...p, matches: v }))} />
           <Check label="Payment terms confirmed with client" checked={checks.terms} onChange={(v) => setChecks((p) => ({ ...p, terms: v }))} />
+          {/* Per-product sketch status summary */}
+          <div className="rounded-md p-2 font-dm flex flex-col gap-1" style={{ backgroundColor: allSketchesAttached ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${allSketchesAttached ? "#86EFAC" : "#FECACA"}`, fontSize: 11 }}>
+            <span style={{ fontWeight: 700, color: allSketchesAttached ? "#15803D" : "#991B1B" }}>
+              {allSketchesAttached ? "✅" : "❌"} Sketches / Drawings ({productSketches.filter((s) => s.length > 0).length}/{inquiry.products.length} attached)
+            </span>
+            {inquiry.products.map((p, i) => (
+              <span key={p.id} style={{ color: productSketches[i]?.length > 0 ? "#15803D" : "#991B1B", paddingLeft: 8 }}>
+                {productSketches[i]?.length > 0 ? "✓" : "○"} Filter #{i + 1} {p.filterName ?? p.type}: {productSketches[i]?.[0]?.name ?? "not attached"}
+              </span>
+            ))}
+          </div>
+          {/* Downpayment confirmation — only shown if downpayment % was set on the inquiry */}
+          {dpRequired && (
+            <div className="flex flex-col gap-1">
+              {inquiry.downpaymentConfirmed ? (
+                <div className="flex items-center gap-2 font-dm" style={{ fontSize: 13, color: "#15803D" }}>
+                  <CheckCircle2 size={14} style={{ color: "#16A34A" }} />
+                  <span style={{ fontWeight: 700 }}>Downpayment received &amp; confirmed</span>
+                  <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 10, backgroundColor: "#DCFCE7", color: "#166534" }}>
+                    {inquiry.downpaymentPercent}%{inquiry.downpaymentAmount ? ` · ₱${inquiry.downpaymentAmount.toLocaleString("en-PH")}` : ""}
+                  </span>
+                </div>
+              ) : (
+                <div className="rounded-md p-2" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+                  <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#92400E" }}>
+                    ⚠️ Downpayment required before JO generation: {inquiry.downpaymentPercent}%{inquiry.downpaymentAmount ? ` = ₱${inquiry.downpaymentAmount.toLocaleString("en-PH")}` : ""}
+                  </div>
+                  <Check
+                    label="Downpayment proof received and confirmed by accounting"
+                    checked={checks.dpConfirmed}
+                    onChange={(v) => setChecks((p) => ({ ...p, dpConfirmed: v }))}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1668,6 +1834,84 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Replacement Requests Panel (shown in SalesOrders for operations to process) ── */
+function ReplacementRequestsPanel() {
+  const { inquiries: _inq, inquiriesByStage, updateInquiry, createReplacementJO } = useOrders();
+  const { push: pushNotif } = useNotifications();
+
+  /* Find all delivered/paid orders that have pending replacement requests */
+  const ordersWithRequests = inquiriesByStage(["delivered", "paid", "overdue"]).filter(
+    (i) => (i.replacementRequests ?? []).some((r) => r.status === "pending" || r.status === "processing")
+  );
+
+  if (ordersWithRequests.length === 0) return null;
+
+  return (
+    <div className="px-8 pt-4">
+      <details open className="rounded-xl border-2 border-purple-200 bg-white overflow-hidden">
+        <summary className="px-5 py-3 flex items-center gap-2 cursor-pointer font-dm select-none" style={{ fontSize: 13, fontWeight: 700, color: "#7C3AED", backgroundColor: "#F5F3FF" }}>
+          🔄 Replacement Requests ({ordersWithRequests.reduce((s, i) => s + (i.replacementRequests ?? []).filter(r => r.status !== "resolved").length, 0)} pending)
+        </summary>
+        <div className="border-t border-purple-100 p-4 flex flex-col gap-3">
+          {ordersWithRequests.map((inq) =>
+            (inq.replacementRequests ?? [])
+              .filter((r) => r.status !== "resolved")
+              .map((req) => (
+                <div key={req.id} className="rounded-lg border border-purple-200 p-4" style={{ backgroundColor: "#FAFAFA" }}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-1">
+                      <div className="font-dm flex items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>
+                        🔄 <span>{inq.code} · {inq.clientName}</span>
+                        <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: req.status === "processing" ? "#DBEAFE" : "#FEF3C7", color: req.status === "processing" ? "#1D4ED8" : "#B45309" }}>
+                          {req.status === "processing" ? "Processing" : "Pending"}
+                        </span>
+                      </div>
+                      <div className="font-dm" style={{ fontSize: 12, color: "#475569" }}>
+                        <span style={{ fontWeight: 600 }}>Replace {req.qty} pcs</span> · {req.reason}
+                      </div>
+                      <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{req.defectDescription}</div>
+                      {req.proofFileName && (
+                        <div className="font-dm" style={{ fontSize: 11, color: "#7C3AED" }}>📷 Proof: {req.proofFileName}</div>
+                      )}
+                      <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>
+                        Requested {new Date(req.requestedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </div>
+                    </div>
+                    {req.status === "pending" && (
+                      <button
+                        onClick={() => {
+                          /* Atomic: parent's request → processing + new replacement inquiry at JO stage with copied BOM */
+                          const joNum = createReplacementJO(inq.id, req.id, req.qty, req.reason);
+                          pushNotif({
+                            dept: "production",
+                            title: `Replacement JO created: ${joNum}`,
+                            body: `${inq.clientName} · Replace ${req.qty} pcs · ${req.reason}`,
+                            link: "production",
+                            recipients: ["owner", "operations", "production", "client"],
+                          });
+                          toast.success(`Replacement JO created: ${joNum}`, { description: `${inq.clientName} notified · Production will process` });
+                        }}
+                        className="font-dm px-3 py-2 rounded-md text-white hover:opacity-90 shrink-0"
+                        style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#7C3AED" }}
+                      >
+                        🔄 Create Replacement JO
+                      </button>
+                    )}
+                    {req.status === "processing" && req.joNumber && (
+                      <div className="font-dm shrink-0" style={{ fontSize: 12, color: "#1D4ED8", fontWeight: 600 }}>
+                        JO: {req.joNumber}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
+      </details>
     </div>
   );
 }

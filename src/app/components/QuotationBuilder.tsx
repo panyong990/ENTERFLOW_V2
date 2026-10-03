@@ -439,22 +439,20 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
         </div>
         <div className="flex flex-col gap-1.5 font-dm" style={{ fontSize: 12, color: "#78350F", lineHeight: 1.6 }}>
           <div>
-            <span style={{ fontWeight: 700 }}>Replacement Policy:</span>{" "}
-            Clients on <strong>15-Day Terms</strong> may request item replacement within <strong>1 week</strong> of delivery.
-            Clients on <strong>30-Day Terms</strong> may request replacement within <strong>2 weeks</strong> of delivery.
-            {" "}Currently selected terms: <span style={{ fontWeight: 700, color: "#C8102E" }}>{termsOfPayment}</span>
-            {" "}— replacement window: <span style={{ fontWeight: 700, color: "#C8102E" }}>{termsOfPayment === "15-Day Terms" ? "1 week" : "2 weeks"}</span> from delivery date.
+            <span style={{ fontWeight: 700 }}>Payment:</span>{" "}Payment terms are indicated in the quotation. Required downpayments must be verified before the order proceeds.
           </div>
           <div>
-            <span style={{ fontWeight: 700 }}>No Refunds.</span>{" "}
-            All sales are final. Replacement requests only — no monetary refunds will be issued.
+            <span style={{ fontWeight: 700 }}>No Refunds:</span>{" "}All sales are final. No refunds will be issued once the order has been confirmed and processed.
           </div>
           <div>
-            <span style={{ fontWeight: 700 }}>For replacement requests or concerns, contact Enter-Fil:</span>{" "}
-            Tel: +63 (2) 8861-5737 / +63 (2) 8653-3750 · Mobile: +63 (956) 657-3837 · Email: enterfil.filtration@yahoo.com / zuluetaellen@gmail.com
+            <span style={{ fontWeight: 700 }}>No Replacements:</span>{" "}Products are not eligible for replacement after delivery.
           </div>
-          <div style={{ color: "#92400E", fontSize: 11 }}>
-            Office Hours: Monday – Friday, 8:00 AM – 6:00 PM · Sitio Hulo, Brgy. Balasing – San Jose Rd, Santa Maria, 3022 Bulacan
+          <div>
+            <span style={{ fontWeight: 700 }}>Delivery:</span>{" "}Delivery arrangements and schedules are based on the confirmed order. Actual delivery may vary depending on production completion and logistics.
+          </div>
+          <div style={{ color: "#92400E", fontSize: 11, lineHeight: 1.7 }}>
+            <div>Tel: +63 (2) 8861-5737 / +63 (2) 8653-3750 · Mobile: +63 (956) 657-3837 · Email: enterfil.filtration@yahoo.com / zuluetaellen@gmail.com</div>
+            <div>Office Hours: Monday – Friday, 8:00 AM – 6:00 PM · Sitio Hulo, Brgy. Balasing – San Jose Rd, Santa Maria, 3022 Bulacan</div>
           </div>
         </div>
       </div>

@@ -1,6 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import type { BOMLine, CostConfig } from "./materials";
-import { loadInquiryAttachments, saveInquiryAttachments } from "./attachments";
 
 /* Quotation document — what the client sees */
 export interface QuotationLineItem {
@@ -717,109 +716,9 @@ interface Ctx {
 
 const OrdersContext = createContext<Ctx | null>(null);
 
-const ORDERS_STORAGE_KEY = "enterflow.orders.v1";
-
-interface PersistedOrdersState {
-  inquiries: Inquiry[];
-  clearedPOs: string[];
-}
-
-function businessState(inquiries: Inquiry[]): Inquiry[] {
-  return inquiries.map(({ poFileDataUrl, payments, ...inquiry }) => ({
-    ...inquiry,
-    payments: payments?.map(({ receiptDataUrl, ...payment }) => payment),
-  }));
-}
-
-function attachmentState(inquiry: Inquiry) {
-  return {
-    poFileDataUrl: inquiry.poFileDataUrl,
-    paymentReceiptDataUrls: Object.fromEntries(
-      (inquiry.payments ?? [])
-        .filter((payment): payment is typeof payment & { receiptDataUrl: string } => Boolean(payment.receiptDataUrl))
-        .map((payment) => [payment.id, payment.receiptDataUrl]),
-    ),
-  };
-}
-
-function loadPersistedOrders(): PersistedOrdersState | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(ORDERS_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    const value = parsed as Partial<PersistedOrdersState>;
-    if (!Array.isArray(value.inquiries) || !Array.isArray(value.clearedPOs)) return null;
-    if (!value.inquiries.every((inquiry) => (
-      inquiry && typeof inquiry === "object"
-      && typeof (inquiry as Inquiry).id === "string"
-      && typeof (inquiry as Inquiry).clientName === "string"
-      && typeof (inquiry as Inquiry).stage === "string"
-    ))) return null;
-    if (!value.clearedPOs.every((po) => typeof po === "string")) return null;
-    return { inquiries: value.inquiries as Inquiry[], clearedPOs: value.clearedPOs as string[] };
-  } catch {
-    return null;
-  }
-}
-
 export function OrdersProvider({ children }: { children: ReactNode }) {
-  const [savedOrders] = useState<PersistedOrdersState | null>(() => loadPersistedOrders());
-  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => savedOrders?.inquiries ?? seed);
-  const [clearedPOs, setClearedPOs] = useState<string[]>(() => savedOrders?.clearedPOs ?? []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const value: PersistedOrdersState = { inquiries: businessState(allInquiries), clearedPOs };
-      window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(value));
-    } catch (error) {
-      console.error("[EnterFlow] Could not persist order state to localStorage.", error);
-    }
-  }, [allInquiries, clearedPOs]);
-
-  useEffect(() => {
-    if (!savedOrders) return;
-    let cancelled = false;
-    const hydrate = async () => {
-      try {
-        const loaded = await Promise.all(allInquiries.map(async (inquiry) => ({
-          inquiry,
-          attachments: await loadInquiryAttachments(inquiry.id),
-        })));
-        if (cancelled) return;
-        setAllInquiries((current) => current.map((inquiry) => {
-          const entry = loaded.find((item) => item.inquiry.id === inquiry.id);
-          if (!entry) return inquiry;
-          const paymentReceiptDataUrls = entry.attachments.paymentReceiptDataUrls;
-          return {
-            ...inquiry,
-            poFileDataUrl: entry.attachments.poFileDataUrl ?? inquiry.poFileDataUrl,
-            payments: inquiry.payments?.map((payment) => ({
-              ...payment,
-              receiptDataUrl: payment.receiptDataUrl ?? paymentReceiptDataUrls[payment.id],
-            })),
-          };
-        }));
-      } catch (error) {
-        console.error("[EnterFlow] Could not hydrate order attachments from IndexedDB.", error);
-      }
-    };
-    void hydrate();
-    return () => { cancelled = true; };
-  }, [savedOrders]);
-
-  useEffect(() => {
-    const persistAttachments = async () => {
-      try {
-        await Promise.all(allInquiries.map((inquiry) => saveInquiryAttachments(inquiry.id, attachmentState(inquiry))));
-      } catch (error) {
-        console.error("[EnterFlow] Could not persist order attachments to IndexedDB.", error);
-      }
-    };
-    void persistAttachments();
-  }, [allInquiries]);
+  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(seed);
+  const [clearedPOs, setClearedPOs] = useState<string[]>([]);
 
   /* "inquiries" = pipeline visible on Sales kanban (pre-JO).  Once JO is created, the order moves into production. */
   const inquiries = allInquiries.filter(

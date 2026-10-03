@@ -24,8 +24,6 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
-
 function Shell({ active, onChange, children, clientName, onLogout }: {
   active: Tab; onChange: (t: Tab) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
 }) {
@@ -124,10 +122,6 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   const { push: pushNotif } = useNotifications();
   /* Active orders only — Job Orders and Transactions live in their own tabs now */
   const myOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "inquiry" || i.stage === "quotation" || i.stage === "po"));
-  /* Sent invoices have their own visibility rule and remain available after the order advances. */
-  const myInvoices = byClient(clientName).filter((i) =>
-    !i.archived && !!i.invoiceNo && !!i.invoiceSentAt
-  );
 
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
@@ -163,30 +157,6 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         <div className="bg-white rounded-xl border border-slate-200/70 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
           No active orders yet — click <strong>+ New Order</strong> to submit your first inquiry.
         </div>
-      )}
-      {myInvoices.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <h3 className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>Sent Invoices</h3>
-            <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Invoices remain available as your order moves through production and delivery.</p>
-          </div>
-          {myInvoices.map((invoice) => {
-            const state = paymentState(invoice);
-            return (
-              <div key={invoice.id} className="bg-white rounded-xl border border-emerald-200 p-4 flex items-center gap-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-                <div className="flex-1 min-w-0">
-                  <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>INVOICE SENT</div>
-                  <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{invoice.invoiceNo}</div>
-                  <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{invoice.poNumber ?? invoice.poFileName ?? invoice.code} · {invoice.paymentTerms}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{peso(state.invoiceTotal)}</div>
-                  <button onClick={() => onPayInvoice(invoice.id)} className="font-dm mt-1 px-3 py-1.5 rounded-md text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 700 }}>VIEW IN ACCOUNTING</button>
-                </div>
-              </div>
-            );
-          })}
-        </section>
       )}
       {myOrders.map((inq) => (
         <ClientOrderCard
@@ -871,9 +841,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const badge =
     inquiry.stage === "inquiry" ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Quotation" } :
     inquiry.stage === "quotation" ? { bg: "#FEF3C7", fg: "#B45309", label: "Quotation Received" } :
-    hasPORecord(inquiry)
-      ? { bg: "#DCFCE7", fg: "#15803D", label: "PO Submitted ✅" }
-      : { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Client PO" };
+    { bg: "#DCFCE7", fg: "#15803D", label: "PO Submitted ✅" };
 
   return (
     <article className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
@@ -1275,35 +1243,28 @@ interface ActiveOrder {
 
 /* DERIVED: build the live ActiveOrder timeline from a store inquiry. Each step's `state` (done/current/pending) is computed from the inquiry's stage. */
 function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
-  const downstreamOfJO = ["in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"];
-  const payment = paymentState(inq);
-  const requiredPaymentVerified = payment.state === "FULLY_PAID"
-    || (payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE");
-  /* Keep client milestones in business order; drafts remain invisible until sentAt exists. */
+  /* Stage progression maps to a 10-step timeline visible to the client */
   const STAGE_ORDER: { key: string; label: string; matches: (i: Inquiry) => "done" | "current" | "pending"; detailFn: (i: Inquiry) => string }[] = [
     { key: "inquiry",    label: "Inquiry Submitted",     matches: (i) => i.stage === "inquiry" ? "current" : "done",
       detailFn: (i) => `Submitted ${i.submittedDate}${i.inquirySketch ? " · sketch attached" : ""}` },
     { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
-    { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
-      detailFn: (i) => hasPORecord(i) ? `${i.poNumber ?? i.poFileName} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
-    { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
-      detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
-    { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
-      detailFn: () => payment.state === "FULLY_PAID" ? "Full payment verified" : requiredPaymentVerified ? `Required downpayment verified · ${peso(payment.verifiedDownpaymentAmount)}` : "Awaiting required payment verification" },
-    { key: "jo",         label: "Job Order Created",      matches: (i) => {
-        if (!i.invoiceSentAt || !requiredPaymentVerified) return "pending";
-        return i.stage === "jo" ? "current" : downstreamOfJO.includes(i.stage) ? "done" : "pending";
-      },
+    { key: "po",         label: "PO Approved & Uploaded", matches: (i) => i.stage === "po" ? "current" : (["jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+      detailFn: (i) => i.poFileName ? `${i.poFileName} · approved` : "Upload signed PO to proceed" },
+    { key: "jo",         label: "Job Order Created",      matches: (i) => i.stage === "jo" ? "current" : (["in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.joNumber ? `${i.joNumber} · production queued` : "Awaiting JO" },
-    { key: "in_production", label: "In Production",        matches: (i) => i.stage === "in_production" ? "current" : (["quality_inspection","ready_for_dispatch","dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+    { key: "in_production", label: "In Production",        matches: (i) => i.stage === "in_production" ? "current" : (["quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => `Stage ${(i.currentStage ?? 0) + 1} of 10${i.paused ? " · ⏸ ON HOLD" : ""}` },
-    { key: "quality_inspection", label: "Quality Inspection", matches: (i) => i.stage === "quality_inspection" ? "current" : (["ready_for_dispatch","dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+    { key: "quality_inspection", label: "Quality Inspection", matches: (i) => i.stage === "quality_inspection" ? "current" : (["ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: () => "Final QC checkpoint before dispatch" },
-    { key: "ready_for_dispatch", label: "Ready for Dispatch", matches: (i) => i.stage === "ready_for_dispatch" ? "current" : (["dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+    { key: "ready_for_dispatch", label: "Ready for Dispatch", matches: (i) => i.stage === "ready_for_dispatch" ? "current" : (["delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: () => "Waybill prepared · awaiting logistics" },
     { key: "delivered",  label: "Delivered",              matches: (i) => i.stage === "delivered" ? "current" : (["paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.deliveredDate ? `Delivered ${i.deliveredDate}` : "Signed DR confirms delivery" },
+    { key: "invoiced",   label: "Invoiced",               matches: (i) => (i.invoiceNo && i.stage !== "paid") ? "current" : (i.stage === "paid" ? "done" : "pending"),
+      detailFn: (i) => i.invoiceNo ? `${i.invoiceNo}${i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Invoice will be issued" },
+    { key: "paid",       label: "Payment Cleared",        matches: (i) => i.stage === "paid" ? "done" : "pending",
+      detailFn: (i) => i.paidAt ? `Cleared ${new Date(i.paidAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "Account fully settled" },
   ];
 
   return {

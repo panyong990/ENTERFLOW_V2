@@ -850,6 +850,95 @@ export function Accounting() {
         </div>
       )}
 
+      {dpConfirmInquiry && (
+        <SendDownpaymentDetailsModal
+          inquiry={dpConfirmInquiry}
+          onClose={() => setDpDetailsForId(null)}
+          onSend={(details) => {
+            sendDownpaymentDetails(dpConfirmInquiry.id, details);
+            pushNotif({
+              dept: "payments",
+              title: `Downpayment details sent: ${dpConfirmInquiry.code}`,
+              body: `${dpConfirmInquiry.clientName} · ${dpConfirmInquiry.downpaymentPercent}% · ₱${(dpConfirmInquiry.downpaymentAmount ?? 0).toLocaleString("en-PH")} · via ${details.method}`,
+              link: "client-portal",
+              recipients: ["client"],
+            });
+            toast.success("Payment details sent to client", { description: `${dpConfirmInquiry.clientName} · they can now upload receipt from Client Portal` });
+            setDpDetailsForId(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ───────── Send Downpayment Details Modal ───────── */
+function SendDownpaymentDetailsModal({ inquiry, onClose, onSend }: {
+  inquiry: Inquiry;
+  onClose: () => void;
+  onSend: (details: NonNullable<Inquiry["downpaymentPaymentDetails"]>) => void;
+}) {
+  const existing = inquiry.downpaymentPaymentDetails;
+  const [method, setMethod] = useState<"Bank Transfer" | "GCash" | "Check" | "Other">(existing?.method ?? "Bank Transfer");
+  const [bankName, setBankName] = useState(existing?.bankName ?? "BDO");
+  const [accountName, setAccountName] = useState(existing?.accountName ?? "Enter-Fil Filtration Corp.");
+  const [accountNumber, setAccountNumber] = useState(existing?.accountNumber ?? "");
+  const [note, setNote] = useState(existing?.note ?? "");
+
+  const submit = () => {
+    if (!accountNumber.trim()) { toast.error("Account number / reference required"); return; }
+    onSend({
+      method, bankName: method === "Bank Transfer" ? bankName : undefined,
+      accountName, accountNumber, note,
+      sentAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <div className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Send Downpayment Payment Details</div>
+            <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>{inquiry.clientName} · {inquiry.code} · {inquiry.downpaymentPercent}% · ₱{(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md border border-slate-200 hover:bg-slate-100 flex items-center justify-center"><X size={14} /></button>
+        </div>
+        <div className="px-6 py-5 flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Method</label>
+            <div className="flex flex-wrap gap-2">
+              {(["Bank Transfer", "GCash", "Check", "Other"] as const).map((m) => (
+                <button key={m} onClick={() => setMethod(m)} className="font-dm px-3 py-1.5 rounded-md border" style={{ fontSize: 12, fontWeight: 600, borderColor: method === m ? "#1A2B4A" : "#CBD5E1", backgroundColor: method === m ? "#1A2B4A" : "#fff", color: method === m ? "#fff" : "#475569" }}>{m}</button>
+              ))}
+            </div>
+          </div>
+          {method === "Bank Transfer" && (
+            <div className="flex flex-col gap-1">
+              <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Bank</label>
+              <input value={bankName} onChange={(e) => setBankName(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+            </div>
+          )}
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Account Name</label>
+            <input value={accountName} onChange={(e) => setAccountName(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>{method === "GCash" ? "GCash Number" : method === "Check" ? "Payable To / Reference" : "Account Number"}</label>
+            <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder={method === "GCash" ? "0917-XXX-XXXX" : method === "Check" ? "Reference" : "0000-0000-0000"} className="font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Instructions / Note (optional)</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Kindly indicate INQ-012 as reference" className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none" style={{ fontSize: 13, minHeight: 60 }} />
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+          <button onClick={submit} className="flex items-center gap-2 px-4 py-2 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
+            <Send size={13} /> Send to Client
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

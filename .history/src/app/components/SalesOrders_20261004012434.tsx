@@ -18,7 +18,6 @@ const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[]
 ];
 
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
-const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
 
 export function SalesOrders() {
   const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
@@ -54,7 +53,7 @@ export function SalesOrders() {
   const viewingInvoice = inquiries.find((i) => i.id === viewInvoiceId);
 
   const isReadyForJobOrder = (inquiry: Inquiry) => {
-    if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
+    if (inquiry.stage !== "po" || !inquiry.poFileDataUrl || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
     const state = paymentState(inquiry);
     if (state.invoiceTotal <= 0) return false;
     return state.requiredDownpaymentAmount > 0
@@ -175,7 +174,7 @@ export function SalesOrders() {
                       onViewQuote={() => setViewQuoteId(c.id)}
                       onViewPO={() => setPoViewId(c.id)}
                       onMarkPOReceived={() => {
-                        if (!hasPORecord(c)) return;
+                        if (!c.poFileDataUrl) return;
                         updateInquiry(c.id, { poReceived: true });
                         toast.success("PO marked received", { description: `${c.code} · ${c.poNumber ?? c.poFileName}` });
                       }}
@@ -429,7 +428,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
             <Calculator size={12} /> View Quotation
           </button>
         )}
-        {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && (
+        {inquiry.stage === "po" && inquiry.poFileDataUrl && inquiry.poFileName && (
           <button onClick={onViewPO} className="font-dm flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-green-50" style={{ fontSize: 11, color: "#16A34A", fontWeight: 700, border: "1px solid #BBF7D0" }} title="View client-submitted PO">
             <Eye size={11} /> View PO
           </button>
@@ -469,12 +468,12 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           📝 Review Revision Request →
         </button>
       )}
-      {inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
+      {inquiry.stage === "quotation" && !inquiry.poFileDataUrl && (
         <div className="w-full rounded-md px-3 py-2 font-dm text-center" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 11, color: "#64748B" }}>
           Awaiting client PO submission
         </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && !inquiry.poReceived && (
+      {inquiry.stage === "po" && inquiry.poFileDataUrl && inquiry.poFileName && !inquiry.poReceived && (
         <button
           onClick={onMarkPOReceived}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md font-dm border border-slate-300 hover:bg-slate-50"
@@ -483,7 +482,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           <Upload size={13} /> MARK PO RECEIVED
         </button>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poReceived && (
+      {inquiry.stage === "po" && inquiry.poFileDataUrl && inquiry.poReceived && (
         <div className="w-full rounded-md px-3 py-2" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", color: "#15803D", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
           ✓ PO RECEIVED
         </div>
@@ -513,7 +512,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           </button>
         </div>
       )}
-      {inquiry.stage === "po" && !isReadyForJobOrder && hasPORecord(inquiry) && inquiry.poFileName && inquiry.poReceived && (
+      {inquiry.stage === "po" && !isReadyForJobOrder && inquiry.poReceived && (
         <>
           {/* ── Downpayment Banner ── */}
           {(inquiry.downpaymentPercent ?? 0) > 0 && (

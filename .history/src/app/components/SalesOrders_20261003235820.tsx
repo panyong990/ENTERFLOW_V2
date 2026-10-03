@@ -755,6 +755,7 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
           productsManufacturingUnitCosts={perProductBomData.map((d) => d?.unitPrice ?? null)}
           discounts={discounts}
           vatType={bomData?.costConfig.vatType ?? inquiry.costConfig?.vatType ?? "Exclusive"}
+          onBackToTab2={() => setActiveTab("cost")}
           onSendToClient={(doc, total, leadTimeDays) => {
             /* Sync quotation lines per-product using the per-product BOM data */
             const newLines: QuotationLine[] = inquiry.products.map((p, i) => {

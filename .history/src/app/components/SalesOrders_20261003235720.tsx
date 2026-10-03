@@ -755,6 +755,7 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
           productsManufacturingUnitCosts={perProductBomData.map((d) => d?.unitPrice ?? null)}
           discounts={discounts}
           vatType={bomData?.costConfig.vatType ?? inquiry.costConfig?.vatType ?? "Exclusive"}
+          onBackToTab2={() => setActiveTab("cost")}
           onSendToClient={(doc, total, leadTimeDays) => {
             /* Sync quotation lines per-product using the per-product BOM data */
             const newLines: QuotationLine[] = inquiry.products.map((p, i) => {
@@ -1154,40 +1155,33 @@ function QuotationDetailModal({ inquiry, onClose }: { inquiry: Inquiry; onClose:
 function POViewerModal({ inquiry, onClose }: { inquiry: Inquiry; onClose: () => void }) {
   const poFile = inquiry.poFileName;
   const poReference = inquiry.poNumber ?? poFile?.replace(/\.[^.]+$/, "") ?? "—";
-  const poDataUrl = inquiry.poFileDataUrl;
 
   return (
-    <ModalShell title="PURCHASE ORDER" subtitle={`${inquiry.clientName} · ${poFile ?? "Client-submitted document"}`} onClose={onClose} size="lg">
-      <div className="grid grid-cols-3 gap-4 mb-5">
+    <ModalShell title="VIEW PURCHASE ORDER" subtitle="Client-submitted purchase order" onClose={onClose} size="lg">
+      <div className="grid grid-cols-2 gap-4 mb-5">
         <div>
-          <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>PO Number</div>
+          <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>PO Reference</div>
           <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{poReference}</div>
         </div>
         <div>
           <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Client</div>
           <div className="font-dm mt-1" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{inquiry.clientName}</div>
         </div>
-        <div>
-          <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>Uploaded</div>
-          <div className="font-dm mt-1" style={{ fontSize: 13, color: "#0F172A" }}>{inquiry.poUploadedAt ? new Date(inquiry.poUploadedAt).toLocaleString() : "—"}</div>
+      </div>
+      <div className="rounded-lg border border-amber-200 p-5" style={{ backgroundColor: "#FFFBEB" }}>
+        <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#92400E", letterSpacing: 0.4, textTransform: "uppercase" }}>
+          Document preview unavailable
+        </div>
+        <p className="font-dm mt-2" style={{ fontSize: 13, color: "#78350F" }}>
+          This order currently stores the PO filename/reference only. The uploaded PDF or image data is not available in the shared order state, so no preview is fabricated.
+        </p>
+        <div className="font-mono-jb mt-3 rounded-md px-3 py-2" style={{ fontSize: 12, color: "#451A03", backgroundColor: "#FEF3C7" }}>
+          {poFile ?? "No PO attachment reference recorded"}
         </div>
       </div>
-      {poDataUrl?.startsWith("data:image/") ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-100 p-3 flex items-center justify-center" style={{ minHeight: 360, maxHeight: "65vh" }}>
-          <img src={poDataUrl} alt={`${inquiry.clientName} purchase order ${poReference}`} className="max-w-full max-h-[62vh] object-contain" />
-        </div>
-      ) : poDataUrl?.startsWith("data:application/pdf") ? (
-        <iframe src={poDataUrl} title={`${inquiry.clientName} purchase order ${poReference}`} className="w-full rounded-lg border border-slate-200 bg-white" style={{ height: "65vh" }} />
-      ) : poDataUrl ? (
-        <div className="rounded-lg border border-slate-200 p-5 flex items-center justify-center" style={{ minHeight: 240 }}>
-          <a href={poDataUrl} download={poFile ?? "purchase-order"} className="font-dm px-4 py-2 rounded-md border border-slate-300" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>Open or download {poFile ?? "purchase order"}</a>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-amber-200 p-5" style={{ backgroundColor: "#FFFBEB" }}>
-          <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#92400E", textTransform: "uppercase" }}>Original upload unavailable</div>
-          <p className="font-dm mt-2" style={{ fontSize: 13, color: "#78350F" }}>This earlier record contains the PO reference but not the uploaded document data. New client uploads are stored on the order and open here.</p>
-        </div>
-      )}
+      <div className="flex justify-end pt-4 mt-5 border-t border-slate-200">
+        <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Close</button>
+      </div>
     </ModalShell>
   );
 }

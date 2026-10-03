@@ -27,7 +27,6 @@ interface Invoice {
   paymentType: string;
   paymentState: ReturnType<typeof paymentState>;
   paymentRecords: PaymentRecord[];
-  downpaymentPercent: number;
   status: Status;
   deliveredDate?: string;
   dueDate?: string;
@@ -54,17 +53,14 @@ function inquiryToInvoice(inq: Inquiry): Invoice {
     paymentType: state.currentPaymentType ? typeLabel[state.currentPaymentType] : "FULLY PAID",
     paymentState: state,
     paymentRecords: paymentRecords(inq),
-    downpaymentPercent: inq.quotationDoc?.downpaymentPercent ?? inq.downpaymentPercent ?? 0,
     status: isPaid ? "paid" : "pending",
     deliveredDate: inq.deliveredDate,
     dueDate: inq.invoiceDueDate,
   };
 }
 
-type GranularStatus = "Paid" | "Partial" | "Overdue" | "Pending" | "Awaiting Verification" | "Rejected";
+type GranularStatus = "Paid" | "Partial" | "Overdue" | "Pending";
 function granularStatus(inv: Invoice, totalPaid: number): GranularStatus {
-  if (inv.paymentRecords.some((payment) => payment.verificationStatus === "pending")) return "Awaiting Verification";
-  if (inv.paymentRecords.some((payment) => payment.verificationStatus === "rejected")) return "Rejected";
   if (inv.status === "paid") return "Paid";
   /* compute overdue from dueDate */
   if (inv.dueDate) {
@@ -80,8 +76,6 @@ const granularStyle: Record<GranularStatus, { bg: string; fg: string }> = {
   Partial: { bg: "#DBEAFE", fg: "#1D4ED8" },
   Pending: { bg: "#FEF3C7", fg: "#B45309" },
   Overdue: { bg: "#FEE2E2", fg: "#C8102E" },
-  "Awaiting Verification": { bg: "#DBEAFE", fg: "#1D4ED8" },
-  Rejected: { bg: "#FEE2E2", fg: "#C8102E" },
 };
 
 function StatusPill({ status }: { status: GranularStatus }) {
@@ -111,7 +105,7 @@ export function Accounting() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
-  const [proofToView, setProofToView] = useState<{ filename: string; dataUrl: string } | null>(null);
+  const [proofToView, setProofToView] = useState<PaymentRecord | null>(null);
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment,
     sendDownpaymentDetails, confirmDownpayment } = useOrders();
   /* Downpayment "Send Payment Details" modal */
@@ -269,51 +263,6 @@ export function Accounting() {
       recipients: ["owner", "operations", "sales", "client"],
     });
     toast.success("Downpayment confirmed", { description: `${inq.clientName} · ops & sales notified` });
-  };
-
-  const handleVerifyClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
-    if (payment.verificationStatus !== "pending" || payment.submittedAmount <= 0 || !payment.receiptDataUrl) return;
-    const remaining = Math.max(0, invoice.paymentState.remainingInvoiceBalance - payment.submittedAmount);
-    const verifiedDownpayment = invoice.paymentState.verifiedDownpaymentAmount
-      + (payment.paymentType === "DOWNPAYMENT" ? payment.submittedAmount : 0);
-    const requiredDownpayment = invoice.paymentState.requiredDownpaymentAmount;
-    const requirementMet = requiredDownpayment > 0
-      ? (payment.paymentType === "FULL_PAYMENT" ? remaining <= 0.005 : verifiedDownpayment + 0.005 >= requiredDownpayment)
-      : remaining <= 0.005;
-    const typeLabel = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
-      : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
-
-    verifyPayment(invoice.id, payment.id);
-    pushNotif({
-      dept: "payments",
-      title: "Payment Verified",
-      body: `${invoice.inv} · ${typeLabel} · ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · remaining balance ₱${remaining.toLocaleString("en-PH")}`,
-      link: "accounting",
-      clientName: invoice.client,
-      recipients: ["client"],
-    });
-    pushNotif({
-      dept: "payments",
-      title: `PAYMENT VERIFIED: ${invoice.inv}`,
-      body: `${invoice.client} · ${typeLabel} of ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · ${requirementMet ? "required payment condition satisfied; order is ready for Job Order generation" : "required payment condition is not yet satisfied"}`,
-      link: "sales",
-      recipients: ["owner", "operations", "sales"],
-    });
-    toast.success("Payment verified", { description: `${invoice.inv} · ${typeLabel}` });
-  };
-
-  const handleRejectClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
-    if (payment.verificationStatus !== "pending") return;
-    rejectPayment(invoice.id, payment.id);
-    pushNotif({
-      dept: "payments",
-      title: `Payment Rejected: ${invoice.inv}`,
-      body: `${invoice.client} · ${payment.paymentType.replace("_", " ")} · ₱${payment.submittedAmount.toLocaleString("en-PH")} · Please review and resubmit proof of payment.`,
-      link: "accounting",
-      clientName: invoice.client,
-      recipients: ["client"],
-    });
-    toast.info("Payment rejected", { description: `${invoice.inv} · client notified to resubmit` });
   };
 
   const overdueRows = rows.filter(r => r.status === "pending");
@@ -513,12 +462,13 @@ export function Accounting() {
             <tbody>
               {visible.map((r) => {
                 const isOpen = openId === r.id;
+                const isPending = r.status === "pending";
                 return (
                   <Fragment key={r.id}>
                     <tr
                       className="border-t border-slate-200/70 hover:bg-slate-50 transition-colors"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setOpenId(isOpen ? null : r.id)}
+                      style={{ cursor: isPending ? "pointer" : "default" }}
+                      onClick={() => isPending && setOpenId(isOpen ? null : r.id)}
                     >
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.inv}</td>
@@ -532,20 +482,13 @@ export function Accounting() {
                       </td>
                       <td className="px-4 py-3"><StatusPill status={granularStatus(r, r.paymentState.totalVerifiedPayments)} /></td>
                     </tr>
-                    {isOpen && (() => {
+                    {isOpen && isPending && (() => {
                       const pmts = payments[r.id] ?? [];
                       const clientPayments = r.paymentRecords;
-                      const localPaid = pmts.reduce((s, p) => s + p.amount, 0);
-                      const verifiedClientPayments = clientPayments.filter((payment) => payment.verificationStatus === "verified");
-                      const unlistedVerifiedPayments = verifiedClientPayments.filter((payment) => !pmts.some((entry) =>
-                        entry.id === payment.id
-                        || (entry.date === payment.paymentDate
-                          && entry.amount === (payment.verifiedAmount ?? payment.submittedAmount)
-                          && entry.method === payment.method
-                          && entry.ref === (payment.referenceNumber ?? "—"))
-                      ));
-                      const totalPaid = Math.max(localPaid, r.paymentState.totalVerifiedPayments);
-                      const remaining = Math.max(0, r.amount - totalPaid);
+                      const pendingClientPayments = clientPayments.filter((p) => p.verificationStatus === "pending");
+                      const rejectedClientPayments = clientPayments.filter((p) => p.verificationStatus === "rejected");
+                      const totalPaid = pmts.reduce((s, p) => s + p.amount, 0);
+                      const remaining = r.amount - totalPaid;
                       const pf = newPmt[r.id] ?? { amount: "", method: "", ref: "", datePaid: "" };
                       const clientInquiries = byClient(r.client);
                       const clientReceipts = clientInquiries.flatMap(i => i.clientPaymentReceipts ?? []);
@@ -578,56 +521,33 @@ export function Accounting() {
                               </div>
                             </div>
 
-                            {clientPayments.length > 0 && (
+                            {pendingClientPayments.length > 0 && (
                               <div className="rounded-lg p-4 mb-4" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
-                                <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 800, color: "#1E40AF", letterSpacing: 0.5, textTransform: "uppercase" }}>Client Payment Submissions</div>
-                                {clientPayments.map((p) => {
-                                  const paymentType = p.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
-                                    : p.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
-                                  const statusLabel = p.verificationStatus === "pending" ? "AWAITING VERIFICATION"
-                                    : p.verificationStatus === "verified" ? "VERIFIED" : "REJECTED";
-                                  const statusColor = p.verificationStatus === "pending" ? "#1D4ED8"
-                                    : p.verificationStatus === "verified" ? "#15803D" : "#C8102E";
-                                  const dpPercent = r.downpaymentPercent;
-                                  const remainingAfter = Math.max(0, r.paymentState.remainingInvoiceBalance - p.submittedAmount);
-                                  return (
+                                <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 800, color: "#1E40AF", letterSpacing: 0.5, textTransform: "uppercase" }}>Client Payments Awaiting Verification</div>
+                                {pendingClientPayments.map((p) => (
                                   <div key={p.id} className="rounded-md p-3 mb-2 last:mb-0 bg-white border border-blue-200">
-                                    <div className="flex items-center justify-between gap-3 mb-3">
-                                      <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>PAYMENT {p.verificationStatus === "pending" ? "SUBMITTED" : statusLabel}</div>
-                                      <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 800, color: statusColor, backgroundColor: `${statusColor}18` }}>{statusLabel}</span>
-                                    </div>
                                     <div className="grid grid-cols-2 gap-x-5 gap-y-1 font-dm" style={{ fontSize: 12, color: "#475569" }}>
-                                      <span>Client</span><strong>{r.client}</strong>
-                                      <span>Invoice</span><strong>{p.invoiceNo ?? r.inv}</strong>
-                                      <span>PO</span><strong>{r.po}</strong>
-                                      <span>PAYMENT TYPE</span><strong>{paymentType}</strong>
-                                      <span>Invoice Total</span><strong>₱{r.paymentState.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      {p.paymentType === "DOWNPAYMENT" ? <>
-                                        <span>DOWNPAYMENT REQUIRED</span><strong>{dpPercent}%</strong>
-                                        <span>Required Amount</span><strong>₱{r.paymentState.requiredDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      </> : p.paymentType === "BALANCE_PAYMENT" ? <>
-                                        <span>Previously Verified</span><strong>₱{r.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                        <span>Balance Due</span><strong>₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      </> : <>
-                                        <span>FULL PAYMENT REQUIRED</span><strong>₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      </>}
+                                      <span>Payment Type</span><strong>{p.paymentType === "DOWNPAYMENT" ? r.paymentType : p.paymentType.replace("_", " ")}</strong>
+                                      <span>Required Amount</span><strong>₱{(p.paymentType === "DOWNPAYMENT" ? r.paymentState.requiredDownpaymentAmount : r.paymentState.remainingInvoiceBalance).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                                       <span>Submitted Amount</span><strong>₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      <span>Remaining Balance</span><strong>₱{remainingAfter.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      <span>Date Submitted</span><strong>{p.paymentDate}</strong>
+                                      <span>Previously Verified</span><strong>₱{(p.paymentType === "DOWNPAYMENT" ? r.paymentState.verifiedDownpaymentAmount : r.paymentState.totalVerifiedPayments).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                      <span>Remaining</span><strong>₱{(p.paymentType === "DOWNPAYMENT" ? r.paymentState.remainingDownpayment : r.paymentState.remainingInvoiceBalance).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                                       <span>Payment Method</span><strong>{p.method ?? "Not specified"}</strong>
                                       <span>Reference Number</span><strong>{p.referenceNumber ?? "—"}</strong>
-                                      {p.verifiedAt && <><span>Date Verified</span><strong>{new Date(p.verifiedAt).toLocaleString()}</strong></>}
                                     </div>
                                     <div className="flex items-center gap-2 mt-3">
-                                      <button onClick={() => p.receiptDataUrl && setProofToView({ filename: p.receiptFile ?? "Uploaded receipt", dataUrl: p.receiptDataUrl })} disabled={!p.receiptDataUrl} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB" }}><Eye size={11} /> VIEW PROOF OF PAYMENT</button>
-                                      {p.verificationStatus === "pending" && <>
-                                        <button onClick={() => handleRejectClientPayment(r, p)} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-red-200 hover:bg-red-50" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}><X size={11} /> Reject Payment</button>
-                                        <button onClick={() => handleVerifyClientPayment(r, p)} disabled={!p.receiptDataUrl || p.submittedAmount <= 0} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#15803D" }}><CheckCircle2 size={11} /> VERIFY PAYMENT</button>
-                                      </>}
+                                      <button onClick={() => toast.info(`Viewing: ${p.receiptFile ?? "payment receipt"}`, { description: "In production, this opens the uploaded file" })} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB" }}><Eye size={11} /> View Receipt</button>
+                                      <button onClick={() => { rejectPayment(r.id, p.id); toast.success("Payment rejected"); }} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-red-200 hover:bg-red-50" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}><X size={11} /> Reject Payment</button>
+                                      <button onClick={() => { verifyPayment(r.id, p.id); toast.success("Payment verified"); }} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#15803D" }}><CheckCircle2 size={11} /> Verify Payment</button>
                                     </div>
                                   </div>
-                                  );
-                                })}
+                                ))}
+                              </div>
+                            )}
+                            {rejectedClientPayments.length > 0 && (
+                              <div className="rounded-lg p-3 mb-4" style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>
+                                <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#C8102E", letterSpacing: 0.4, textTransform: "uppercase" }}>Rejected Payments Preserved</div>
+                                {rejectedClientPayments.map((p) => <div key={p.id} className="font-dm mt-1" style={{ fontSize: 12, color: "#991B1B" }}>₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {p.paymentDate}</div>)}
                               </div>
                             )}
                             <div className="grid gap-6" style={{ gridTemplateColumns: "3fr 2fr" }}>
@@ -677,23 +597,6 @@ export function Accounting() {
                                         acc.balance = newBal;
                                         return acc;
                                       }, { balance: r.amount, rows: [] as React.ReactNode[] }).rows}
-                                      {unlistedVerifiedPayments.reduce((acc, payment) => {
-                                        const amount = payment.verifiedAmount ?? payment.submittedAmount;
-                                        const balance = Math.max(0, acc.balance - amount);
-                                        const type = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
-                                          : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
-                                        acc.rows.push(
-                                          <tr key={payment.id} className="bg-white border-b border-slate-100">
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{payment.paymentDate}</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 11, color: "#0F172A" }}>{type} · {payment.method ?? "Payment"}{payment.referenceNumber ? ` · ${payment.referenceNumber}` : ""}</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{amount.toLocaleString("en-PH")}</td>
-                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#C8102E" : "#16A34A" }}>₱{balance.toLocaleString("en-PH")}</td>
-                                          </tr>
-                                        );
-                                        acc.balance = balance;
-                                        return acc;
-                                      }, { balance: Math.max(0, r.amount - localPaid), rows: [] as React.ReactNode[] }).rows}
                                     </tbody>
                                   </table>
                                 </div>
@@ -794,13 +697,9 @@ export function Accounting() {
                                         </div>
                                       </div>
                                       <button
-                                        disabled={!clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl}
-                                        className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-100"
                                         style={{ fontSize: 11, fontWeight: 600, color: "#2563EB" }}
-                                        onClick={() => {
-                                          const dataUrl = clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl;
-                                          if (dataUrl) setProofToView({ filename: cr.filename, dataUrl });
-                                        }}
+                                        onClick={() => toast.info(`Viewing: ${cr.filename}`, { description: "In production, this opens the uploaded file" })}
                                       >
                                         <Eye size={11} /> View
                                       </button>
@@ -835,31 +734,6 @@ export function Accounting() {
             setEditingReceipt(null);
           }}
         />
-      )}
-
-      {proofToView && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,.7)" }} onClick={() => setProofToView(null)}>
-          <div className="bg-white rounded-xl w-full max-w-5xl flex flex-col overflow-hidden" style={{ height: "90vh" }} onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <div className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Proof of Payment</div>
-                <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>{proofToView.filename}</div>
-              </div>
-              <button onClick={() => setProofToView(null)} aria-label="Close proof of payment" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
-            </div>
-            <div className="flex-1 min-h-0 bg-slate-100 flex items-center justify-center p-3">
-              {proofToView.dataUrl.startsWith("data:image/") ? (
-                <img src={proofToView.dataUrl} alt={proofToView.filename} className="max-w-full max-h-full object-contain" />
-              ) : proofToView.dataUrl.startsWith("data:application/pdf") ? (
-                <iframe src={proofToView.dataUrl} title={proofToView.filename} className="w-full h-full bg-white" />
-              ) : (
-                <a href={proofToView.dataUrl} download={proofToView.filename} className="font-dm px-4 py-2 rounded-md bg-white border border-slate-300" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>
-                  Open or download {proofToView.filename}
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
       )}
 
       {showOverdueModal && (

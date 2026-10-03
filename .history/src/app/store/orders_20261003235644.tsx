@@ -752,18 +752,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, stage: "quotation", quotation: q } : x)));
   };
 
-  const uploadPO: Ctx["uploadPO"] = (id, fileName, fileDataUrl, suppliedPONumber) => {
-    const poNumber = suppliedPONumber ?? fileName.match(/PO-\d{4}-\d+/)?.[0] ?? fileName.replace(/\.\w+$/, "");
-    setAllInquiries((prev) => prev.map((x) => (x.id === id ? {
-      ...x,
-      stage: "po",
-      poUploaded: true,
-      poFileName: fileName,
-      poNumber,
-      poFileDataUrl: fileDataUrl ?? x.poFileDataUrl,
-      poUploadedAt: fileDataUrl ? new Date().toISOString() : x.poUploadedAt,
-      poReceived: false,
-    } : x)));
+  const uploadPO: Ctx["uploadPO"] = (id, fileName) => {
+    const poNumber = fileName.match(/PO-\d{4}-\d+/)?.[0] ?? fileName.replace(/\.\w+$/, "");
+    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, stage: "po", poUploaded: true, poFileName: fileName, poNumber, poReceived: false } : x)));
   };
 
   const finalizeJO: Ctx["finalizeJO"] = (id, data) => {
@@ -914,19 +905,17 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const finalizeProductJOs: Ctx["finalizeProductJOs"] = (id, data) => {
     const src = allInquiries.find((i) => i.id === id);
-    if (!src || src.stage !== "po" || src.joNumber || allInquiries.some((i) => i.parentInquiryId === id && i.stage === "jo")) return [];
+    if (!src) return [];
     const parentInquiryId = src.parentInquiryId ?? src.id;
     const childIds: string[] = [];
     setAllInquiries((prev) => {
-      const current = prev.find((inquiry) => inquiry.id === id);
-      if (!current || current.stage !== "po" || current.joNumber || prev.some((inquiry) => inquiry.parentInquiryId === id && inquiry.stage === "jo")) return prev;
       const withoutSrc = prev.filter((x) => x.id !== id);
-      const children = current.products.map((product, idx) => {
+      const children = src.products.map((product, idx) => {
         const jo = data[idx] ?? data[0];
         const childId = idx === 0 ? id : `${id}-jo-${idx + 1}-${Date.now()}`;
         childIds.push(childId);
         return {
-          ...current,
+          ...src,
           id: childId,
           products: [product],
           productIndex: idx,
@@ -937,10 +926,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           joSketch: jo.joSketch,
           dpReceiptFile: jo.dpReceiptFile,
           signedQuotationFile: jo.signedQuotationFile,
-          billOfMaterials: current.productsBillOfMaterials?.[idx] ?? current.billOfMaterials,
-          costConfig: current.productsCostConfig?.[idx] ?? current.costConfig,
-          unitPrice: current.productsUnitPrice?.[idx] ?? current.unitPrice,
-          quotedTotal: current.productsQuotedTotal?.[idx] ?? ((current.productsUnitPrice?.[idx] ?? current.unitPrice ?? 0) * product.qty),
+          billOfMaterials: src.productsBillOfMaterials?.[idx] ?? src.billOfMaterials,
+          costConfig: src.productsCostConfig?.[idx] ?? src.costConfig,
+          unitPrice: src.productsUnitPrice?.[idx] ?? src.unitPrice,
+          quotedTotal: src.productsQuotedTotal?.[idx] ?? ((src.productsUnitPrice?.[idx] ?? src.unitPrice ?? 0) * product.qty),
           currentStage: 0,
           stageHistory: [],
           inventoryDeducted: false,

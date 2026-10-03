@@ -163,56 +163,49 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
             )}
 
             {/* ── Two-column footer (Terms left, Totals right) ── */}
-            <div className="grid grid-cols-2 gap-8 mt-6">
+            <div className="grid grid-cols-2 items-start gap-6 mt-5">
               {/* Terms & conditions */}
               <div>
                 <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 800, color: "#0F172A", letterSpacing: 0.5, textTransform: "uppercase", borderBottom: "1.5px solid #0F172A", paddingBottom: 4 }}>
                   Terms and Conditions
                 </div>
-                <div className="flex flex-col gap-1.5 font-dm" style={{ fontSize: 12 }}>
+                <div className="flex flex-col gap-1 font-dm" style={{ fontSize: 12 }}>
                   <Term label="Terms of payment" value={doc.termsOfPayment} />
                   <Term label="Time of delivery" value={doc.timeOfDelivery} />
                   <Term label="Place of delivery" value={doc.placeOfDelivery || "—"} />
                   <Term label="Validity" value={doc.validUntil} />
-                  {doc.downpaymentPercent && doc.downpaymentAmount ? (
-                    <Term
-                      label="Downpayment"
-                      value={`${doc.downpaymentPercent}% — ₱${doc.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} required`}
-                      highlight
-                    />
-                  ) : null}
                 </div>
               </div>
               {/* Totals */}
-              <div className="flex flex-col items-end gap-1">
-                <div className="rounded" style={{ backgroundColor: "#1A2B4A", color: "white", padding: "10px 18px", minWidth: 220 }}>
-                  <div className="flex items-center justify-between gap-6 font-dm" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", opacity: 0.7 }}>
+              <div className="flex flex-col gap-2">
+                <div className="rounded w-full" style={{ backgroundColor: "#1A2B4A", color: "white", padding: "12px 16px" }}>
+                  <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", opacity: 0.7 }}>
                     <span>Total</span>
                   </div>
-                  <div className="font-syne mt-1" style={{ fontSize: 24, fontWeight: 800, textAlign: "right" }}>
+                  <div className="font-syne mt-1.5" style={{ fontSize: 26, lineHeight: 1.15, fontWeight: 800, textAlign: "right" }}>
                     ₱ {total.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   {doc.discounts?.map((discount) => (
-                    <div key={`${discount.label}-${discount.percent}`} className="font-dm mt-1" style={{ fontSize: 11, fontWeight: 700, color: "#BBF7D0", textAlign: "right" }}>
-                      {discount.label}: {discount.percent}%
+                    <div key={`${discount.label}-${discount.percent}`} className="font-dm mt-2 pt-2" style={{ fontSize: 11, fontWeight: 600, color: "#BBF7D0", textAlign: "right", borderTop: "1px solid rgba(187,247,208,0.25)" }}>
+                      {discount.label === "Discount" ? "Discount applied" : `${discount.label} discount`}: {discount.percent}%
                     </div>
                   ))}
                 </div>
-                <div className="font-syne mt-2 px-3 py-1 rounded" style={{ fontSize: 12, fontWeight: 800, color: "#C8102E", backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", letterSpacing: 0.6 }}>
+                <div className="font-syne w-full px-3 py-1.5 rounded text-right" style={{ fontSize: 12, fontWeight: 800, color: "#C8102E", backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", letterSpacing: 0.6 }}>
                   {vatLabel}
                 </div>
                 {doc.downpaymentPercent && doc.downpaymentAmount ? (
-                  <div className="rounded mt-2 font-dm" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE", padding: "8px 14px", minWidth: 220 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", letterSpacing: 0.4, textTransform: "uppercase" }}>
+                  <div className="rounded w-full font-dm" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE", padding: "12px 14px" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#1E40AF", letterSpacing: 0.5, textTransform: "uppercase" }}>
                       Downpayment Required — {doc.downpaymentPercent}%
                     </div>
-                    <div className="font-mono-jb mt-0.5" style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8", textAlign: "right" }}>
+                    <div className="font-mono-jb mt-2" style={{ fontSize: 18, fontWeight: 800, color: "#1D4ED8", textAlign: "right" }}>
                       ₱ {doc.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <div style={{ fontSize: 10, color: "#3B82F6", marginTop: 2 }}>
+                    <div style={{ fontSize: 10, color: "#3B82F6", marginTop: 4 }}>
                       due before production begins
                     </div>
-                    <div style={{ fontSize: 10, color: "#60A5FA", marginTop: 1 }}>
+                    <div style={{ fontSize: 10, color: "#60A5FA", marginTop: 6, paddingTop: 6, borderTop: "1px solid #BFDBFE" }}>
                       Balance: ₱{(total - doc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} upon delivery
                     </div>
                   </div>

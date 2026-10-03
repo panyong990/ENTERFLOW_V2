@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ArrowLeft, Eye, Send, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Eye, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { useMaterials, type RawMaterial } from "../store/materials";
 import { useOrders, type Inquiry, type QuotationDoc, type QuotationLineItem } from "../store/orders";
@@ -14,21 +14,18 @@ interface Props {
   productsManufacturingUnitCosts?: (number | null)[];
   discounts?: { label: string; percent: number }[];
   vatType: "Exclusive" | "Inclusive" | "Zero-Rated";
-  /* Navigates back to Tab 2 to revise */
-  onBackToTab2: () => void;
   /* Sends the quotation: persists doc + advances stage + notifies client */
   onSendToClient: (doc: QuotationDoc, total: number, leadTimeDays: number) => void;
 }
 
-export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onBackToTab2, onSendToClient }: Props) {
+const DELIVERY_TIMEFRAMES = ["1 week", "1–2 weeks", "2–3 weeks", "3–4 weeks", "4–6 weeks", "6+ weeks"] as const;
+
+export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onSendToClient }: Props) {
   const { rawMaterials } = useMaterials();
   const { generateQuotationNumber } = useOrders();
   const session = useSession();
   const product = inquiry.products[0];
 
-  /* Suggested time of delivery from existing quotation lead time, or sensible default */
-  const defaultLeadDays = inquiry.quotation?.leadTimeDays ?? 21;
-  const defaultDelivery = `${Math.max(2, Math.floor(defaultLeadDays / 7))}–${Math.ceil(defaultLeadDays / 7) + 1} working weeks upon receipt of P.O.`;
   const defaultValidUntil = (() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
@@ -66,7 +63,9 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
   const [termsOfPayment, setTermsOfPayment] = useState<"15-Day Terms" | "30-Day Terms">(
     (inquiry.quotationDoc?.termsOfPayment as any) ?? inquiry.paymentTerms
   );
-  const [timeOfDelivery, setTimeOfDelivery] = useState(inquiry.quotationDoc?.timeOfDelivery ?? defaultDelivery);
+  const [timeOfDelivery, setTimeOfDelivery] = useState(() => (
+    DELIVERY_TIMEFRAMES.find((timeframe) => timeframe === inquiry.quotationDoc?.timeOfDelivery) ?? "2–3 weeks"
+  ));
   const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? clientAddress(inquiry.clientName));
   const [validUntil, setValidUntil] = useState(inquiry.quotationDoc?.validUntil ?? defaultValidUntil);
   const [downpaymentPercent, setDownpaymentPercent] = useState(inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 30);
@@ -112,9 +111,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
 
   const updateLineItem = (idx: number, patch: Partial<QuotationLineItem>) => {
     setLineItems((prev) => prev.map((li, i) => (i === idx ? { ...li, ...patch } : li)));
-  };
-  const removeLineItem = (idx: number) => {
-    setLineItems((prev) => prev.filter((_, i) => i !== idx).map((li, i) => ({ ...li, no: i + 1 })));
   };
 
   const buildDoc = (): QuotationDoc => ({
@@ -165,40 +161,7 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ── SECTION A — Internal cost summary (locked) ── */}
-      <div className="rounded-lg p-3" style={{ backgroundColor: "#F1F5F9", border: "1px solid #CBD5E1" }}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>
-              Cost Summary from Estimation <span style={{ color: "#94A3B8", fontWeight: 600 }}>(staff-only · not visible to client)</span>
-            </div>
-            {inquiry.products.length === 1 ? (
-              <div className="flex items-center gap-2">
-                <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>Manufacturing unit cost</span>
-                <span className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>₱{(productsManufacturingUnitCosts?.[0] ?? inquiry.productsUnitPrice?.[0] ?? manufacturingUnitCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / unit</span>
-                <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>locked</span>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-3">
-                {inquiry.products.map((p, i) => (
-                  <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ backgroundColor: "white", border: "1px solid #CBD5E1" }}>
-                    <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>{p.type}</span>
-                    <span className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>—</span>
-                    <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>₱{(productsManufacturingUnitCosts?.[i] ?? inquiry.productsUnitPrice?.[i] ?? manufacturingUnitCost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    <span className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>/unit</span>
-                    <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 8, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>locked</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <button onClick={onBackToTab2} className="font-dm flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-white shrink-0" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A", border: "1px solid #CBD5E1" }}>
-            <ArrowLeft size={12} /> Edit in Tab 2
-          </button>
-        </div>
-      </div>
-
-      {/* ── SECTION B — Quotation builder ── */}
+      {/* ── Quotation builder ── */}
       <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
           <h4 className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Client-Facing Quotation</h4>
@@ -217,7 +180,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                   { l: "DESCRIPTION", w: "auto", align: "left"   },
                   { l: "UNIT PRICE",  w: 120,  align: "right"  },
                   { l: "TOTAL",       w: 130,  align: "right"  },
-                  { l: "",            w: 36,   align: "center" },
                 ].map((c) => (
                   <th key={c.l} className="font-dm py-2 px-2 text-white" style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", textAlign: c.align as any, width: c.w }}>{c.l}</th>
                 ))}
@@ -234,12 +196,12 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                     <td className="px-2 py-2"><input type="number" min={1} value={li.qty} onChange={(e) => updateLineItem(idx, { qty: Number(e.target.value) })} className="font-mono-jb w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400 text-center" style={{ fontSize: 12 }} /></td>
                     <td className="px-2 py-2"><input value={li.unit} onChange={(e) => updateLineItem(idx, { unit: e.target.value })} className="font-dm w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400 text-center" style={{ fontSize: 12 }} /></td>
                     <td className="px-2 py-2">
-                      <input value={li.description} onChange={(e) => updateLineItem(idx, { description: e.target.value })} placeholder="e.g. FILTER BAG" className="font-dm w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", textTransform: "uppercase" }} />
+                      <input value={li.description} readOnly aria-label="Product description from order" title="Product description is taken from the order" className="font-dm w-full px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-700 cursor-not-allowed" style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase" }} />
                       <input value={li.subDescription ?? ""} onChange={(e) => updateLineItem(idx, { subDescription: e.target.value })} placeholder="Sub-line · e.g. SIZE : 135mm × 99 INCHES" className="font-dm w-full px-2 py-1 mt-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 11, color: "#475569", marginLeft: 8, width: "calc(100% - 8px)" }} />
                     </td>
                     <td className="px-2 py-2">
                       <div className="flex flex-col items-end">
-                        <input type="number" step="0.01" value={li.unitPrice} onChange={(e) => updateLineItem(idx, { unitPrice: Number(e.target.value) })} className="font-mono-jb w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400 text-right" style={{ fontSize: 12 }} />
+                        <input type="number" step="0.01" value={li.unitPrice} readOnly aria-label="Unit price from Cost & Material Estimation" title="Unit price is taken from Cost & Material Estimation" className="font-mono-jb w-full px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-500 text-right cursor-not-allowed" style={{ fontSize: 12 }} />
                         {inclusivePerUnit > 0 && (
                           <span className="font-mono-jb mt-0.5" style={{ fontSize: 10, color: "#16A34A" }}>+ ₱{inclusivePerUnit.toFixed(2)} add-ons</span>
                         )}
@@ -250,11 +212,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                       ₱{finalTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       {inclusivePerUnit > 0 && (
                         <div className="font-mono-jb" style={{ fontSize: 10, color: "#94A3B8" }}>(base ₱{total.toFixed(2)})</div>
-                      )}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {lineItems.length > 1 && (
-                        <button onClick={() => removeLineItem(idx)} className="text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
                       )}
                     </td>
                   </tr>
@@ -346,7 +303,9 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                 </select>
               </Field>
               <Field label="Time of Delivery">
-                <input value={timeOfDelivery} onChange={(e) => setTimeOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
+                <select value={timeOfDelivery} onChange={(e) => setTimeOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
+                  {DELIVERY_TIMEFRAMES.map((timeframe) => <option key={timeframe} value={timeframe}>{timeframe}</option>)}
+                </select>
               </Field>
               <Field label="Place of Delivery *">
                 <input value={placeOfDelivery} onChange={(e) => setPlaceOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
@@ -355,45 +314,18 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                 <input value={validUntil} onChange={(e) => setValidUntil(e.target.value)} placeholder="e.g. 30 days · May 26, 2026" className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
               </Field>
 
-              {/* ── Downpayment ── */}
-              <div className="pt-2 mt-1 border-t border-slate-200 flex flex-col gap-2">
-                <div className="rounded-lg p-3 flex flex-col gap-2" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-dm" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 600 }}>Downpayment:</span>
-                      <button
-                        onClick={() => setDownpaymentPercent(20)}
-                        className="font-dm px-2.5 py-1 rounded-md"
-                        style={{ fontSize: 12, fontWeight: 700, backgroundColor: downpaymentPercent === 20 ? "#1D4ED8" : "white", color: downpaymentPercent === 20 ? "white" : "#1D4ED8", border: "1.5px solid #93C5FD" }}
-                      >
-                        20%
-                      </button>
-                      <button
-                        onClick={() => setDownpaymentPercent(50)}
-                        className="font-dm px-2.5 py-1 rounded-md"
-                        style={{ fontSize: 12, fontWeight: 700, backgroundColor: downpaymentPercent === 50 ? "#1D4ED8" : "white", color: downpaymentPercent === 50 ? "white" : "#1D4ED8", border: "1.5px solid #93C5FD" }}
-                      >
-                        50%
-                      </button>
-                    </div>
-                    <div className="font-dm" style={{ fontSize: 12, color: "#1E3A8A" }}>
-                      <span style={{ fontWeight: 600 }}>Amount due before production: </span>
-                      <span className="font-mono-jb" style={{ fontWeight: 800, fontSize: 14, color: "#1D4ED8" }}>
-                        ₱{(grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                      <span style={{ color: "#60A5FA", fontSize: 11, marginLeft: 4 }}>({downpaymentPercent}% of ₱{grandTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
-                    </div>
-                    <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6", lineHeight: 1.5 }}>
-                      This downpayment requirement will be visible to the client on their quotation document and in the Client Portal.
-                    </div>
-                </div>
-              </div>
             </div>
           </div>
           {/* Totals */}
           <div className="rounded-lg overflow-hidden" style={{ border: "1.5px solid #1A2B4A" }}>
-            <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
+            <div className="px-5 py-4 flex flex-col items-end gap-1.5" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
               <span className="font-dm" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", opacity: 0.7 }}>Total</span>
-              <span className="font-syne" style={{ fontSize: 24, fontWeight: 800 }}>₱ {grandTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="font-syne" style={{ fontSize: 26, lineHeight: 1.15, fontWeight: 800 }}>₱ {grandTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              {quotationDiscounts.map((discount) => (
+                <span key={`${discount.label}-${discount.percent}`} className="font-dm mt-1 pt-2" style={{ fontSize: 11, fontWeight: 600, color: "#BBF7D0", borderTop: "1px solid rgba(187,247,208,0.25)" }}>
+                  {discount.label === "Discount" ? "Discount applied" : `${discount.label} discount`}: {discount.percent}%
+                </span>
+              ))}
             </div>
             <div className="px-4 py-2 flex items-center justify-end" style={{ backgroundColor: "#FEF2F2" }}>
               <span className="font-syne" style={{ fontSize: 12, fontWeight: 800, color: "#C8102E", letterSpacing: 0.6 }}>{vatLabel}</span>
@@ -409,29 +341,57 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                   <span className="font-mono-jb">₱{separateAddons.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               )}
-              {quotationDiscounts.map((discount) => (
-                <div key={`${discount.label}-${discount.percent}`} className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#15803D", fontWeight: 700 }}>
-                  <span>{discount.label}: {discount.percent}%</span>
-                </div>
-              ))}
-            </div>
-            <div className="px-4 py-3 flex flex-col gap-1" style={{ backgroundColor: "#EFF6FF", borderTop: "1.5px solid #BFDBFE" }}>
-                <div className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 700 }}>
-                  <span>⬇ Downpayment required ({downpaymentPercent}%)</span>
-                  <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 800 }}>₱{(grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6" }}>Balance upon delivery: <span className="font-mono-jb">₱{(grandTotal * (1 - downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
             </div>
           </div>
         </div>
       </div>
 
+      <div className="mx-5 rounded-lg p-3 flex flex-col gap-2" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#1E40AF", letterSpacing: 0.5, textTransform: "uppercase" }}>Downpayment Required</div>
+            <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#3B82F6" }}>Choose the required percentage before production.</div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setDownpaymentPercent(20)}
+              className="font-dm px-2.5 py-1 rounded-md"
+              style={{ fontSize: 12, fontWeight: 700, backgroundColor: downpaymentPercent === 20 ? "#1D4ED8" : "white", color: downpaymentPercent === 20 ? "white" : "#1D4ED8", border: "1.5px solid #93C5FD" }}
+            >
+              20%
+            </button>
+            <button
+              onClick={() => setDownpaymentPercent(50)}
+              className="font-dm px-2.5 py-1 rounded-md"
+              style={{ fontSize: 12, fontWeight: 700, backgroundColor: downpaymentPercent === 50 ? "#1D4ED8" : "white", color: downpaymentPercent === 50 ? "white" : "#1D4ED8", border: "1.5px solid #93C5FD" }}
+            >
+              50%
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-blue-200 pt-2">
+          <span className="font-dm" style={{ fontSize: 12, color: "#1E3A8A", fontWeight: 600 }}>Amount due before production ({downpaymentPercent}%)</span>
+          <span className="font-mono-jb" style={{ fontSize: 16, color: "#1D4ED8", fontWeight: 800 }}>
+            ₱{(grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <span className="font-dm" style={{ fontSize: 11, color: "#3B82F6" }}>Balance upon delivery</span>
+          <span className="font-mono-jb" style={{ fontSize: 12, color: "#1E3A8A", fontWeight: 700 }}>
+            ₱{(grandTotal * (1 - downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+        <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6", lineHeight: 1.4 }}>
+          This downpayment requirement will be visible to the client on their quotation document and in the Client Portal.
+        </div>
+      </div>
+
       {/* ── SECTION C — Terms & Conditions Notice ── */}
-      <div className="rounded-xl p-4" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
-        <div className="font-dm mb-2 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 800, color: "#92400E", letterSpacing: 0.5, textTransform: "uppercase" }}>
+      <div className="mx-5 rounded-xl p-3" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
+        <div className="font-dm mb-1.5 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 800, color: "#92400E", letterSpacing: 0.5, textTransform: "uppercase" }}>
           📋 Terms &amp; Conditions — Included with Quotation
         </div>
-        <div className="flex flex-col gap-1.5 font-dm" style={{ fontSize: 12, color: "#78350F", lineHeight: 1.6 }}>
+        <div className="flex flex-col gap-1 font-dm" style={{ fontSize: 12, color: "#78350F", lineHeight: 1.5 }}>
           <div>
             <span style={{ fontWeight: 700 }}>Payment:</span>{" "}Payment terms are indicated in the quotation. Required downpayments must be verified before the order proceeds.
           </div>
@@ -452,7 +412,7 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
       </div>
 
       {/* ── SECTION D — Actions ── */}
-      <div className="flex items-center justify-end gap-3">
+      <div className="mx-5 flex items-center justify-end gap-3">
         <button onClick={handlePreview} className="flex items-center gap-2 px-5 py-2.5 rounded-md font-dm hover:bg-slate-50" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A", border: "2px solid #1A2B4A", letterSpacing: 0.4 }}>
           <Eye size={14} /> Preview Quotation
         </button>

@@ -111,7 +111,7 @@ export function Accounting() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
-  const [proofToView, setProofToView] = useState<{ filename: string; dataUrl: string } | null>(null);
+  const [proofToView, setProofToView] = useState<PaymentRecord | null>(null);
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment,
     sendDownpaymentDetails, confirmDownpayment } = useOrders();
   /* Downpayment "Send Payment Details" modal */
@@ -292,13 +292,15 @@ export function Accounting() {
       clientName: invoice.client,
       recipients: ["client"],
     });
-    pushNotif({
-      dept: "payments",
-      title: `PAYMENT VERIFIED: ${invoice.inv}`,
-      body: `${invoice.client} · ${typeLabel} of ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · ${requirementMet ? "required payment condition satisfied; order is ready for Job Order generation" : "required payment condition is not yet satisfied"}`,
-      link: "sales",
-      recipients: ["owner", "operations", "sales"],
-    });
+    if (requirementMet) {
+      pushNotif({
+        dept: "payments",
+        title: `PAYMENT VERIFIED: ${invoice.inv}`,
+        body: `${invoice.client} · ${typeLabel} of ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · order is ready for Job Order generation`,
+        link: "sales",
+        recipients: ["owner", "operations", "sales"],
+      });
+    }
     toast.success("Payment verified", { description: `${invoice.inv} · ${typeLabel}` });
   };
 
@@ -535,17 +537,8 @@ export function Accounting() {
                     {isOpen && (() => {
                       const pmts = payments[r.id] ?? [];
                       const clientPayments = r.paymentRecords;
-                      const localPaid = pmts.reduce((s, p) => s + p.amount, 0);
-                      const verifiedClientPayments = clientPayments.filter((payment) => payment.verificationStatus === "verified");
-                      const unlistedVerifiedPayments = verifiedClientPayments.filter((payment) => !pmts.some((entry) =>
-                        entry.id === payment.id
-                        || (entry.date === payment.paymentDate
-                          && entry.amount === (payment.verifiedAmount ?? payment.submittedAmount)
-                          && entry.method === payment.method
-                          && entry.ref === (payment.referenceNumber ?? "—"))
-                      ));
-                      const totalPaid = Math.max(localPaid, r.paymentState.totalVerifiedPayments);
-                      const remaining = Math.max(0, r.amount - totalPaid);
+                      const totalPaid = pmts.reduce((s, p) => s + p.amount, 0);
+                      const remaining = r.amount - totalPaid;
                       const pf = newPmt[r.id] ?? { amount: "", method: "", ref: "", datePaid: "" };
                       const clientInquiries = byClient(r.client);
                       const clientReceipts = clientInquiries.flatMap(i => i.clientPaymentReceipts ?? []);
@@ -619,7 +612,7 @@ export function Accounting() {
                                       {p.verifiedAt && <><span>Date Verified</span><strong>{new Date(p.verifiedAt).toLocaleString()}</strong></>}
                                     </div>
                                     <div className="flex items-center gap-2 mt-3">
-                                      <button onClick={() => p.receiptDataUrl && setProofToView({ filename: p.receiptFile ?? "Uploaded receipt", dataUrl: p.receiptDataUrl })} disabled={!p.receiptDataUrl} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB" }}><Eye size={11} /> VIEW PROOF OF PAYMENT</button>
+                                      <button onClick={() => setProofToView(p)} disabled={!p.receiptDataUrl} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB" }}><Eye size={11} /> VIEW PROOF OF PAYMENT</button>
                                       {p.verificationStatus === "pending" && <>
                                         <button onClick={() => handleRejectClientPayment(r, p)} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-red-200 hover:bg-red-50" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}><X size={11} /> Reject Payment</button>
                                         <button onClick={() => handleVerifyClientPayment(r, p)} disabled={!p.receiptDataUrl || p.submittedAmount <= 0} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#15803D" }}><CheckCircle2 size={11} /> VERIFY PAYMENT</button>
@@ -677,23 +670,6 @@ export function Accounting() {
                                         acc.balance = newBal;
                                         return acc;
                                       }, { balance: r.amount, rows: [] as React.ReactNode[] }).rows}
-                                      {unlistedVerifiedPayments.reduce((acc, payment) => {
-                                        const amount = payment.verifiedAmount ?? payment.submittedAmount;
-                                        const balance = Math.max(0, acc.balance - amount);
-                                        const type = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
-                                          : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
-                                        acc.rows.push(
-                                          <tr key={payment.id} className="bg-white border-b border-slate-100">
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{payment.paymentDate}</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 11, color: "#0F172A" }}>{type} · {payment.method ?? "Payment"}{payment.referenceNumber ? ` · ${payment.referenceNumber}` : ""}</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{amount.toLocaleString("en-PH")}</td>
-                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#C8102E" : "#16A34A" }}>₱{balance.toLocaleString("en-PH")}</td>
-                                          </tr>
-                                        );
-                                        acc.balance = balance;
-                                        return acc;
-                                      }, { balance: Math.max(0, r.amount - localPaid), rows: [] as React.ReactNode[] }).rows}
                                     </tbody>
                                   </table>
                                 </div>
@@ -794,13 +770,9 @@ export function Accounting() {
                                         </div>
                                       </div>
                                       <button
-                                        disabled={!clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl}
-                                        className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-100"
                                         style={{ fontSize: 11, fontWeight: 600, color: "#2563EB" }}
-                                        onClick={() => {
-                                          const dataUrl = clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl;
-                                          if (dataUrl) setProofToView({ filename: cr.filename, dataUrl });
-                                        }}
+                                        onClick={() => toast.info(`Viewing: ${cr.filename}`, { description: "In production, this opens the uploaded file" })}
                                       >
                                         <Eye size={11} /> View
                                       </button>
@@ -837,24 +809,24 @@ export function Accounting() {
         />
       )}
 
-      {proofToView && (
+      {proofToView?.receiptDataUrl && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,.7)" }} onClick={() => setProofToView(null)}>
           <div className="bg-white rounded-xl w-full max-w-5xl flex flex-col overflow-hidden" style={{ height: "90vh" }} onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
               <div>
                 <div className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Proof of Payment</div>
-                <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>{proofToView.filename}</div>
+                <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>{proofToView.receiptFile ?? "Uploaded receipt"}</div>
               </div>
               <button onClick={() => setProofToView(null)} aria-label="Close proof of payment" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
             </div>
             <div className="flex-1 min-h-0 bg-slate-100 flex items-center justify-center p-3">
-              {proofToView.dataUrl.startsWith("data:image/") ? (
-                <img src={proofToView.dataUrl} alt={proofToView.filename} className="max-w-full max-h-full object-contain" />
-              ) : proofToView.dataUrl.startsWith("data:application/pdf") ? (
-                <iframe src={proofToView.dataUrl} title={proofToView.filename} className="w-full h-full bg-white" />
+              {proofToView.receiptDataUrl.startsWith("data:image/") ? (
+                <img src={proofToView.receiptDataUrl} alt={proofToView.receiptFile ?? "Uploaded proof of payment"} className="max-w-full max-h-full object-contain" />
+              ) : proofToView.receiptDataUrl.startsWith("data:application/pdf") ? (
+                <iframe src={proofToView.receiptDataUrl} title={proofToView.receiptFile ?? "Uploaded PDF proof of payment"} className="w-full h-full bg-white" />
               ) : (
-                <a href={proofToView.dataUrl} download={proofToView.filename} className="font-dm px-4 py-2 rounded-md bg-white border border-slate-300" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>
-                  Open or download {proofToView.filename}
+                <a href={proofToView.receiptDataUrl} download={proofToView.receiptFile ?? "payment-proof"} className="font-dm px-4 py-2 rounded-md bg-white border border-slate-300" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>
+                  Open or download {proofToView.receiptFile ?? "uploaded proof"}
                 </a>
               )}
             </div>

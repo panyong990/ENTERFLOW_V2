@@ -139,7 +139,7 @@ function OrdersTab({ clientName, onSubmitted }: { clientName: string; onSubmitte
           className="font-dm flex items-center gap-2 px-5 py-3 rounded-md text-white hover:opacity-90 shadow-sm"
           style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
         >
-          <Plus size={16} strokeWidth={3} /> + New Order
+          <Plus size={16} strokeWidth={3} /> New Order
         </button>
       </div>
 

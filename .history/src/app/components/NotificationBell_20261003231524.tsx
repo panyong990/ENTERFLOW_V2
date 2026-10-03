@@ -15,8 +15,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
   const role = roleProp ?? session.role;
   const navigate = onNavigate ?? session.navigate;
   const { unreadFor, markRead, markAllRead } = useNotifications();
-  const notificationClient = role === "client" ? clientName ?? session.name : undefined;
-  const items = unreadFor(role, notificationClient);
+  const items = unreadFor(role, role === "client" ? clientName ?? session.name : undefined);
   const unreadCount = items.filter((n) => !n.read).length;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -73,7 +72,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
             </div>
             {unreadCount > 0 && (
               <button
-                onClick={() => markAllRead(role, notificationClient)}
+                onClick={() => markAllRead(role)}
                 className="font-dm flex items-center gap-1 hover:underline"
                 style={{ fontSize: 11, color: "#1A2B4A", fontWeight: 600 }}
               >

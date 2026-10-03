@@ -189,7 +189,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
       {poForId && (
         <POUploadOverlay
           onClose={() => setPoForId(null)}
-          onSubmit={({ fileName, fileDataUrl, poNumber }) => { uploadPO(poForId, fileName, fileDataUrl, poNumber); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
+          onSubmit={(name) => { uploadPO(poForId, name); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
         />
       )}
       {showJobs && (
@@ -819,8 +819,6 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const total = inquiry.quotationDoc?.total ?? quotationTotal(inquiry);
   const invoicePayment = paymentState(inquiry);
   const invoiceDownpaymentPercent = inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 0;
-  const submittedPayments = paymentRecords(inquiry);
-  const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
 
   const submitRevision = () => {
     const note = revisionNoteDraft.trim();
@@ -881,17 +879,6 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                   <span>REMAINING BALANCE</span><strong>{peso(invoicePayment.remainingInvoiceBalance)}</strong>
                 </>}
               </div>
-              {invoicePayment.state === "FULLY_PAID" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#DCFCE7", color: "#166534", fontSize: 12, fontWeight: 800 }}>✓ PAYMENT VERIFIED · FULLY PAID</div>
-              ) : invoiceDownpaymentPercent > 0 && invoicePayment.downpaymentStatus === "COMPLETE" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#DCFCE7", color: "#166534", fontSize: 12, fontWeight: 800 }}>
-                  ✓ DOWNPAYMENT VERIFIED · {peso(invoicePayment.verifiedDownpaymentAmount)} verified · Remaining balance {peso(invoicePayment.remainingInvoiceBalance)}
-                </div>
-              ) : latestSubmittedPayment?.verificationStatus === "rejected" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12, fontWeight: 800 }}>PAYMENT REJECTED · Please resubmit proof in Accounting</div>
-              ) : latestSubmittedPayment?.verificationStatus === "pending" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#EFF6FF", color: "#1E40AF", fontSize: 12, fontWeight: 800 }}>PAYMENT SUBMITTED · AWAITING ACCOUNTING VERIFICATION</div>
-              ) : null}
               <div className="flex gap-2 mt-4">
                 <button onClick={() => setShowInvoice(true)} className="flex-1 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
                 {invoicePayment.currentPaymentType && <button onClick={onPayInvoice} className="flex-1 rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
@@ -1033,22 +1020,12 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               )}
               {inquiry.stage === "po" && inquiry.poFileName && (
                 <div className="rounded-md p-3 font-dm" style={{ backgroundColor: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 13, color: "#166534" }}>
-                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span> — {invoicePayment.state === "FULLY_PAID"
-                    ? "payment verified in full; order is ready for Job Order processing."
-                    : invoiceDownpaymentPercent > 0 && invoicePayment.downpaymentStatus === "COMPLETE"
-                    ? `required downpayment verified; remaining balance ${peso(invoicePayment.remainingInvoiceBalance)}.`
-                    : latestSubmittedPayment?.verificationStatus === "pending"
-                    ? "payment submitted; awaiting Accounting verification."
-                    : latestSubmittedPayment?.verificationStatus === "rejected"
-                    ? "payment rejected; please resubmit proof in Accounting."
-                    : inquiry.invoiceSentAt
-                    ? "invoice sent; awaiting required payment."
-                    : "awaiting invoice and required payment; production has not started."}
+                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span> — awaiting required payment verification; production has not started.
                 </div>
               )}
 
               {/* ── Downpayment action card — shown when DP is required but not yet confirmed ── */}
-              {(inquiry.downpaymentAmount ?? 0) > 0 && !inquiry.downpaymentConfirmed && !inquiry.invoiceSentAt && inquiry.stage !== "inquiry" && inquiry.stage !== "quotation" && (
+              {(inquiry.downpaymentAmount ?? 0) > 0 && !inquiry.downpaymentConfirmed && inquiry.stage !== "inquiry" && inquiry.stage !== "quotation" && (
                 <div className="rounded-xl p-4 flex flex-col gap-3" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="font-dm flex items-center gap-2" style={{ fontSize: 12, fontWeight: 800, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>
@@ -1265,24 +1242,12 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   );
 }
 
-function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string }) => void }) {
+function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit: (fileName: string) => void }) {
   const { generatePONumber } = useOrders();
   const [file, setFile] = useState<File | null>(null);
-  const [fileDataUrl, setFileDataUrl] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   /* Section J — auto-generated PO reference shown to the client; on submit, prefer the uploaded filename, but fall back to this reference. */
   const [autoRef] = useState(() => generatePONumber());
-  const readPOFile = (nextFile: File) => {
-    setFile(nextFile);
-    setFileDataUrl(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setFileDataUrl(reader.result);
-      else toast.error("Could not read purchase order file");
-    };
-    reader.onerror = () => toast.error("Could not read purchase order file");
-    reader.readAsDataURL(nextFile);
-  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-lg" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
@@ -1291,18 +1256,18 @@ function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit:
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
         <div className="p-6 flex flex-col gap-4">
-          <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) readPOFile(f); }} className="flex flex-col items-center justify-center gap-2 py-10 rounded-lg cursor-pointer transition-colors" style={{ border: `2px dashed ${drag ? "#C8102E" : "#CBD5E1"}`, backgroundColor: drag ? "#FEF2F2" : "#F8FAFC" }}>
+          <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) setFile(f); }} className="flex flex-col items-center justify-center gap-2 py-10 rounded-lg cursor-pointer transition-colors" style={{ border: `2px dashed ${drag ? "#C8102E" : "#CBD5E1"}`, backgroundColor: drag ? "#FEF2F2" : "#F8FAFC" }}>
             <Upload size={28} style={{ color: file ? "#16A34A" : "#94A3B8" }} />
             <span className="font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{file ? file.name : "Drop your PO here or click to browse"}</span>
             <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Accepts PDF, JPG, PNG</span>
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => { const selected = e.target.files?.[0]; if (selected) readPOFile(selected); e.currentTarget.value = ""; }} />
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
           <div className="rounded-md p-2 font-dm flex items-center justify-between" style={{ fontSize: 11, backgroundColor: "#F1F5F9", color: "#64748B" }}>
             <span>Auto-generated reference</span>
             <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
           </div>
           {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
-          <button onClick={() => file && fileDataUrl && onSubmit({ fileName: file.name, fileDataUrl, poNumber: autoRef })} disabled={!file || !fileDataUrl} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+          <button onClick={() => onSubmit(autoRef)} disabled={!file} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
             SUBMIT PURCHASE ORDER ({autoRef})
           </button>
         </div>
@@ -1695,7 +1660,7 @@ function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
   const qty = inq.products.reduce((s, p) => s + p.quantity, 0);
   const dateISO = inq.deliveredDate ?? inq.dueDate ?? inq.submittedDate;
   return {
-    po: inq.code,
+    po: inq.poNumber ?? inq.poFileName ?? inq.code,
     item,
     qty,
     method,
@@ -1897,7 +1862,7 @@ function inquiryToClientInvoice(inq: Inquiry) {
   return {
     id: inq.id,
     inv: inq.invoiceNo ?? `SI-${inq.code.replace("PO-", "")}`,
-    po: inq.poNumber ?? inq.poFileName ?? inq.code,
+    po: inq.code,
     item: inq.products[0]?.filterName || inq.products[0]?.type || "—",
     amount: state.invoiceTotal,
     payment: inq.paymentTerms,
@@ -1917,7 +1882,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const { settings } = useSettings();
   const bank = settings.bankDetails;
   const { push: pushNotif } = useNotifications();
-  const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; reference: string; note: string; file: string; receiptDataUrl?: string; methodId?: string }>>({});
+  const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; reference: string; note: string; file: string; methodId?: string }>>({});
   const [view, setView] = useState<"active" | "history">("active");
 
   /* DERIVED: pull this client's invoiced inquiries (delivered / overdue / paid). PO/quotation/in-production aren't yet billable. */
@@ -1934,7 +1899,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
 
   const submitReceipt = (rowId: string, invNo: string) => {
     const f = receiptForm[rowId];
-    if (!f?.file || !f.receiptDataUrl) { toast.error("Please attach a receipt file first"); return; }
+    if (!f?.file) { toast.error("Please attach a receipt file first"); return; }
     const amt = parseFloat(f.amount);
     if (isNaN(amt) || amt <= 0) { toast.error("Please enter the amount paid"); return; }
     const selectedMethod = settings.paymentMethods.find((m) => m.id === f.methodId) ?? settings.paymentMethods[0];
@@ -1944,7 +1909,6 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
       method: selectedMethod?.label ?? bank.bankName,
       referenceNumber: f.reference || f.note || "—",
       receiptFile: f.file,
-      receiptDataUrl: f.receiptDataUrl,
       paymentDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       note: f.note || undefined,
     });
@@ -1956,7 +1920,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
       recipients: ["owner", "operations", "accounting"],
     });
     toast.success("Receipt sent to Enter-Fil", { description: "The secretary will verify and update your account." });
-    setReceiptForm((prev) => ({ ...prev, [rowId]: { amount: "", reference: "", note: "", file: "", receiptDataUrl: "", methodId: settings.paymentMethods[0]?.id } }));
+    setReceiptForm((prev) => ({ ...prev, [rowId]: { amount: "", reference: "", note: "", file: "", methodId: settings.paymentMethods[0]?.id } }));
   };
 
   const pill = (label: string, value: string, color = "#0F172A") => (
@@ -2027,7 +1991,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                 : isPartial
                 ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Partial" }
                 : { bg: "#FEF3C7", fg: "#B45309", label: "Payment Required" };
-              const rf = receiptForm[r.id] ?? { amount: "", reference: "", note: "", file: "", receiptDataUrl: "", methodId: settings.paymentMethods[0]?.id };
+              const rf = receiptForm[r.id] ?? { amount: "", reference: "", note: "", file: "", methodId: settings.paymentMethods[0]?.id };
               const selectedMethod = settings.paymentMethods.find((m) => m.id === rf.methodId) ?? settings.paymentMethods[0];
               const paymentTypeLabel: Record<PaymentType, string> = {
                 DOWNPAYMENT: "REQUIRED DOWNPAYMENT",
@@ -2155,7 +2119,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                               <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>
                                 <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#C8102E", letterSpacing: 0.4, textTransform: "uppercase" }}>PAYMENT REJECTED</div>
                                 {rejectedPayments.map((p) => (
-                                  <div key={p.id} className="font-dm mt-1" style={{ fontSize: 12, color: "#991B1B" }}>{p.paymentType.replace("_", " ")} · ₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{p.referenceNumber ? ` · Ref ${p.referenceNumber}` : ""} · Please submit a new payment if appropriate.</div>
+                                  <div key={p.id} className="font-dm mt-1" style={{ fontSize: 12, color: "#991B1B" }}>₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Please submit a new payment if appropriate.</div>
                                 ))}
                               </div>
                             )}
@@ -2200,18 +2164,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                   <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                                     onChange={(e) => {
                                       const f = e.target.files?.[0];
-                                      if (f) {
-                                        const reader = new FileReader();
-                                        reader.onload = () => {
-                                          if (typeof reader.result !== "string") {
-                                            toast.error("Could not read receipt file");
-                                            return;
-                                          }
-                                          setReceiptForm(p => ({ ...p, [r.id]: { ...rf, file: f.name, receiptDataUrl: reader.result as string } }));
-                                        };
-                                        reader.onerror = () => toast.error("Could not read receipt file");
-                                        reader.readAsDataURL(f);
-                                      }
+                                      if (f) setReceiptForm(p => ({ ...p, [r.id]: { ...rf, file: f.name } }));
                                       e.currentTarget.value = "";
                                     }}
                                   />

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -20,7 +20,7 @@ const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[]
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, uploadPO, generateInvoice, sendInvoice, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
+  const { inquiries, archivedInquiries, addInquiry, sendQuotation, uploadPO, generateInvoice, sendInvoice, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage, generateJONumber } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -28,7 +28,6 @@ export function SalesOrders() {
   const [poDropId, setPoDropId] = useState<string | null>(null);
   const [poViewId, setPoViewId] = useState<string | null>(null);
   const [generateId, setGenerateId] = useState<string | null>(null);
-  const [generateJoId, setGenerateJoId] = useState<string | null>(null);
   const [viewInvoiceId, setViewInvoiceId] = useState<string | null>(null);
   const [showNewInquiry, setShowNewInquiry] = useState(false);
 
@@ -50,11 +49,10 @@ export function SalesOrders() {
   const viewing = inquiries.find((i) => i.id === viewQuoteId);
   const poViewing = inquiries.find((i) => i.id === poViewId);
   const generating = inquiries.find((i) => i.id === generateId);
-  const generatingJO = inquiries.find((i) => i.id === generateJoId);
   const viewingInvoice = inquiries.find((i) => i.id === viewInvoiceId);
 
   const isReadyForJobOrder = (inquiry: Inquiry) => {
-    if (inquiry.stage !== "po" || !inquiry.poUploaded || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
+    if (inquiry.stage !== "po" || !inquiry.poUploaded || !inquiry.poFileName) return false;
     const state = paymentState(inquiry);
     if (state.invoiceTotal <= 0) return false;
     return state.requiredDownpaymentAmount > 0
@@ -179,14 +177,7 @@ export function SalesOrders() {
                         updateInquiry(c.id, { poReceived: true });
                         toast.success("PO marked received", { description: `${c.code} remains in Quotation Sent` });
                       }}
-                      onGenerateJO={() => {
-                        const existingJO = completedJOs.find((job) => job.id === c.id || job.parentInquiryId === c.id);
-                        if (c.joNumber || existingJO) {
-                          toast.info("Job Order already exists", { description: existingJO?.joNumber ?? c.joNumber });
-                          return;
-                        }
-                        setGenerateJoId(c.id);
-                      }}
+                      onGenerateJO={() => setGenerateId(c.id)}
                       onGenerateInvoice={() => {
                         const invoiceNo = generateInvoice(c.id);
                         if (invoiceNo) {
@@ -324,31 +315,6 @@ export function SalesOrders() {
           }}
         />
       )}
-      {generatingJO && (
-        <GenerateJOModal
-          inquiry={generatingJO}
-          onClose={() => setGenerateJoId(null)}
-          onConfirm={(data) => {
-            const jobOrders = Array.isArray(data) ? data : [data];
-            const createdIds = finalizeProductJOs(generatingJO.id, jobOrders);
-            if (createdIds.length === 0) {
-              toast.info("Job Order already exists", { description: `${generatingJO.code} has already been submitted to Production` });
-              setGenerateJoId(null);
-              return;
-            }
-            const joNumbers = jobOrders.map((job) => job.joNumber);
-            pushNotif({
-              dept: "production",
-              title: `Job Order created: ${joNumbers.join(", ")}`,
-              body: `${generatingJO.clientName} · ${generatingJO.code} · ${generatingJO.products.reduce((sum, product) => sum + product.qty, 0)} pcs · submitted to Production`,
-              link: "production",
-              recipients: ["owner", "operations", "production"],
-            });
-            toast.success("JOB ORDER CREATED", { description: `${joNumbers.join(", ")} has been created and submitted to Production.` });
-            setGenerateJoId(null);
-          }}
-        />
-      )}
       {viewingInvoice && <InvoicePreviewModal inquiry={viewingInvoice} onClose={() => setViewInvoiceId(null)} />}
       {showNewInquiry && (
         <ManagementNewInquiryModal
@@ -373,12 +339,6 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
   const [rejectReason, setRejectReason] = useState("");
   const total = quotationTotal(inquiry);
   const payment = paymentState(inquiry);
-  const verifiedPaymentRecords = verifiedPayments(inquiry);
-  const latestVerifiedPayment = verifiedPaymentRecords[verifiedPaymentRecords.length - 1];
-  const verifiedTypeLabel = latestVerifiedPayment?.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
-    : latestVerifiedPayment?.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT"
-    : latestVerifiedPayment?.paymentType === "FULL_PAYMENT" ? "FULL PAYMENT"
-    : payment.requiredDownpaymentAmount > 0 ? "DOWNPAYMENT" : "FULL PAYMENT";
 
   return (
     <article className="rounded-lg border bg-white p-4 hover:shadow-sm transition-all" style={{ borderColor: inquiry.pendingCancellation ? "#FBBF24" : inquiry.urgent ? "#FECACA" : "#E2E8F0", borderWidth: inquiry.pendingCancellation ? 2 : 1 }}>
@@ -507,16 +467,10 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
         <div className="flex flex-col gap-2">
           <div className="rounded-md p-3" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
             <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
-              ✓ PAYMENT VERIFIED
+              ✓ PO VERIFIED
             </div>
-            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#166534" }}>
-              Invoice: <strong>{inquiry.invoiceNo}</strong>
-            </div>
-            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#166534" }}>
-              Payment: <strong>{verifiedTypeLabel}</strong> · Verified: <strong>{peso(payment.totalVerifiedPayments)}</strong>
-            </div>
-            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#166534" }}>
-              Remaining Balance: <strong>{peso(payment.remainingInvoiceBalance)}</strong>
+            <div className="font-dm mt-1 flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
+              ✓ REQUIRED PAYMENT VERIFIED
             </div>
           </div>
           <button
@@ -1155,40 +1109,33 @@ function QuotationDetailModal({ inquiry, onClose }: { inquiry: Inquiry; onClose:
 function POViewerModal({ inquiry, onClose }: { inquiry: Inquiry; onClose: () => void }) {
   const poFile = inquiry.poFileName;
   const poReference = inquiry.poNumber ?? poFile?.replace(/\.[^.]+$/, "") ?? "—";
-  const poDataUrl = inquiry.poFileDataUrl;
 
   return (
-    <ModalShell title="PURCHASE ORDER" subtitle={`${inquiry.clientName} · ${poFile ?? "Client-submitted document"}`} onClose={onClose} size="lg">
-      <div className="grid grid-cols-3 gap-4 mb-5">
+    <ModalShell title="VIEW PURCHASE ORDER" subtitle="Client-submitted purchase order" onClose={onClose} size="lg">
+      <div className="grid grid-cols-2 gap-4 mb-5">
         <div>
-          <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>PO Number</div>
+          <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>PO Reference</div>
           <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{poReference}</div>
         </div>
         <div>
           <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Client</div>
           <div className="font-dm mt-1" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{inquiry.clientName}</div>
         </div>
-        <div>
-          <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>Uploaded</div>
-          <div className="font-dm mt-1" style={{ fontSize: 13, color: "#0F172A" }}>{inquiry.poUploadedAt ? new Date(inquiry.poUploadedAt).toLocaleString() : "—"}</div>
+      </div>
+      <div className="rounded-lg border border-amber-200 p-5" style={{ backgroundColor: "#FFFBEB" }}>
+        <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#92400E", letterSpacing: 0.4, textTransform: "uppercase" }}>
+          Document preview unavailable
+        </div>
+        <p className="font-dm mt-2" style={{ fontSize: 13, color: "#78350F" }}>
+          This order currently stores the PO filename/reference only. The uploaded PDF or image data is not available in the shared order state, so no preview is fabricated.
+        </p>
+        <div className="font-mono-jb mt-3 rounded-md px-3 py-2" style={{ fontSize: 12, color: "#451A03", backgroundColor: "#FEF3C7" }}>
+          {poFile ?? "No PO attachment reference recorded"}
         </div>
       </div>
-      {poDataUrl?.startsWith("data:image/") ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-100 p-3 flex items-center justify-center" style={{ minHeight: 360, maxHeight: "65vh" }}>
-          <img src={poDataUrl} alt={`${inquiry.clientName} purchase order ${poReference}`} className="max-w-full max-h-[62vh] object-contain" />
-        </div>
-      ) : poDataUrl?.startsWith("data:application/pdf") ? (
-        <iframe src={poDataUrl} title={`${inquiry.clientName} purchase order ${poReference}`} className="w-full rounded-lg border border-slate-200 bg-white" style={{ height: "65vh" }} />
-      ) : poDataUrl ? (
-        <div className="rounded-lg border border-slate-200 p-5 flex items-center justify-center" style={{ minHeight: 240 }}>
-          <a href={poDataUrl} download={poFile ?? "purchase-order"} className="font-dm px-4 py-2 rounded-md border border-slate-300" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>Open or download {poFile ?? "purchase order"}</a>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-amber-200 p-5" style={{ backgroundColor: "#FFFBEB" }}>
-          <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#92400E", textTransform: "uppercase" }}>Original upload unavailable</div>
-          <p className="font-dm mt-2" style={{ fontSize: 13, color: "#78350F" }}>This earlier record contains the PO reference but not the uploaded document data. New client uploads are stored on the order and open here.</p>
-        </div>
-      )}
+      <div className="flex justify-end pt-4 mt-5 border-t border-slate-200">
+        <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Close</button>
+      </div>
     </ModalShell>
   );
 }

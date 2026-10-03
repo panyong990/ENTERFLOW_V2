@@ -62,7 +62,7 @@ interface Ctx {
   unreadFor: (role: Role, clientName?: string) => Notification[];
   push: (n: Omit<Notification, "id" | "time" | "read">) => void;
   markRead: (id: string) => void;
-  markAllRead: (role: Role, clientName?: string) => void;
+  markAllRead: (role: Role) => void;
   remove: (id: string) => void;
   removeAllRead: (role: Role) => void;
 }
@@ -112,12 +112,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setList((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
-  const markAllRead: Ctx["markAllRead"] = (role, clientName) => {
-    setList((prev) => prev.map((n) => (
-      n.recipients.includes(role) && (role !== "client" || !n.clientName || n.clientName === clientName)
-        ? { ...n, read: true }
-        : n
-    )));
+  const markAllRead: Ctx["markAllRead"] = (role) => {
+    setList((prev) => prev.map((n) => (n.recipients.includes(role) ? { ...n, read: true } : n)));
   };
 
   const remove: Ctx["remove"] = (id) => {

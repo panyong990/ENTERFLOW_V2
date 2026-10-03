@@ -189,7 +189,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
       {poForId && (
         <POUploadOverlay
           onClose={() => setPoForId(null)}
-          onSubmit={({ fileName, fileDataUrl, poNumber }) => { uploadPO(poForId, fileName, fileDataUrl, poNumber); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
+          onSubmit={(name) => { uploadPO(poForId, name); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
         />
       )}
       {showJobs && (
@@ -1265,24 +1265,12 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   );
 }
 
-function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string }) => void }) {
+function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit: (fileName: string) => void }) {
   const { generatePONumber } = useOrders();
   const [file, setFile] = useState<File | null>(null);
-  const [fileDataUrl, setFileDataUrl] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   /* Section J — auto-generated PO reference shown to the client; on submit, prefer the uploaded filename, but fall back to this reference. */
   const [autoRef] = useState(() => generatePONumber());
-  const readPOFile = (nextFile: File) => {
-    setFile(nextFile);
-    setFileDataUrl(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setFileDataUrl(reader.result);
-      else toast.error("Could not read purchase order file");
-    };
-    reader.onerror = () => toast.error("Could not read purchase order file");
-    reader.readAsDataURL(nextFile);
-  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-lg" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
@@ -1291,18 +1279,18 @@ function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit:
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
         <div className="p-6 flex flex-col gap-4">
-          <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) readPOFile(f); }} className="flex flex-col items-center justify-center gap-2 py-10 rounded-lg cursor-pointer transition-colors" style={{ border: `2px dashed ${drag ? "#C8102E" : "#CBD5E1"}`, backgroundColor: drag ? "#FEF2F2" : "#F8FAFC" }}>
+          <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) setFile(f); }} className="flex flex-col items-center justify-center gap-2 py-10 rounded-lg cursor-pointer transition-colors" style={{ border: `2px dashed ${drag ? "#C8102E" : "#CBD5E1"}`, backgroundColor: drag ? "#FEF2F2" : "#F8FAFC" }}>
             <Upload size={28} style={{ color: file ? "#16A34A" : "#94A3B8" }} />
             <span className="font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{file ? file.name : "Drop your PO here or click to browse"}</span>
             <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Accepts PDF, JPG, PNG</span>
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => { const selected = e.target.files?.[0]; if (selected) readPOFile(selected); e.currentTarget.value = ""; }} />
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
           <div className="rounded-md p-2 font-dm flex items-center justify-between" style={{ fontSize: 11, backgroundColor: "#F1F5F9", color: "#64748B" }}>
             <span>Auto-generated reference</span>
             <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
           </div>
           {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
-          <button onClick={() => file && fileDataUrl && onSubmit({ fileName: file.name, fileDataUrl, poNumber: autoRef })} disabled={!file || !fileDataUrl} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+          <button onClick={() => onSubmit(autoRef)} disabled={!file} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
             SUBMIT PURCHASE ORDER ({autoRef})
           </button>
         </div>

@@ -292,13 +292,15 @@ export function Accounting() {
       clientName: invoice.client,
       recipients: ["client"],
     });
-    pushNotif({
-      dept: "payments",
-      title: `PAYMENT VERIFIED: ${invoice.inv}`,
-      body: `${invoice.client} · ${typeLabel} of ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · ${requirementMet ? "required payment condition satisfied; order is ready for Job Order generation" : "required payment condition is not yet satisfied"}`,
-      link: "sales",
-      recipients: ["owner", "operations", "sales"],
-    });
+    if (requirementMet) {
+      pushNotif({
+        dept: "payments",
+        title: `PAYMENT VERIFIED: ${invoice.inv}`,
+        body: `${invoice.client} · ${typeLabel} of ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · order is ready for Job Order generation`,
+        link: "sales",
+        recipients: ["owner", "operations", "sales"],
+      });
+    }
     toast.success("Payment verified", { description: `${invoice.inv} · ${typeLabel}` });
   };
 
@@ -794,13 +796,10 @@ export function Accounting() {
                                         </div>
                                       </div>
                                       <button
-                                        disabled={!clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl}
+                                        disabled={!cr.dataUrl}
                                         className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
                                         style={{ fontSize: 11, fontWeight: 600, color: "#2563EB" }}
-                                        onClick={() => {
-                                          const dataUrl = clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl;
-                                          if (dataUrl) setProofToView({ filename: cr.filename, dataUrl });
-                                        }}
+                                        onClick={() => cr.dataUrl && setProofToView({ filename: cr.filename, dataUrl: cr.dataUrl })}
                                       >
                                         <Eye size={11} /> View
                                       </button>

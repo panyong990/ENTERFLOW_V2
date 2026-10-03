@@ -292,13 +292,15 @@ export function Accounting() {
       clientName: invoice.client,
       recipients: ["client"],
     });
-    pushNotif({
-      dept: "payments",
-      title: `PAYMENT VERIFIED: ${invoice.inv}`,
-      body: `${invoice.client} · ${typeLabel} of ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · ${requirementMet ? "required payment condition satisfied; order is ready for Job Order generation" : "required payment condition is not yet satisfied"}`,
-      link: "sales",
-      recipients: ["owner", "operations", "sales"],
-    });
+    if (requirementMet) {
+      pushNotif({
+        dept: "payments",
+        title: `PAYMENT VERIFIED: ${invoice.inv}`,
+        body: `${invoice.client} · ${typeLabel} of ₱${payment.submittedAmount.toLocaleString("en-PH")} verified · order is ready for Job Order generation`,
+        link: "sales",
+        recipients: ["owner", "operations", "sales"],
+      });
+    }
     toast.success("Payment verified", { description: `${invoice.inv} · ${typeLabel}` });
   };
 
@@ -535,17 +537,8 @@ export function Accounting() {
                     {isOpen && (() => {
                       const pmts = payments[r.id] ?? [];
                       const clientPayments = r.paymentRecords;
-                      const localPaid = pmts.reduce((s, p) => s + p.amount, 0);
-                      const verifiedClientPayments = clientPayments.filter((payment) => payment.verificationStatus === "verified");
-                      const unlistedVerifiedPayments = verifiedClientPayments.filter((payment) => !pmts.some((entry) =>
-                        entry.id === payment.id
-                        || (entry.date === payment.paymentDate
-                          && entry.amount === (payment.verifiedAmount ?? payment.submittedAmount)
-                          && entry.method === payment.method
-                          && entry.ref === (payment.referenceNumber ?? "—"))
-                      ));
-                      const totalPaid = Math.max(localPaid, r.paymentState.totalVerifiedPayments);
-                      const remaining = Math.max(0, r.amount - totalPaid);
+                      const totalPaid = pmts.reduce((s, p) => s + p.amount, 0);
+                      const remaining = r.amount - totalPaid;
                       const pf = newPmt[r.id] ?? { amount: "", method: "", ref: "", datePaid: "" };
                       const clientInquiries = byClient(r.client);
                       const clientReceipts = clientInquiries.flatMap(i => i.clientPaymentReceipts ?? []);
@@ -677,23 +670,6 @@ export function Accounting() {
                                         acc.balance = newBal;
                                         return acc;
                                       }, { balance: r.amount, rows: [] as React.ReactNode[] }).rows}
-                                      {unlistedVerifiedPayments.reduce((acc, payment) => {
-                                        const amount = payment.verifiedAmount ?? payment.submittedAmount;
-                                        const balance = Math.max(0, acc.balance - amount);
-                                        const type = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
-                                          : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
-                                        acc.rows.push(
-                                          <tr key={payment.id} className="bg-white border-b border-slate-100">
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{payment.paymentDate}</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 11, color: "#0F172A" }}>{type} · {payment.method ?? "Payment"}{payment.referenceNumber ? ` · ${payment.referenceNumber}` : ""}</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{amount.toLocaleString("en-PH")}</td>
-                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#C8102E" : "#16A34A" }}>₱{balance.toLocaleString("en-PH")}</td>
-                                          </tr>
-                                        );
-                                        acc.balance = balance;
-                                        return acc;
-                                      }, { balance: Math.max(0, r.amount - localPaid), rows: [] as React.ReactNode[] }).rows}
                                     </tbody>
                                   </table>
                                 </div>
@@ -794,13 +770,10 @@ export function Accounting() {
                                         </div>
                                       </div>
                                       <button
-                                        disabled={!clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl}
+                                        disabled={!cr.dataUrl}
                                         className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
                                         style={{ fontSize: 11, fontWeight: 600, color: "#2563EB" }}
-                                        onClick={() => {
-                                          const dataUrl = clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl;
-                                          if (dataUrl) setProofToView({ filename: cr.filename, dataUrl });
-                                        }}
+                                        onClick={() => cr.dataUrl && setProofToView({ filename: cr.filename, dataUrl: cr.dataUrl })}
                                       >
                                         <Eye size={11} /> View
                                       </button>

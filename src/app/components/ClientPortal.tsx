@@ -2,7 +2,7 @@ import { Fragment, useState } from "react";
 import {
   ClipboardList, MapPin, Truck, CreditCard, Upload, CheckCircle2, Circle,
   Building2, User as UserIcon, Info, Camera, Send, Plus, Trash2, ChevronDown,
-  ChevronUp, FileCheck, X, Settings, ExternalLink,
+  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, type Inquiry, type ProductLine, type ReplacementRequest } from "../store/orders";
@@ -273,8 +273,8 @@ function JobOrdersTab({ clientName }: { clientName: string }) {
                   <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{qty} pcs</td>
                   <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>{inq.stage}</span></td>
                   <td className="px-4 py-3">
-                    <button onClick={() => reorder(inq)} className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C9A84C", color: "white", letterSpacing: 0.3 }}>
-                      🔁 Reorder
+                    <button onClick={() => reorder(inq)} className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm text-white hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E", letterSpacing: 0.3 }}>
+                      <RotateCcw size={12} /> Reorder
                     </button>
                   </td>
                 </tr>

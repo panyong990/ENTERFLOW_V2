@@ -16,6 +16,8 @@ export interface QuotationDoc {
   date: string;              // "Apr 26, 2026"
   validUntil: string;        // "May 26, 2026"
   lineItems: QuotationLineItem[];
+  discounts?: { label: string; percent: number }[];
+  total?: number;
   note: string;
   noteHighlighted: boolean;
   /* Packaging add-on */

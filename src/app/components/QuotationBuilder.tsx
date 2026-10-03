@@ -12,6 +12,7 @@ interface Props {
   manufacturingUnitCost: number;
   /* Per-product unit costs from Tab 2 — overrides manufacturingUnitCost per index */
   productsManufacturingUnitCosts?: (number | null)[];
+  discounts?: { label: string; percent: number }[];
   vatType: "Exclusive" | "Inclusive" | "Zero-Rated";
   /* Navigates back to Tab 2 to revise */
   onBackToTab2: () => void;
@@ -21,7 +22,7 @@ interface Props {
 
 const NOTE_PRESETS = ["REPEAT ORDER", "NEW ORDER", "RUSH ORDER", "PARTIAL DELIVERY"];
 
-export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, vatType, onBackToTab2, onSendToClient }: Props) {
+export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onBackToTab2, onSendToClient }: Props) {
   const { rawMaterials } = useMaterials();
   const { generateQuotationNumber } = useOrders();
   const session = useSession();
@@ -99,6 +100,10 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
     (packagingOpen && !packagingInUnit ? packagingCostPerOrder : 0) +
     (shippingOpen && !shippingInUnit ? shippingCost : 0);
   const grandTotal = lineSubtotal + separateAddons;
+  const discountRates = [...new Set(discounts.filter((discount) => discount.percent > 0).map((discount) => discount.percent))];
+  const quotationDiscounts = discountRates.length === 1
+    ? [{ label: "Discount", percent: discountRates[0] }]
+    : discounts.filter((discount) => discount.percent > 0);
 
   const vatLabel =
     vatType === "Exclusive" ? "VAT EXCLUSIVE" :
@@ -125,6 +130,8 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
     date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     validUntil,
     lineItems: adjustedItems,
+    discounts: quotationDiscounts,
+    total: grandTotal,
     note,
     noteHighlighted,
     packaging: packagingOpen && selectedPackaging
@@ -420,6 +427,11 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                   <span className="font-mono-jb">₱{separateAddons.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               )}
+              {quotationDiscounts.map((discount) => (
+                <div key={`${discount.label}-${discount.percent}`} className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#15803D", fontWeight: 700 }}>
+                  <span>{discount.label}: {discount.percent}%</span>
+                </div>
+              ))}
             </div>
             <div className="px-4 py-3 flex flex-col gap-1" style={{ backgroundColor: "#EFF6FF", borderTop: "1.5px solid #BFDBFE" }}>
                 <div className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 700 }}>

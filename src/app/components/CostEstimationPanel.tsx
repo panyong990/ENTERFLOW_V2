@@ -313,7 +313,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
         <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
           <div className="px-4 py-3 border-b border-slate-200" style={{ backgroundColor: "#1A2B4A" }}>
             <h4 className="font-syne text-white" style={{ fontSize: 13, fontWeight: 700 }}>Cost Estimation Setup</h4>
-            <p className="font-dm mt-0.5" style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>Labor + Markup + VAT applied on top of materials</p>
+            <p className="font-dm mt-0.5" style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>Labor + Markup · Discount before VAT</p>
           </div>
           <div className="p-4 flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
@@ -328,6 +328,25 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Markup</label>
                 <div className="flex items-center gap-1">
                   <input type="number" value={cfg.markupPct} onChange={(e) => setCfg({ ...cfg, markupPct: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>%</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Discount (%)</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    value={cfg.discountPct ?? 0}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      setCfg({ ...cfg, discountPct: Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0 });
+                    }}
+                    className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white"
+                    style={{ fontSize: 13 }}
+                  />
                   <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>%</span>
                 </div>
               </div>
@@ -365,6 +384,12 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
                 <span style={{ color: "#475569", fontWeight: 600 }}>Total Cost {cfg.applyMarkup ? "with markup" : ""}</span>
                 <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{computed.withMarkup.toFixed(2)}</span>
               </div>
+              {(cfg.discountPct ?? 0) > 0 && (
+                <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 12 }}>
+                  <span style={{ color: "#475569", fontWeight: 600 }}>After {cfg.discountPct}% discount</span>
+                  <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{computed.afterDiscount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="px-3 py-2.5 flex items-center justify-between font-dm border-t border-slate-200" style={{ fontSize: 13, backgroundColor: "#FEF2F2" }}>
                 <span style={{ color: "#991B1B", fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", fontSize: 11 }}>With VAT</span>
                 <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#C8102E" }}>₱{computed.withVat.toFixed(2)}</span>

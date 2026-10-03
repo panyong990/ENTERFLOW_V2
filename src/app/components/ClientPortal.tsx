@@ -813,7 +813,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
   const [showQuotationDoc, setShowQuotationDoc] = useState(false);
   /* View terms & conditions */
   const [showTerms, setShowTerms] = useState(false);
-  const total = quotationTotal(inquiry);
+  const total = inquiry.quotationDoc?.total ?? quotationTotal(inquiry);
 
   const submitRevision = () => {
     const note = revisionNoteDraft.trim();
@@ -875,13 +875,15 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
                     {inquiry.products.map((p, i) => {
                       const l = inquiry.quotation!.lines.find((ll) => ll.productId === p.id);
                       if (!l) return null;
-                      const u = unitPrice(l);
+                      const docLine = inquiry.quotationDoc?.lineItems[i];
+                      const u = docLine?.unitPrice ?? unitPrice(l);
+                      const rowQty = docLine?.qty ?? p.qty;
                       return (
                         <tr key={p.id} className="border-t border-slate-200">
                           <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#0F172A" }}><span style={{ fontWeight: 700 }}>#{i + 1}</span> {p.type}{p.oem && <span className="font-mono-jb ml-1" style={{ fontSize: 11, color: "#64748B" }}>· {p.oem}</span>}</td>
-                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{p.qty}</td>
+                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{rowQty}</td>
                           <td className="px-3 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{peso(u)}</td>
-                          <td className="px-3 py-3 font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#C8102E" }}>{peso(u * p.qty)}</td>
+                          <td className="px-3 py-3 font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#C8102E" }}>{peso(u * rowQty)}</td>
                         </tr>
                       );
                     })}
@@ -895,6 +897,11 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
               <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>
                 Pricing based on Raw Materials + Labor + Markup. Lead time: <span style={{ fontWeight: 700, color: "#0F172A" }}>{inquiry.quotation.leadTimeDays} business days</span>. MOQ: 10 pcs per product.
               </div>
+              {inquiry.quotationDoc?.discounts?.map((discount) => (
+                <div key={`${discount.label}-${discount.percent}`} className="font-dm" style={{ fontSize: 12, color: "#15803D", fontWeight: 700 }}>
+                  {discount.label}: {discount.percent}%
+                </div>
+              ))}
 
               {/* View Full Quotation Document — available when quotationDoc is set */}
               {inquiry.quotationDoc && (
@@ -936,7 +943,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
                         </span>{" "}
                         is required before production begins. The remaining balance of{" "}
                         <span className="font-mono-jb" style={{ fontWeight: 700 }}>
-                          ₱{(inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0) - inquiry.quotationDoc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ₱{((inquiry.quotationDoc.total ?? inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)) - inquiry.quotationDoc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>{" "}
                         is due upon delivery.
                       </div>
@@ -1158,7 +1165,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
           inquiry={inquiry}
           doc={inquiry.quotationDoc}
           vatLabel={inquiry.quotationDoc.termsOfPayment === "15-Day Terms" ? "VAT EXCLUSIVE" : "VAT EXCLUSIVE"}
-          total={inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
+          total={inquiry.quotationDoc.total ?? inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
           preparedBy={inquiry.quotationDoc.preparedBy ?? "Enter-Fil"}
           onClose={() => setShowQuotationDoc(false)}
         />

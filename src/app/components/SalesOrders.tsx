@@ -560,6 +560,15 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
 
   /* Derive a single bomData reference for legacy callers — use the last non-null product entry */
   const bomData = perProductBomData.reduce<typeof perProductBomData[0]>((acc, d) => d ?? acc, null);
+  const discounts = inquiry.products.flatMap((product, index) => {
+    const percent = perProductBomData[index]?.costConfig.discountPct
+      ?? inquiry.productsCostConfig?.[index]?.discountPct
+      ?? (index === 0 ? inquiry.costConfig?.discountPct : undefined)
+      ?? 0;
+    return percent > 0
+      ? [{ label: inquiry.products.length === 1 ? "Discount" : (product.filterName || product.type), percent }]
+      : [];
+  });
 
   const submit = () => {
     onSubmit(
@@ -632,6 +641,7 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
           inquiry={inquiry}
           manufacturingUnitCost={bomData?.unitPrice ?? inquiry.unitPrice ?? 0}
           productsManufacturingUnitCosts={perProductBomData.map((d) => d?.unitPrice ?? null)}
+          discounts={discounts}
           vatType={bomData?.costConfig.vatType ?? inquiry.costConfig?.vatType ?? "Exclusive"}
           onBackToTab2={() => setActiveTab("cost")}
           onSendToClient={(doc, total, leadTimeDays) => {

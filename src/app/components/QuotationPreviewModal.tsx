@@ -192,6 +192,11 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                   <div className="font-syne mt-1" style={{ fontSize: 24, fontWeight: 800, textAlign: "right" }}>
                     ₱ {total.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
+                  {doc.discounts?.map((discount) => (
+                    <div key={`${discount.label}-${discount.percent}`} className="font-dm mt-1" style={{ fontSize: 11, fontWeight: 700, color: "#BBF7D0", textAlign: "right" }}>
+                      {discount.label}: {discount.percent}%
+                    </div>
+                  ))}
                 </div>
                 <div className="font-syne mt-2 px-3 py-1 rounded" style={{ fontSize: 12, fontWeight: 800, color: "#C8102E", backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", letterSpacing: 0.6 }}>
                   {vatLabel}

@@ -59,6 +59,7 @@ export type VatType = "Exclusive" | "Inclusive" | "Zero-Rated";
 export interface CostConfig {
   laborCost: number;
   markupPct: number;
+  discountPct?: number;
   vatType: VatType;
   vatRate: number;         // default 12
   includeLabor: boolean;
@@ -82,7 +83,7 @@ export function computeUnitPrice(
   bom: BOMLine[],
   cfg: CostConfig,
   materials: RawMaterial[]
-): { material: number; total: number; withMarkup: number; withVat: number } {
+): { material: number; total: number; withMarkup: number; afterDiscount: number; withVat: number } {
   const material = bom.reduce((sum, line) => {
     const m = materials.find((mm) => mm.id === line.materialId);
     if (!m) return sum;
@@ -90,12 +91,14 @@ export function computeUnitPrice(
   }, 0);
   const total = material + (cfg.includeLabor ? cfg.laborCost : 0);
   const withMarkup = cfg.applyMarkup ? total * (1 + cfg.markupPct / 100) : total;
-  let withVat = withMarkup;
+  const discountPct = Math.min(100, Math.max(0, cfg.discountPct ?? 0));
+  const afterDiscount = withMarkup * (1 - discountPct / 100);
+  let withVat = afterDiscount;
   if (cfg.applyVAT) {
-    if (cfg.vatType === "Exclusive") withVat = withMarkup * (1 + cfg.vatRate / 100);
+    if (cfg.vatType === "Exclusive") withVat = afterDiscount * (1 + cfg.vatRate / 100);
     /* Inclusive / Zero-Rated leave the value as-is (Inclusive: VAT already inside; Zero-Rated: no VAT) */
   }
-  return { material, total, withMarkup, withVat };
+  return { material, total, withMarkup, afterDiscount, withVat };
 }
 
 /**

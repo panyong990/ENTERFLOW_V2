@@ -2,7 +2,7 @@ import { Fragment, useState } from "react";
 import {
   ClipboardList, MapPin, Truck, CreditCard, Upload, CheckCircle2, Circle,
   Building2, User as UserIcon, Info, Camera, Send, Plus, Trash2, ChevronDown,
-  ChevronUp, FileCheck, X, Settings, ExternalLink,
+  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, type Inquiry, type ProductLine, type ReplacementRequest } from "../store/orders";
@@ -273,8 +273,8 @@ function JobOrdersTab({ clientName }: { clientName: string }) {
                   <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{qty} pcs</td>
                   <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>{inq.stage}</span></td>
                   <td className="px-4 py-3">
-                    <button onClick={() => reorder(inq)} className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C9A84C", color: "white", letterSpacing: 0.3 }}>
-                      🔁 Reorder
+                    <button onClick={() => reorder(inq)} className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm text-white hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E", letterSpacing: 0.3 }}>
+                      <RotateCcw size={12} /> Reorder
                     </button>
                   </td>
                 </tr>
@@ -288,290 +288,49 @@ function JobOrdersTab({ clientName }: { clientName: string }) {
 }
 
 /* ─────────── TransactionsTab — paid invoices only, derived from store ─────────── */
-/* ── Replacement window helpers ── */
-function replacementWindowDays(paymentTerms: string): number {
-  return paymentTerms === "15-Day Terms" ? 7 : 14;
-}
-function isInReplacementWindow(inq: Inquiry): boolean {
-  if (!inq.deliveredDate) return false;
-  const d = new Date(inq.deliveredDate);
-  if (isNaN(d.getTime())) return false;
-  const windowDays = replacementWindowDays(inq.paymentTerms);
-  const expires = new Date(d); expires.setDate(expires.getDate() + windowDays);
-  return new Date() <= expires;
-}
-function replacementWindowExpiry(inq: Inquiry): string {
-  if (!inq.deliveredDate) return "—";
-  const d = new Date(inq.deliveredDate);
-  if (isNaN(d.getTime())) return "—";
-  const windowDays = replacementWindowDays(inq.paymentTerms);
-  const expires = new Date(d); expires.setDate(expires.getDate() + windowDays);
-  return expires.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function TransactionsTab({ clientName }: { clientName: string }) {
-  const { byClient, addReplacementRequest, resolveReplacement, updateInquiry } = useOrders();
-  const { push: pushNotif } = useNotifications();
+  const { byClient } = useOrders();
 
   /* Include delivered + paid orders */
   const allOrders = byClient(clientName).filter((i) => !i.archived && ["delivered", "paid"].includes(i.stage));
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [replacementModal, setReplacementModal] = useState<Inquiry | null>(null);
 
   return (
     <div className="px-8 py-8 flex flex-col gap-4">
       <div>
         <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>Transaction History</h1>
-        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>
-          Delivered and paid orders · Replacement requests can be made within the replacement window.
-        </p>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
             <tr>
-              {["Date", "PO No.", "Item", "Amount", "Payment Terms", "Status", "Replace Window", ""].map((h) => (
+              {["Date", "PO No.", "Item", "Amount", "Payment Terms", "Status"].map((h) => (
                 <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {allOrders.length === 0 && (
-              <tr><td colSpan={8} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
             )}
-            {allOrders.map((inq) => {
-              const inWindow = isInReplacementWindow(inq);
-              const reqCount = (inq.replacementRequests ?? []).length;
-              const maxReached = reqCount >= 2;
-              const canRequest = inWindow && !maxReached;
-              const isExpanded = expandedId === inq.id;
-              const pendingRequests = (inq.replacementRequests ?? []).filter(r => r.status !== "resolved");
-
-              return (
-                <Fragment key={inq.id}>
-                  <tr className="border-t border-slate-200/70 hover:bg-slate-50 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : inq.id)}>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.deliveredDate ?? inq.submittedDate}</td>
-                    <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{inq.code}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{inq.products[0]?.filterName ?? labelForType(inq.products[0]?.type ?? "")}</td>
-                    <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{(inq.invoiceAmount ?? inq.quotedTotal ?? 0).toLocaleString("en-PH")}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
-                    <td className="px-4 py-3">
-                      <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: inq.stage === "paid" ? "#DCFCE7" : "#DBEAFE", color: inq.stage === "paid" ? "#15803D" : "#1D4ED8" }}>
-                        {inq.stage === "paid" ? "✅ Paid" : "📦 Delivered"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {inWindow ? (
-                        <span className="font-dm" style={{ fontSize: 11, color: "#15803D", fontWeight: 600 }}>Open · until {replacementWindowExpiry(inq)}</span>
-                      ) : (
-                        <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Closed</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {canRequest ? (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setReplacementModal(inq); }}
-                          className="font-dm px-3 py-1.5 rounded-md text-white hover:opacity-90"
-                          style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E" }}
-                        >
-                          Request Replacement
-                        </button>
-                      ) : maxReached ? (
-                        <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Max 2 replacements</span>
-                      ) : null}
-                      {pendingRequests.length > 0 && (
-                        <span className="font-dm ml-2 px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEF3C7", color: "#B45309" }}>
-                          {pendingRequests.length} pending
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                  {isExpanded && (inq.replacementRequests ?? []).length > 0 && (
-                    <tr key={`${inq.id}-expanded`}>
-                      <td colSpan={8} className="px-4 py-3 bg-slate-50">
-                        <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Replacement Requests</div>
-                        <div className="flex flex-col gap-2">
-                          {(inq.replacementRequests ?? []).map((req) => (
-                            <div key={req.id} className="rounded-md p-3 bg-white border border-slate-200 flex items-start justify-between gap-4">
-                              <div className="flex flex-col gap-1">
-                                <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
-                                  Replace {req.qty} pcs · {req.reason}
-                                </div>
-                                <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{req.defectDescription}</div>
-                                <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>
-                                  Requested {new Date(req.requestedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                  {req.proofFileName && ` · Photo: ${req.proofFileName}`}
-                                  {req.joNumber && ` · Replacement JO: ${req.joNumber}`}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-dm px-2.5 py-1 rounded-full shrink-0" style={{ fontSize: 10, fontWeight: 700,
-                                  backgroundColor: req.status === "resolved" ? "#DCFCE7" : req.status === "processing" ? "#DBEAFE" : "#FEF3C7",
-                                  color: req.status === "resolved" ? "#15803D" : req.status === "processing" ? "#1D4ED8" : "#B45309" }}>
-                                  {req.status === "resolved" ? "✅ Resolved" : req.status === "processing" ? "🔧 Processing" : "⏳ Pending"}
-                                </span>
-                                {req.status === "processing" && (
-                                  <button
-                                    onClick={() => {
-                                      resolveReplacement(inq.id, req.id);
-                                      toast.success("Marked as resolved", { description: "Thank you! The replacement has been received." });
-                                    }}
-                                    className="font-dm px-3 py-1.5 rounded-md text-white hover:opacity-90"
-                                    style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#16A34A" }}
-                                  >
-                                    Mark as Received
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
+            {allOrders.map((inq) => (
+              <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.deliveredDate ?? inq.submittedDate}</td>
+                <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{inq.code}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{inq.products[0]?.filterName ?? labelForType(inq.products[0]?.type ?? "")}</td>
+                <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{(inq.invoiceAmount ?? inq.quotedTotal ?? 0).toLocaleString("en-PH")}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
+                <td className="px-4 py-3">
+                  <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: inq.stage === "paid" ? "#DCFCE7" : "#DBEAFE", color: inq.stage === "paid" ? "#15803D" : "#1D4ED8" }}>
+                    {inq.stage === "paid" ? "✅ Paid" : "📦 Delivered"}
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* Replacement Request Modal */}
-      {replacementModal && (
-        <ReplacementRequestModal
-          inquiry={replacementModal}
-          onClose={() => setReplacementModal(null)}
-          onSubmit={(req) => {
-            addReplacementRequest(replacementModal.id, req);
-            pushNotif({
-              dept: "operations",
-              title: `Replacement request: ${replacementModal.code}`,
-              body: `${replacementModal.clientName} · ${req.qty} pcs · ${req.reason}`,
-              link: "production",
-              recipients: ["owner", "operations"],
-            });
-            toast.success("Replacement request submitted", { description: "Operations will process your request within 1-2 business days." });
-            setReplacementModal(null);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function ReplacementRequestModal({ inquiry, onClose, onSubmit }: {
-  inquiry: Inquiry;
-  onClose: () => void;
-  onSubmit: (req: { reason: string; defectDescription: string; qty: number; proofFileName?: string }) => void;
-}) {
-  const [reason, setReason] = useState("");
-  const [defect, setDefect] = useState("");
-  const [qty, setQty] = useState(1);
-  const [proofFile, setProofFile] = useState("");
-  const maxQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
-
-  const submit = () => {
-    if (!reason.trim()) { toast.error("Please select a reason"); return; }
-    if (!defect.trim()) { toast.error("Please describe the issue"); return; }
-    if (qty <= 0 || qty > maxQty) { toast.error(`Qty must be between 1 and ${maxQty}`); return; }
-    onSubmit({ reason, defectDescription: defect, qty, proofFileName: proofFile || undefined });
-  };
-
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-lg flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF2F2" }}>
-          <span style={{ fontSize: 18 }}>🔄</span>
-          <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#991B1B" }}>Request Item Replacement</h3>
-          <button onClick={onClose} className="ml-auto w-8 h-8 rounded-md hover:bg-red-100 flex items-center justify-center"><X size={16} /></button>
-        </div>
-        <div className="p-5 overflow-auto flex flex-col gap-4">
-          {/* Order summary */}
-          <div className="rounded-lg p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-            <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
-              {inquiry.code} · {inquiry.products[0]?.filterName ?? inquiry.products[0]?.type}
-            </div>
-            <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>
-              Delivered: {inquiry.deliveredDate ?? "—"} · Window expires: {replacementWindowExpiry(inquiry)}
-            </div>
-            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#C8102E", fontWeight: 600 }}>
-              Max 2 replacement requests per order ({(inquiry.replacementRequests ?? []).length}/2 used)
-            </div>
-          </div>
-
-          {/* T&C reminder */}
-          <div className="rounded-md p-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-            <div className="font-dm" style={{ fontSize: 11, color: "#92400E", lineHeight: 1.5 }}>
-              <span style={{ fontWeight: 700 }}>Reminder:</span> No refunds. Replacements only. Defect/damage photos are required. Enter-Fil reserves the right to inspect the claim before processing.
-            </div>
-          </div>
-
-          {/* Reason */}
-          <div className="flex flex-col gap-1">
-            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason *</label>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }}>
-              <option value="">Select a reason...</option>
-              <option value="Defective / damaged on arrival">Defective / damaged on arrival</option>
-              <option value="Wrong specifications received">Wrong specifications received</option>
-              <option value="Quality does not match sample">Quality does not match sample</option>
-              <option value="Premature failure during installation">Premature failure during installation</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          {/* Defect description */}
-          <div className="flex flex-col gap-1">
-            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Describe the issue *</label>
-            <textarea
-              value={defect}
-              onChange={(e) => setDefect(e.target.value)}
-              placeholder="e.g. Filter media has tears, seams are not properly sealed, dimensions don't match the JO specs..."
-              rows={3}
-              className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none"
-              style={{ fontSize: 13 }}
-            />
-          </div>
-
-          {/* Qty */}
-          <div className="flex flex-col gap-1">
-            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
-              Pieces to Replace * (max {maxQty})
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={maxQty}
-              value={qty}
-              onChange={(e) => setQty(Math.min(maxQty, Math.max(1, Number(e.target.value))))}
-              className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
-              style={{ fontSize: 13 }}
-            />
-          </div>
-
-          {/* Proof photo upload */}
-          <div className="flex flex-col gap-1">
-            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
-              Photo of Defect / Damage
-            </label>
-            <label className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-dashed border-slate-300 cursor-pointer hover:bg-slate-50 font-dm" style={{ fontSize: 12, color: proofFile ? "#16A34A" : "#64748B" }}>
-              <Camera size={14} />
-              {proofFile ? proofFile : "Upload photo (JPG, PNG, PDF)"}
-              <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) setProofFile(f.name);
-                e.currentTarget.value = "";
-              }} />
-            </label>
-          </div>
-        </div>
-        <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-          <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}>
-            Submit Replacement Request
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1054,7 +813,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
   const [showQuotationDoc, setShowQuotationDoc] = useState(false);
   /* View terms & conditions */
   const [showTerms, setShowTerms] = useState(false);
-  const total = quotationTotal(inquiry);
+  const total = inquiry.quotationDoc?.total ?? quotationTotal(inquiry);
 
   const submitRevision = () => {
     const note = revisionNoteDraft.trim();
@@ -1116,13 +875,15 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
                     {inquiry.products.map((p, i) => {
                       const l = inquiry.quotation!.lines.find((ll) => ll.productId === p.id);
                       if (!l) return null;
-                      const u = unitPrice(l);
+                      const docLine = inquiry.quotationDoc?.lineItems[i];
+                      const u = docLine?.unitPrice ?? unitPrice(l);
+                      const rowQty = docLine?.qty ?? p.qty;
                       return (
                         <tr key={p.id} className="border-t border-slate-200">
                           <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#0F172A" }}><span style={{ fontWeight: 700 }}>#{i + 1}</span> {p.type}{p.oem && <span className="font-mono-jb ml-1" style={{ fontSize: 11, color: "#64748B" }}>· {p.oem}</span>}</td>
-                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{p.qty}</td>
+                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{rowQty}</td>
                           <td className="px-3 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{peso(u)}</td>
-                          <td className="px-3 py-3 font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#C8102E" }}>{peso(u * p.qty)}</td>
+                          <td className="px-3 py-3 font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#C8102E" }}>{peso(u * rowQty)}</td>
                         </tr>
                       );
                     })}
@@ -1136,6 +897,11 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
               <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>
                 Pricing based on Raw Materials + Labor + Markup. Lead time: <span style={{ fontWeight: 700, color: "#0F172A" }}>{inquiry.quotation.leadTimeDays} business days</span>. MOQ: 10 pcs per product.
               </div>
+              {inquiry.quotationDoc?.discounts?.map((discount) => (
+                <div key={`${discount.label}-${discount.percent}`} className="font-dm" style={{ fontSize: 12, color: "#15803D", fontWeight: 700 }}>
+                  {discount.label}: {discount.percent}%
+                </div>
+              ))}
 
               {/* View Full Quotation Document — available when quotationDoc is set */}
               {inquiry.quotationDoc && (
@@ -1177,7 +943,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
                         </span>{" "}
                         is required before production begins. The remaining balance of{" "}
                         <span className="font-mono-jb" style={{ fontWeight: 700 }}>
-                          ₱{(inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0) - inquiry.quotationDoc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ₱{((inquiry.quotationDoc.total ?? inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)) - inquiry.quotationDoc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>{" "}
                         is due upon delivery.
                       </div>
@@ -1387,7 +1153,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel }: { inquiry: Inquiry; 
           inquiry={inquiry}
           doc={inquiry.quotationDoc}
           vatLabel={inquiry.quotationDoc.termsOfPayment === "15-Day Terms" ? "VAT EXCLUSIVE" : "VAT EXCLUSIVE"}
-          total={inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
+          total={inquiry.quotationDoc.total ?? inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
           preparedBy={inquiry.quotationDoc.preparedBy ?? "Enter-Fil"}
           onClose={() => setShowQuotationDoc(false)}
         />

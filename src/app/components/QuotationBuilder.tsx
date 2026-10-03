@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ArrowLeft, Eye, Send, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Eye, Send, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { useMaterials, type RawMaterial } from "../store/materials";
 import { useOrders, type Inquiry, type QuotationDoc, type QuotationLineItem } from "../store/orders";
@@ -12,6 +12,7 @@ interface Props {
   manufacturingUnitCost: number;
   /* Per-product unit costs from Tab 2 — overrides manufacturingUnitCost per index */
   productsManufacturingUnitCosts?: (number | null)[];
+  discounts?: { label: string; percent: number }[];
   vatType: "Exclusive" | "Inclusive" | "Zero-Rated";
   /* Navigates back to Tab 2 to revise */
   onBackToTab2: () => void;
@@ -19,9 +20,7 @@ interface Props {
   onSendToClient: (doc: QuotationDoc, total: number, leadTimeDays: number) => void;
 }
 
-const NOTE_PRESETS = ["REPEAT ORDER", "NEW ORDER", "RUSH ORDER", "PARTIAL DELIVERY"];
-
-export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, vatType, onBackToTab2, onSendToClient }: Props) {
+export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onBackToTab2, onSendToClient }: Props) {
   const { rawMaterials } = useMaterials();
   const { generateQuotationNumber } = useOrders();
   const session = useSession();
@@ -99,6 +98,10 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
     (packagingOpen && !packagingInUnit ? packagingCostPerOrder : 0) +
     (shippingOpen && !shippingInUnit ? shippingCost : 0);
   const grandTotal = lineSubtotal + separateAddons;
+  const discountRates = [...new Set(discounts.filter((discount) => discount.percent > 0).map((discount) => discount.percent))];
+  const quotationDiscounts = discountRates.length === 1
+    ? [{ label: "Discount", percent: discountRates[0] }]
+    : discounts.filter((discount) => discount.percent > 0);
 
   const vatLabel =
     vatType === "Exclusive" ? "VAT EXCLUSIVE" :
@@ -110,12 +113,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
   const updateLineItem = (idx: number, patch: Partial<QuotationLineItem>) => {
     setLineItems((prev) => prev.map((li, i) => (i === idx ? { ...li, ...patch } : li)));
   };
-  const addLineItem = () => {
-    setLineItems((prev) => [
-      ...prev,
-      { no: prev.length + 1, qty: 1, unit: "pcs", description: "", unitPrice: 0 },
-    ]);
-  };
   const removeLineItem = (idx: number) => {
     setLineItems((prev) => prev.filter((_, i) => i !== idx).map((li, i) => ({ ...li, no: i + 1 })));
   };
@@ -125,6 +122,8 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
     date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     validUntil,
     lineItems: adjustedItems,
+    discounts: quotationDiscounts,
+    total: grandTotal,
     note,
     noteHighlighted,
     packaging: packagingOpen && selectedPackaging
@@ -263,9 +262,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
               })}
             </tbody>
           </table>
-          <button onClick={addLineItem} className="mt-3 font-dm flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-slate-50" style={{ fontSize: 11, fontWeight: 700, color: "#475569", border: "1px dashed #CBD5E1" }}>
-            <Plus size={11} /> Add line item
-          </button>
         </div>
 
         {/* NOTE field */}
@@ -290,13 +286,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
               border: noteHighlighted ? "1px solid #FACC15" : "1px solid #E2E8F0",
             }}
           />
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {NOTE_PRESETS.map((p) => (
-              <button key={p} onClick={() => { setNote(p); setNoteHighlighted(true); }} className="font-dm flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-slate-100" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", border: "1px solid #FDE68A", backgroundColor: "#FFFBEB" }}>
-                {p}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Add-ons (Packaging + Shipping) */}
@@ -420,6 +409,11 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                   <span className="font-mono-jb">₱{separateAddons.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               )}
+              {quotationDiscounts.map((discount) => (
+                <div key={`${discount.label}-${discount.percent}`} className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#15803D", fontWeight: 700 }}>
+                  <span>{discount.label}: {discount.percent}%</span>
+                </div>
+              ))}
             </div>
             <div className="px-4 py-3 flex flex-col gap-1" style={{ backgroundColor: "#EFF6FF", borderTop: "1.5px solid #BFDBFE" }}>
                 <div className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 700 }}>

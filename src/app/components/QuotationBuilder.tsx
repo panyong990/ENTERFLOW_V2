@@ -70,7 +70,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
   const [timeOfDelivery, setTimeOfDelivery] = useState(inquiry.quotationDoc?.timeOfDelivery ?? defaultDelivery);
   const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? clientAddress(inquiry.clientName));
   const [validUntil, setValidUntil] = useState(inquiry.quotationDoc?.validUntil ?? defaultValidUntil);
-  const [requireDownpayment, setRequireDownpayment] = useState((inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 0) > 0);
   const [downpaymentPercent, setDownpaymentPercent] = useState(inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 30);
 
   const [showPreview, setShowPreview] = useState(false);
@@ -140,8 +139,8 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
     preparedBy: session.name,
     sentAt: inquiry.quotationDoc?.sentAt,
     sentBy: inquiry.quotationDoc?.sentBy,
-    downpaymentPercent: requireDownpayment ? downpaymentPercent : undefined,
-    downpaymentAmount: requireDownpayment ? grandTotal * (downpaymentPercent / 100) : undefined,
+    downpaymentPercent,
+    downpaymentAmount: grandTotal * (downpaymentPercent / 100),
   });
 
   const handlePreview = () => {
@@ -369,24 +368,7 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
 
               {/* ── Downpayment ── */}
               <div className="pt-2 mt-1 border-t border-slate-200 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Require Downpayment</span>
-                  <button
-                    onClick={() => setRequireDownpayment((v) => !v)}
-                    className="font-dm px-3 py-1 rounded-full transition-all"
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      backgroundColor: requireDownpayment ? "#1A2B4A" : "#F1F5F9",
-                      color: requireDownpayment ? "white" : "#64748B",
-                      border: requireDownpayment ? "1.5px solid #1A2B4A" : "1.5px solid #CBD5E1",
-                    }}
-                  >
-                    {requireDownpayment ? "✓ Required" : "Not Required"}
-                  </button>
-                </div>
-                {requireDownpayment && (
-                  <div className="rounded-lg p-3 flex flex-col gap-2" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+                <div className="rounded-lg p-3 flex flex-col gap-2" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
                     <div className="flex items-center gap-2">
                       <span className="font-dm" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 600 }}>Downpayment:</span>
                       <button
@@ -414,8 +396,7 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                     <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6", lineHeight: 1.5 }}>
                       This downpayment requirement will be visible to the client on their quotation document and in the Client Portal.
                     </div>
-                  </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
@@ -440,15 +421,13 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
                 </div>
               )}
             </div>
-            {requireDownpayment && (
-              <div className="px-4 py-3 flex flex-col gap-1" style={{ backgroundColor: "#EFF6FF", borderTop: "1.5px solid #BFDBFE" }}>
+            <div className="px-4 py-3 flex flex-col gap-1" style={{ backgroundColor: "#EFF6FF", borderTop: "1.5px solid #BFDBFE" }}>
                 <div className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#1E40AF", fontWeight: 700 }}>
                   <span>⬇ Downpayment required ({downpaymentPercent}%)</span>
                   <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 800 }}>₱{(grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6" }}>Balance upon delivery: <span className="font-mono-jb">₱{(grandTotal * (1 - downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

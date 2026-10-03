@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ArrowLeft, Eye, Send, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Eye, Send, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { useMaterials, type RawMaterial } from "../store/materials";
 import { useOrders, type Inquiry, type QuotationDoc, type QuotationLineItem } from "../store/orders";
@@ -19,8 +19,6 @@ interface Props {
   /* Sends the quotation: persists doc + advances stage + notifies client */
   onSendToClient: (doc: QuotationDoc, total: number, leadTimeDays: number) => void;
 }
-
-const NOTE_PRESETS = ["REPEAT ORDER", "NEW ORDER", "RUSH ORDER", "PARTIAL DELIVERY"];
 
 export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onBackToTab2, onSendToClient }: Props) {
   const { rawMaterials } = useMaterials();
@@ -114,12 +112,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
 
   const updateLineItem = (idx: number, patch: Partial<QuotationLineItem>) => {
     setLineItems((prev) => prev.map((li, i) => (i === idx ? { ...li, ...patch } : li)));
-  };
-  const addLineItem = () => {
-    setLineItems((prev) => [
-      ...prev,
-      { no: prev.length + 1, qty: 1, unit: "pcs", description: "", unitPrice: 0 },
-    ]);
   };
   const removeLineItem = (idx: number) => {
     setLineItems((prev) => prev.filter((_, i) => i !== idx).map((li, i) => ({ ...li, no: i + 1 })));
@@ -270,9 +262,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
               })}
             </tbody>
           </table>
-          <button onClick={addLineItem} className="mt-3 font-dm flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-slate-50" style={{ fontSize: 11, fontWeight: 700, color: "#475569", border: "1px dashed #CBD5E1" }}>
-            <Plus size={11} /> Add line item
-          </button>
         </div>
 
         {/* NOTE field */}
@@ -297,13 +286,6 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
               border: noteHighlighted ? "1px solid #FACC15" : "1px solid #E2E8F0",
             }}
           />
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {NOTE_PRESETS.map((p) => (
-              <button key={p} onClick={() => { setNote(p); setNoteHighlighted(true); }} className="font-dm flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-slate-100" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", border: "1px solid #FDE68A", backgroundColor: "#FFFBEB" }}>
-                {p}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Add-ons (Packaging + Shipping) */}

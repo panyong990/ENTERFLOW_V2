@@ -99,9 +99,6 @@ export function SalesOrders() {
         </div>
       </div>
 
-      {/* ── Replacement Requests Panel ── */}
-      <ReplacementRequestsPanel />
-
       <div className="px-8 pt-4 pb-0">
         {archivedInquiries.length > 0 && (
           <details className="rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -1834,84 +1831,6 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ── Replacement Requests Panel (shown in SalesOrders for operations to process) ── */
-function ReplacementRequestsPanel() {
-  const { inquiries: _inq, inquiriesByStage, updateInquiry, createReplacementJO } = useOrders();
-  const { push: pushNotif } = useNotifications();
-
-  /* Find all delivered/paid orders that have pending replacement requests */
-  const ordersWithRequests = inquiriesByStage(["delivered", "paid", "overdue"]).filter(
-    (i) => (i.replacementRequests ?? []).some((r) => r.status === "pending" || r.status === "processing")
-  );
-
-  if (ordersWithRequests.length === 0) return null;
-
-  return (
-    <div className="px-8 pt-4">
-      <details open className="rounded-xl border-2 border-purple-200 bg-white overflow-hidden">
-        <summary className="px-5 py-3 flex items-center gap-2 cursor-pointer font-dm select-none" style={{ fontSize: 13, fontWeight: 700, color: "#7C3AED", backgroundColor: "#F5F3FF" }}>
-          🔄 Replacement Requests ({ordersWithRequests.reduce((s, i) => s + (i.replacementRequests ?? []).filter(r => r.status !== "resolved").length, 0)} pending)
-        </summary>
-        <div className="border-t border-purple-100 p-4 flex flex-col gap-3">
-          {ordersWithRequests.map((inq) =>
-            (inq.replacementRequests ?? [])
-              .filter((r) => r.status !== "resolved")
-              .map((req) => (
-                <div key={req.id} className="rounded-lg border border-purple-200 p-4" style={{ backgroundColor: "#FAFAFA" }}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex flex-col gap-1">
-                      <div className="font-dm flex items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>
-                        🔄 <span>{inq.code} · {inq.clientName}</span>
-                        <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: req.status === "processing" ? "#DBEAFE" : "#FEF3C7", color: req.status === "processing" ? "#1D4ED8" : "#B45309" }}>
-                          {req.status === "processing" ? "Processing" : "Pending"}
-                        </span>
-                      </div>
-                      <div className="font-dm" style={{ fontSize: 12, color: "#475569" }}>
-                        <span style={{ fontWeight: 600 }}>Replace {req.qty} pcs</span> · {req.reason}
-                      </div>
-                      <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{req.defectDescription}</div>
-                      {req.proofFileName && (
-                        <div className="font-dm" style={{ fontSize: 11, color: "#7C3AED" }}>📷 Proof: {req.proofFileName}</div>
-                      )}
-                      <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8" }}>
-                        Requested {new Date(req.requestedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </div>
-                    </div>
-                    {req.status === "pending" && (
-                      <button
-                        onClick={() => {
-                          /* Atomic: parent's request → processing + new replacement inquiry at JO stage with copied BOM */
-                          const joNum = createReplacementJO(inq.id, req.id, req.qty, req.reason);
-                          pushNotif({
-                            dept: "production",
-                            title: `Replacement JO created: ${joNum}`,
-                            body: `${inq.clientName} · Replace ${req.qty} pcs · ${req.reason}`,
-                            link: "production",
-                            recipients: ["owner", "operations", "production", "client"],
-                          });
-                          toast.success(`Replacement JO created: ${joNum}`, { description: `${inq.clientName} notified · Production will process` });
-                        }}
-                        className="font-dm px-3 py-2 rounded-md text-white hover:opacity-90 shrink-0"
-                        style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#7C3AED" }}
-                      >
-                        🔄 Create Replacement JO
-                      </button>
-                    )}
-                    {req.status === "processing" && req.joNumber && (
-                      <div className="font-dm shrink-0" style={{ fontSize: 12, color: "#1D4ED8", fontWeight: 600 }}>
-                        JO: {req.joNumber}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-          )}
-        </div>
-      </details>
     </div>
   );
 }

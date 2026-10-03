@@ -990,26 +990,14 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                   ) : null}
 
                   <div className="font-dm flex flex-col gap-1.5" style={{ fontSize: 12, color: "#78350F", lineHeight: 1.6 }}>
-                    <div>
-                      <span style={{ fontWeight: 700 }}>Replacement Policy:</span>{" "}
-                      Clients on <strong>15-Day Terms</strong> may request item replacement within <strong>1 week</strong> of delivery.
-                      Clients on <strong>30-Day Terms</strong> may request replacement within <strong>2 weeks</strong> of delivery.
-                      {inquiry.quotationDoc.termsOfPayment && (
-                        <> Currently selected: <span style={{ fontWeight: 700, color: "#C8102E" }}>{inquiry.quotationDoc.termsOfPayment}</span>
-                        {" "}— replacement window: <span style={{ fontWeight: 700, color: "#C8102E" }}>{inquiry.quotationDoc.termsOfPayment === "15-Day Terms" ? "1 week" : "2 weeks"}</span> from delivery date.</>
-                      )}
-                    </div>
-                    <div>
-                      <span style={{ fontWeight: 700 }}>No Refunds.</span>{" "}
-                      All sales are final. Replacement requests only — no monetary refunds will be issued.
-                    </div>
-                    <div>
-                      <span style={{ fontWeight: 700 }}>For replacement requests or concerns, contact Enter-Fil:</span>{" "}
-                      Tel: +63 (2) 8861-5737 / +63 (2) 8653-3750 · Mobile: +63 (956) 657-3837 · Email: enterfil.filtration@yahoo.com / zuluetaellen@gmail.com
-                    </div>
-                    <div style={{ color: "#92400E", fontSize: 11 }}>
-                      Office Hours: Monday – Friday, 8:00 AM – 6:00 PM · Sitio Hulo, Brgy. Balasing – San Jose Rd, Santa Maria, 3022 Bulacan
-                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
+                      <li><span style={{ fontWeight: 700 }}>Payment:</span>{" "}Payment terms are indicated in the quotation. Required downpayments must be verified before the order proceeds.</li>
+                      <li><span style={{ fontWeight: 700 }}>No Refunds:</span>{" "}All sales are final. No refunds will be issued once the order has been confirmed and processed.</li>
+                      <li><span style={{ fontWeight: 700 }}>No Replacements:</span>{" "}Products are not eligible for replacement after delivery.</li>
+                      <li><span style={{ fontWeight: 700 }}>Delivery:</span>{" "}Delivery arrangements and schedules are based on the confirmed order. Actual delivery may vary depending on production completion and logistics.</li>
+                      <li><span style={{ fontWeight: 700 }}>Contact:</span>{" "}Tel: +63 (2) 8861-5737 / +63 (2) 8653-3750 · Mobile: +63 (956) 657-3837 · Email: <a href="mailto:enterfil.filtration@yahoo.com" style={{ color: "#78350F", textDecoration: "underline" }}>enterfil.filtration@yahoo.com</a> / <a href="mailto:zluetaellen@gmail.com" style={{ color: "#78350F", textDecoration: "underline" }}>zuluetaellen@gmail.com</a></li>
+                      <li><span style={{ fontWeight: 700 }}>Office Hours:</span>{" "}Monday–Friday, 8:00 AM–6:00 PM · Sitio Hulo, Brgy. Balasing – San Jose Rd, Santa Maria, 3022 Bulacan</li>
+                    </ul>
                   </div>
                 </div>
               )}

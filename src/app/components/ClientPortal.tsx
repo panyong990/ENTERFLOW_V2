@@ -1564,32 +1564,13 @@ function stageBadgeForClient(inq: Inquiry): { label: string; bg: string; fg: str
 }
 
 function StatusTab({ clientName }: { clientName: string }) {
-  const { byClient, updateInquiry } = useOrders();
+  const { byClient } = useOrders();
   const [showJO, setShowJO] = useState(false);
-  const [requestingUrgent, setRequestingUrgent] = useState<string | null>(null);
-  const [urgentDate, setUrgentDate] = useState("");
-  const { push: pushNotif } = useNotifications();
 
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
   const myInquiries = byClient(clientName).filter((i) => !i.archived && i.stage !== "paid");
   const activeOrders = myInquiries.map(inquiryToActiveOrder);
   const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.po ?? null);
-
-  const requestUrgentUpgrade = () => {
-    if (!urgentDate.trim()) { toast.error("Please specify your required delivery date"); return; }
-    /* Section G — store the request flag on the inquiry so the button stays disabled and the response can be displayed. */
-    const inq = myInquiries.find((i) => i.code === requestingUrgent);
-    if (inq) updateInquiry(inq.id, { urgentUpgradeRequested: true });
-    pushNotif({
-      dept: "production",
-      title: "🚨 Urgent upgrade requested by client",
-      body: `${requestingUrgent} · ${clientName} · requested delivery by ${urgentDate}`,
-      link: "production",
-      recipients: ["owner", "operations", "production"],
-    });
-    toast.success("Urgent request sent — wait for Enter-Fil response.", { description: "You'll be notified when management replies." });
-    setRequestingUrgent(null); setUrgentDate("");
-  };
 
   return (
     <div className="px-8 py-8 flex flex-col gap-6">
@@ -1620,11 +1601,8 @@ function StatusTab({ clientName }: { clientName: string }) {
             expanded={expanded}
             onToggle={() => setExpandedPO(expanded ? null : order.po)}
             onViewJO={() => setShowJO(true)}
-            onRequestUrgent={() => setRequestingUrgent(order.po)}
             currentStep={currentStep}
             hasJO={hasJO}
-            urgentRequested={!!inq?.urgentUpgradeRequested}
-            urgentResponse={inq?.urgentUpgradeResponse}
           />
         );
       })}
@@ -1649,56 +1627,17 @@ function StatusTab({ clientName }: { clientName: string }) {
         return <JOTemplateModal data={liveData} onClose={() => setShowJO(false)} />;
       })()}
 
-      {/* Urgent upgrade modal */}
-      {requestingUrgent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setRequestingUrgent(null)}>
-          <div className="bg-white rounded-xl w-full max-w-md flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF2F2" }}>
-              <span style={{ fontSize: 20 }}>🚨</span>
-              <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#991B1B" }}>Request Urgent Upgrade</h3>
-            </div>
-            <div className="p-5 flex flex-col gap-3">
-              <p className="font-dm" style={{ fontSize: 13, color: "#475569" }}>
-                Need <span className="font-mono-jb" style={{ fontWeight: 700 }}>{requestingUrgent}</span> sooner? Tell us your required delivery date — we'll confirm via email within 4 hours.
-              </p>
-              <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#991B1B", letterSpacing: 0.4, textTransform: "uppercase" }}>Required Delivery Date</label>
-                <input
-                  value={urgentDate}
-                  onChange={(e) => setUrgentDate(e.target.value)}
-                  placeholder="e.g. May 5, 2026"
-                  className="font-dm px-3 py-2 rounded-md border border-red-200 outline-none focus:border-red-400 bg-white"
-                  style={{ fontSize: 13 }}
-                  autoFocus
-                />
-              </div>
-              <div className="rounded-md p-3 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                ⚠️ Rush upgrades may incur additional cost. We will confirm before adjusting.
-              </div>
-            </div>
-            <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
-              <button onClick={() => { setRequestingUrgent(null); setUrgentDate(""); }} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-              <button onClick={requestUrgentUpgrade} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>
-                🚨 Send Urgent Request
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, onRequestUrgent, currentStep, hasJO, urgentRequested, urgentResponse }: {
+function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, currentStep, hasJO }: {
   order: ActiveOrder;
   expanded: boolean;
   onToggle: () => void;
   onViewJO: () => void;
-  onRequestUrgent: () => void;
   currentStep?: Step;
   hasJO?: boolean;
-  urgentRequested?: boolean;
-  urgentResponse?: string;
 }) {
   const stepCount = order.steps.length;
   const doneCount = order.steps.filter(s => s.state === "done").length;
@@ -1731,22 +1670,8 @@ function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, onRequestU
       {/* Expanded detail */}
       {expanded && (
         <div className="border-t border-slate-200">
-          {/* Section G — show response if Enter-Fil replied; disable button after first request */}
-          {urgentResponse && (
-            <div className="px-6 py-3 border-b border-slate-100 font-dm" style={{ fontSize: 12, color: "#15803D", backgroundColor: "#F0FDF4" }}>
-              <strong>Enter-Fil reply:</strong> {urgentResponse}
-            </div>
-          )}
           {/* Action bar */}
           <div className="px-6 py-3 flex items-center justify-end gap-2 border-b border-slate-100" style={{ backgroundColor: "#F8FAFC" }}>
-            <button
-              onClick={onRequestUrgent}
-              disabled={urgentRequested}
-              className="flex items-center gap-2 px-3 py-2 rounded-md font-dm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E", letterSpacing: 0.3 }}
-            >
-              {urgentRequested ? "🚨 Urgent request sent — wait for Enter-Fil response" : "🚨 Request Urgent Upgrade"}
-            </button>
             <button
               onClick={onViewJO}
               disabled={!hasJO}

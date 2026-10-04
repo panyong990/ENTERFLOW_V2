@@ -293,6 +293,7 @@ export interface Inquiry {
   urgentUpgradeResponse?: string;
   /* — waybill / dispatch (used by WaybillScanner) — */
   waybillNumber?: string;
+  waybillIdentifier?: string;
   waybillLog?: { ts: string; status: string; note?: string }[];
   dispatchedAt?: string;
   /* — Downpayment workflow (Section D) — */
@@ -1007,7 +1008,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const sendInvoice: Ctx["sendInvoice"] = (id) => {
     const invoice = allInquiries.find((x) => x.id === id);
     if (!invoice?.invoiceNo) return false;
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, invoiceSentAt: new Date().toISOString() } : x));
+    const invoiceSentAt = new Date().toISOString();
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, invoiceSentAt } : x));
     return true;
   };
 

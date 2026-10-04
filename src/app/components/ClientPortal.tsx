@@ -8,6 +8,7 @@ import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, type Inquiry, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { useSettings } from "../store/settings";
+import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
 import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { QuotationPreviewModal } from "./QuotationPreviewModal";
@@ -2241,12 +2242,13 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 
 /* ---------- Settings Tab ---------- */
 function SettingsTab({ clientName }: { clientName: string }) {
-  const [companyName, setCompanyName] = useState(clientName);
-  const [industry, setIndustry] = useState("Aerospace");
-  const [address1, setAddress1] = useState("Clark Freeport");
-  const [address2, setAddress2] = useState("");
-  const [cityProvince, setCityProvince] = useState("Pampanga");
-  const [zip, setZip] = useState("2009");
+  const [initialCompanySettings] = useState(() => getClientCompanySettings(clientName));
+  const [companyName, setCompanyName] = useState(initialCompanySettings?.companyName ?? clientName);
+  const [industry, setIndustry] = useState(initialCompanySettings?.industry ?? "Aerospace");
+  const [address1, setAddress1] = useState(initialCompanySettings?.addressLine1 ?? "");
+  const [address2, setAddress2] = useState(initialCompanySettings?.addressLine2 ?? "");
+  const [cityProvince, setCityProvince] = useState(initialCompanySettings?.cityProvince ?? "");
+  const [zip, setZip] = useState(initialCompanySettings?.zip ?? "");
   const [contactName, setContactName] = useState("M. Rivera");
   const [phone, setPhone] = useState("+63 917 555 1212");
   const [email] = useState("procurement@be-aerospace.ph");
@@ -2278,7 +2280,22 @@ function SettingsTab({ clientName }: { clientName: string }) {
     overdueAlerts: true,
   });
 
-  const save = () => toast.success("Settings saved", { description: "Your company information has been updated." });
+  const save = () => {
+    try {
+      saveClientCompanySettings(clientName, {
+        companyName,
+        industry,
+        addressLine1: address1,
+        addressLine2: address2,
+        cityProvince,
+        zip,
+      });
+      toast.success("Settings saved", { description: "Your company information has been updated." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Company settings could not be saved.";
+      toast.error("Unable to save settings", { description: message });
+    }
+  };
 
   return (
     <div className="px-8 py-8 max-w-2xl">

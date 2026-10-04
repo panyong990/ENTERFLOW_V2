@@ -1,4 +1,4 @@
-import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, Users, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3 } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, Users, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList } from "lucide-react";
 import type { Role } from "./Login";
 import { roleMetas } from "./Login";
 
@@ -8,6 +8,7 @@ const navItems = [
   { id: "production", label: "Production Floor",  icon: Factory },
   { id: "inventory",  label: "Inventory",         icon: Boxes },
   { id: "waybill",    label: "Waybill Scanner",   icon: ScanLine },
+  { id: "waybill-history", label: "Waybill History", icon: ClipboardList },
   { id: "logistics",  label: "Logistics",         icon: Truck },
   { id: "accounting", label: "Payments Ledger",   icon: Calculator },
   { id: "analytics",  label: "Analytics",         icon: BarChart3 },
@@ -23,8 +24,8 @@ export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   sales:      ["dashboard", "sales", "clients", "notifications"],
   accounting: ["dashboard", "sales", "logistics", "accounting", "notifications"],
   production: ["dashboard", "production", "notifications"],
-  /* Warehouse: only dashboard + inventory + waybill (production stage marking lives inside production access on the floor) */
-  warehouse:  ["dashboard", "inventory", "waybill", "notifications"],
+  /* Warehouse: dashboard, inventory, waybill scanner, and waybill history */
+  warehouse:  ["dashboard", "inventory", "waybill", "waybill-history", "notifications"],
   /* Logistics: focused on logistics + waybill — no inventory, no dashboard active jobs */
   logistics:  ["dashboard", "logistics", "waybill", "notifications"],
 };

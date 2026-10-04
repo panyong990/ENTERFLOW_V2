@@ -24,6 +24,8 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
+const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
+
 function Shell({ active, onChange, children, clientName, onLogout }: {
   active: Tab; onChange: (t: Tab) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
 }) {
@@ -122,6 +124,10 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   const { push: pushNotif } = useNotifications();
   /* Active orders only — Job Orders and Transactions live in their own tabs now */
   const myOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "inquiry" || i.stage === "quotation" || i.stage === "po"));
+  /* Sent invoices have their own visibility rule and remain available after the order advances. */
+  const myInvoices = byClient(clientName).filter((i) =>
+    !i.archived && !!i.invoiceNo && !!i.invoiceSentAt
+  );
 
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
@@ -157,6 +163,30 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         <div className="bg-white rounded-xl border border-slate-200/70 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
           No active orders yet — click <strong>+ New Order</strong> to submit your first inquiry.
         </div>
+      )}
+      {myInvoices.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h3 className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>Sent Invoices</h3>
+            <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Invoices remain available as your order moves through production and delivery.</p>
+          </div>
+          {myInvoices.map((invoice) => {
+            const state = paymentState(invoice);
+            return (
+              <div key={invoice.id} className="bg-white rounded-xl border border-emerald-200 p-4 flex items-center gap-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+                <div className="flex-1 min-w-0">
+                  <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>INVOICE SENT</div>
+                  <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{invoice.invoiceNo}</div>
+                  <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{invoice.poNumber ?? invoice.poFileName ?? invoice.code} · {invoice.paymentTerms}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{peso(state.invoiceTotal)}</div>
+                  <button onClick={() => onPayInvoice(invoice.id)} className="font-dm mt-1 px-3 py-1.5 rounded-md text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 700 }}>VIEW IN ACCOUNTING</button>
+                </div>
+              </div>
+            );
+          })}
+        </section>
       )}
       {myOrders.map((inq) => (
         <ClientOrderCard
@@ -803,7 +833,7 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
 }
 
 function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void; onPayInvoice: () => void }) {
-  const { updateInquiry, uploadDownpaymentReceipt } = useOrders();
+  const { updateInquiry } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [open, setOpen] = useState(inquiry.stage === "quotation");
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -841,7 +871,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const badge =
     inquiry.stage === "inquiry" ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Quotation" } :
     inquiry.stage === "quotation" ? { bg: "#FEF3C7", fg: "#B45309", label: "Quotation Received" } :
-    { bg: "#DCFCE7", fg: "#15803D", label: "PO Submitted ✅" };
+    hasPORecord(inquiry)
+      ? { bg: "#DCFCE7", fg: "#15803D", label: "PO Submitted ✅" }
+      : { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Client PO" };
 
   return (
     <article className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
@@ -1032,83 +1064,6 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                     : inquiry.invoiceSentAt
                     ? "invoice sent; awaiting required payment."
                     : "awaiting invoice and required payment; production has not started."}
-                </div>
-              )}
-
-              {/* ── Downpayment action card — shown when DP is required but not yet confirmed ── */}
-              {(inquiry.downpaymentAmount ?? 0) > 0 && !inquiry.downpaymentConfirmed && !inquiry.invoiceSentAt && inquiry.stage !== "inquiry" && inquiry.stage !== "quotation" && (
-                <div className="rounded-xl p-4 flex flex-col gap-3" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="font-dm flex items-center gap-2" style={{ fontSize: 12, fontWeight: 800, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>
-                      💳 Downpayment Required — {inquiry.downpaymentPercent}%
-                    </div>
-                    <div className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#1D4ED8" }}>
-                      ₱{(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  </div>
-
-                  {!inquiry.downpaymentPaymentDetails && (
-                    <div className="font-dm rounded-md p-3" style={{ fontSize: 12, color: "#475569", backgroundColor: "#fff", border: "1px solid #BFDBFE" }}>
-                      ⏳ Awaiting payment details from Enter-Fil Accounting. You will be notified here once details are sent.
-                    </div>
-                  )}
-
-                  {inquiry.downpaymentPaymentDetails && (
-                    <div className="rounded-md p-3 flex flex-col gap-1.5" style={{ backgroundColor: "#fff", border: "1px solid #BFDBFE" }}>
-                      <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Payment Details</div>
-                      <div className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-                        <span style={{ fontWeight: 700 }}>Method:</span> {inquiry.downpaymentPaymentDetails.method}
-                        {inquiry.downpaymentPaymentDetails.bankName ? ` · ${inquiry.downpaymentPaymentDetails.bankName}` : ""}
-                      </div>
-                      {inquiry.downpaymentPaymentDetails.accountName && (
-                        <div className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-                          <span style={{ fontWeight: 700 }}>Account Name:</span> {inquiry.downpaymentPaymentDetails.accountName}
-                        </div>
-                      )}
-                      <div className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-                        <span style={{ fontWeight: 700 }}>{inquiry.downpaymentPaymentDetails.method === "GCash" ? "GCash Number" : inquiry.downpaymentPaymentDetails.method === "Check" ? "Reference" : "Account Number"}:</span>{" "}
-                        <span className="font-mono-jb">{inquiry.downpaymentPaymentDetails.accountNumber}</span>
-                      </div>
-                      {inquiry.downpaymentPaymentDetails.note && (
-                        <div className="font-dm mt-1 rounded p-2" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px dashed #FDE68A" }}>
-                          📝 {inquiry.downpaymentPaymentDetails.note}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Receipt upload — only when payment details have been sent */}
-                  {inquiry.downpaymentPaymentDetails && !inquiry.downpaymentReceiptFile && (
-                    <label className="block w-full rounded-md border-2 border-dashed cursor-pointer hover:bg-white p-4 flex flex-col items-center justify-center gap-1 font-dm transition-colors" style={{ borderColor: "#BFDBFE", color: "#1D4ED8", fontSize: 12 }}>
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (!f) return;
-                          uploadDownpaymentReceipt(inquiry.id, f.name);
-                          pushNotif({
-                            dept: "payments",
-                            title: `Downpayment receipt uploaded: ${inquiry.code}`,
-                            body: `${inquiry.clientName} · ₱${(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH")} · ${f.name}`,
-                            link: "accounting",
-                            recipients: ["owner", "operations", "accounting"],
-                          });
-                          toast.success("Downpayment receipt uploaded", { description: "Enter-Fil Accounting will confirm shortly." });
-                          e.currentTarget.value = "";
-                        }}
-                      />
-                      <span style={{ fontWeight: 700 }}>📤 Upload Downpayment Receipt</span>
-                      <span style={{ fontSize: 10, color: "#64748B" }}>PNG, JPG or PDF · proof of transfer / GCash screenshot</span>
-                    </label>
-                  )}
-
-                  {inquiry.downpaymentReceiptFile && !inquiry.downpaymentConfirmed && (
-                    <div className="rounded-md p-3 font-dm flex items-center gap-2" style={{ fontSize: 12, color: "#1E40AF", backgroundColor: "#fff", border: "1px solid #BFDBFE" }}>
-                      ⏳ Receipt uploaded: <strong>{inquiry.downpaymentReceiptFile}</strong> — awaiting confirmation from Accounting.
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -1320,28 +1275,35 @@ interface ActiveOrder {
 
 /* DERIVED: build the live ActiveOrder timeline from a store inquiry. Each step's `state` (done/current/pending) is computed from the inquiry's stage. */
 function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
-  /* Stage progression maps to a 10-step timeline visible to the client */
+  const downstreamOfJO = ["in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"];
+  const payment = paymentState(inq);
+  const requiredPaymentVerified = payment.state === "FULLY_PAID"
+    || (payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE");
+  /* Keep client milestones in business order; drafts remain invisible until sentAt exists. */
   const STAGE_ORDER: { key: string; label: string; matches: (i: Inquiry) => "done" | "current" | "pending"; detailFn: (i: Inquiry) => string }[] = [
     { key: "inquiry",    label: "Inquiry Submitted",     matches: (i) => i.stage === "inquiry" ? "current" : "done",
       detailFn: (i) => `Submitted ${i.submittedDate}${i.inquirySketch ? " · sketch attached" : ""}` },
     { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
-    { key: "po",         label: "PO Approved & Uploaded", matches: (i) => i.stage === "po" ? "current" : (["jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
-      detailFn: (i) => i.poFileName ? `${i.poFileName} · approved` : "Upload signed PO to proceed" },
-    { key: "jo",         label: "Job Order Created",      matches: (i) => i.stage === "jo" ? "current" : (["in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+    { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
+      detailFn: (i) => hasPORecord(i) ? `${i.poNumber ?? i.poFileName} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
+    { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
+      detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
+    { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
+      detailFn: () => payment.state === "FULLY_PAID" ? "Full payment verified" : requiredPaymentVerified ? `Required downpayment verified · ${peso(payment.verifiedDownpaymentAmount)}` : "Awaiting required payment verification" },
+    { key: "jo",         label: "Job Order Created",      matches: (i) => {
+        if (!i.invoiceSentAt || !requiredPaymentVerified) return "pending";
+        return i.stage === "jo" ? "current" : downstreamOfJO.includes(i.stage) ? "done" : "pending";
+      },
       detailFn: (i) => i.joNumber ? `${i.joNumber} · production queued` : "Awaiting JO" },
-    { key: "in_production", label: "In Production",        matches: (i) => i.stage === "in_production" ? "current" : (["quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+    { key: "in_production", label: "In Production",        matches: (i) => i.stage === "in_production" ? "current" : (["quality_inspection","ready_for_dispatch","dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => `Stage ${(i.currentStage ?? 0) + 1} of 10${i.paused ? " · ⏸ ON HOLD" : ""}` },
-    { key: "quality_inspection", label: "Quality Inspection", matches: (i) => i.stage === "quality_inspection" ? "current" : (["ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+    { key: "quality_inspection", label: "Quality Inspection", matches: (i) => i.stage === "quality_inspection" ? "current" : (["ready_for_dispatch","dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: () => "Final QC checkpoint before dispatch" },
-    { key: "ready_for_dispatch", label: "Ready for Dispatch", matches: (i) => i.stage === "ready_for_dispatch" ? "current" : (["delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
+    { key: "ready_for_dispatch", label: "Ready for Dispatch", matches: (i) => i.stage === "ready_for_dispatch" ? "current" : (["dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: () => "Waybill prepared · awaiting logistics" },
     { key: "delivered",  label: "Delivered",              matches: (i) => i.stage === "delivered" ? "current" : (["paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.deliveredDate ? `Delivered ${i.deliveredDate}` : "Signed DR confirms delivery" },
-    { key: "invoiced",   label: "Invoiced",               matches: (i) => (i.invoiceNo && i.stage !== "paid") ? "current" : (i.stage === "paid" ? "done" : "pending"),
-      detailFn: (i) => i.invoiceNo ? `${i.invoiceNo}${i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Invoice will be issued" },
-    { key: "paid",       label: "Payment Cleared",        matches: (i) => i.stage === "paid" ? "done" : "pending",
-      detailFn: (i) => i.paidAt ? `Cleared ${new Date(i.paidAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "Account fully settled" },
   ];
 
   return {

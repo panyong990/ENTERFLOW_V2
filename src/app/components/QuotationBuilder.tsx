@@ -25,6 +25,7 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
   const { generateQuotationNumber } = useOrders();
   const session = useSession();
   const product = inquiry.products[0];
+  const defaultLeadDays = inquiry.quotation?.leadTimeDays ?? 14;
 
   const defaultValidUntil = (() => {
     const d = new Date();

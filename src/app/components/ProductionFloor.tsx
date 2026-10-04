@@ -7,12 +7,7 @@ import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
-<<<<<<< HEAD
 import { PRODUCTION_STAGES, useOrders, type Stage, type Inquiry } from "../store/orders";
-import { useMaterials } from "../store/materials";
-=======
-import { useOrders, type Stage, type Inquiry } from "../store/orders";
->>>>>>> 00338c95306aec1733bc3528f4ffb0d7236c0590
 
 const STAGES = [...PRODUCTION_STAGES];
 
@@ -209,12 +204,7 @@ export function ProductionFloor() {
   const [editingDueValue, setEditingDueValue] = useState("");
   const [editingDueReason, setEditingDueReason] = useState("");
   const { push: pushNotif } = useNotifications();
-<<<<<<< HEAD
-  const { completedJOs, updateInquiry, markInventoryDeducted } = useOrders();
-  const { deductForJO } = useMaterials();
-=======
-  const { completedJOs, inquiriesByStage, updateInquiry } = useOrders();
->>>>>>> 00338c95306aec1733bc3528f4ffb0d7236c0590
+  const { completedJOs, updateInquiry } = useOrders();
 
   /* Include JO workflow records through Logistics so completed JOs remain viewable. */
   const productionInquiries = useMemo(

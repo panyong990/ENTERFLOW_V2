@@ -334,13 +334,13 @@ export interface Inquiry {
   replacementParentId?: string;   // id of the original inquiry
 }
 
-<<<<<<< HEAD
 function paymentDueDate(paymentTerms: Inquiry["paymentTerms"], receiptAt: string): string | undefined {
   const due = new Date(receiptAt);
   if (Number.isNaN(due.getTime())) return undefined;
   due.setDate(due.getDate() + (paymentTerms === "30-Day Terms" ? 30 : 15));
   return due.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-=======
+}
+
 export function resolveProductBOM(inquiry: Inquiry, productIndex: number): BOMLine[] | undefined {
   const productBOM = inquiry.productsBillOfMaterials?.[productIndex];
   if (productBOM && productBOM.length > 0) return productBOM;
@@ -349,9 +349,7 @@ export function resolveProductBOM(inquiry: Inquiry, productIndex: number): BOMLi
     const sharedBOM = inquiry.billOfMaterials;
     if (sharedBOM && sharedBOM.length > 0) return sharedBOM;
   }
-
   return undefined;
->>>>>>> 00338c95306aec1733bc3528f4ffb0d7236c0590
 }
 
 export interface FinalizeJOData {

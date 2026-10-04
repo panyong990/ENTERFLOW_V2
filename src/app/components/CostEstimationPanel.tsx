@@ -11,8 +11,7 @@ import {
   type CostConfig,
   type RawMaterial,
 } from "../store/materials";
-import type { Inquiry, ProductLine } from "../store/orders";
-import { GROUP_TEMPLATES, groupForType, PART_TO_CATEGORY } from "../store/filterTemplates";
+import { resolveProductBOM, type Inquiry, type ProductLine } from "../store/orders";
 
 /* Categories shown in the chip list — O-Ring and Gasket are now distinct (Section B5). Packaging stays excluded. */
 const STANDARD_PART_CATEGORIES: PartCategory[] = [
@@ -57,30 +56,19 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
   const filterType = product?.type ?? "Air Filter";
   const size = inferSize(product);
 
-  /* Initial BOM: from existing inquiry, else from matching template, else seeded from the group's mandatory parts (Section A5). */
+  /* Resolve a usable BOM before showing availability; empty category placeholders have no consumption quantities. */
   const initial = useMemo(() => {
-    const savedProductBom = inquiry.productsBillOfMaterials?.[activeProductIndex];
+    const savedProductBom = resolveProductBOM(inquiry, activeProductIndex);
     if (savedProductBom && savedProductBom.length > 0) return savedProductBom;
-    if (activeProductIndex === 0 && inquiry.billOfMaterials && inquiry.billOfMaterials.length > 0) return inquiry.billOfMaterials;
     const tpl = findBOMTemplate(filterType, size);
-    if (tpl) return tpl.bom;
+    if (tpl?.bom.length) return tpl.bom;
     const auto = autofillBOMForType(filterType, size, {
       depthMm: num(product?.depth),
       pockets: num(product?.pocketCount),
       heightMm: num(product?.height),
     }, rawMaterials).map((x) => x.line);
     if (auto.length > 0) return auto;
-    /* Seed from filter group template: pick the first available material per mandatory part category. */
-    const group = groupForType(filterType);
-    const required = GROUP_TEMPLATES[group].parts.always;
-    const seeded: BOMLine[] = [];
-    required.forEach((partKey) => {
-      const cat = PART_TO_CATEGORY[partKey] as PartCategory | undefined;
-      if (!cat) return;
-      const mat = rawMaterials.find((m) => m.category === cat);
-      if (mat) seeded.push({ materialId: mat.id, partCategory: cat, qtyConsumed: 0 });
-    });
-    return seeded;
+    return [];
   }, [activeProductIndex, filterType, size, inquiry, findBOMTemplate, product, rawMaterials]);
 
   const [bom, setBom] = useState<BOMLine[]>(initial);
@@ -121,6 +109,16 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
   const bomMaterials = bom
     .map((line) => rawMaterials.find((m) => m.id === line.materialId))
     .filter(Boolean) as RawMaterial[];
+  const materialAvailability = [...bom.reduce((requirements, line) => {
+    if (!Number.isFinite(line.qtyConsumed) || line.qtyConsumed <= 0) return requirements;
+    const current = requirements.get(line.materialId);
+    requirements.set(line.materialId, (current ?? 0) + line.qtyConsumed * selectedQty);
+    return requirements;
+  }, new Map<string, number>())].map(([materialId, requiredQuantity]) => ({
+    material: rawMaterials.find((item) => item.id === materialId),
+    requiredQuantity,
+  })).filter((entry): entry is { material: RawMaterial; requiredQuantity: number } => !!entry.material);
+  const hasShortage = materialAvailability.some(({ material, requiredQuantity }) => material.qtyInStock < requiredQuantity);
 
   const updateLine = (idx: number, patch: Partial<BOMLine>) => {
     setBom((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -303,6 +301,46 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
                 </div>
               );
             })}
+          </div>
+
+          <div className="border-t border-slate-200 px-4 py-3">
+            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.4, textTransform: "uppercase" }}>
+              Current Inventory Availability · {selectedQty} pcs
+            </div>
+            {materialAvailability.length === 0 ? (
+              <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>No valid BOM is available for this product. Resolve or add a BOM to check current Inventory availability.</div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {materialAvailability.map(({ material, requiredQuantity }) => {
+                  const shortage = Math.max(0, requiredQuantity - material.qtyInStock);
+                  const insufficient = shortage > 0;
+                  const formatQty = (value: number) => value.toLocaleString("en-PH", { maximumFractionDigits: 3 });
+                  return (
+                    <div key={material.id} className="rounded-md border border-slate-200 px-3 py-2">
+                      <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 font-dm" style={{ fontSize: 11 }}>
+                        <strong style={{ color: "#0F172A" }}>{material.name}</strong>
+                        <span style={{ color: insufficient ? "#B45309" : "#15803D", fontWeight: 800 }}>
+                          {insufficient ? "⚠ INSUFFICIENT STOCK" : "✓ ON STOCK"}
+                        </span>
+                      </div>
+                      <div className="font-mono-jb mt-1" style={{ fontSize: 10, color: "#475569" }}>
+                        Required: {formatQty(requiredQuantity)} {material.unit} · Current Stock: {formatQty(material.qtyInStock)} {material.unit}
+                      </div>
+                      {insufficient && (
+                        <div className="mt-2 font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#B45309" }}>
+                          Shortage: {formatQty(shortage)} {material.unit}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {hasShortage && (
+              <div className="font-dm mt-2" style={{ fontSize: 10, color: "#64748B" }}>
+                Current Inventory is shown for Sales review. Use Stock Requests to communicate with Warehouse.
+              </div>
+            )}
           </div>
 
           {/* Add Filter Part — only shows categories not yet added; falls back to custom input */}

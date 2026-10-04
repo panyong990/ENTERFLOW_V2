@@ -316,6 +316,7 @@ export function ProductionFloor() {
 
     const completedAt = inq.joCompletedAt ?? new Date().toISOString();
     updateInquiry(job.id, { stage: "ready_for_dispatch", currentStage: STAGES.length, joCompletedAt: completedAt });
+    setCompleteJoJob(null);
     toast.success(`${job.jo} completed`, { description: "Handed off to Warehouse", duration: 3500 });
     pushNotif({
       dept: "warehouse",
@@ -799,7 +800,7 @@ export function ProductionFloor() {
                 <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{completeJoJob.jo}</span>
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => { if (completeJO(completeJoJob)) setCompleteJoJob(null); }} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>
+                <button type="button" onClick={() => completeJO(completeJoJob)} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>
                   <CheckCircle2 size={14} /> Complete
                 </button>
               </div>

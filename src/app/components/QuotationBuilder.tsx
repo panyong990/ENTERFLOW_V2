@@ -1,13 +1,15 @@
 import { useState, useMemo } from "react";
 import { Eye, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
-import { useMaterials, type RawMaterial } from "../store/materials";
+import { useMaterials, type BOMLine, type RawMaterial } from "../store/materials";
 import { useOrders, type Inquiry, type QuotationDoc, type QuotationLineItem } from "../store/orders";
+import { useStockRequests } from "../store/stockRequests";
 import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { useSession } from "../store/session";
 
 interface Props {
   inquiry: Inquiry;
+  productBoms?: (BOMLine[] | null)[];
   /* Manufacturing unit cost (locked from Tab 2) — used as fallback for single-product */
   manufacturingUnitCost: number;
   /* Per-product unit costs from Tab 2 — overrides manufacturingUnitCost per index */
@@ -20,8 +22,9 @@ interface Props {
 
 const DELIVERY_TIMEFRAMES = ["1 week", "1–2 weeks", "2–3 weeks", "3–4 weeks", "4–6 weeks", "6+ weeks"] as const;
 
-export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onSendToClient }: Props) {
+export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onSendToClient }: Props) {
   const { rawMaterials } = useMaterials();
+  const { requests: stockRequests } = useStockRequests();
   const { generateQuotationNumber } = useOrders();
   const session = useSession();
   const product = inquiry.products[0];
@@ -64,9 +67,9 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
   const [termsOfPayment, setTermsOfPayment] = useState<"15-Day Terms" | "30-Day Terms">(
     (inquiry.quotationDoc?.termsOfPayment as any) ?? inquiry.paymentTerms
   );
-  const [timeOfDelivery, setTimeOfDelivery] = useState(() => (
-    DELIVERY_TIMEFRAMES.find((timeframe) => timeframe === inquiry.quotationDoc?.timeOfDelivery) ?? "2–3 weeks"
-  ));
+  const [timeOfDelivery, setTimeOfDelivery] = useState(() =>
+    DELIVERY_TIMEFRAMES.find((timeframe) => timeframe === inquiry.quotationDoc?.timeOfDelivery) ?? ""
+  );
   const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? clientAddress(inquiry.clientName));
   const [validUntil, setValidUntil] = useState(inquiry.quotationDoc?.validUntil ?? defaultValidUntil);
   const [downpaymentPercent, setDownpaymentPercent] = useState(inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 30);
@@ -81,6 +84,35 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
   const packagingCostPerOrder = packagingOpen && selectedPackaging ? selectedPackaging.unitPrice * packagingQty : 0;
   const shippingCost = shippingOpen ? shippingAmount : 0;
   const totalQty = lineItems.reduce((s, li) => s + li.qty, 0);
+  const materialAvailability = lineItems.map((lineItem, productIndex) => {
+    const requirements = new Map<string, { material?: StockResponseMaterial; quantity: number }>();
+    for (const bomLine of productBoms?.[productIndex] ?? []) {
+      const required = bomLine.qtyConsumed * lineItem.qty;
+      const existing = requirements.get(bomLine.materialId);
+      if (existing) {
+        existing.quantity += required;
+      } else {
+        requirements.set(bomLine.materialId, {
+          material: rawMaterials.find((material) => material.id === bomLine.materialId),
+          quantity: required,
+        });
+      }
+    }
+    return {
+      productName: lineItem.description || `Product ${productIndex + 1}`,
+      productQty: lineItem.qty,
+      requirements: [...requirements.entries()].map(([materialId, requirement]) => ({
+        materialId,
+        ...requirement,
+      })),
+    };
+  });
+  const availabilityRequirements = materialAvailability.flatMap((productAvailability) => productAvailability.requirements);
+  const warehouseStockRequest = stockRequests.find((request) => request.inquiryId === inquiry.id);
+  const latestWarehouseResponse = warehouseStockRequest?.latestResponse;
+  const hasShortage = availabilityRequirements.some(
+    ({ material, quantity }) => !!material && material.qtyInStock < quantity
+  );
 
   /* When add-ons are flagged "include in unit price", spread their cost across all units in the quotation. */
   const inclusivePerUnit =
@@ -118,7 +150,30 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
     quotationNo: inquiry.quotationDoc?.quotationNo ?? generateQuotationNumber(),
     date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     validUntil,
-    lineItems: adjustedItems,
+    lineItems: adjustedItems.map((lineItem, productIndex) => ({
+      ...lineItem,
+      materialAvailability: materialAvailability[productIndex]?.requirements.filter(({ material }) => !!material).map(({ materialId, material, quantity }) => {
+        const stockQuantity = material!.qtyInStock;
+        const inStock = stockQuantity >= quantity;
+        return {
+          materialId,
+          materialName: material!.name,
+          unit: material!.unit,
+          requiredQuantity: quantity,
+          stockQuantity,
+          status: inStock ? "on_stock" : "not_on_stock",
+          shortageQuantity: inStock ? undefined : Math.max(0, quantity - stockQuantity),
+        };
+      }),
+    })),
+    stockCheckedAt: new Date().toISOString(),
+    warehouseStockResponse: latestWarehouseResponse ? {
+      requestId: warehouseStockRequest.requestId,
+      responseAt: latestWarehouseResponse.responseAt,
+      respondedBy: latestWarehouseResponse.respondedBy,
+      type: latestWarehouseResponse.type,
+      materials: latestWarehouseResponse.materials.map((material) => ({ ...material })),
+    } : undefined,
     discounts: quotationDiscounts,
     total: grandTotal,
     note,
@@ -157,6 +212,7 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
       return false;
     }
     if (!placeOfDelivery.trim()) { toast.error("Place of delivery is required"); return false; }
+    if (hasShortage && !timeOfDelivery) { toast.error("Select a Time of Delivery for the current material shortage"); return false; }
     return true;
   };
 
@@ -305,6 +361,7 @@ export function QuotationBuilder({ inquiry, manufacturingUnitCost, productsManuf
               </Field>
               <Field label="Time of Delivery">
                 <select value={timeOfDelivery} onChange={(e) => setTimeOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
+                  <option value="">Select a delivery timeframe</option>
                   {DELIVERY_TIMEFRAMES.map((timeframe) => <option key={timeframe} value={timeframe}>{timeframe}</option>)}
                 </select>
               </Field>

@@ -33,7 +33,7 @@ const seed: Notification[] = [
   },
   {
     id: "n2", dept: "production", title: "JO-2026-001 → Quality Inspection",
-    body: "B.E. Aerospace · Air Filter · Stage 9 of 10",
+    body: "B.E. Aerospace · Air Filter · Stage 9 of 9",
     time: "15 min ago", link: "production", read: false,
     recipients: ["owner", "operations", "production"],
   },

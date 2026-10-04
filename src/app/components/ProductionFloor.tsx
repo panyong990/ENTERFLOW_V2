@@ -1,26 +1,20 @@
 import { useMemo, useState } from "react";
 import {
   Clock, CheckCircle2, Circle, AlertTriangle, Pause, Eye, X, Search,
-  User, Package, Calendar, Wrench, ArrowLeft, ClipboardList, Pencil, Filter,
+  User, Package, Calendar, Wrench, ArrowLeft, ClipboardList, Pencil, Filter, ChevronDown,
 } from "lucide-react";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
+<<<<<<< HEAD
+import { PRODUCTION_STAGES, useOrders, type Stage, type Inquiry } from "../store/orders";
+import { useMaterials } from "../store/materials";
+=======
 import { useOrders, type Stage, type Inquiry } from "../store/orders";
+>>>>>>> 00338c95306aec1733bc3528f4ffb0d7236c0590
 
-const STAGES = [
-  "Molding",
-  "Cutting of Steel Plate",
-  "Spotting of Filter Core",
-  "Assembling",
-  "Inserting of Filter Media",
-  "Trimming",
-  "Top/Bottom Cap Sealing (Heating)",
-  "Gasket / O-Ring Fitting",
-  "Quality / Product Inspection",
-  "Completed",
-];
+const STAGES = [...PRODUCTION_STAGES];
 
 type BadgeKind = "molding" | "spotting" | "assembling" | "quality" | "holding";
 
@@ -59,6 +53,7 @@ interface Job {
   due: string;
   badge: BadgeKind;
   stageIndex: number;
+  joCompleted: boolean;
   paused?: boolean;
   urgent?: boolean;
   sketch?: string;
@@ -80,7 +75,7 @@ const badgeForStage = (idx: number, paused: boolean): BadgeKind => {
    Only inquiries whose stage is in the production pipeline appear on the floor. */
 function inquiryToJob(inq: Inquiry): Job {
   const product = inq.products[0];
-  const stageIdx = inq.currentStage ?? (inq.stage === "ready_for_dispatch" ? 9 : inq.stage === "quality_inspection" ? 8 : inq.stage === "in_production" ? 1 : 0);
+  const stageIdx = inq.currentStage ?? (inq.stage === "ready_for_dispatch" ? STAGES.length : inq.stage === "quality_inspection" ? 8 : inq.stage === "in_production" ? 1 : 0);
   const paused = !!inq.paused;
   /* synthesize specs lines for the existing UI */
   const specs: string[] = [];
@@ -98,7 +93,7 @@ function inquiryToJob(inq: Inquiry): Job {
 
   /* Map persisted stageHistory (StageEntry from store) to the local UI shape */
   const persisted = inq.stageHistory ?? [];
-  const stageHistory: (StageHistoryEntry | null)[] = Array.from({ length: 10 }, (_, i) => {
+  const stageHistory: (StageHistoryEntry | null)[] = Array.from({ length: STAGES.length }, (_, i) => {
     const e = persisted.find((h) => h.stage === i && h.status === "done");
     if (!e) return null;
     return {
@@ -119,6 +114,7 @@ function inquiryToJob(inq: Inquiry): Job {
     due: inq.dueDate ?? "—",
     badge: badgeForStage(stageIdx, paused),
     stageIndex: stageIdx,
+    joCompleted: Boolean(inq.joCompletedAt) || ["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"].includes(inq.stage),
     paused,
     urgent: inq.urgent,
     sketch: inq.joSketch,
@@ -149,6 +145,13 @@ const stageFilters = [
   { id: "assembling", label: "Assembling" },
   { id: "quality", label: "Quality / P.I." },
 ];
+
+const dateFilters = [
+  { id: "all", label: "All" },
+  { id: "today", label: "Today" },
+  { id: "7days", label: "Last 7 days" },
+  { id: "30days", label: "Last 30 days" },
+] as const;
 
 function jobMatches(j: Job, tab: string) {
   if (tab === "all") return true;
@@ -193,30 +196,36 @@ function getJOTemplateData(job: Job): JOTemplateData {
 
 export function ProductionFloor() {
   const [stageFilter, setStageFilter] = useState("all");
+  const [joStatusFilter, setJoStatusFilter] = useState<"active" | "completed">("active");
   const [dateFilter, setDateFilter] = useState<"today" | "7days" | "30days" | "all">("all");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [openFilterMenu, setOpenFilterMenu] = useState<"status" | "stage" | "date" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [stageMonitorId, setStageMonitorId] = useState<string | null>(null);
-  /* Section K — confirm modal before archiving completed JO */
-  const [archiveConfirmJob, setArchiveConfirmJob] = useState<Job | null>(null);
+  const [completeJoJob, setCompleteJoJob] = useState<Job | null>(null);
   const [joFileJob, setJoFileJob] = useState<Job | null>(null);
   const [editingDueId, setEditingDueId] = useState<string | null>(null);
   const [editingDueValue, setEditingDueValue] = useState("");
   const [editingDueReason, setEditingDueReason] = useState("");
   const { push: pushNotif } = useNotifications();
+<<<<<<< HEAD
+  const { completedJOs, updateInquiry, markInventoryDeducted } = useOrders();
+  const { deductForJO } = useMaterials();
+=======
   const { completedJOs, inquiriesByStage, updateInquiry } = useOrders();
+>>>>>>> 00338c95306aec1733bc3528f4ffb0d7236c0590
 
-  /* DERIVED: jobs come from the orders store. Any inquiry whose stage is in the production pipeline shows up. */
+  /* Include JO workflow records through Logistics so completed JOs remain viewable. */
   const productionInquiries = useMemo(
-    () => inquiriesByStage(["jo", "in_production", "quality_inspection", "ready_for_dispatch"]),
-    [completedJOs] // re-derive whenever store changes
+    () => completedJOs,
+    [completedJOs]
   );
   const jobs = useMemo(() => productionInquiries.map(inquiryToJob), [productionInquiries]);
 
   /* Map a production stageIndex to an inquiry Stage enum */
   const stageForIndex = (idx: number): Stage => {
-    if (idx >= 9) return "ready_for_dispatch";
+    if (idx >= STAGES.length) return "quality_inspection";
     if (idx >= 8) return "quality_inspection";
     if (idx >= 1) return "in_production";
     return "jo";
@@ -256,6 +265,7 @@ export function ProductionFloor() {
     if (dateFilter === "30days") dateCutoff.setDate(dateCutoff.getDate() - 29);
 
     return sortedJobs.filter((job) => {
+      if (joStatusFilter === "completed" ? !job.joCompleted : job.joCompleted) return false;
       if (!jobMatches(job, stageFilter)) return false;
       const inquiry = productionInquiries.find((item) => item.id === job.id);
       const submittedDate = inquiry ? new Date(inquiry.submittedDate) : new Date(Number.NaN);
@@ -273,14 +283,15 @@ export function ProductionFloor() {
       ];
       return searchableFields.some((field) => field?.toLocaleLowerCase().includes(query));
     });
-  }, [sortedJobs, stageFilter, dateFilter, searchQuery, productionInquiries]);
+  }, [sortedJobs, stageFilter, joStatusFilter, dateFilter, searchQuery, productionInquiries]);
   const pausedJob = jobs.find((j) => j.paused);
 
   const advanceStage = (id: string) => {
     const inq = inqOf(id);
     if (!inq) return;
     const currentIdx = inq.currentStage ?? 0;
-    const newIdx = Math.min(currentIdx + 1, STAGES.length - 1);
+    if (currentIdx >= STAGES.length) return;
+    const newIdx = Math.min(currentIdx + 1, STAGES.length);
     const joNumber = inq.joNumber ?? inq.code;
 
     /* Append the just-completed stage to stageHistory */
@@ -292,29 +303,38 @@ export function ProductionFloor() {
     /* Single store write — derived UI updates automatically */
     updateInquiry(id, { currentStage: newIdx, stage: stageForIndex(newIdx), stageHistory: newHistory });
 
-    toast.success(`Stage complete: ${STAGES[currentIdx]}`, { description: `${joNumber} → ${STAGES[newIdx]}` });
+    const allStagesComplete = newIdx >= STAGES.length;
+    toast.success(
+      allStagesComplete ? "All production stages completed" : `Stage complete: ${STAGES[currentIdx]}`,
+      { description: allStagesComplete ? `${joNumber} is ready to complete and hand off to Warehouse.` : `${joNumber} → ${STAGES[newIdx]}` }
+    );
     pushNotif({
       dept: "production",
-      title: `${joNumber} → ${STAGES[newIdx]}`,
+      title: allStagesComplete ? `Production stages completed: ${joNumber}` : `${joNumber} → ${STAGES[newIdx]}`,
       body: `${inq.clientName} · ${inq.products[0]?.type ?? ""} · marked by F. Santos`,
       link: "production",
       recipients: ["owner", "operations", "production"],
     });
-    if (newIdx === STAGES.length - 1) {
-      pushNotif({
-        dept: "logistics",
-        title: `Order ready for dispatch: ${joNumber}`,
-        body: `${inq.clientName} · ${inq.products.reduce((s, p) => s + p.qty, 0)} pcs`,
-        link: "waybill",
-        recipients: ["owner", "operations", "logistics", "warehouse"],
-      });
-    }
   };
 
-  const archive = (job: Job) => {
-    /* Stage 10 reached → "Mark Complete & Archive" advances inquiry to ready_for_dispatch (handed off to Logistics) */
-    updateInquiry(job.id, { stage: "ready_for_dispatch" });
-    toast.success(`${job.jo} completed`, { description: "Handed off to Logistics", duration: 3500 });
+  const completeJO = (job: Job): boolean => {
+    const inq = inqOf(job.id);
+    if (!inq || Math.max(inq.currentStage ?? 0, job.stageIndex) < STAGES.length || job.joCompleted) {
+      toast.error("Complete all 9 production stages before completing this JO.");
+      return false;
+    }
+
+    const completedAt = inq.joCompletedAt ?? new Date().toISOString();
+    updateInquiry(job.id, { stage: "ready_for_dispatch", currentStage: STAGES.length, joCompletedAt: completedAt });
+    toast.success(`${job.jo} completed`, { description: "Handed off to Warehouse", duration: 3500 });
+    pushNotif({
+      dept: "warehouse",
+      title: `Completed JO ready for Warehouse: ${job.jo}`,
+      body: `${inq.clientName} · ${inq.products.reduce((sum, product) => sum + product.qty, 0)} pcs`,
+      link: "waybill",
+      recipients: ["owner", "operations", "warehouse"],
+    });
+    return true;
   };
 
   const resumeJob = (id: string) => {
@@ -336,7 +356,7 @@ export function ProductionFloor() {
               Production Floor
             </h1>
             <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
-              Kiosk mode — tap to update job stages · 10-step manufacturing process
+              Kiosk mode — tap to update job stages · 9 production stages
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -363,46 +383,126 @@ export function ProductionFloor() {
           <div className="relative shrink-0">
             <button
               type="button"
-              onClick={() => setIsFilterOpen((open) => !open)}
+              onClick={() => {
+                setIsFilterOpen((open) => !open);
+                setOpenFilterMenu(null);
+              }}
               aria-label="Filter production jobs"
               aria-expanded={isFilterOpen}
               className="font-dm flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              style={{ color: stageFilter !== "all" || dateFilter !== "all" ? "#1A2B4A" : "#64748B" }}
+              style={{ color: joStatusFilter !== "active" || stageFilter !== "all" || dateFilter !== "all" ? "#1A2B4A" : "#64748B" }}
             >
               <Filter size={15} />
             </button>
             {isFilterOpen && (
-              <div className="absolute right-0 top-11 z-20 w-64 rounded-lg border border-slate-200 bg-white p-4 shadow-lg">
-                <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.6 }}>FILTER</div>
-                <label className="font-dm block" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>
-                  Stage
-                  <select
-                    value={stageFilter}
-                    onChange={(event) => setStageFilter(event.target.value)}
-                    aria-label="Filter by production stage"
-                    className="font-dm mt-1.5 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 outline-none focus:border-slate-400"
-                    style={{ fontSize: 12, color: "#0F172A" }}
-                  >
-                    {stageFilters.map((filter) => (
-                      <option key={filter.id} value={filter.id}>{filter.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="font-dm mt-3 block" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>
-                  Date
-                  <select
-                    value={dateFilter}
-                    onChange={(event) => setDateFilter(event.target.value as typeof dateFilter)}
-                    aria-label="Filter by job order date"
-                    className="font-dm mt-1.5 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 outline-none focus:border-slate-400"
-                    style={{ fontSize: 12, color: "#0F172A" }}
-                  >
-                    <option value="today">Today</option>
-                    <option value="7days">Last 7 days</option>
-                    <option value="30days">Last 30 days</option>
-                    <option value="all">All</option>
-                  </select>
-                </label>
+              <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.7 }}>FILTER BY</div>
+                <div className="space-y-2">
+                  <div className={`relative ${openFilterMenu === "status" ? "z-50" : ""}`}>
+                    <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>Job Order Status</div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenFilterMenu((open) => open === "status" ? null : "status")}
+                      aria-label="Choose Job Order Status filter"
+                      aria-expanded={openFilterMenu === "status"}
+                      className="font-dm flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+                    >
+                      <span>{joStatusFilter === "active" ? "Active / Current" : "Completed"}</span>
+                      <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform ${openFilterMenu === "status" ? "rotate-180" : ""}`} />
+                    </button>
+                    {openFilterMenu === "status" && (
+                      <div className="absolute right-0 top-full z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                        {[
+                          { id: "active", label: "Active / Current" },
+                          { id: "completed", label: "Completed" },
+                        ].map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            aria-pressed={joStatusFilter === option.id}
+                            onClick={() => {
+                              setJoStatusFilter(option.id as typeof joStatusFilter);
+                              if (option.id === "completed") setStageFilter("all");
+                              setOpenFilterMenu(null);
+                            }}
+                            className="font-dm block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
+                            style={{ fontSize: 11, color: joStatusFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: joStatusFilter === option.id ? 700 : 500, backgroundColor: joStatusFilter === option.id ? "#F1F5F9" : "transparent" }}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className={`relative ${openFilterMenu === "stage" ? "z-50" : ""}`}>
+                    <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>Stage</div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenFilterMenu((open) => open === "stage" ? null : "stage")}
+                      aria-label="Choose production stage filter"
+                      aria-expanded={openFilterMenu === "stage"}
+                      className="font-dm flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+                    >
+                      <span className="truncate">{stageFilters.find((filter) => filter.id === stageFilter)?.label ?? "All"}</span>
+                      <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform ${openFilterMenu === "stage" ? "rotate-180" : ""}`} />
+                    </button>
+                    {openFilterMenu === "stage" && (
+                      <div className="absolute right-0 top-full z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                        {stageFilters.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            aria-pressed={stageFilter === option.id}
+                            onClick={() => {
+                              setStageFilter(option.id);
+                              if (option.id !== "all") setJoStatusFilter("active");
+                              setOpenFilterMenu(null);
+                            }}
+                            className="font-dm block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
+                            style={{ fontSize: 11, color: stageFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: stageFilter === option.id ? 700 : 500, backgroundColor: stageFilter === option.id ? "#F1F5F9" : "transparent" }}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className={`relative ${openFilterMenu === "date" ? "z-50" : ""}`}>
+                    <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>Date</div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenFilterMenu((open) => open === "date" ? null : "date")}
+                      aria-label="Choose job order date filter"
+                      aria-expanded={openFilterMenu === "date"}
+                      className="font-dm flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+                    >
+                      <span>{dateFilters.find((filter) => filter.id === dateFilter)?.label ?? "All"}</span>
+                      <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform ${openFilterMenu === "date" ? "rotate-180" : ""}`} />
+                    </button>
+                    {openFilterMenu === "date" && (
+                      <div className="absolute right-0 top-full z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                        {dateFilters.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            aria-pressed={dateFilter === option.id}
+                            onClick={() => {
+                              setDateFilter(option.id);
+                              setOpenFilterMenu(null);
+                            }}
+                            className="font-dm block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
+                            style={{ fontSize: 11, color: dateFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: dateFilter === option.id ? 700 : 500, backgroundColor: dateFilter === option.id ? "#F1F5F9" : "transparent" }}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -414,10 +514,12 @@ export function ProductionFloor() {
         ) : (
         <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 lg:gap-6">
           {visible.map((job) => {
-            const completed = job.stageIndex >= STAGES.length - 1;
-            const pct = Math.round(((job.stageIndex + (completed ? 1 : 0)) / STAGES.length) * 100);
+            const completed = job.joCompleted;
+            const allStagesCompleted = job.stageIndex >= STAGES.length;
+            const pct = Math.round((Math.min(job.stageIndex, STAGES.length) / STAGES.length) * 100);
             const stageNum = Math.min(job.stageIndex + 1, STAGES.length);
             const b = badgeStyle[job.badge];
+            const cardBadge = completed ? { bg: "#DCFCE7", fg: "#15803D", label: "Completed" } : b;
 
             return (
               <article
@@ -429,7 +531,7 @@ export function ProductionFloor() {
                 <div className="px-4 py-3 border-b border-slate-200/70 sm:px-5" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
                   <div className="flex items-center justify-between">
                     <span className="font-mono-jb tracking-wide" style={{ fontSize: 18, fontWeight: 600, color: "white" }}>{job.jo}</span>
-                    <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: b.bg, color: b.fg }}>{b.label}</span>
+                    <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: cardBadge.bg, color: cardBadge.fg }}>{cardBadge.label}</span>
                   </div>
                   <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <span className="font-syne min-w-0" style={{ fontSize: 13, fontWeight: 700, color: "white", letterSpacing: 0.5 }}>{job.client}</span>
@@ -525,8 +627,8 @@ export function ProductionFloor() {
                     <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "#E2E8F0" }}>
                       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: completed ? "#16A34A" : "#C8102E" }} />
                     </div>
-                    <div className="font-dm mt-1.5" style={{ fontSize: 11, color: "#64748B" }}>
-                      Current: {STAGES[Math.min(job.stageIndex, STAGES.length - 1)]}
+                    <div className="font-dm mt-1.5" style={{ fontSize: 11, color: completed ? "#15803D" : "#64748B" }}>
+                      {completed ? "JO Status: Completed" : allStagesCompleted ? "All production stages completed" : `Current: ${STAGES[Math.min(job.stageIndex, STAGES.length - 1)]}`}
                     </div>
                   </div>
 
@@ -544,10 +646,10 @@ export function ProductionFloor() {
                 <div className="mt-auto h-[68px] shrink-0 px-4 py-3 border-t border-slate-200/70 flex items-center justify-end sm:px-5" style={{ backgroundColor: "#FAFBFC" }}>
                   {completed ? (
                     <div className="flex flex-nowrap items-center justify-end gap-2">
-                      <button onClick={() => setArchiveConfirmJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                        <CheckCircle2 size={14} strokeWidth={2.5} /> COMPLETE JO
-                      </button>
+                      <span className="font-dm px-3 py-1.5 rounded-full" style={{ backgroundColor: "#DCFCE7", color: "#15803D", fontSize: 11, fontWeight: 700 }}>JO COMPLETED</span>
                     </div>
+                  ) : allStagesCompleted ? (
+                    <span className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#15803D" }}>Stages complete · finalize in timeline</span>
                   ) : job.paused ? (
                     <div className="flex flex-nowrap items-center justify-end gap-2">
                       <span className="font-dm flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: "#D97706" }}>
@@ -574,9 +676,9 @@ export function ProductionFloor() {
       {detailId && (() => {
         const j = jobs.find((x) => x.id === detailId);
         if (!j) return null;
-        const completed = j.stageIndex >= STAGES.length - 1;
-        const stageNum = Math.min(j.stageIndex + 1, STAGES.length);
-        const pct = Math.round(((j.stageIndex + (completed ? 1 : 0)) / STAGES.length) * 100);
+        const completed = j.joCompleted;
+        const allStagesCompleted = j.stageIndex >= STAGES.length;
+        const pct = Math.round((Math.min(j.stageIndex, STAGES.length) / STAGES.length) * 100);
         return (
           <div className="fixed inset-0 z-50 flex items-stretch justify-end" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={() => setDetailId(null)}>
             <div className="w-full max-w-2xl bg-white h-full overflow-auto flex flex-col" style={{ boxShadow: "-20px 0 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`Job details ${j.jo}`}>
@@ -594,7 +696,7 @@ export function ProductionFloor() {
                 <div className="grid grid-cols-4 gap-3">
                   <DetailStat icon={Calendar} label="Due Date" value={j.due} />
                   <DetailStat icon={ClipboardList} label="PO" value={j.po} />
-                  <DetailStat icon={Wrench} label="Current Stage" value={STAGES[Math.min(j.stageIndex, STAGES.length - 1)]} />
+                  <DetailStat icon={Wrench} label={completed ? "JO Status" : "Current Stage"} value={completed ? "Completed" : allStagesCompleted ? "Stages Complete" : STAGES[Math.min(j.stageIndex, STAGES.length - 1)]} />
                   <DetailStat icon={Package} label="Progress" value={`${pct}%`} />
                 </div>
                 <section>
@@ -604,7 +706,7 @@ export function ProductionFloor() {
                   </div>
                 </section>
                 <section>
-                  <h4 className="font-syne mb-3" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Stage Timeline ({stageNum} of {STAGES.length})</h4>
+                  <h4 className="font-syne mb-3" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Stage Timeline ({Math.min(j.stageIndex, STAGES.length)} of {STAGES.length})</h4>
                   <ol className="flex flex-col gap-2">
                     {STAGES.map((s, i) => {
                       const done = i < j.stageIndex;
@@ -666,11 +768,15 @@ export function ProductionFloor() {
           job={monitoringJob}
           onClose={() => setStageMonitorId(null)}
           onAdvance={() => advanceStage(monitoringJob.id)}
+          onRequestComplete={() => setCompleteJoJob(monitoringJob)}
           onUpdate={(updatedJob) => {
             /* Map UI Job patches back into Inquiry shape */
             updateInquiry(updatedJob.id, {
               currentStage: updatedJob.stageIndex,
               stage: stageForIndex(updatedJob.stageIndex),
+              joCompletedAt: updatedJob.stageIndex >= STAGES.length && updatedJob.joCompleted
+                ? inqOf(updatedJob.id)?.joCompletedAt
+                : undefined,
               paused: updatedJob.paused,
               urgent: updatedJob.urgent,
               dueDate: updatedJob.due,
@@ -687,9 +793,8 @@ export function ProductionFloor() {
         />
       )}
 
-      {/* Section K — Mark complete & archive confirmation */}
-      {archiveConfirmJob && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setArchiveConfirmJob(null)}>
+      {completeJoJob && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setCompleteJoJob(null)}>
           <div className="bg-white rounded-xl w-full max-w-md flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF3C7" }}>
               <CheckCircle2 size={18} style={{ color: "#B45309" }} />
@@ -701,10 +806,10 @@ export function ProductionFloor() {
               </p>
               <div className="rounded-md p-3 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                 <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Job Order</span>
-                <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{archiveConfirmJob.jo}</span>
+                <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{completeJoJob.jo}</span>
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => { archive(archiveConfirmJob); setArchiveConfirmJob(null); }} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>
+                <button onClick={() => { if (completeJO(completeJoJob)) setCompleteJoJob(null); }} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>
                   <CheckCircle2 size={14} /> Complete
                 </button>
               </div>
@@ -737,22 +842,23 @@ export function ProductionFloor() {
 
 /* ─── Stage Monitoring Page ─── */
 function StageMonitoringPage({
-  job, onClose, onUpdate, onAdvance,
+  job, onClose, onUpdate, onAdvance, onRequestComplete,
 }: {
   job: Job;
   onClose: () => void;
   onUpdate: (job: Job) => void;
   onAdvance: () => void;
+  onRequestComplete: () => void;
 }) {
   const [revertStageIdx, setRevertStageIdx] = useState<number | null>(null);
 
-  const completed = job.stageIndex >= STAGES.length - 1;
+  const allStagesCompleted = job.stageIndex >= STAGES.length;
+  const joCompleted = job.joCompleted;
 
   const markDone = () => {
     if (job.paused) { toast.error("Job is paused — resolve material shortage first"); return; }
-    if (completed) { toast.info("All stages already completed"); return; }
+    if (allStagesCompleted) { toast.info("All 9 production stages are already completed"); return; }
     onAdvance();
-    toast.success(`✅ Stage marked done: ${STAGES[job.stageIndex]}`);
   };
 
   return (
@@ -771,6 +877,11 @@ function StageMonitoringPage({
           <div>
             <span className="font-mono-jb" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>{job.jo}</span>
             <span className="font-dm ml-2" style={{ fontSize: 14, color: "#64748B" }}>· {job.client}</span>
+            {joCompleted && (
+              <span className="font-dm ml-3 rounded-full px-2.5 py-1" style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#DCFCE7", color: "#15803D" }}>
+                COMPLETED
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -792,15 +903,14 @@ function StageMonitoringPage({
           <div className="flex flex-col gap-2.5">
             {STAGES.map((stageName, i) => {
               const isDone = i < job.stageIndex;
-              const isCurrent = i === job.stageIndex && !completed;
-              const isCompleted = i === job.stageIndex && completed;
+              const isCurrent = i === job.stageIndex && !allStagesCompleted;
               const isPending = i > job.stageIndex;
               const history = job.stageHistory[i];
 
-              let statusLabel = isPending ? "Pending" : isCurrent ? "Current" : isCompleted ? "Done" : isDone ? "Done" : "Pending";
-              let statusBg = isPending ? "#F1F5F9" : isCurrent ? "#DBEAFE" : isDone || isCompleted ? "#DCFCE7" : "#F1F5F9";
-              let statusFg = isPending ? "#64748B" : isCurrent ? "#1D4ED8" : isDone || isCompleted ? "#15803D" : "#64748B";
-              let statusIcon = isPending ? "⬜" : isCurrent ? "🔵" : isDone || isCompleted ? "✅" : "⬜";
+              let statusLabel = isPending ? "Pending" : isCurrent ? "Current" : isDone ? "Done" : "Pending";
+              let statusBg = isPending ? "#F1F5F9" : isCurrent ? "#DBEAFE" : isDone ? "#DCFCE7" : "#F1F5F9";
+              let statusFg = isPending ? "#64748B" : isCurrent ? "#1D4ED8" : isDone ? "#15803D" : "#64748B";
+              let statusIcon = isPending ? "⬜" : isCurrent ? "🔵" : isDone ? "✅" : "⬜";
 
               if (history?.status === "reverted") {
                 statusLabel = "Reverted";
@@ -814,8 +924,8 @@ function StageMonitoringPage({
                   key={stageName}
                   className="rounded-xl border overflow-hidden"
                   style={{
-                    backgroundColor: isCurrent ? "#EFF6FF" : isDone || isCompleted ? "#F0FDF4" : "#F8FAFC",
-                    borderColor: isCurrent ? "#2563EB" : isDone || isCompleted ? "#BBF7D0" : "#E2E8F0",
+                    backgroundColor: isCurrent ? "#EFF6FF" : isDone ? "#F0FDF4" : "#F8FAFC",
+                    borderColor: isCurrent ? "#2563EB" : isDone ? "#BBF7D0" : "#E2E8F0",
                     boxShadow: isCurrent ? "0 0 0 2px #DBEAFE" : "0 1px 2px rgba(15,23,42,0.04)",
                   }}
                 >
@@ -824,12 +934,12 @@ function StageMonitoringPage({
                     <div
                       className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 font-syne"
                       style={{
-                        backgroundColor: isDone || isCompleted ? "#16A34A" : isCurrent ? "#2563EB" : "#E2E8F0",
-                        color: isDone || isCompleted || isCurrent ? "white" : "#94A3B8",
+                        backgroundColor: isDone ? "#16A34A" : isCurrent ? "#2563EB" : "#E2E8F0",
+                        color: isDone || isCurrent ? "white" : "#94A3B8",
                         fontSize: 13, fontWeight: 700,
                       }}
                     >
-                      {isDone || isCompleted ? "✓" : i + 1}
+                      {isDone ? "✓" : i + 1}
                     </div>
 
                     {/* Stage Info */}
@@ -869,7 +979,7 @@ function StageMonitoringPage({
                     </div>
 
                     {/* Edit/Revert Button (only on done stages) */}
-                    {(isDone || isCompleted) && (
+                    {isDone && (
                       <button
                         onClick={() => setRevertStageIdx(i)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 font-dm shrink-0"
@@ -883,6 +993,28 @@ function StageMonitoringPage({
               );
             })}
           </div>
+
+          {allStagesCompleted && (
+            <div className="mt-5 rounded-xl border p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ backgroundColor: joCompleted ? "#F0FDF4" : "#EFF6FF", borderColor: joCompleted ? "#BBF7D0" : "#BFDBFE" }}>
+              <div>
+                <div className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: joCompleted ? "#15803D" : "#1A2B4A" }}>
+                  {joCompleted ? "JO Completed" : "All 9 production stages completed"}
+                </div>
+                <div className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>
+                  {joCompleted ? "This Job Order is available in Warehouse." : "Complete the JO to hand it off to Warehouse."}
+                </div>
+              </div>
+              {!joCompleted && (
+                <button
+                  onClick={onRequestComplete}
+                  className="flex shrink-0 items-center justify-center gap-2 rounded-md px-4 py-2.5 font-dm text-white hover:opacity-90"
+                  style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700 }}
+                >
+                  <CheckCircle2 size={14} /> Complete JO
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Activity Log */}
           {job.activityLog.length > 0 && (

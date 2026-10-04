@@ -14,7 +14,7 @@ const roles: { id: RoleId; label: string; desc: string; bg: string; fg: string; 
   { id: "accounting", label: "Accounting Secretary", desc: "Payments Ledger, receipts, overdue tracking",       bg: "#DCFCE7", fg: "#166534", cardBg: "#16A34A", cardFg: "#FFFFFF" },
   { id: "production", label: "Production Manager",   desc: "Production Floor full · stage updates · JO files",  bg: "#DBEAFE", fg: "#1D4ED8", cardBg: "#1A2B4A", cardFg: "#FFFFFF" },
   { id: "warehouse",  label: "Warehouse Staff",      desc: "Inventory, Waybill Scanner, stage marking",         bg: "#E2E8F0", fg: "#475569", cardBg: "#64748B", cardFg: "#FFFFFF" },
-  { id: "logistics",  label: "Logistics Personnel",  desc: "Logistics, Waybill Scanner, dispatch tracking",     bg: "#FFEDD5", fg: "#9A3412", cardBg: "#D97706", cardFg: "#FFFFFF" },
+  { id: "logistics",  label: "Logistics Personnel",  desc: "Logistics and dispatch tracking",                     bg: "#FFEDD5", fg: "#9A3412", cardBg: "#D97706", cardFg: "#FFFFFF" },
 ];
 
 interface User {

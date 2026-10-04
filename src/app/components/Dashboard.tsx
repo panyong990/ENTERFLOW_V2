@@ -100,7 +100,7 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
   const totalReceivables = completedJOs.filter(i => i.stage === "delivered" || i.stage === "overdue").reduce((s, i) => s + ((i.invoiceAmount ?? 0) - (i.amountPaid ?? 0)), 0);
   const collectedThisMonth = paidInquiries.reduce((s, i) => s + (i.amountPaid ?? i.invoiceAmount ?? 0), 0);
   const overdueInvoices = completedJOs.filter(i => {
-    if (!i.invoiceDueDate) return false;
+    if (!i.paymentCycleStartedAt || !i.invoiceDueDate) return false;
     const due = new Date(i.invoiceDueDate);
     return !isNaN(due.getTime()) && due.getTime() < Date.now() && i.stage !== "paid";
   });

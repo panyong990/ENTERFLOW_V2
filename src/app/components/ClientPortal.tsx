@@ -952,7 +952,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                       const rowQty = docLine?.qty ?? p.qty;
                       return (
                         <tr key={p.id} className="border-t border-slate-200">
-                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#0F172A" }}><span style={{ fontWeight: 700 }}>#{i + 1}</span> {p.type}{p.oem && <span className="font-mono-jb ml-1" style={{ fontSize: 11, color: "#64748B" }}>· {p.oem}</span>}</td>
+                          <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+                            <span style={{ fontWeight: 700 }}>#{i + 1}</span> {p.type}{p.oem && <span className="font-mono-jb ml-1" style={{ fontSize: 11, color: "#64748B" }}>· {p.oem}</span>}
+                          </td>
                           <td className="px-3 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{rowQty}</td>
                           <td className="px-3 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{peso(u)}</td>
                           <td className="px-3 py-3 font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#C8102E" }}>{peso(u * rowQty)}</td>

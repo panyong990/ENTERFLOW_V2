@@ -7,9 +7,12 @@ import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { CostEstimationPanel } from "./CostEstimationPanel";
 import { QuotationBuilder } from "./QuotationBuilder";
+import { StockRequestsModal } from "./StockRequestsModal";
+import { useStockRequests } from "../store/stockRequests";
 import type { QuotationDoc } from "../store/orders";
 import { FILTER_TYPES as FILTER_TYPES_CATALOG, DIMENSION_LABELS as DIMENSION_LABELS_CATALOG, GROUP_TEMPLATES, groupForType } from "../store/filterTemplates";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
+import { useSession } from "../store/session";
 
 const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -22,8 +25,10 @@ const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inqu
 
 export function SalesOrders() {
   const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
-  const { validateGeneratedJOs, deductForGeneratedJOs } = useMaterials();
+  const { validateGeneratedJOs, deductForGeneratedJOs, rawMaterials, findBOMTemplate } = useMaterials();
+  const { requests: stockRequests } = useStockRequests();
   const { push: pushNotif } = useNotifications();
+  const session = useSession();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [viewQuoteId, setViewQuoteId] = useState<string | null>(null);
@@ -32,6 +37,7 @@ export function SalesOrders() {
   const [generateJoId, setGenerateJoId] = useState<string | null>(null);
   const [viewInvoiceId, setViewInvoiceId] = useState<string | null>(null);
   const [showNewInquiry, setShowNewInquiry] = useState(false);
+  const [showStockRequests, setShowStockRequests] = useState(false);
 
   const filtered = useMemo(
     () => inquiries.filter((i) =>
@@ -42,10 +48,7 @@ export function SalesOrders() {
     [inquiries, query]
   );
 
-  const totalValue = useMemo(
-    () => inquiries.reduce((s, i) => s + quotationTotal(i), 0),
-    [inquiries]
-  );
+  const salesStockRequestCount = stockRequests.filter((request) => request.status === "responded" || request.status === "updated").length;
 
   const reviewing = inquiries.find((i) => i.id === reviewId);
   const viewing = inquiries.find((i) => i.id === viewQuoteId);
@@ -101,10 +104,10 @@ export function SalesOrders() {
             <span className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Pipeline</span>
             <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{inquiries.length} items</span>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ backgroundColor: "#1A2B4A" }}>
-            <span className="font-dm text-white/60" style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>₱ Value</span>
-            <span className="font-syne text-white" style={{ fontSize: 14, fontWeight: 700 }}>{peso(totalValue)}</span>
-          </div>
+          <button onClick={() => setShowStockRequests(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ backgroundColor: "#1A2B4A" }}>
+            <span className="font-dm text-white/75" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>Stock Requests</span>
+            <span className="font-syne text-white px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 800 }}>{salesStockRequestCount}</span>
+          </button>
           <button
             onClick={() => setShowNewInquiry(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
@@ -315,6 +318,7 @@ export function SalesOrders() {
           onSend={() => sendInvoiceToClient(generating, () => setGenerateId(null))}
         />
       )}
+      {showStockRequests && <StockRequestsModal mode="sales" onClose={() => setShowStockRequests(false)} />}
       {generatingJO && (
         <GenerateJOModal
           inquiry={generatingJO}
@@ -797,6 +801,9 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
       {activeTab === "quote" && (
         <QuotationBuilder
           inquiry={inquiry}
+          productBoms={inquiry.products.map((_, index) =>
+            perProductBomData[index]?.bom ?? resolveProductBOM(inquiry, index) ?? null
+          )}
           manufacturingUnitCost={bomData?.unitPrice ?? inquiry.unitPrice ?? 0}
           productsManufacturingUnitCosts={perProductBomData.map((d) => d?.unitPrice ?? null)}
           discounts={discounts}

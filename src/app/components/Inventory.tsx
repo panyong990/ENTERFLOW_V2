@@ -4,6 +4,8 @@ import { Toaster, toast } from "sonner";
 import { useMaterials, partCategoryMeta, type PartCategory, type RawMaterial, type Unit } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
+import { useStockRequests } from "../store/stockRequests";
+import { StockRequestsModal } from "./StockRequestsModal";
 
 const STOCK_REASONS = [
   "Restocked from supplier",
@@ -52,6 +54,7 @@ const demandStyle = {
 
 export function Inventory() {
   const { rawMaterials, updateMaterial, addMaterial } = useMaterials();
+  const { requests: stockRequests } = useStockRequests();
   const { push: pushNotif } = useNotifications();
 
   const [tab, setTab] = useState<"raw" | "finished">("raw");
@@ -66,6 +69,8 @@ export function Inventory() {
   const [fg, setFg] = useState<FinishedGood[]>(finishedSeed);
   const [fgQuery, setFgQuery] = useState("");
   const [fgEditing, setFgEditing] = useState<FinishedGood | null>(null);
+  const [showStockRequests, setShowStockRequests] = useState(false);
+  const warehouseStockRequestCount = stockRequests.filter((request) => request.status === "pending" || request.status === "update_requested").length;
 
   /* group by category */
   const grouped = useMemo(() => {
@@ -196,6 +201,14 @@ export function Inventory() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowStockRequests(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-dm"
+            style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}
+          >
+            STOCK REQUESTS
+            <span className="px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 10, fontWeight: 800 }}>{warehouseStockRequestCount}</span>
+          </button>
           {tab === "raw" && (
             <button
               onClick={() => setShowAdd(true)}
@@ -417,6 +430,7 @@ export function Inventory() {
       {historyFor && (
         <HistoryDrawer m={historyFor} onClose={() => setHistoryFor(null)} />
       )}
+      {showStockRequests && <StockRequestsModal mode="warehouse" onClose={() => setShowStockRequests(false)} />}
     </div>
   );
 }

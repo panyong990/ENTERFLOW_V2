@@ -20,6 +20,7 @@ import { OrdersProvider, useOrders } from "./store/orders";
 import { SettingsProvider } from "./store/settings";
 import { MaterialsProvider } from "./store/materials";
 import { NotificationsProvider, useNotifications } from "./store/notifications";
+import { StockRequestsProvider } from "./store/stockRequests";
 import { SessionProvider } from "./store/session";
 
 const landingFor: Record<Role, string> = {
@@ -97,7 +98,9 @@ export default function App() {
       <MaterialsProvider>
         <OrdersProvider>
           <NotificationsProvider>
-            <Shell />
+            <StockRequestsProvider>
+              <Shell />
+            </StockRequestsProvider>
           </NotificationsProvider>
         </OrdersProvider>
       </MaterialsProvider>

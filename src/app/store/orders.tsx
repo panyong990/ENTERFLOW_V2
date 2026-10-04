@@ -10,6 +10,31 @@ export interface QuotationLineItem {
   description: string;      // "FILTER BAG"
   subDescription?: string;  // "SIZE : 135mm × 99 INCHES"
   unitPrice: number;
+  materialAvailability?: {
+    materialId: string;
+    materialName: string;
+    unit: string;
+    requiredQuantity: number;
+    stockQuantity: number;
+    status: "on_stock" | "not_on_stock";
+    shortageQuantity?: number;
+  }[];
+}
+
+export interface WarehouseStockResponseSnapshot {
+  requestId: string;
+  responseAt: string;
+  respondedBy: string;
+  type: "initial" | "updated";
+  materials: {
+    materialId: string;
+    materialName: string;
+    unit: string;
+    requiredQuantity: number;
+    currentQuantity: number;
+    status: "sufficient" | "shortage";
+    shortageQuantity?: number;
+  }[];
 }
 
 export interface QuotationDoc {
@@ -33,6 +58,8 @@ export interface QuotationDoc {
   /* Send tracking */
   sentAt?: string;
   sentBy?: string;
+  stockCheckedAt?: string;
+  warehouseStockResponse?: WarehouseStockResponseSnapshot;
   /* Downpayment (Section D) — staff sets this in Tab 3 of the quotation builder */
   downpaymentPercent?: number;
   downpaymentAmount?: number;

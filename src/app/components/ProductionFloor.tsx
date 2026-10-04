@@ -556,9 +556,6 @@ export function ProductionFloor() {
                           <button onClick={() => markQCFailed(job.id)} className="flex items-center gap-2 px-3 py-2 rounded-md font-dm border-2 hover:bg-red-50" style={{ borderColor: "#FECACA", color: "#C8102E", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>
                             <XCircle size={13} /> Mark Failed
                           </button>
-                          <button onClick={() => markQCPassed(job.id)} className="flex items-center gap-2 px-4 py-2 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>
-                            <CheckCircle2 size={13} /> ✓ QC Passed → Complete
-                          </button>
                         </>
                       )}
                     </div>

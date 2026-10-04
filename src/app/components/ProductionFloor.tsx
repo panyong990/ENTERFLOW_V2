@@ -514,7 +514,7 @@ export function ProductionFloor() {
                     className="font-dm flex items-center justify-center gap-2 py-2 rounded-md hover:opacity-90 border"
                     style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#1A2B4A", color: "white", letterSpacing: 0.3, border: "none" }}
                   >
-                    <ClipboardList size={14} /> 📋 View Stages →
+                    <ClipboardList size={14} /> View Stages →
                   </button>
                 </div>
 

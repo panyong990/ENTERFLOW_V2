@@ -57,7 +57,7 @@ function inquiryToInvoice(inq: Inquiry): Invoice {
     downpaymentPercent: inq.quotationDoc?.downpaymentPercent ?? inq.downpaymentPercent ?? 0,
     status: isPaid ? "paid" : "pending",
     deliveredDate: inq.deliveredDate,
-    dueDate: inq.invoiceDueDate,
+    dueDate: inq.paymentCycleStartedAt ? inq.invoiceDueDate : undefined,
   };
 }
 

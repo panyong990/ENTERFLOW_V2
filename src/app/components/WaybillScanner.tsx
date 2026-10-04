@@ -15,19 +15,46 @@ interface WaybillPreviewData {
   clientAddress: string;
 }
 
+function cameraErrorMessage(error: unknown): string {
+  const name = error && typeof error === "object" && "name" in error
+    ? String(error.name)
+    : "";
+
+  if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError") {
+    return "Camera permission was denied. Allow camera access in your browser settings and try again.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "No camera was found. Connect or enable a camera, then try again.";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "The camera could not be accessed. It may be in use by another app.";
+  }
+  if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+    return "No available camera supports QR scanning.";
+  }
+  if (name === "NotSupportedError") {
+    return "Camera access is unavailable in this browser or page. Open the page in a supported browser over HTTPS and try again.";
+  }
+
+  return "The camera scanner could not be started. Check your camera connection and browser permissions, then try again.";
+}
+
 export function WaybillScanner() {
   const { inquiriesByStage, updateInquiry } = useOrders();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanPopup, setScanPopup] = useState<DispatchRow | null>(null);
   const [waybillPreview, setWaybillPreview] = useState<WaybillPreviewData | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState("");
   const [dispatchSearch, setDispatchSearch] = useState("");
   const [dispatchDateFilter, setDispatchDateFilter] = useState("all");
   const [isDispatchFilterOpen, setIsDispatchFilterOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanControlsRef = useRef<IScannerControls | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const scanSessionRef = useRef(0);
+  const lastInvalidIdentifierRef = useRef("");
 
   /* DERIVED: live ready-for-dispatch JOs from production */
   const readyInquiries = useMemo(() => inquiriesByStage(["ready_for_dispatch"]), [inquiriesByStage]);
@@ -63,59 +90,136 @@ export function WaybillScanner() {
     [inquiriesByStage]
   );
   const shipments = useMemo(() => shipmentInquiries.map(inquiryToDispatchRow), [shipmentInquiries]);
+  const shipmentsRef = useRef(shipments);
+  const readyRef = useRef(ready);
+  shipmentsRef.current = shipments;
+  readyRef.current = ready;
+
+  const releaseCameraStream = () => {
+    const stream = cameraStreamRef.current;
+    cameraStreamRef.current = null;
+    stream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+  };
 
   const stopScanner = () => {
     scanSessionRef.current += 1;
     scanControlsRef.current?.stop();
     scanControlsRef.current = null;
+    releaseCameraStream();
     setIsScanning(false);
   };
+
+  useEffect(() => {
+    if (!isScanning || !cameraStream) return;
+
+    let cancelled = false;
+    const scanSession = scanSessionRef.current;
+    const startCameraScan = async () => {
+      try {
+        const video = videoRef.current;
+        if (!video) {
+          throw new Error("The camera preview is unavailable. Please try again.");
+        }
+
+        const { BrowserQRCodeReader } = await import("@zxing/browser");
+        if (cancelled || scanSessionRef.current !== scanSession) return;
+
+        const reader = new BrowserQRCodeReader();
+        const controls = await reader.decodeFromStream(cameraStream, video, (result, _error, scannerControls) => {
+          if (cancelled || scanSessionRef.current !== scanSession || !result) return;
+
+          const identifier = result.getText().trim();
+          const match = shipmentsRef.current.find(
+            (shipment) => shipment.waybillIdentifier.toLocaleLowerCase() === identifier.toLocaleLowerCase()
+          );
+          if (!match) {
+            setSelectedId(null);
+            setScanPopup(null);
+            setCameraError("Waybill not found. Please scan a valid Enter-Flow Waybill QR code.");
+            if (lastInvalidIdentifierRef.current !== identifier) {
+              lastInvalidIdentifierRef.current = identifier;
+              toast.error("Waybill not found", {
+                description: "Please scan a valid Enter-Flow Waybill QR code.",
+              });
+            }
+            return;
+          }
+
+          scanSessionRef.current += 1;
+          scannerControls.stop();
+          scanControlsRef.current = null;
+          releaseCameraStream();
+          lastInvalidIdentifierRef.current = "";
+          setCameraError("");
+          setIsScanning(false);
+          setSelectedId(readyRef.current.some((shipment) => shipment.id === match.id) ? match.id : null);
+          setScanPopup(match);
+        });
+
+        if (cancelled || scanSessionRef.current !== scanSession) {
+          controls.stop();
+        } else {
+          scanControlsRef.current = controls;
+        }
+      } catch (error) {
+        if (cancelled || scanSessionRef.current !== scanSession) return;
+        const message = cameraErrorMessage(error);
+        releaseCameraStream();
+        setCameraError(message);
+        setIsScanning(false);
+        toast.error("Unable to start QR scanner", { description: message });
+      }
+    };
+
+    void startCameraScan();
+
+    return () => {
+      cancelled = true;
+      scanControlsRef.current?.stop();
+      scanControlsRef.current = null;
+      if (cameraStreamRef.current === cameraStream) {
+        cameraStreamRef.current = null;
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [isScanning, cameraStream]);
 
   useEffect(() => () => {
     scanSessionRef.current += 1;
     scanControlsRef.current?.stop();
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
   }, []);
 
   const startScanner = async () => {
-    const video = videoRef.current;
-    if (!video) return;
-
     const scanSession = scanSessionRef.current + 1;
     scanSessionRef.current = scanSession;
     setCameraError("");
+    lastInvalidIdentifierRef.current = "";
     setIsScanning(true);
     try {
-      const { BrowserQRCodeReader } = await import("@zxing/browser");
-      const reader = new BrowserQRCodeReader();
-      const controls = await reader.decodeFromVideoDevice(undefined, video, (result, _error, scannerControls) => {
-        if (scanSessionRef.current !== scanSession) return;
-        if (!result) return;
-        scanSessionRef.current += 1;
-        scannerControls.stop();
-        scanControlsRef.current = null;
-        setIsScanning(false);
+      if (!navigator.mediaDevices?.getUserMedia) {
+        const unsupportedError = new Error("Camera access is not supported by this browser.");
+        unsupportedError.name = "NotSupportedError";
+        throw unsupportedError;
+      }
 
-        const identifier = result.getText().trim();
-        const match = shipments.find(
-          (shipment) => shipment.waybillIdentifier.toLocaleLowerCase() === identifier.toLocaleLowerCase()
-        );
-        if (!match) {
-          setSelectedId(null);
-          setScanPopup(null);
-          toast.error("Waybill not found", { description: "No shipment matches this QR code." });
-          return;
-        }
-
-        setSelectedId(ready.some((shipment) => shipment.id === match.id) ? match.id : null);
-        setScanPopup(match);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
       });
-      if (scanSessionRef.current !== scanSession) controls.stop();
-      else scanControlsRef.current = controls;
+      if (scanSessionRef.current !== scanSession) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      cameraStreamRef.current = stream;
+      setCameraStream(stream);
     } catch (error) {
       if (scanSessionRef.current !== scanSession) return;
-      setIsScanning(false);
-      const message = error instanceof Error ? error.message : "Camera access could not be started.";
+      const message = cameraErrorMessage(error);
       setCameraError(message);
+      setIsScanning(false);
       toast.error("Unable to start QR scanner", { description: message });
     }
   };
@@ -151,6 +255,46 @@ export function WaybillScanner() {
     }
   };
 
+  const handlePrintWaybill = () => {
+    if (!waybillPreview) return;
+
+    const inquiry = shipmentInquiries.find((item) => item.id === waybillPreview.shipment.id);
+    if (!inquiry) {
+      toast.error("Unable to hand off shipment", {
+        description: "The Job Order could not be found. Close the preview and reopen the Waybill.",
+      });
+      return;
+    }
+
+    try {
+      window.print();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The print dialog could not be opened.";
+      toast.error("Unable to print Waybill", { description: message });
+      return;
+    }
+
+    const log = inquiry.waybillLog ?? [];
+    const existingPrintEntry = log.find((entry) => entry.status === "Waybill Printed");
+    const printedAt = inquiry.waybillPrintedAt ?? existingPrintEntry?.ts ?? new Date().toISOString();
+    updateInquiry(inquiry.id, {
+      stage: "dispatched",
+      dispatchedAt: inquiry.dispatchedAt ?? printedAt,
+      waybillPrintedAt: printedAt,
+      waybillNumber: inquiry.waybillNumber?.trim() || waybillPreview.shipment.waybillIdentifier,
+      waybillIdentifier: inquiry.waybillIdentifier?.trim() || waybillPreview.shipment.waybillIdentifier,
+      waybillLog: existingPrintEntry
+        ? log
+        : [...log, { ts: printedAt, status: "Waybill Printed", note: waybillPreview.shipment.waybillIdentifier }],
+    });
+
+    toast.success("Waybill sent to printer", {
+      description: "This shipment is now ready for Logistics delivery processing.",
+    });
+    setSelectedId(null);
+    setWaybillPreview(null);
+  };
+
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
@@ -169,28 +313,8 @@ export function WaybillScanner() {
 
       <div className="px-6 md:px-8 py-6 md:py-8 flex flex-col gap-6">
         <section aria-label="Waybill Scanner" className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-          <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_240px]">
-            <div className="flex items-center justify-center p-5 md:p-7 border-b lg:border-b-0 lg:border-r border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
-              {isScanning ? (
-                <video
-                  ref={videoRef}
-                  className="w-full h-48 md:h-52 rounded-lg bg-slate-950 object-contain"
-                  muted
-                  playsInline
-                  aria-label="QR code camera preview"
-                />
-              ) : (
-                <div className="relative flex items-center justify-center w-full h-48 md:h-52 rounded-lg border border-dashed border-slate-300" style={{ backgroundColor: "#EFF4FA" }}>
-                  <div className="absolute top-4 left-4 w-7 h-7 border-l-2 border-t-2 rounded-tl-md" style={{ borderColor: "#1A2B4A" }} />
-                  <div className="absolute top-4 right-4 w-7 h-7 border-r-2 border-t-2 rounded-tr-md" style={{ borderColor: "#1A2B4A" }} />
-                  <div className="absolute bottom-4 left-4 w-7 h-7 border-l-2 border-b-2 rounded-bl-md" style={{ borderColor: "#1A2B4A" }} />
-                  <div className="absolute bottom-4 right-4 w-7 h-7 border-r-2 border-b-2 rounded-br-md" style={{ borderColor: "#1A2B4A" }} />
-                  <QrCode size={88} strokeWidth={1.35} style={{ color: "#1A2B4A" }} aria-hidden="true" />
-                </div>
-              )}
-            </div>
-
-            <div className="p-5 md:p-7 flex flex-col justify-center">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="p-5 md:p-7 flex flex-col" style={{ backgroundColor: "#F1F5FB" }}>
               <div className="flex items-center gap-2 mb-2">
                 <ScanLine size={18} style={{ color: "#C8102E" }} />
                 <span className="font-dm" style={{ fontSize: 10, fontWeight: 800, color: "#C8102E", letterSpacing: 0.8 }}>WAREHOUSE SCANNER</span>
@@ -212,17 +336,76 @@ export function WaybillScanner() {
                 </span>
               </div>
               {cameraError && <p className="font-dm mt-3" role="alert" style={{ fontSize: 12, color: "#B91C1C" }}>{cameraError}</p>}
+
+              <div
+                className="relative mt-5 mx-auto w-full overflow-hidden rounded-lg"
+                style={{
+                  maxWidth: 600,
+                  aspectRatio: "3 / 2",
+                  backgroundColor: isScanning ? "#0B1424" : "#DCE6F3",
+                  border: `1px solid ${isScanning ? "#1A2B4A" : "#B8C7DA"}`,
+                  boxShadow: isScanning ? "0 0 0 3px rgba(37,99,235,0.12)" : "inset 0 1px 3px rgba(26,43,74,0.08)",
+                }}
+              >
+                {isScanning ? (
+                  <>
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-contain"
+                      muted
+                      playsInline
+                      aria-label="QR code camera preview"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+                      <div className="relative rounded-md" style={{ width: "min(72%, 280px)", aspectRatio: "1 / 1", backgroundColor: "rgba(11,20,36,0.18)", border: "1px solid rgba(255,255,255,0.78)", boxShadow: "0 0 0 1px rgba(15,23,42,0.32), 0 4px 18px rgba(0,0,0,0.22)" }}>
+                        <div className="absolute -left-px -top-px w-8 h-8 border-l-[3px] border-t-[3px] rounded-tl-md border-white" style={{ filter: "drop-shadow(0 1px 2px rgba(15,23,42,0.8))" }} />
+                        <div className="absolute -right-px -top-px w-8 h-8 border-r-[3px] border-t-[3px] rounded-tr-md border-white" style={{ filter: "drop-shadow(0 1px 2px rgba(15,23,42,0.8))" }} />
+                        <div className="absolute -left-px -bottom-px w-8 h-8 border-l-[3px] border-b-[3px] rounded-bl-md border-white" style={{ filter: "drop-shadow(0 1px 2px rgba(15,23,42,0.8))" }} />
+                        <div className="absolute -right-px -bottom-px w-8 h-8 border-r-[3px] border-b-[3px] rounded-br-md border-white" style={{ filter: "drop-shadow(0 1px 2px rgba(15,23,42,0.8))" }} />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="relative flex items-center justify-center w-full h-full" style={{ backgroundColor: "#E4ECF6" }}>
+                    <div className="absolute top-4 left-4 w-8 h-8 border-l-[3px] border-t-[3px] rounded-tl-md" style={{ borderColor: "#1A2B4A" }} />
+                    <div className="absolute top-4 right-4 w-8 h-8 border-r-[3px] border-t-[3px] rounded-tr-md" style={{ borderColor: "#1A2B4A" }} />
+                    <div className="absolute bottom-4 left-4 w-8 h-8 border-l-[3px] border-b-[3px] rounded-bl-md" style={{ borderColor: "#1A2B4A" }} />
+                    <div className="absolute bottom-4 right-4 w-8 h-8 border-r-[3px] border-b-[3px] rounded-br-md" style={{ borderColor: "#1A2B4A" }} />
+                    <div className="flex items-center justify-center rounded-full border border-white/80 shadow-sm" style={{ width: 132, height: 132, backgroundColor: "#F8FAFD", color: "#1A2B4A" }}>
+                      <QrCode size={80} strokeWidth={1.6} aria-hidden="true" />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <aside className="p-5 md:p-6 border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col justify-center gap-4" style={{ backgroundColor: "#FBFCFE" }}>
-              <div>
+            <aside className="p-5 md:p-6 border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col justify-start gap-4" style={{ backgroundColor: "#EAF0F8" }}>
+              <div className="rounded-lg border p-4" style={{ backgroundColor: "#F8FAFD", borderColor: "#D4DFEC" }}>
                 <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.7 }}>SCANNER STATUS</div>
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: isScanning ? "#DBEAFE" : "#DCFCE7" }}>
-                  <span className={`w-2 h-2 rounded-full ${isScanning ? "animate-pulse" : ""}`} style={{ backgroundColor: isScanning ? "#2563EB" : "#16A34A" }} />
-                  <span className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: isScanning ? "#1D4ED8" : "#166534", letterSpacing: 0.4 }}>{isScanning ? "SCANNING" : "READY"}</span>
+                <div
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
+                  style={{
+                    backgroundColor: scanPopup ? "#DCFCE7" : cameraError ? "#FEE2E2" : isScanning ? "#DBEAFE" : "#DCFCE7",
+                  }}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${isScanning && !cameraError ? "animate-pulse" : ""}`}
+                    style={{ backgroundColor: scanPopup ? "#16A34A" : cameraError ? "#DC2626" : isScanning ? "#2563EB" : "#16A34A" }}
+                  />
+                  <span
+                    className="font-dm"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: scanPopup ? "#166534" : cameraError ? "#B91C1C" : isScanning ? "#1D4ED8" : "#166534",
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    {scanPopup ? "VERIFIED" : cameraError ? "ERROR" : isScanning ? "SCANNING" : "READY"}
+                  </span>
                 </div>
               </div>
-              <div className="pt-4 border-t border-slate-200">
+              <div className="rounded-lg border p-4" style={{ backgroundColor: "#F8FAFD", borderColor: "#D4DFEC" }}>
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={17} style={{ color: "#1A2B4A" }} />
                   <span className="font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>Secure Verification</span>
@@ -391,7 +574,7 @@ export function WaybillScanner() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={handlePrintWaybill}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-md text-white font-dm hover:opacity-90"
                   style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700 }}
                 >

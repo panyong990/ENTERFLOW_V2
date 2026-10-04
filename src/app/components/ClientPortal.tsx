@@ -1289,7 +1289,7 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
     { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
       detailFn: (i) => hasPORecord(i) ? `${i.poNumber ?? i.poFileName} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
     { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
-      detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
+      detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.paymentCycleStartedAt && i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
     { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
       detailFn: () => payment.state === "FULLY_PAID" ? "Full payment verified" : requiredPaymentVerified ? `Required downpayment verified · ${peso(payment.verifiedDownpaymentAmount)}` : "Awaiting required payment verification" },
     { key: "jo",         label: "Job Order Created",      matches: (i) => {
@@ -1298,7 +1298,7 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
       },
       detailFn: (i) => i.joNumber ? `${i.joNumber} · production queued` : "Awaiting JO" },
     { key: "in_production", label: "In Production",        matches: (i) => i.stage === "in_production" ? "current" : (["quality_inspection","ready_for_dispatch","dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
-      detailFn: (i) => `Stage ${(i.currentStage ?? 0) + 1} of 10${i.paused ? " · ⏸ ON HOLD" : ""}` },
+      detailFn: (i) => `Stage ${Math.min((i.currentStage ?? 0) + 1, 9)} of 9${i.paused ? " · ⏸ ON HOLD" : ""}` },
     { key: "quality_inspection", label: "Quality Inspection", matches: (i) => i.stage === "quality_inspection" ? "current" : (["ready_for_dispatch","dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: () => "Final QC checkpoint before dispatch" },
     { key: "ready_for_dispatch", label: "Ready for Dispatch", matches: (i) => i.stage === "ready_for_dispatch" ? "current" : (["dispatched","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
@@ -1625,10 +1625,13 @@ function TimelineCard({ po, product, qty, client, badge, steps, action }: {
 /* ---------- Logistics Tab ---------- */
 type DeliveryMethod = "Company Vehicle" | "Lalamove" | "Client Pick-up";
 interface LogisticsRow {
+  id: string;
   po: string; item: string; qty: number; method: DeliveryMethod;
   status: "Pending" | "In Transit" | "Delivered";
   statusBg: string; statusFg: string;
-  trackingNumber?: string; hasSignedDR?: boolean;
+  trackingNumber?: string; hasSignedDR?: boolean; signedDRFileName?: string;
+  signedDRUploadedAt?: string; paymentCycleStartedAt?: string;
+  paymentTerms: Inquiry["paymentTerms"]; invoiceDueDate?: string;
   driverName?: string; estimatedDate?: string;
   dateISO?: string;
 }
@@ -1646,6 +1649,7 @@ function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
   const qty = inq.products.reduce((s, p) => s + p.quantity, 0);
   const dateISO = inq.deliveredDate ?? inq.dueDate ?? inq.submittedDate;
   return {
+    id: inq.id,
     po: inq.code,
     item,
     qty,
@@ -1653,7 +1657,12 @@ function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
     status: status as any,
     statusBg,
     statusFg,
-    hasSignedDR: !!inq.drFileName,
+    hasSignedDR: !!inq.clientSignedDRFileName,
+    signedDRFileName: inq.clientSignedDRFileName,
+    signedDRUploadedAt: inq.clientSignedDRUploadedAt,
+    paymentCycleStartedAt: inq.paymentCycleStartedAt,
+    paymentTerms: inq.paymentTerms,
+    invoiceDueDate: inq.paymentCycleStartedAt ? inq.invoiceDueDate : undefined,
     driverName: method === "Company Vehicle" ? "D. Santos" : undefined,
     estimatedDate: inq.deliveredDate ?? inq.dueDate ?? "—",
     trackingNumber: inq.trackingRef,
@@ -1662,7 +1671,7 @@ function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
 }
 
 function LogisticsTab({ clientName }: { clientName: string }) {
-  const { byClient } = useOrders();
+  const { byClient, uploadClientSignedDR } = useOrders();
   /* Section H — client contact pulled from settings (email only, no phone). */
   const { settings } = useSettings();
   const [filter, setFilter] = useState("All");
@@ -1753,6 +1762,53 @@ function LogisticsTab({ clientName }: { clientName: string }) {
               {/* Expanded Detail */}
               {isExpanded && (
                 <div className="px-5 py-5 border-t border-slate-200" style={{ backgroundColor: "#FAFBFC" }}>
+                  <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+                    <div className="font-syne mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Delivery &amp; Payment Status</div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <InfoPair label="Delivery Status" value={r.status} />
+                      <InfoPair label="Client Receipt" value={r.hasSignedDR ? "Signed DR Uploaded" : "Awaiting Signed DR"} />
+                      <InfoPair label="Payment Status" value={r.paymentCycleStartedAt ? `${r.paymentTerms} Active` : "Not Active"} />
+                      <InfoPair label="Remaining Balance Due" value={r.invoiceDueDate ?? "—"} />
+                    </div>
+                    {r.signedDRUploadedAt && (
+                      <p className="font-dm mb-3" style={{ fontSize: 11, color: "#64748B" }}>
+                        Client signed DR confirmed {new Date(r.signedDRUploadedAt).toLocaleDateString()}
+                        {r.signedDRFileName ? ` · ${r.signedDRFileName}` : ""}
+                      </p>
+                    )}
+                    {!r.hasSignedDR && (
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-dm hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
+                        <Upload size={14} />
+                        Upload Signed Delivery Receipt
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (!file) return;
+                            uploadClientSignedDR(r.id, file.name);
+                            toast.success("Signed Delivery Receipt uploaded", {
+                              description: r.status === "Delivered"
+                                ? `The ${r.paymentTerms} payment term is now active from today.`
+                                : "The payment cycle will start after delivery is confirmed.",
+                            });
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+                    {r.hasSignedDR && (
+                      <button onClick={() => toast("Opening client signed DR...")} className="font-dm px-3 py-2 rounded-md border border-slate-200 hover:bg-slate-50 flex items-center gap-2" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
+                        📸 View Signed DR
+                      </button>
+                    )}
+                    {!r.paymentCycleStartedAt && (
+                      <p className="font-dm mt-2" style={{ fontSize: 11, color: "#64748B" }}>
+                        Payment terms start only after both delivery confirmation and this signed receipt are recorded.
+                      </p>
+                    )}
+                  </div>
                   {r.method === "Company Vehicle" && (
                     <div className="flex flex-col gap-3">
                       <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Company Vehicle Delivery</div>
@@ -1760,13 +1816,7 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                         <InfoPair label="Enter-Fil Contact" value={settings.email} />
                         <InfoPair label="Driver" value={r.driverName ?? "—"} />
                         <InfoPair label="Estimated Delivery" value={r.estimatedDate ?? "—"} />
-                        <InfoPair label="Signed DR" value={r.hasSignedDR ? "Available" : "Not yet uploaded"} />
                       </div>
-                      {r.hasSignedDR && (
-                        <button onClick={() => toast("Opening signed DR photo...")} className="self-start font-dm px-4 py-2 rounded-md border border-slate-200 hover:bg-white flex items-center gap-2" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
-                          📸 View Signed DR Photo
-                        </button>
-                      )}
                     </div>
                   )}
 
@@ -1852,7 +1902,7 @@ function inquiryToClientInvoice(inq: Inquiry) {
     item: inq.products[0]?.filterName || inq.products[0]?.type || "—",
     amount: state.invoiceTotal,
     payment: inq.paymentTerms,
-    due: inq.invoiceDueDate ?? "—",
+    due: inq.paymentCycleStartedAt ? inq.invoiceDueDate ?? "—" : "—",
     status: (isPaid ? "paid" : "pending") as "paid" | "pending",
     paidDate: inq.paidAt ?? "",
     payments: paymentRecords(inq),

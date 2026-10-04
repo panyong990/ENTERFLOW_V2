@@ -59,7 +59,7 @@ export function InvoicePreviewModal({ inquiry, onClose, onSend, canSend = false 
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-4 mt-5 font-dm" style={{ fontSize: 12 }}><span>Due date</span><b>{inquiry.invoiceDueDate ?? "—"}</b><span>Invoice status</span><b>{inquiry.invoiceSentAt ? "Sent to client" : "Draft — Sales review"}</b></div>
+          <div className="grid grid-cols-2 gap-4 mt-5 font-dm" style={{ fontSize: 12 }}><span>Due date</span><b>{inquiry.paymentCycleStartedAt ? inquiry.invoiceDueDate ?? "—" : "—"}</b><span>Invoice status</span><b>{inquiry.invoiceSentAt ? "Sent to client" : "Draft — Sales review"}</b></div>
         </div>
       </div>
       {canSend && !!inquiry.invoiceNo && !inquiry.invoiceSentAt && onSend && <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 print:hidden"><button onClick={onClose} className="px-4 py-2 rounded-md font-dm" style={{ fontSize: 13, color: "#475569" }}>Cancel</button><button onClick={onSend} className="px-4 py-2 rounded-md text-white font-dm" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>SEND INVOICE TO CLIENT</button></div>}

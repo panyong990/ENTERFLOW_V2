@@ -195,14 +195,14 @@ export interface ReplacementRequest {
 
 /* Production stage history entry */
 export interface StageEntry {
-  stage: number;            // 0-9 (10 stages, see PRODUCTION_STAGES below)
+  stage: number;            // 0-8 (9 production stages, see PRODUCTION_STAGES below)
   completedAt: string;      // ISO timestamp
   completedBy: string;
   reason?: string;          // for reverts
   status: "done" | "reverted";
 }
 
-/* The 10 production stages — single source of truth */
+/* The 9 production stages — single source of truth */
 export const PRODUCTION_STAGES = [
   "Molding",
   "Cutting of Steel Plate",
@@ -213,7 +213,6 @@ export const PRODUCTION_STAGES = [
   "Top/Bottom Cap Sealing (Heating)",
   "Gasket / O-Ring Fitting",
   "Quality / Product Inspection",
-  "Completed",
 ] as const;
 
 export interface Inquiry {
@@ -244,6 +243,7 @@ export interface Inquiry {
   archiveNote?: string;
   /* — JO finalization — */
   joNumber?: string;
+  joCompletedAt?: string;
   joSpecs?: JOSpecs;
   joSketch?: string;
   dpReceiptFile?: string;
@@ -254,6 +254,9 @@ export interface Inquiry {
   invoiceAmount?: number;
   invoiceDate?: string;
   invoiceDueDate?: string;
+  clientSignedDRFileName?: string;
+  clientSignedDRUploadedAt?: string;
+  paymentCycleStartedAt?: string;
   /** Invoice exists as a Sales draft until Sales explicitly sends it. */
   invoiceSentAt?: string;
   /* — client-uploaded payment receipts — */
@@ -273,7 +276,7 @@ export interface Inquiry {
   /* — flag set when materials have been deducted (avoid double-deducting on stage replays) — */
   inventoryDeducted?: boolean;
   /* — production tracking — */
-  currentStage?: number;             // 0-9 index into PRODUCTION_STAGES
+  currentStage?: number;             // 0-9 cursor into the 9 production stages
   stageHistory?: StageEntry[];
   paused?: boolean;
   pauseReason?: string;
@@ -294,6 +297,7 @@ export interface Inquiry {
   /* — waybill / dispatch (used by WaybillScanner) — */
   waybillNumber?: string;
   waybillIdentifier?: string;
+  waybillPrintedAt?: string;
   waybillLog?: { ts: string; status: string; note?: string }[];
   dispatchedAt?: string;
   /* — Downpayment workflow (Section D) — */
@@ -328,6 +332,13 @@ export interface Inquiry {
   /* — This inquiry is itself a replacement JO — */
   isReplacement?: boolean;
   replacementParentId?: string;   // id of the original inquiry
+}
+
+function paymentDueDate(paymentTerms: Inquiry["paymentTerms"], receiptAt: string): string | undefined {
+  const due = new Date(receiptAt);
+  if (Number.isNaN(due.getTime())) return undefined;
+  due.setDate(due.getDate() + (paymentTerms === "30-Day Terms" ? 30 : 15));
+  return due.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 export interface FinalizeJOData {
@@ -531,7 +542,7 @@ const seed: Inquiry[] = [
     joSpecs: { od1: "175", id1: "20", height: "87", media: "Pleated ZS20 w/ Double Alum Screen", oem: "KF-OF.175.20.87" },
     joSketch: "KF-OF.175.20.87_drawing.pdf",
     currentStage: 9,
-    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (10 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    stageHistory: Array.from({ length: 9 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (9 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
     inventoryDeducted: true,
     invoiceAmount: 50040,
     deliveryMethod: "Lalamove",
@@ -548,7 +559,7 @@ const seed: Inquiry[] = [
     joNumber: "JO-2026-003",
     joSpecs: { od1: "175", id1: "20", height: "87", media: "Pleated 5-Micron", oem: "KF-OF.175.20.87-5M" },
     currentStage: 9,
-    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (15 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    stageHistory: Array.from({ length: 9 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (14 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
     inventoryDeducted: true,
     deliveredDate: "Mar 30, 2026",
     invoiceNo: "SI-2026-9533",
@@ -581,7 +592,7 @@ const seed: Inquiry[] = [
     unitPrice: 1001,
     quotedTotal: 25025,
     currentStage: 9,
-    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (10 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    stageHistory: Array.from({ length: 9 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (9 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
     inventoryDeducted: true,
     /* Delivered 3 days ago → still well inside the 2-week replacement window */
     deliveredDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
@@ -610,7 +621,7 @@ const seed: Inquiry[] = [
     unitPrice: 1560,
     quotedTotal: 62400,
     currentStage: 9,
-    stageHistory: Array.from({ length: 10 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (12 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+    stageHistory: Array.from({ length: 9 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (11 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
     inventoryDeducted: true,
     deliveredDate: "Apr 28, 2026",
     invoiceNo: "SI-2026-9551",
@@ -705,6 +716,7 @@ interface Ctx {
   setUrgent: (id: string, urgent: boolean, dueDate?: string) => void;
   setDueDate: (id: string, due: string) => void;
   markDelivered: (id: string, deliveredDate: string, invoiceNo: string, invoiceAmount: number) => void;
+  uploadClientSignedDR: (id: string, fileName: string) => void;
   /* — Downpayment workflow (Section D) — */
   sendDownpaymentDetails: (id: string, details: NonNullable<Inquiry["downpaymentPaymentDetails"]>) => void;
   uploadDownpaymentReceipt: (id: string, fileName: string) => void;
@@ -983,13 +995,22 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     const next = ((used.length ? Math.max(...used) : 0) + 1).toString().padStart(4, "0");
     const invoiceNo = `SI-${year}-${next}`;
     const invoiceAmount = invoiceTotal(inquiry);
-    const days = inquiry.paymentTerms === "30-Day Terms" ? 30 : inquiry.paymentTerms === "15-Day Terms" ? 15 : 0;
-    const due = new Date();
-    due.setDate(due.getDate() + days);
     const invoiceDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const invoiceDueDate = due.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const deliveryConfirmed = inquiry.stage === "delivered" || inquiry.stage === "paid" || inquiry.stage === "overdue";
+    const paymentCycleStartedAt = deliveryConfirmed ? inquiry.clientSignedDRUploadedAt : undefined;
+    const invoiceDueDate = paymentCycleStartedAt
+      ? paymentDueDate(inquiry.paymentTerms, paymentCycleStartedAt)
+      : undefined;
 
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, invoiceNo, invoiceAmount, invoiceDate, invoiceDueDate, invoiceSentAt: undefined } : x));
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+      ...x,
+      invoiceNo,
+      invoiceAmount,
+      invoiceDate,
+      invoiceDueDate,
+      paymentCycleStartedAt,
+      invoiceSentAt: undefined,
+    } : x));
     return invoiceNo;
   };
 
@@ -1178,10 +1199,37 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const markDelivered: Ctx["markDelivered"] = (id, deliveredDate, invoiceNo, invoiceAmount) => {
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== id) return x;
-      const days = x.paymentTerms === "30-Day Terms" ? 30 : x.paymentTerms === "15-Day Terms" ? 15 : 0;
-      const due = new Date(); due.setDate(due.getDate() + days);
-      const dueStr = due.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-      return { ...x, stage: "delivered", deliveredDate, invoiceNo, invoiceAmount, invoiceDueDate: dueStr };
+      const receiptAt = x.clientSignedDRUploadedAt;
+      const dueDate = receiptAt ? paymentDueDate(x.paymentTerms, receiptAt) : undefined;
+      return {
+        ...x,
+        stage: "delivered",
+        deliveredDate,
+        invoiceNo,
+        invoiceAmount,
+        paymentCycleStartedAt: receiptAt,
+        invoiceDueDate: dueDate,
+      };
+    }));
+  };
+
+  const uploadClientSignedDR: Ctx["uploadClientSignedDR"] = (id, fileName) => {
+    const uploadedAt = new Date().toISOString();
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== id) return x;
+      const receiptAt = x.clientSignedDRUploadedAt ?? uploadedAt;
+      const deliveryConfirmed = x.stage === "delivered" || x.stage === "paid" || x.stage === "overdue";
+      return {
+        ...x,
+        clientSignedDRFileName: fileName,
+        clientSignedDRUploadedAt: receiptAt,
+        ...(deliveryConfirmed && !x.paymentCycleStartedAt
+          ? {
+              paymentCycleStartedAt: receiptAt,
+              invoiceDueDate: paymentDueDate(x.paymentTerms, receiptAt),
+            }
+          : {}),
+      };
     }));
   };
 
@@ -1370,7 +1418,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, generateInvoice, sendInvoice, finalizeProductJOs,
       addClientReceipt, addReplacementRequest, resolveReplacement, reorderToProduction, markPOCleared,
       updateInquiry, inquiriesByStage,
-      setStage, setUrgent, setDueDate, markDelivered,
+      setStage, setUrgent, setDueDate, markDelivered, uploadClientSignedDR,
       sendDownpaymentDetails, uploadDownpaymentReceipt, confirmDownpayment,
       createReplacementJO,
       byClient, isNewClient,

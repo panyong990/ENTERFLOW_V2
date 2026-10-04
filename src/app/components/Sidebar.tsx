@@ -26,8 +26,8 @@ export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   production: ["dashboard", "production", "notifications"],
   /* Warehouse: dashboard, inventory, waybill scanner, and waybill history */
   warehouse:  ["dashboard", "inventory", "waybill", "waybill-history", "notifications"],
-  /* Logistics: focused on logistics + waybill — no inventory, no dashboard active jobs */
-  logistics:  ["dashboard", "logistics", "waybill", "notifications"],
+  /* Logistics: dispatch tracking only; Waybill scanning is Warehouse-only */
+  logistics:  ["dashboard", "logistics", "notifications"],
 };
 
 export const roleSidebar: Record<Exclude<Role, "client">, { user: string; title: string }> = {

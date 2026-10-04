@@ -996,7 +996,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const sendInvoice: Ctx["sendInvoice"] = (id) => {
     const invoice = allInquiries.find((x) => x.id === id);
     if (!invoice?.invoiceNo) return false;
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, invoiceSentAt: new Date().toISOString() } : x));
+    const invoiceSentAt = new Date().toISOString();
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, invoiceSentAt } : x));
     return true;
   };
 

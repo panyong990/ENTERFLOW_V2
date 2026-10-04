@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
-  Search, Plus, Building2, Phone, Mail, MapPin, X, FileText, Factory,
-  ChevronDown, ChevronUp, RotateCcw, Eye, Save, RefreshCw, KeyRound, Paperclip,
+  Search, Plus, Building2, Phone, Mail, MapPin, X,
+  ChevronDown, ChevronUp, Eye, Save, RefreshCw, KeyRound,
 } from "lucide-react";
 import { useOrders } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
@@ -491,29 +491,12 @@ function ClientDetailDrawer({
 }: {
   client: Client; onClose: () => void; onUpdate: (c: Client) => void;
 }) {
-  const [tab, setTab] = useState<"overview" | "transactions" | "jobs" | "documents">("overview");
+  const [tab, setTab] = useState<"overview" | "transactionsOrders">("overview");
   const [draft, setDraft] = useState({ ...client });
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
-  const [expandedJo, setExpandedJo] = useState<string | null>(null);
-  const { byClient, reorderToProduction } = useOrders();
-  const clientInquiries = byClient(client.name);
-
   const saveOverview = () => {
     onUpdate(draft);
     toast.success("Client updated", { description: draft.name });
-  };
-
-  const reorder = (label: string) => {
-    /* Reorder from a known repeat item — skip inquiry/quotation, send direct to production */
-    const matchInquiry = clientInquiries.find(i => i.products.some(p =>
-      p.type === label || p.oem === label || (label && label.includes(p.oem ?? "__nope__"))
-    ));
-    if (matchInquiry) {
-      const joNum = reorderToProduction(matchInquiry.id);
-      toast.success(`Reorder created · ${joNum}`, { description: `${label} sent direct to Production Floor (skipped inquiry/quotation)` });
-    } else {
-      toast.success("Reorder initiated", { description: `Pre-filling inquiry for: ${label}` });
-    }
   };
 
   return (
@@ -551,7 +534,7 @@ function ClientDetailDrawer({
 
         {/* Tabs */}
         <nav className="px-6 border-b border-slate-200 flex gap-1 shrink-0">
-          {([["overview", "Overview"], ["transactions", "Transactions"], ["jobs", "Job Orders"], ["documents", "Documents"]] as const).map(([id, label]) => {
+                  {([["overview", "Overview"], ["transactionsOrders", "Transactions & Orders"]] as const).map(([id, label]) => {
             const active = tab === id;
             return (
               <button
@@ -617,31 +600,32 @@ function ClientDetailDrawer({
                 >
                   <Save size={14} /> Save Changes
                 </button>
-                <button
-                  onClick={() => toast.success("Opening new inquiry", { description: `For: ${client.name}` })}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-dm hover:opacity-90"
-                  style={{ backgroundColor: "#1A2B4A", color: "white", fontSize: 13, fontWeight: 700 }}
-                >
-                  <Plus size={14} /> New Inquiry for This Client
-                </button>
               </div>
             </>
           )}
 
-          {/* ─── TRANSACTIONS TAB — fully completed orders only ─── */}
-          {tab === "transactions" && (() => {
-            const completed = client.transactions.filter(t => t.status === "Paid");
+          {/* ─── TRANSACTIONS & ORDERS TAB ─── */}
+          {tab === "transactionsOrders" && (() => {
+            const transactions = client.transactions;
             return (
               <section className="flex flex-col gap-0">
-                <div className="rounded-lg p-3 mb-3 font-dm" style={{ fontSize: 12, color: "#475569", backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                  ℹ️ Transactions = fully completed (delivered + paid) orders. Active orders live in Job Orders. Document attachments are in Documents.
-                </div>
-                {completed.length === 0 && (
+                {transactions.length === 0 && (
                   <div className="p-8 text-center font-dm rounded-lg border border-slate-200" style={{ fontSize: 13, color: "#64748B" }}>
-                    No completed transactions yet.
+                    No transactions available.
                   </div>
                 )}
-                {completed.map((t) => {
+                {transactions.map((t) => {
+                  const transactionRefs = new Set([
+                    t.po,
+                    ...(t.docs ?? []).filter((doc) => doc.type === "PO" || doc.type === "JO").map((doc) => doc.ref),
+                  ]);
+                  const relatedJobs = client.jobs.filter((job) => {
+                    const jobRefs = [job.jo, ...(job.docs ?? []).filter((doc) => doc.type === "PO" || doc.type === "JO").map((doc) => doc.ref)];
+                    return jobRefs.some((ref) => transactionRefs.has(ref));
+                  });
+                  const linkedDocs = [...(t.docs ?? []), ...relatedJobs.flatMap((job) => job.docs ?? [])].filter((doc, index, docs) =>
+                    docs.findIndex((candidate) => candidate.type === doc.type && candidate.ref === doc.ref) === index
+                  );
                   const isOpen = expandedTx === t.id;
                   return (
                     <div key={t.id} className="border border-slate-200 rounded-lg overflow-hidden mb-3">
@@ -649,17 +633,37 @@ function ClientDetailDrawer({
                         onClick={() => setExpandedTx(isOpen ? null : t.id)}
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-left"
                       >
-                        <div className="flex-1 grid grid-cols-4 gap-2 items-center">
+                        <div className="flex-1 grid grid-cols-5 gap-2 items-center">
                           <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{t.date}</div>
                           <div className="font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{t.po}</div>
                           <div className="font-dm" style={{ fontSize: 12, color: "#0F172A", fontWeight: 500 }}>{t.item}</div>
-                          <span className="font-dm px-2 py-0.5 rounded-full justify-self-start" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>✓ Completed</span>
+                          <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>₱{t.amount.toLocaleString("en-PH")}</div>
+                          <span className="font-dm px-2 py-0.5 rounded-full justify-self-start" style={{ fontSize: 10, fontWeight: 700, backgroundColor: t.status === "Paid" ? "#DCFCE7" : t.status === "Pending" ? "#FEF3C7" : "#DBEAFE", color: t.status === "Paid" ? "#15803D" : t.status === "Pending" ? "#B45309" : "#1D4ED8" }}>{t.status}</span>
                         </div>
                         {isOpen ? <ChevronUp size={14} style={{ color: "#64748B" }} /> : <ChevronDown size={14} style={{ color: "#64748B" }} />}
                       </button>
                       {isOpen && (
                         <div className="px-4 pb-4 border-t border-slate-200" style={{ backgroundColor: "#FAFBFC" }}>
                           <div className="grid grid-cols-3 gap-4 pt-3">
+                            {relatedJobs.map((job) => (
+                              <div key={job.id} className="col-span-3">
+                                <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Job Order · {job.jo}</div>
+                                <div className="font-dm" style={{ fontSize: 12, color: "#475569", lineHeight: 1.6 }}>{job.product} · Qty {job.qty} · {job.status === "active" ? "Active" : "Completed"} · {job.stage}{job.progress !== undefined ? ` · ${job.progress}%` : ""}</div>
+                                {job.specs && <div className="rounded-md p-3 mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5" style={{ backgroundColor: "#F4F6F9" }}>
+                                  {job.specs.od1 && <SpecRow k="OD 1" v={`${job.specs.od1}mm`} />}
+                                  {job.specs.od2 && <SpecRow k="OD 2" v={`${job.specs.od2}mm`} />}
+                                  {job.specs.id1 && <SpecRow k="ID 1" v={`${job.specs.id1}mm`} />}
+                                  {job.specs.id2 && <SpecRow k="ID 2" v={`${job.specs.id2}mm`} />}
+                                  {job.specs.height && <SpecRow k="Height" v={`${job.specs.height}mm`} />}
+                                  {job.specs.media && <SpecRow k="Filter Media" v={job.specs.media} />}
+                                  {job.specs.innerCore && <SpecRow k="Inner Core" v={job.specs.innerCore} />}
+                                  {job.specs.outerCore && <SpecRow k="Outer Core" v={job.specs.outerCore} />}
+                                  {job.specs.endCap && <SpecRow k="End Cap" v={job.specs.endCap} />}
+                                  {job.specs.oem && <SpecRow k="OEM PN" v={job.specs.oem} />}
+                                  {job.specs.brand && <SpecRow k="Brand" v={job.specs.brand} />}
+                                </div>}
+                              </div>
+                            ))}
                             {t.specs && (
                               <div>
                                 <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Product Specs</div>
@@ -678,6 +682,18 @@ function ClientDetailDrawer({
                                 <div className="font-dm" style={{ fontSize: 12, color: "#475569", lineHeight: 1.6 }}>{t.deliveryInfo}</div>
                               </div>
                             )}
+                            {linkedDocs.length > 0 && (
+                              <div className="col-span-3">
+                                <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Linked Documents</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {linkedDocs.map((doc) => (
+                                    <button key={doc.ref} onClick={() => toast(`Viewing ${doc.ref}`)} className="font-dm flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-white" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>
+                                      <Eye size={11} /> {doc.type}: {doc.ref}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -688,187 +704,6 @@ function ClientDetailDrawer({
             );
           })()}
 
-          {/* ─── JOB ORDERS TAB ─── */}
-          {tab === "jobs" && (
-            <section className="flex flex-col gap-3">
-              {client.jobs.length === 0 && (
-                <div className="rounded-lg border border-slate-200 p-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-                  No job orders.
-                </div>
-              )}
-              {client.jobs.map((j) => {
-                const isOpen = expandedJo === j.id;
-                const progress = j.progress ?? 0;
-                return (
-                  <div key={j.id} className="rounded-lg border border-slate-200 overflow-hidden">
-                    <button
-                      onClick={() => setExpandedJo(isOpen ? null : j.id)}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-left"
-                    >
-                      <div
-                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: j.status === "active" ? "#DBEAFE" : "#DCFCE7", color: j.status === "active" ? "#1D4ED8" : "#15803D" }}
-                        aria-hidden
-                      >
-                        {j.status === "active" ? <Factory size={16} /> : <FileText size={16} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="font-mono-jb" style={{ fontSize: 13, fontWeight: 600, color: "#1A2B4A" }}>{j.jo}</div>
-                          <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 600, backgroundColor: j.status === "active" ? "#DBEAFE" : "#DCFCE7", color: j.status === "active" ? "#1D4ED8" : "#15803D" }}>
-                            {j.status === "active" ? "Active" : "Completed"}
-                          </span>
-                        </div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 500 }}>{j.product}</div>
-                        <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>Qty {j.qty} · {j.stage}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); reorder(j.product); }}
-                          className="font-dm px-2.5 py-1 rounded-md hover:opacity-90 flex items-center gap-1"
-                          style={{ backgroundColor: "#F59E0B", color: "white", fontSize: 11, fontWeight: 700 }}
-                        >
-                          <RotateCcw size={11} /> Reorder
-                        </button>
-                        {isOpen ? <ChevronUp size={14} style={{ color: "#64748B" }} /> : <ChevronDown size={14} style={{ color: "#64748B" }} />}
-                      </div>
-                    </button>
-
-                    {isOpen && (
-                      <div className="px-4 pb-4 border-t border-slate-200" style={{ backgroundColor: "#FAFBFC" }}>
-                        <div className="pt-3 flex flex-col gap-3">
-                          {/* Progress */}
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>Production Progress</span>
-                              <span className="font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{progress}%</span>
-                            </div>
-                            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "#E2E8F0" }}>
-                              <div
-                                className="h-full rounded-full"
-                                style={{ width: `${progress}%`, backgroundColor: progress >= 100 ? "#16A34A" : "#C8102E", transition: "width 0.3s" }}
-                              />
-                            </div>
-                            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Current Stage: {j.stage}</div>
-                          </div>
-
-                          {/* Filter Specs */}
-                          {j.specs && (
-                            <div>
-                              <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Filter Specifications</div>
-                              <div className="rounded-md p-3 grid grid-cols-2 gap-x-4 gap-y-1.5" style={{ backgroundColor: "#F4F6F9" }}>
-                                {j.specs.od1 && <SpecRow k="OD 1" v={`${j.specs.od1}mm`} />}
-                                {j.specs.od2 && <SpecRow k="OD 2" v={`${j.specs.od2}mm`} />}
-                                {j.specs.id1 && <SpecRow k="ID 1" v={`${j.specs.id1}mm`} />}
-                                {j.specs.id2 && <SpecRow k="ID 2" v={`${j.specs.id2}mm`} />}
-                                {j.specs.height && <SpecRow k="Height" v={`${j.specs.height}mm`} />}
-                                {j.specs.media && <SpecRow k="Filter Media" v={j.specs.media} />}
-                                {j.specs.innerCore && <SpecRow k="Inner Core" v={j.specs.innerCore} />}
-                                {j.specs.outerCore && <SpecRow k="Outer Core" v={j.specs.outerCore} />}
-                                {j.specs.endCap && <SpecRow k="End Cap" v={j.specs.endCap} />}
-                                {j.specs.oem && <SpecRow k="OEM PN" v={j.specs.oem} />}
-                                {j.specs.brand && <SpecRow k="Brand" v={j.specs.brand} />}
-                                <SpecRow k="Qty" v={String(j.qty)} />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Linked Documents */}
-                          {j.docs && j.docs.length > 0 && (
-                            <div>
-                              <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Linked Documents</div>
-                              <div className="flex flex-wrap gap-2">
-                                {j.docs.map((d) => (
-                                  <button
-                                    key={d.ref}
-                                    onClick={() => toast(`Viewing ${d.ref}`)}
-                                    className="font-dm flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-white"
-                                    style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
-                                  >
-                                    <Eye size={11} /> {d.type}: {d.ref}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </section>
-          )}
-
-          {/* ─── DOCUMENTS TAB ─── */}
-          {tab === "documents" && (
-            <section className="flex flex-col gap-4">
-              <div className="font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-                All files uploaded during JO generation for this client — sketches, signed quotations, and downpayment receipts.
-              </div>
-
-              {clientInquiries.length === 0 ? (
-                <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8", backgroundColor: "#F8FAFC", border: "1px dashed #CBD5E1" }}>
-                  No uploaded documents yet.
-                </div>
-              ) : (
-                clientInquiries.map((inq) => {
-                  const files = [
-                    inq.joSketch && { label: "Final Sketch / Drawing", file: inq.joSketch, color: "#1A2B4A", bg: "#EFF6FF" },
-                    inq.signedQuotationFile && { label: "Signed Quotation", file: inq.signedQuotationFile, color: "#16A34A", bg: "#F0FDF4" },
-                    inq.dpReceiptFile && { label: "Downpayment Receipt", file: inq.dpReceiptFile, color: "#D97706", bg: "#FFFBEB" },
-                  ].filter(Boolean) as { label: string; file: string; color: string; bg: string }[];
-
-                  if (files.length === 0) return null;
-                  return (
-                    <div key={inq.id} className="rounded-xl border border-slate-200 overflow-hidden">
-                      <div className="px-4 py-3 flex items-center gap-3" style={{ backgroundColor: "#F4F6F9" }}>
-                        <span className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{inq.joNumber ?? inq.code}</span>
-                        <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{inq.submittedDate} · {inq.products[0]?.type}</span>
-                        {inq.urgent && <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>RUSH</span>}
-                      </div>
-                      <div className="p-4 flex flex-col gap-2">
-                        {files.map(({ label, file, color, bg }) => (
-                          <div key={label} className="flex items-center gap-3 rounded-lg px-4 py-3" style={{ backgroundColor: bg, border: `1px solid ${color}20` }}>
-                            <Paperclip size={14} style={{ color }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
-                              <div className="font-mono-jb truncate" style={{ fontSize: 12, fontWeight: 600, color }}>{file}</div>
-                            </div>
-                            <button
-                              onClick={() => toast.info(`Opening: ${file}`, { description: "In production, this downloads or previews the file" })}
-                              className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border hover:opacity-90"
-                              style={{ fontSize: 11, fontWeight: 600, color, borderColor: `${color}40`, backgroundColor: "white" }}
-                            >
-                              <Eye size={11} /> View
-                            </button>
-                          </div>
-                        ))}
-                        {/* Client payment receipts */}
-                        {(inq.clientPaymentReceipts ?? []).map((cr) => (
-                          <div key={cr.id} className="flex items-center gap-3 rounded-lg px-4 py-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                            <Paperclip size={14} style={{ color: "#2563EB" }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.3 }}>Client Payment Receipt · {cr.date}</div>
-                              <div className="font-mono-jb truncate" style={{ fontSize: 12, fontWeight: 600, color: "#2563EB" }}>{cr.filename}</div>
-                              {cr.note && <div className="font-dm" style={{ fontSize: 11, color: "#3B82F6" }}>{cr.note} · ₱{cr.amount.toLocaleString("en-PH")}</div>}
-                            </div>
-                            <button
-                              onClick={() => toast.info(`Viewing: ${cr.filename}`)}
-                              className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border hover:opacity-90"
-                              style={{ fontSize: 11, fontWeight: 600, color: "#2563EB", borderColor: "#BFDBFE", backgroundColor: "white" }}
-                            >
-                              <Eye size={11} /> View
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </section>
-          )}
         </div>
       </div>
     </div>

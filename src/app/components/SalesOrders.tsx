@@ -53,6 +53,15 @@ export function SalesOrders() {
   const generatingJO = inquiries.find((i) => i.id === generateJoId);
   const viewingInvoice = inquiries.find((i) => i.id === viewInvoiceId);
 
+  const sendInvoiceToClient = (invoice: Inquiry, closePreview: () => void) => {
+    if (!sendInvoice(invoice.id)) return;
+    const invoicePayment = paymentState(invoice);
+    const downpaymentPercent = invoice.quotationDoc?.downpaymentPercent ?? invoice.downpaymentPercent ?? 0;
+    pushNotif({ dept: "payments", title: `INVOICE RECEIVED: ${invoice.invoiceNo}`, body: `${invoice.clientName} · ${peso(invoice.invoiceAmount ?? 0)}${downpaymentPercent > 0 ? ` · DOWNPAYMENT REQUIRED ${peso(invoicePayment.requiredDownpaymentAmount)}` : ""}`, link: "accounting", clientName: invoice.clientName, recipients: ["owner", "accounting", "operations", "client"] });
+    toast.success("Invoice sent to client", { description: `${invoice.invoiceNo} · client portal updated` });
+    closePreview();
+  };
+
   const isReadyForJobOrder = (inquiry: Inquiry) => {
     if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
     const state = paymentState(inquiry);
@@ -301,16 +310,8 @@ export function SalesOrders() {
         <InvoicePreviewModal
           inquiry={generating}
           onClose={() => setGenerateId(null)}
-          canSend={!generating.invoiceSentAt}
-          onSend={() => {
-            if (sendInvoice(generating.id)) {
-              const invoicePayment = paymentState(generating);
-              const downpaymentPercent = generating.quotationDoc?.downpaymentPercent ?? generating.downpaymentPercent ?? 0;
-              pushNotif({ dept: "payments", title: `INVOICE RECEIVED: ${generating.invoiceNo}`, body: `${generating.clientName} · ${peso(generating.invoiceAmount ?? 0)}${downpaymentPercent > 0 ? ` · DOWNPAYMENT REQUIRED ${peso(invoicePayment.requiredDownpaymentAmount)}` : ""}`, link: "accounting", clientName: generating.clientName, recipients: ["owner", "accounting", "operations", "client"] });
-              toast.success("Invoice sent to client", { description: `${generating.invoiceNo} · client portal updated` });
-              setGenerateId(null);
-            }
-          }}
+          canSend={!!generating.invoiceNo && !generating.invoiceSentAt}
+          onSend={() => sendInvoiceToClient(generating, () => setGenerateId(null))}
         />
       )}
       {generatingJO && (
@@ -338,7 +339,14 @@ export function SalesOrders() {
           }}
         />
       )}
-      {viewingInvoice && <InvoicePreviewModal inquiry={viewingInvoice} onClose={() => setViewInvoiceId(null)} />}
+      {viewingInvoice && (
+        <InvoicePreviewModal
+          inquiry={viewingInvoice}
+          onClose={() => setViewInvoiceId(null)}
+          canSend={!!viewingInvoice.invoiceNo && !viewingInvoice.invoiceSentAt}
+          onSend={() => sendInvoiceToClient(viewingInvoice, () => setViewInvoiceId(null))}
+        />
+      )}
       {showNewInquiry && (
         <ManagementNewInquiryModal
           onClose={() => setShowNewInquiry(false)}
@@ -539,15 +547,24 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           )}
           {inquiry.invoiceNo ? (
             <div className="rounded-md p-3" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
-              <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
-                {inquiry.invoiceSentAt ? "✓ INVOICE SENT" : "INVOICE DRAFT"}
-              </div>
+              {!!inquiry.invoiceNo && !!inquiry.invoiceSentAt && (
+                <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
+                  ✓ INVOICE SENT
+                </div>
+              )}
               <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
                 ✓ INVOICE GENERATED
               </div>
               <div className="font-mono-jb mt-1" style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>{inquiry.invoiceNo}</div>
               <div className="font-syne" style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>{peso(inquiry.invoiceAmount ?? total)}</div>
-              <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 700, color: "#166534", letterSpacing: 0.35 }}>{inquiry.invoiceSentAt ? "AWAITING CLIENT PAYMENT" : "READY FOR SALES REVIEW"}</div>
+              {!!inquiry.invoiceNo && !!inquiry.invoiceSentAt ? (
+                <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 700, color: "#166534", letterSpacing: 0.35 }}>AWAITING CLIENT PAYMENT</div>
+              ) : (
+                <>
+                  <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", letterSpacing: 0.35 }}>DRAFT — NOT SENT</div>
+                  <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 700, color: "#166534", letterSpacing: 0.35 }}>READY FOR SALES REVIEW</div>
+                </>
+              )}
               <button onClick={onViewInvoice} className="w-full mt-2 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
             </div>
           ) : (

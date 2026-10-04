@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 
 /* ─────────── Types ─────────── */
 
@@ -33,6 +33,7 @@ export interface AuditEntry {
   newQty: number;
   reason: string;          // free-form / from preset list
   reference?: string;      // PO ref / JO number
+  changes?: { field: string; oldValue: string; newValue: string }[];
 }
 
 export interface RawMaterial {
@@ -52,6 +53,19 @@ export interface BOMLine {
   partCategory: PartCategory;
   qtyConsumed: number;     // per filter unit
   wastePct?: number;       // informational only
+}
+
+export interface GeneratedJOMaterialRequirements {
+  joNumber: string;
+  quantity: number;
+  bom?: BOMLine[] | null;
+  alreadyDeducted?: boolean;
+}
+
+export interface GeneratedJODeductionResult {
+  joNumber: string;
+  status: "ready" | "deducted" | "already-deducted" | "no-bom" | "insufficient" | "missing-material" | "invalid-bom" | "invalid-quantity" | "batch-aborted";
+  details?: string[];
 }
 
 export type VatType = "Exclusive" | "Inclusive" | "Zero-Rated";
@@ -379,13 +393,18 @@ interface Ctx {
   get: (k: MaterialKey) => Material;
   /* Actions */
   updateStock: (id: string, newQty: number, reason: string, reference?: string, by?: string) => void;
+  updateMaterial: (
+    id: string,
+    updates: Partial<Pick<RawMaterial, "name" | "category" | "unit" | "unitPrice" | "qtyInStock" | "threshold" | "supplier">>,
+    stockReason: string,
+    reference?: string
+  ) => void;
   addMaterial: (m: Omit<RawMaterial, "id" | "history">) => void;
-  /* Section B — delete a raw material from the inventory entirely. */
-  deleteMaterial: (id: string) => void;
   saveBOMTemplate: (t: Omit<BOMTemplate, "id">) => string;
   findBOMTemplate: (filterType: string, size?: string) => BOMTemplate | undefined;
   /* JO lifecycle */
-  deductForJO: (joNumber: string, bom: BOMLine[], by?: string) => { ok: boolean; shortages: { name: string; needed: number; available: number; unit: string }[] };
+  validateGeneratedJOs: (requirements: GeneratedJOMaterialRequirements[]) => GeneratedJODeductionResult[];
+  deductForGeneratedJOs: (requirements: GeneratedJOMaterialRequirements[], by?: string) => GeneratedJODeductionResult[];
   restoreFromJO: (joNumber: string, bom: BOMLine[], by?: string) => void;
 }
 
@@ -393,7 +412,15 @@ const MaterialsContext = createContext<Ctx | null>(null);
 
 export function MaterialsProvider({ children }: { children: ReactNode }) {
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(seedMaterials);
+  const rawMaterialsRef = useRef(rawMaterials);
+  const generatedJOsDeducted = useRef(new Set<string>());
   const [templates, setTemplates] = useState<BOMTemplate[]>(seedTemplates);
+
+  const commitRawMaterials = (update: (current: RawMaterial[]) => RawMaterial[]) => {
+    const next = update(rawMaterialsRef.current);
+    rawMaterialsRef.current = next;
+    setRawMaterials(next);
+  };
 
   const stamp = (by: string) => ({
     id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -402,8 +429,8 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
   });
 
   const updateStock: Ctx["updateStock"] = (id, newQty, reason, reference, by = "F. Santos · Warehouse") => {
-    setRawMaterials((prev) =>
-      prev.map((m) => {
+    commitRawMaterials((current) =>
+      current.map((m) => {
         if (m.id !== id) return m;
         const entry: AuditEntry = { ...stamp(by), oldQty: m.qtyInStock, newQty, reason, reference };
         return { ...m, qtyInStock: newQty, history: [entry, ...m.history] };
@@ -411,13 +438,39 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addMaterial: Ctx["addMaterial"] = (m) => {
-    const id = `mat-${Date.now()}`;
-    setRawMaterials((prev) => [...prev, { ...m, id, history: [{ ...stamp("System"), oldQty: 0, newQty: m.qtyInStock, reason: "Initial stock added" }] }]);
+  const updateMaterial: Ctx["updateMaterial"] = (id, updates, stockReason, reference) => {
+    commitRawMaterials((current) =>
+      current.map((m) => {
+        if (m.id !== id) return m;
+
+        const changes = (Object.keys(updates) as (keyof typeof updates)[])
+          .filter((field) => field !== "qtyInStock" && updates[field] !== m[field])
+          .map((field) => ({
+            field,
+            oldValue: String(m[field] ?? ""),
+            newValue: String(updates[field] ?? ""),
+          }));
+        const newQty = updates.qtyInStock ?? m.qtyInStock;
+        const stockChanged = newQty !== m.qtyInStock;
+        if (changes.length === 0 && !stockChanged) return m;
+
+        const entry: AuditEntry = {
+          ...stamp("F. Santos · Warehouse"),
+          oldQty: m.qtyInStock,
+          newQty,
+          reason: stockChanged ? stockReason : "Material details updated",
+          reference: stockChanged ? reference : undefined,
+          changes,
+        };
+
+        return { ...m, ...updates, history: [entry, ...m.history] };
+      })
+    );
   };
 
-  const deleteMaterial: Ctx["deleteMaterial"] = (id) => {
-    setRawMaterials((prev) => prev.filter((m) => m.id !== id));
+  const addMaterial: Ctx["addMaterial"] = (m) => {
+    const id = `mat-${Date.now()}`;
+    commitRawMaterials((current) => [...current, { ...m, id, history: [{ ...stamp("System"), oldQty: 0, newQty: m.qtyInStock, reason: "Initial stock added" }] }]);
   };
 
   const saveBOMTemplate: Ctx["saveBOMTemplate"] = (t) => {
@@ -434,39 +487,139 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const deductForJO: Ctx["deductForJO"] = (joNumber, bom, by = "System (auto-deduct)") => {
-    /* Pre-flight: gather shortages without mutating */
-    const shortages: { name: string; needed: number; available: number; unit: string }[] = [];
-    for (const line of bom) {
-      const m = rawMaterials.find((x) => x.id === line.materialId);
-      if (!m) continue;
-      if (line.qtyConsumed > m.qtyInStock) {
-        shortages.push({ name: m.name, needed: line.qtyConsumed, available: m.qtyInStock, unit: m.unit });
-      }
-    }
-    if (shortages.length > 0) return { ok: false, shortages };
+  const processGeneratedJOs: (requirements: GeneratedJOMaterialRequirements[], commit: boolean, by?: string) => GeneratedJODeductionResult[] = (requirements, commit, by = "System (auto-deduct)") => {
+    const availableMaterials = new Map(rawMaterialsRef.current.map((material) => [material.id, material]));
+    const plannedUsage = new Map<string, number>();
+    const plannedDeductions: { joNumber: string; requirements: Map<string, number>; resultIndex: number }[] = [];
+    const results: GeneratedJODeductionResult[] = [];
+    const seenJOs = new Set<string>();
+    let hasFailure = false;
 
-    setRawMaterials((prev) =>
-      prev.map((m) => {
-        const line = bom.find((b) => b.materialId === m.id);
-        if (!line) return m;
-        const newQty = Math.max(0, m.qtyInStock - line.qtyConsumed);
+    for (const requirement of requirements) {
+      if (requirement.alreadyDeducted || generatedJOsDeducted.current.has(requirement.joNumber) || seenJOs.has(requirement.joNumber)) {
+        results.push({ joNumber: requirement.joNumber, status: "already-deducted" });
+        continue;
+      }
+      seenJOs.add(requirement.joNumber);
+      if (!Number.isFinite(requirement.quantity) || requirement.quantity <= 0) {
+        results.push({ joNumber: requirement.joNumber, status: "invalid-quantity", details: [`Invalid JO product quantity: ${requirement.quantity}`] });
+        hasFailure = true;
+        continue;
+      }
+      if (!requirement.bom?.length) {
+        results.push({ joNumber: requirement.joNumber, status: "no-bom" });
+        hasFailure = true;
+        continue;
+      }
+
+      const requiredByMaterial = new Map<string, number>();
+      const invalidLines: string[] = [];
+      const missingMaterials: string[] = [];
+      for (const line of requirement.bom) {
+        if (!line.materialId || !Number.isFinite(line.qtyConsumed) || line.qtyConsumed <= 0) {
+          invalidLines.push(`Invalid BOM quantity or material ID: ${line.materialId || "(missing ID)"}`);
+          continue;
+        }
+        const needed = line.qtyConsumed * requirement.quantity;
+        if (!Number.isFinite(needed)) {
+          invalidLines.push(`Invalid required quantity for material ${line.materialId}`);
+          continue;
+        }
+        if (!availableMaterials.has(line.materialId)) {
+          missingMaterials.push(`Material ID ${line.materialId} (${line.partCategory}) was not found in Inventory`);
+          continue;
+        }
+        const totalNeeded = (requiredByMaterial.get(line.materialId) ?? 0) + needed;
+        if (!Number.isFinite(totalNeeded)) {
+          invalidLines.push(`Invalid total required quantity for material ${line.materialId}`);
+          continue;
+        }
+        requiredByMaterial.set(line.materialId, totalNeeded);
+      }
+      if (invalidLines.length > 0) {
+        results.push({ joNumber: requirement.joNumber, status: "invalid-bom", details: invalidLines });
+        hasFailure = true;
+        continue;
+      }
+      if (missingMaterials.length > 0) {
+        results.push({ joNumber: requirement.joNumber, status: "missing-material", details: missingMaterials });
+        hasFailure = true;
+        continue;
+      }
+
+      const shortages: string[] = [];
+      for (const [materialId, needed] of requiredByMaterial) {
+        const material = availableMaterials.get(materialId)!;
+        const available = material.qtyInStock - (plannedUsage.get(materialId) ?? 0);
+        if (needed > available) {
+          shortages.push(`${material.name}: need ${needed.toFixed(2)} ${material.unit}, have ${available.toFixed(2)} ${material.unit} available for this JO`);
+        }
+      }
+      if (shortages.length > 0) {
+        results.push({ joNumber: requirement.joNumber, status: "insufficient", details: shortages });
+        hasFailure = true;
+        continue;
+      }
+
+      requiredByMaterial.forEach((needed, materialId) => {
+        plannedUsage.set(materialId, (plannedUsage.get(materialId) ?? 0) + needed);
+      });
+      const resultIndex = results.push({ joNumber: requirement.joNumber, status: "deducted" }) - 1;
+      plannedDeductions.push({ joNumber: requirement.joNumber, requirements: requiredByMaterial, resultIndex });
+    }
+
+    if (hasFailure) {
+      plannedDeductions.forEach(({ resultIndex }) => {
+        results[resultIndex] = {
+          ...results[resultIndex],
+          status: "batch-aborted",
+          details: ["No inventory was deducted because another JO in this Generate JO confirmation could not be validated."],
+        };
+      });
+      return results;
+    }
+
+    if (plannedDeductions.length === 0) return results;
+    if (!commit) {
+      plannedDeductions.forEach(({ resultIndex }) => {
+        results[resultIndex] = { ...results[resultIndex], status: "ready" };
+      });
+      return results;
+    }
+
+    const workingMaterials = new Map(availableMaterials);
+    for (const { joNumber, requirements: requiredByMaterial } of plannedDeductions) {
+      for (const [materialId, needed] of requiredByMaterial) {
+        const material = workingMaterials.get(materialId)!;
+        const newQty = material.qtyInStock - needed;
         const entry: AuditEntry = {
           ...stamp(by),
-          oldQty: m.qtyInStock,
+          oldQty: material.qtyInStock,
           newQty,
-          reason: `Production used: ${joNumber} · ${line.qtyConsumed.toFixed(3)} ${m.unit}`,
+          reason: `Production used: ${joNumber} · ${needed.toFixed(3)} ${material.unit}`,
           reference: joNumber,
         };
-        return { ...m, qtyInStock: newQty, history: [entry, ...m.history] };
-      })
-    );
-    return { ok: true, shortages: [] };
+        workingMaterials.set(materialId, { ...material, qtyInStock: newQty, history: [entry, ...material.history] });
+      }
+      generatedJOsDeducted.current.add(joNumber);
+    }
+
+    const updatedMaterials = rawMaterialsRef.current.map((material) => workingMaterials.get(material.id) ?? material);
+    rawMaterialsRef.current = updatedMaterials;
+    setRawMaterials(updatedMaterials);
+
+    return results;
   };
 
+  const validateGeneratedJOs: Ctx["validateGeneratedJOs"] = (requirements) =>
+    processGeneratedJOs(requirements, false);
+
+  const deductForGeneratedJOs: Ctx["deductForGeneratedJOs"] = (requirements, by) =>
+    processGeneratedJOs(requirements, true, by);
+
   const restoreFromJO: Ctx["restoreFromJO"] = (joNumber, bom, by = "System") => {
-    setRawMaterials((prev) =>
-      prev.map((m) => {
+    commitRawMaterials((current) =>
+      current.map((m) => {
         const line = bom.find((b) => b.materialId === m.id);
         if (!line) return m;
         const newQty = m.qtyInStock + line.qtyConsumed;
@@ -487,7 +640,7 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
 
   return (
     <MaterialsContext.Provider
-      value={{ rawMaterials, templates, materials, get, updateStock, addMaterial, deleteMaterial, saveBOMTemplate, findBOMTemplate, deductForJO, restoreFromJO }}
+      value={{ rawMaterials, templates, materials, get, updateStock, updateMaterial, addMaterial, saveBOMTemplate, findBOMTemplate, validateGeneratedJOs, deductForGeneratedJOs, restoreFromJO }}
     >
       {children}
     </MaterialsContext.Provider>

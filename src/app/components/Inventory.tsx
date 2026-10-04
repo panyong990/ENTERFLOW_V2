@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { X, History, Pencil, Search, Boxes, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useMaterials, partCategoryMeta, type PartCategory, type RawMaterial, type Unit } from "../store/materials";
@@ -15,6 +15,7 @@ const STOCK_REASONS = [
 ];
 
 const UNITS: Unit[] = ["roll", "plate", "sheet", "kg", "gal", "pcs", "set", "m"];
+type EditableMaterialFields = Pick<RawMaterial, "name" | "category" | "unit" | "unitPrice" | "qtyInStock" | "threshold" | "supplier">;
 
 function statusFor(m: RawMaterial): { label: string; bg: string; fg: string } {
   if (m.qtyInStock <= 0) return { label: "🔴 OUT OF STOCK", bg: "#FEE2E2", fg: "#991B1B" };
@@ -50,7 +51,7 @@ const demandStyle = {
 /* ─────────── Component ─────────── */
 
 export function Inventory() {
-  const { rawMaterials, updateStock, addMaterial } = useMaterials();
+  const { rawMaterials, updateMaterial, addMaterial } = useMaterials();
   const { push: pushNotif } = useNotifications();
 
   const [tab, setTab] = useState<"raw" | "finished">("raw");
@@ -59,6 +60,8 @@ export function Inventory() {
   const [showAdd, setShowAdd] = useState(false);
   const [collapsedCats, setCollapsedCats] = useState<Set<PartCategory>>(new Set());
   const [query, setQuery] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ material: RawMaterial; x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const [fg, setFg] = useState<FinishedGood[]>(finishedSeed);
   const [fgQuery, setFgQuery] = useState("");
@@ -85,21 +88,57 @@ export function Inventory() {
     });
   };
 
-  const saveStock = (id: string, newQty: number, reason: string, ref?: string) => {
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!contextMenuRef.current?.contains(event.target as Node)) setContextMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setContextMenu(null);
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+
+    const { width, height } = contextMenuRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(contextMenu.x, window.innerWidth - width));
+    const y = Math.max(0, Math.min(contextMenu.y, window.innerHeight - height));
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      setContextMenu((current) => current ? { ...current, x, y } : current);
+    }
+  }, [contextMenu]);
+
+  const saveMaterial = (id: string, updates: Partial<EditableMaterialFields>, reason: string, ref?: string) => {
     const m = rawMaterials.find((x) => x.id === id);
     if (!m) return;
-    updateStock(id, newQty, reason, ref);
+    if (Object.keys(updates).length === 0) {
+      setEditing(null);
+      return;
+    }
+    const newQty = updates.qtyInStock ?? m.qtyInStock;
+    const newThreshold = updates.threshold ?? m.threshold;
+    const newName = updates.name ?? m.name;
+    updateMaterial(id, updates, reason, ref);
     /* Low stock notification */
-    if (newQty < m.threshold && m.qtyInStock >= m.threshold) {
+    if (newQty < newThreshold && m.qtyInStock >= newThreshold) {
       pushNotif({
         dept: "system",
-        title: `🔴 Low stock: ${m.name}`,
-        body: `Only ${newQty.toFixed(2)} ${m.unit} remaining (threshold ${m.threshold} ${m.unit})`,
+        title: `🔴 Low stock: ${newName}`,
+        body: `Only ${newQty.toFixed(2)} ${updates.unit ?? m.unit} remaining (threshold ${newThreshold} ${updates.unit ?? m.unit})`,
         link: "inventory",
         recipients: ["owner", "operations", "warehouse"],
       });
     }
-    toast.success("Stock updated · logged to audit history");
+    toast.success("Material updated · logged to audit history");
     setEditing(null);
   };
 
@@ -114,6 +153,40 @@ export function Inventory() {
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
+
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          className="fixed z-40 min-w-36 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setEditing(contextMenu.material);
+              setContextMenu(null);
+            }}
+            className="font-dm flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+            style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
+          >
+            <Pencil size={13} /> Update
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setHistoryFor(contextMenu.material);
+              setContextMenu(null);
+            }}
+            className="font-dm flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+            style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}
+          >
+            <History size={13} /> History
+          </button>
+        </div>
+      )}
 
       <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-start justify-between">
         <div>
@@ -200,7 +273,7 @@ export function Inventory() {
                     <table className="w-full">
                       <thead style={{ backgroundColor: "#F4F6F9" }}>
                         <tr>
-                          {["Material Name", "Unit", "Qty in Stock", "Unit Price", "Threshold", "Status", "Actions"].map((h) => (
+                          {["Material Name", "Unit", "Qty in Stock", "Unit Price", "Threshold", "Status"].map((h) => (
                             <th key={h} className="font-dm text-left px-4 py-2.5" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
                           ))}
                         </tr>
@@ -209,7 +282,14 @@ export function Inventory() {
                         {items.map((m) => {
                           const s = statusFor(m);
                           return (
-                            <tr key={m.id} className="border-t border-slate-200/70 hover:bg-slate-50">
+                            <tr
+                              key={m.id}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                setContextMenu({ material: m, x: event.clientX, y: event.clientY });
+                              }}
+                              className="border-t border-slate-200/70 hover:bg-slate-50"
+                            >
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
                                 {m.name}
                                 {m.supplier && <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8", marginTop: 1 }}>{m.supplier}</div>}
@@ -219,16 +299,6 @@ export function Inventory() {
                               <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>₱{m.unitPrice.toLocaleString("en-PH")}</td>
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{m.threshold}</td>
                               <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: s.bg, color: s.fg }}>{s.label}</span></td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-1">
-                                  <button onClick={() => setEditing(m)} className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 hover:bg-white" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>
-                                    <Pencil size={11} /> Update
-                                  </button>
-                                  <button onClick={() => setHistoryFor(m)} className="font-dm flex items-center gap-1 px-2 py-1 rounded-md hover:bg-slate-100" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>
-                                    <History size={11} /> History
-                                  </button>
-                                </div>
-                              </td>
                             </tr>
                           );
                         })}
@@ -308,9 +378,9 @@ export function Inventory() {
         )}
       </div>
 
-      {/* Update Stock Modal (raw materials) */}
+      {/* Update Material Modal */}
       {editing && (
-        <UpdateStockModal m={editing} onClose={() => setEditing(null)} onSave={saveStock} />
+        <UpdateStockModal m={editing} onClose={() => setEditing(null)} onSave={saveMaterial} />
       )}
 
       {/* Update Finished Good Modal */}
@@ -351,56 +421,114 @@ export function Inventory() {
   );
 }
 
-/* ───────── Update Stock Modal ───────── */
+/* ───────── Update Material Modal ───────── */
 function UpdateStockModal({ m, onClose, onSave }: {
   m: RawMaterial;
   onClose: () => void;
-  onSave: (id: string, newQty: number, reason: string, ref?: string) => void;
+  onSave: (id: string, updates: Partial<EditableMaterialFields>, reason: string, ref?: string) => void;
 }) {
-  const [next, setNext] = useState(m.qtyInStock);
+  const [name, setName] = useState(m.name);
+  const [category, setCategory] = useState<PartCategory>(m.category);
+  const [unit, setUnit] = useState<Unit>(m.unit);
+  const [unitPrice, setUnitPrice] = useState(m.unitPrice);
+  const [qtyInStock, setQtyInStock] = useState(m.qtyInStock);
+  const [threshold, setThreshold] = useState(m.threshold);
+  const [supplier, setSupplier] = useState(m.supplier ?? "");
   const [reason, setReason] = useState(STOCK_REASONS[0]);
   const [ref, setRef] = useState("");
-  const [supplier, setSupplier] = useState(m.supplier ?? "");
+
+  const submit = () => {
+    const values = [unitPrice, qtyInStock, threshold];
+    if (!name.trim()) {
+      toast.error("Material name is required");
+      return;
+    }
+    if (values.some((value) => !Number.isFinite(value) || value < 0)) {
+      toast.error("Price, stock quantity, and threshold must be valid non-negative numbers");
+      return;
+    }
+
+    const normalizedName = name.trim();
+    const normalizedSupplier = supplier.trim() || undefined;
+    const updates: Partial<EditableMaterialFields> = {};
+    if (normalizedName !== m.name) updates.name = normalizedName;
+    if (category !== m.category) updates.category = category;
+    if (unit !== m.unit) updates.unit = unit;
+    if (unitPrice !== m.unitPrice) updates.unitPrice = unitPrice;
+    if (qtyInStock !== m.qtyInStock) updates.qtyInStock = qtyInStock;
+    if (threshold !== m.threshold) updates.threshold = threshold;
+    if (normalizedSupplier !== m.supplier) updates.supplier = normalizedSupplier;
+
+    onSave(m.id, updates, reason, ref.trim() || undefined);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <div>
-            <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Update Stock — {m.name}</h3>
+            <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Update Material</h3>
             <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{partCategoryMeta[m.category].label} · {m.unit}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
-        <div className="p-5 flex flex-col gap-4">
-          <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>Current: <span style={{ color: "#0F172A", fontWeight: 700 }}>{m.qtyInStock.toFixed(2)} {m.unit}</span></div>
+        <div className="p-5 flex flex-col gap-4 overflow-y-auto">
           <div className="flex flex-col gap-1.5">
-            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>New count <span style={{ fontWeight: 400 }}>(decimals OK)</span></label>
-            <input type="number" step="0.01" value={next} onChange={(e) => setNext(Number(e.target.value))} className="font-syne px-4 py-3 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A" }} autoFocus />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason</label>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
-              {STOCK_REASONS.map((r) => <option key={r}>{r}</option>)}
-            </select>
+            <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Material Name *</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} autoFocus />
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Category</label>
+              <select value={category} onChange={(e) => setCategory(e.target.value as PartCategory)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                {(Object.keys(partCategoryMeta) as PartCategory[]).map((c) => <option key={c} value={c}>{partCategoryMeta[c].label}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit</label>
+              <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit Price (₱)</label>
+              <input type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Stock Quantity</label>
+              <input type="number" min="0" step="0.01" value={qtyInStock} onChange={(e) => setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Low Stock Threshold</label>
+              <input type="number" min="0" step="0.01" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+            </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Supplier <span style={{ fontWeight: 400, color: "#94A3B8" }}>(optional)</span></label>
               <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="e.g. ABC Trading" className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reference <span style={{ fontWeight: 400, color: "#94A3B8" }}>(PO #)</span></label>
-              <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. PO-SUPP-2026-041" className="font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
-            </div>
           </div>
-          <div className="rounded-md p-2 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-            ℹ️ Logged with name, date, time, old qty, new qty in audit history.
+          <div className="border-t border-slate-200 pt-4 flex flex-col gap-3">
+            <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Stock adjustment audit</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason</label>
+                <select value={reason} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                  {STOCK_REASONS.map((r) => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reference <span style={{ fontWeight: 400, color: "#94A3B8" }}>(PO #)</span></label>
+                <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. PO-SUPP-2026-041" className="font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+              </div>
+            </div>
+            <div className="rounded-md p-2 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+              ℹ️ Changes are logged to the material audit history.
+            </div>
           </div>
         </div>
         <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
           <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-          <button onClick={() => onSave(m.id, next, reason, ref || undefined)} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>💾 Save</button>
+          <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>💾 Save</button>
         </div>
       </div>
     </div>
@@ -506,16 +634,37 @@ function HistoryDrawer({ m, onClose }: { m: RawMaterial; onClose: () => void }) 
                 const fmt = `${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
                 const change = h.newQty - h.oldQty;
                 const isIncrease = change > 0;
+                const fieldLabels: Record<string, string> = {
+                  name: "Material name",
+                  category: "Category",
+                  unit: "Unit",
+                  unitPrice: "Unit price",
+                  threshold: "Low-stock threshold",
+                  supplier: "Supplier",
+                };
+                const formatValue = (field: string, value: string) => {
+                  if (field === "category" && value in partCategoryMeta) return partCategoryMeta[value as PartCategory].label;
+                  if (field === "unitPrice") return `₱${Number(value).toLocaleString("en-PH")}`;
+                  if (field === "supplier") return value || "Not set";
+                  return value;
+                };
                 return (
                   <div key={h.id} className="rounded-lg p-3 border" style={{ borderColor: "#E2E8F0", backgroundColor: "#FAFBFC" }}>
                     <div className="font-dm" style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>{fmt}</div>
                     <div className="font-dm mt-0.5" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{h.user}</div>
-                    <div className="font-mono-jb mt-1.5" style={{ fontSize: 12, color: isIncrease ? "#16A34A" : "#C8102E", fontWeight: 600 }}>
-                      {isIncrease ? "↑" : "↓"} {h.oldQty.toFixed(2)} → {h.newQty.toFixed(2)} {m.unit}
-                      <span className="ml-2 font-dm" style={{ color: "#64748B", fontWeight: 400 }}>
-                        ({isIncrease ? "+" : ""}{change.toFixed(2)})
-                      </span>
-                    </div>
+                    {change !== 0 && (
+                      <div className="font-mono-jb mt-1.5" style={{ fontSize: 12, color: isIncrease ? "#16A34A" : "#C8102E", fontWeight: 600 }}>
+                        {isIncrease ? "↑" : "↓"} {h.oldQty.toFixed(2)} → {h.newQty.toFixed(2)} {m.unit}
+                        <span className="ml-2 font-dm" style={{ color: "#64748B", fontWeight: 400 }}>
+                          ({isIncrease ? "+" : ""}{change.toFixed(2)})
+                        </span>
+                      </div>
+                    )}
+                    {h.changes?.map(({ field, oldValue, newValue }) => (
+                      <div key={field} className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>
+                        {fieldLabels[field] ?? field}: {formatValue(field, oldValue)} → {formatValue(field, newValue)}
+                      </div>
+                    ))}
                     <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>Reason: {h.reason}</div>
                     {h.reference && (
                       <div className="font-mono-jb mt-0.5" style={{ fontSize: 11, color: "#1A2B4A" }}>Ref: {h.reference}</div>

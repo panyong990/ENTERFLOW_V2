@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -21,7 +21,8 @@ const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
+  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
+  const { validateGeneratedJOs, deductForGeneratedJOs } = useMaterials();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -320,11 +321,54 @@ export function SalesOrders() {
           onClose={() => setGenerateJoId(null)}
           onConfirm={(data) => {
             const jobOrders = Array.isArray(data) ? data : [data];
+            const materialRequirements = jobOrders.map((job, index) => ({
+              joNumber: job.joNumber,
+              quantity: generatingJO.products[index]?.qty ?? 0,
+              bom: resolveProductBOM(generatingJO, index),
+              alreadyDeducted: completedJOs.some((existingJO) =>
+                existingJO.joNumber === job.joNumber && existingJO.inventoryDeducted
+              ),
+            }));
+            const validationResults = validateGeneratedJOs(materialRequirements);
+            const validationWarnings = validationResults
+              .filter((result) => result.status !== "ready" && result.status !== "already-deducted")
+              .map((result) => {
+                const detail = result.details?.join("; ");
+                if (result.status === "no-bom") return `${result.joNumber}: no BOM is associated with this product; inventory was not deducted`;
+                return `${result.joNumber}: ${result.status}${detail ? ` — ${detail}` : ""}`;
+              });
+            if (validationWarnings.length > 0) {
+              toast.error("Cannot generate Job Order: inventory requirements could not be met", {
+                description: validationWarnings.join(" · "),
+                duration: 10000,
+              });
+              return;
+            }
+
             const createdIds = finalizeProductJOs(generatingJO.id, jobOrders);
             if (createdIds.length === 0) {
               toast.info("Job Order already exists", { description: `${generatingJO.code} has already been submitted to Production` });
               setGenerateJoId(null);
               return;
+            }
+            const deductionResults = deductForGeneratedJOs(materialRequirements);
+            deductionResults.forEach((result) => {
+              if (result.status === "deducted" || result.status === "already-deducted") {
+                markInventoryDeducted(result.joNumber);
+              }
+            });
+            const deductionWarnings = deductionResults
+              .filter((result) => result.status !== "deducted" && result.status !== "already-deducted")
+              .map((result) => {
+                const detail = result.details?.join("; ");
+                if (result.status === "no-bom") return `${result.joNumber}: no BOM is associated with this product; inventory was not deducted`;
+                return `${result.joNumber}: ${result.status}${detail ? ` — ${detail}` : ""}`;
+              });
+            if (deductionWarnings.length > 0) {
+              toast.error("Inventory deduction was not completed for all Job Orders", {
+                description: deductionWarnings.join(" · "),
+                duration: 10000,
+              });
             }
             const joNumbers = jobOrders.map((job) => job.joNumber);
             pushNotif({

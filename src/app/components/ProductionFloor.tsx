@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   Clock, CheckCircle2, Circle, AlertTriangle, Pause, Archive, Eye, X,
-  User, Package, Calendar, Wrench, Printer, ArrowLeft, ClipboardList, Pencil, Flag, XCircle,
+  User, Package, Calendar, Wrench, ArrowLeft, ClipboardList, Pencil, XCircle,
 } from "lucide-react";
-import { useSettings } from "../store/settings";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
@@ -63,7 +62,6 @@ interface Job {
   stageIndex: number;
   paused?: boolean;
   urgent?: boolean;
-  isReplacement?: boolean;
   sketch?: string;
   specs: string[];
   stageHistory: (StageHistoryEntry | null)[];
@@ -124,7 +122,6 @@ function inquiryToJob(inq: Inquiry): Job {
     stageIndex: stageIdx,
     paused,
     urgent: inq.urgent,
-    isReplacement: inq.isReplacement,
     sketch: inq.joSketch,
     specs,
     stageHistory,
@@ -200,7 +197,6 @@ function getJOTemplateData(job: Job): JOTemplateData {
     },
     preparedBy: "Tricia (Management)",
     sketch: job.sketch,
-    urgent: job.urgent,
     dueDate: job.due,
   };
 }
@@ -208,7 +204,6 @@ function getJOTemplateData(job: Job): JOTemplateData {
 export function ProductionFloor() {
   const [tab, setTab] = useState("all");
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [labelJob, setLabelJob] = useState<Job | null>(null);
   const [stageMonitorId, setStageMonitorId] = useState<string | null>(null);
   /* Section K — confirm modal before archiving completed JO */
   const [archiveConfirmJob, setArchiveConfirmJob] = useState<Job | null>(null);
@@ -216,12 +211,10 @@ export function ProductionFloor() {
   const [editingDueId, setEditingDueId] = useState<string | null>(null);
   const [editingDueValue, setEditingDueValue] = useState("");
   const [editingDueReason, setEditingDueReason] = useState("");
-  const [confirmCancelJob, setConfirmCancelJob] = useState<Job | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
   const [qcFailed, setQcFailed] = useState<Set<string>>(new Set());
   const { push: pushNotif } = useNotifications();
-  const { completedJOs, inquiriesByStage, updateInquiry, cancelJOFromProduction, markInventoryDeducted } = useOrders();
-  const { deductForJO, restoreFromJO } = useMaterials();
+  const { completedJOs, inquiriesByStage, updateInquiry, markInventoryDeducted } = useOrders();
+  const { deductForJO } = useMaterials();
 
   /* DERIVED: jobs come from the orders store. Any inquiry whose stage is in the production pipeline shows up. */
   const productionInquiries = useMemo(
@@ -240,25 +233,6 @@ export function ProductionFloor() {
 
   /* Find the inquiry behind a job — id is the inquiry id, so this is a direct lookup */
   const inqOf = (jobId: string) => productionInquiries.find((i) => i.id === jobId);
-
-  const toggleUrgent = (id: string) => {
-    const inq = inqOf(id);
-    if (!inq) return;
-    const next = !inq.urgent;
-    updateInquiry(id, { urgent: next });
-    if (next) {
-      pushNotif({
-        dept: "production",
-        title: `${inq.joNumber ?? inq.code} marked URGENT mid-production`,
-        body: `${inq.clientName} · ${inq.products[0]?.type ?? ""} · priority bumped`,
-        link: "production",
-        recipients: ["owner", "operations", "production"],
-      });
-      toast.success(`${inq.joNumber ?? inq.code} marked urgent`, { description: "Production team notified" });
-    } else {
-      toast(`${inq.joNumber ?? inq.code} urgency removed`);
-    }
-  };
 
   const saveDue = (id: string, due: string) => {
     if (!due.trim()) { toast.error("Enter a valid date"); return; }
@@ -296,32 +270,8 @@ export function ProductionFloor() {
     toast.success("QC passed → moving to next stage");
   };
 
-  const cancelJO = () => {
-    if (!confirmCancelJob) return;
-    if (!cancelReason.trim()) { toast.error("A reason is required"); return; }
-    const job = confirmCancelJob;
-    const inq = inqOf(job.id);
-    if (inq?.inventoryDeducted && inq.billOfMaterials) {
-      restoreFromJO(job.jo, inq.billOfMaterials);
-      toast.info("Materials returned to stock", { description: `${inq.billOfMaterials.length} material(s) restored` });
-    }
-    /* archiving via cancelJOFromProduction sets archived=true on the inquiry, removing it from the derived job list */
-    cancelJOFromProduction(job.jo, cancelReason.trim());
-    pushNotif({
-      dept: "production",
-      title: `JO cancelled: ${job.jo}`,
-      body: `${job.client} · ${job.product} · Reason: ${cancelReason.trim()}`,
-      link: "production",
-      recipients: ["owner", "operations", "sales", "client"],
-    });
-    toast.info("JO cancelled · archived", { description: `${job.jo} · ${job.client} notified` });
-    setConfirmCancelJob(null);
-    setCancelReason("");
-  };
-
-  /* Rush orders sort to top, then by stage progress */
   const sortedJobs = useMemo(
-    () => [...jobs].sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || b.stageIndex - a.stageIndex),
+    () => [...jobs].sort((a, b) => b.stageIndex - a.stageIndex),
     [jobs]
   );
   const visible = useMemo(() => sortedJobs.filter((j) => jobMatches(j, tab)), [sortedJobs, tab]);
@@ -439,8 +389,8 @@ export function ProductionFloor() {
         </div>
       </header>
 
-      <div className="px-8 py-8 pb-28">
-        <div className="grid grid-cols-2 gap-6">
+      <div className="px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:py-8">
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 lg:gap-6">
           {visible.map((job) => {
             const completed = job.stageIndex >= STAGES.length - 1;
             const pct = Math.round(((job.stageIndex + (completed ? 1 : 0)) / STAGES.length) * 100);
@@ -450,31 +400,18 @@ export function ProductionFloor() {
             return (
               <article
                 key={job.id}
-                className="bg-white rounded-xl overflow-hidden flex flex-col"
-                style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)", border: job.urgent ? "2px solid #C8102E" : "1px solid rgba(226,232,240,0.7)" }}
+                className="bg-white rounded-xl overflow-hidden flex h-full min-w-0 flex-col"
+                style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)", border: "1px solid rgba(226,232,240,0.7)" }}
               >
-                {/* Replacement banner */}
-                {job.isReplacement && (
-                  <div className="px-5 py-1.5 flex items-center gap-2" style={{ backgroundColor: "#7C3AED" }}>
-                    <span className="font-dm text-white" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6 }}>🔄 REPLACEMENT JO — CLIENT REPLACEMENT ORDER</span>
-                  </div>
-                )}
-                {/* Rush banner */}
-                {job.urgent && (
-                  <div className="px-5 py-1.5 flex items-center gap-2" style={{ backgroundColor: "#C8102E" }}>
-                    <span className="font-dm text-white" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6 }}>🚨 RUSH ORDER — PRIORITY PRODUCTION</span>
-                    <span className="font-dm text-white/80 ml-auto" style={{ fontSize: 11 }}>Due: {job.due}</span>
-                  </div>
-                )}
                 {/* Card Header */}
-                <div className="px-5 py-4 border-b border-slate-200/70" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
+                <div className="px-4 py-3 border-b border-slate-200/70 sm:px-5" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
                   <div className="flex items-center justify-between">
                     <span className="font-mono-jb tracking-wide" style={{ fontSize: 18, fontWeight: 600, color: "white" }}>{job.jo}</span>
                     <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: b.bg, color: b.fg }}>{b.label}</span>
                   </div>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "white", letterSpacing: 0.5 }}>{job.client}</span>
-                    <div className="flex items-center gap-3">
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="font-syne min-w-0" style={{ fontSize: 13, fontWeight: 700, color: "white", letterSpacing: 0.5 }}>{job.client}</span>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:justify-end">
                       {/* View JO File */}
                       <button
                         onClick={() => setJoFileJob(job)}
@@ -498,7 +435,7 @@ export function ProductionFloor() {
                 </div>
 
                 {/* Card Body */}
-                <div className="px-5 py-4 flex flex-col gap-4">
+                <div className="flex flex-1 flex-col gap-3 px-4 py-3 sm:px-5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                       <Clock size={14} />
@@ -524,7 +461,6 @@ export function ProductionFloor() {
                           <div className="flex items-center justify-between gap-1">
                             <span className="font-dm" style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>For details, contact via email</span>
                             <div className="flex items-center gap-1">
-                              <button onClick={() => { setEditingDueId(null); setEditingDueReason(""); }} className="font-dm px-1.5 py-0.5 rounded hover:bg-amber-100" style={{ fontSize: 10, color: "#64748B" }}>Cancel</button>
                               <button onClick={() => saveDue(job.id, editingDueValue)} className="font-dm px-2 py-0.5 rounded text-white flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#16A34A" }}>Save & Notify</button>
                             </div>
                           </div>
@@ -539,22 +475,6 @@ export function ProductionFloor() {
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => toggleUrgent(job.id)}
-                        title={job.urgent ? "Remove urgent" : "Mark as urgent"}
-                        className="font-dm flex items-center gap-1 px-2 py-1 rounded-md hover:opacity-90"
-                        style={{ fontSize: 10, fontWeight: 700, backgroundColor: job.urgent ? "#FEE2E2" : "#F1F5F9", color: job.urgent ? "#C8102E" : "#475569", letterSpacing: 0.3 }}
-                      >
-                        <Flag size={11} /> {job.urgent ? "RUSH ON" : "Mark Rush"}
-                      </button>
-                      <button
-                        onClick={() => setConfirmCancelJob(job)}
-                        title="Cancel JO"
-                        className="font-dm flex items-center gap-1 px-2 py-1 rounded-md hover:bg-red-50"
-                        style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8" }}
-                      >
-                        <XCircle size={11} /> Cancel
-                      </button>
                       {job.paused && (
                         <span className="flex items-center gap-1 font-dm ml-1" style={{ fontSize: 11, fontWeight: 600, color: "#C8102E" }}>
                           <Pause size={12} /> PAUSED
@@ -563,12 +483,12 @@ export function ProductionFloor() {
                     </div>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A", letterSpacing: 0.5 }}>{job.product}</div>
                     <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Qty: {job.qty}</div>
                   </div>
 
-                  <div className="rounded-lg p-3 flex flex-col gap-1" style={{ backgroundColor: "#F4F6F9" }}>
+                  <div className="rounded-lg p-2.5 flex flex-col gap-1" style={{ backgroundColor: "#F4F6F9" }}>
                     {job.specs.map((s, i) => (
                       <div key={i} className="font-dm" style={{ fontSize: 11, color: "#475569", lineHeight: 1.6 }}>{s}</div>
                     ))}
@@ -576,7 +496,7 @@ export function ProductionFloor() {
 
                   {/* Progress */}
                   <div>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1.5">
                       <span className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Stage {stageNum} of {STAGES.length}</span>
                       <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{pct}%</span>
                     </div>
@@ -591,26 +511,23 @@ export function ProductionFloor() {
                   {/* View Production Stages Button */}
                   <button
                     onClick={() => setStageMonitorId(job.id)}
-                    className="font-dm flex items-center justify-center gap-2 py-2.5 rounded-md hover:opacity-90 border"
+                    className="font-dm flex items-center justify-center gap-2 py-2 rounded-md hover:opacity-90 border"
                     style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#1A2B4A", color: "white", letterSpacing: 0.3, border: "none" }}
                   >
-                    <ClipboardList size={14} /> 📋 View Production Stages →
+                    <ClipboardList size={14} /> View Stages →
                   </button>
                 </div>
 
                 {/* Card Footer */}
-                <div className="px-5 py-4 border-t border-slate-200/70 flex justify-end" style={{ backgroundColor: "#FAFBFC" }}>
+                <div className="mt-auto h-[68px] shrink-0 px-4 py-3 border-t border-slate-200/70 flex items-center justify-end sm:px-5" style={{ backgroundColor: "#FAFBFC" }}>
                   {completed ? (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setLabelJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md font-dm border-2 hover:bg-white" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                        <Printer size={14} strokeWidth={2.5} /> 🏷 PRINT DISPATCH LABEL
-                      </button>
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       <button onClick={() => setArchiveConfirmJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                        <Archive size={14} strokeWidth={2.5} /> MARK COMPLETE &amp; ARCHIVE
+                        <Archive size={14} strokeWidth={2.5} /> COMPLETE &amp; ARCHIVE
                       </button>
                     </div>
                   ) : job.paused ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       <span className="font-dm flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: "#D97706" }}>
                         <Pause size={12} /> On hold — material shortage
                       </span>
@@ -624,7 +541,7 @@ export function ProductionFloor() {
                     </div>
                   ) : job.stageIndex === 8 ? (
                     /* Quality / Product Inspection — special pass/fail flow */
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       {qcFailed.has(job.id) ? (
                         <>
                           <span className="font-dm flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#991B1B" }}>
@@ -639,17 +556,10 @@ export function ProductionFloor() {
                           <button onClick={() => markQCFailed(job.id)} className="flex items-center gap-2 px-3 py-2 rounded-md font-dm border-2 hover:bg-red-50" style={{ borderColor: "#FECACA", color: "#C8102E", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>
                             <XCircle size={13} /> Mark Failed
                           </button>
-                          <button onClick={() => markQCPassed(job.id)} className="flex items-center gap-2 px-4 py-2 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>
-                            <CheckCircle2 size={13} /> ✓ QC Passed → Complete
-                          </button>
                         </>
                       )}
                     </div>
-                  ) : (
-                    <button onClick={() => advanceStage(job.id)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                      <CheckCircle2 size={14} strokeWidth={2.5} /> MARK STAGE DONE
-                    </button>
-                  )}
+                  ) : null}
                 </div>
               </article>
             );
@@ -776,9 +686,6 @@ export function ProductionFloor() {
         />
       )}
 
-      {/* Dispatch Label Modal */}
-      {labelJob && <DispatchLabelModal job={labelJob} onClose={() => setLabelJob(null)} />}
-
       {/* Section K — Mark complete & archive confirmation */}
       {archiveConfirmJob && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setArchiveConfirmJob(null)}>
@@ -789,64 +696,17 @@ export function ProductionFloor() {
             </div>
             <div className="p-5 flex flex-col gap-3">
               <p className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-                Are you sure? Make sure you have <strong>printed the dispatch label</strong>. Once archived, the JO will be moved to <strong>Logistics</strong>.
+                Are you sure you want to archive this completed JO? It will be moved to <strong>Logistics</strong>.
               </p>
               <div className="rounded-md p-3 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                 <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Job Order</span>
                 <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{archiveConfirmJob.jo}</span>
               </div>
-              <button onClick={() => { setLabelJob(archiveConfirmJob); }} className="font-dm flex items-center justify-center gap-2 py-2.5 rounded-md border-2 hover:bg-white" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                <Printer size={14} /> Print Dispatch Label
-              </button>
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setArchiveConfirmJob(null)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
                 <button onClick={() => { archive(archiveConfirmJob); setArchiveConfirmJob(null); }} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>
                   <Archive size={14} /> Confirm Archive
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cancel JO modal — required reason */}
-      {confirmCancelJob && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => { setConfirmCancelJob(null); setCancelReason(""); }}>
-          <div className="bg-white rounded-xl w-full max-w-md flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF2F2" }}>
-              <XCircle size={18} style={{ color: "#C8102E" }} />
-              <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#991B1B" }}>Cancel Job Order</h3>
-            </div>
-            <div className="p-5 flex flex-col gap-3">
-              <div className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-                <span style={{ fontWeight: 700 }}>{confirmCancelJob.jo}</span> · {confirmCancelJob.client} · {confirmCancelJob.qty} pcs {confirmCancelJob.product}
-              </div>
-              <div className="rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                ⚠️ This will move the JO to the archive. The client will be notified with the reason. This cannot be undone from the production floor.
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason for cancellation *</label>
-                <textarea
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="e.g. Client requested cancellation · Specs cannot be produced · Material unavailable"
-                  rows={3}
-                  className="font-dm px-3 py-2 rounded-md border border-slate-300 outline-none focus:border-slate-500 bg-white resize-none"
-                  style={{ fontSize: 13, color: "#0F172A" }}
-                  autoFocus
-                />
-              </div>
-            </div>
-            <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
-              <button onClick={() => { setConfirmCancelJob(null); setCancelReason(""); }} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Keep JO</button>
-              <button
-                onClick={cancelJO}
-                disabled={!cancelReason.trim()}
-                className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-                style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}
-              >
-                <XCircle size={14} /> Cancel JO &amp; Notify
-              </button>
             </div>
           </div>
         </div>
@@ -1187,59 +1047,7 @@ function RevertStageModal({
         </div>
 
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
           <button onClick={save} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Save Stage Update</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Dispatch Label Modal ─── */
-function DispatchLabelModal({ job, onClose }: { job: Job; onClose: () => void }) {
-  const { settings } = useSettings();
-  const code = `FP-2026-${String(Math.floor(Math.random() * 90000) + 10000)}`;
-  const po = job.jo.replace("JO", "PO");
-  const itemSpec = job.specs[1] ?? "";
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md flex flex-col" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Dispatch Barcode Label</h3>
-          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
-        </div>
-        <div className="p-5">
-          <div className="rounded-md font-mono-jb" style={{ border: "2px solid #0F172A", backgroundColor: "white", padding: "16px 18px", fontSize: 12, color: "#0F172A", lineHeight: 1.5 }}>
-            <div style={{ fontWeight: 800, letterSpacing: 0.5 }}>▲ ENTER-FIL INDUSTRIAL PRODUCTS</div>
-            <div style={{ borderTop: "2px solid #0F172A", margin: "6px 0" }} />
-            <div className="flex justify-between"><span>JO: {job.jo}</span><span>PO: {po}</span></div>
-            <div>Client: {job.client}</div>
-            <div>Item: {job.product} {itemSpec}</div>
-            <div>Qty: {job.qty} pcs</div>
-            <div style={{ borderTop: "1px dashed #94A3B8", margin: "6px 0" }} />
-            <div style={{ fontSize: 11, color: "#475569" }}>Ship to:</div>
-            <div>M. Rivera · {job.client}</div>
-            <div>{settings.addressLine1}, {settings.cityProvince}</div>
-            <div>📞 {settings.mainPhone}</div>
-            <div style={{ borderTop: "1px dashed #94A3B8", margin: "6px 0" }} />
-            <div>Method: Company Vehicle</div>
-            <div style={{ borderTop: "2px solid #0F172A", margin: "6px 0" }} />
-            <div className="flex flex-col items-center gap-1 py-2">
-              <div className="flex items-end gap-[2px]" aria-hidden>
-                {Array.from({ length: 38 }).map((_, i) => (
-                  <span key={i} style={{ width: i % 3 === 0 ? 3 : 2, height: 56, backgroundColor: i % 5 === 0 ? "#0F172A" : i % 2 ? "#0F172A" : "transparent" }} />
-                ))}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>{code}</div>
-            </div>
-          </div>
-          <p className="font-dm mt-3" style={{ fontSize: 11, color: "#94A3B8" }}>Designed for A6 / 4×6 inch shipping label paper.</p>
-        </div>
-        <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Close</button>
-          <button onClick={() => { window.print(); }} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#1A2B4A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
-            <Printer size={14} strokeWidth={2.5} /> Print Label
-          </button>
         </div>
       </div>
     </div>

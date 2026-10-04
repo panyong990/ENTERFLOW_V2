@@ -18,14 +18,14 @@ const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[]
 ];
 
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
+const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, uploadPO, generateInvoice, sendInvoice, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
+  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [viewQuoteId, setViewQuoteId] = useState<string | null>(null);
-  const [poDropId, setPoDropId] = useState<string | null>(null);
   const [poViewId, setPoViewId] = useState<string | null>(null);
   const [generateId, setGenerateId] = useState<string | null>(null);
   const [generateJoId, setGenerateJoId] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export function SalesOrders() {
   const viewingInvoice = inquiries.find((i) => i.id === viewInvoiceId);
 
   const isReadyForJobOrder = (inquiry: Inquiry) => {
-    if (inquiry.stage !== "po" || !inquiry.poUploaded || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
+    if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
     const state = paymentState(inquiry);
     if (state.invoiceTotal <= 0) return false;
     return state.requiredDownpaymentAmount > 0
@@ -174,10 +174,10 @@ export function SalesOrders() {
                       onReview={() => setReviewId(c.id)}
                       onViewQuote={() => setViewQuoteId(c.id)}
                       onViewPO={() => setPoViewId(c.id)}
-                      onUploadPO={() => setPoDropId(c.id)}
                       onMarkPOReceived={() => {
+                        if (!hasPORecord(c)) return;
                         updateInquiry(c.id, { poReceived: true });
-                        toast.success("PO marked received", { description: `${c.code} remains in Quotation Sent` });
+                        toast.success("PO marked received", { description: `${c.code} · ${c.poNumber ?? c.poFileName}` });
                       }}
                       onGenerateJO={() => {
                         const existingJO = completedJOs.find((job) => job.id === c.id || job.parentInquiryId === c.id);
@@ -297,17 +297,6 @@ export function SalesOrders() {
         <POViewerModal inquiry={poViewing} onClose={() => setPoViewId(null)} />
       )}
 
-      {poDropId && (
-        <POUploadModal
-          onClose={() => setPoDropId(null)}
-          onUpload={(name) => {
-            uploadPO(poDropId, name);
-            setPoDropId(null);
-            toast.success("PO recorded", { description: "Purchase order recorded for processing" });
-          }}
-        />
-      )}
-
       {generating && (
         <InvoicePreviewModal
           inquiry={generating}
@@ -365,8 +354,8 @@ export function SalesOrders() {
 }
 
 /* ---- Inquiry Card with collapsible product list ---- */
-function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote, onViewPO, onUploadPO, onMarkPOReceived, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
-  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; onReview: () => void; onViewQuote: () => void; onViewPO: () => void; onUploadPO: () => void; onMarkPOReceived: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
+function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote, onViewPO, onMarkPOReceived, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
+  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; onReview: () => void; onViewQuote: () => void; onViewPO: () => void; onMarkPOReceived: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
@@ -440,7 +429,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
             <Calculator size={12} /> View Quotation
           </button>
         )}
-        {inquiry.stage === "po" && inquiry.poFileName && (
+        {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && (
           <button onClick={onViewPO} className="font-dm flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-green-50" style={{ fontSize: 11, color: "#16A34A", fontWeight: 700, border: "1px solid #BBF7D0" }} title="View client-submitted PO">
             <Eye size={11} /> View PO
           </button>
@@ -480,16 +469,12 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           📝 Review Revision Request →
         </button>
       )}
-      {inquiry.stage === "quotation" && !inquiry.poUploaded && (
-        <button
-          onClick={onUploadPO}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md font-dm border border-slate-300 hover:bg-slate-50"
-          style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
-        >
-          <Upload size={13} /> Mark PO Received
-        </button>
+      {inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
+        <div className="w-full rounded-md px-3 py-2 font-dm text-center" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 11, color: "#64748B" }}>
+          Awaiting client PO submission
+        </div>
       )}
-      {inquiry.stage === "po" && inquiry.poFileName && !inquiry.poReceived && (
+      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && !inquiry.poReceived && (
         <button
           onClick={onMarkPOReceived}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md font-dm border border-slate-300 hover:bg-slate-50"
@@ -498,7 +483,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           <Upload size={13} /> MARK PO RECEIVED
         </button>
       )}
-      {inquiry.stage === "po" && inquiry.poReceived && (
+      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poReceived && (
         <div className="w-full rounded-md px-3 py-2" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", color: "#15803D", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
           ✓ PO RECEIVED
         </div>
@@ -528,7 +513,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           </button>
         </div>
       )}
-      {inquiry.stage === "po" && !isReadyForJobOrder && inquiry.poReceived && (
+      {inquiry.stage === "po" && !isReadyForJobOrder && hasPORecord(inquiry) && inquiry.poFileName && inquiry.poReceived && (
         <>
           {/* ── Downpayment Banner ── */}
           {(inquiry.downpaymentPercent ?? 0) > 0 && (
@@ -571,7 +556,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
               className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90"
               style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
             >
-              <FileText size={14} strokeWidth={2.5} /> GENERATE &amp; SEND INVOICE <ArrowRight size={14} strokeWidth={2.5} />
+              <FileText size={14} strokeWidth={2.5} /> GENERATE INVOICE <ArrowRight size={14} strokeWidth={2.5} />
             </button>
           )}
         </>
@@ -1188,30 +1173,6 @@ function POViewerModal({ inquiry, onClose }: { inquiry: Inquiry; onClose: () => 
           <p className="font-dm mt-2" style={{ fontSize: 13, color: "#78350F" }}>This earlier record contains the PO reference but not the uploaded document data. New client uploads are stored on the order and open here.</p>
         </div>
       )}
-    </ModalShell>
-  );
-}
-
-/* ---- PO Upload Modal (management-side manual entry) ---- */
-function POUploadModal({ onClose, onUpload }: { onClose: () => void; onUpload: (name: string) => void }) {
-  const { generatePONumber } = useOrders();
-  /* Section J — auto-fill the next PO number; staff can still edit if needed */
-  const [name, setName] = useState(() => `${generatePONumber()}.pdf`);
-  return (
-    <ModalShell title="Mark PO Received" subtitle="Record the client's purchase order reference" onClose={onClose}>
-      <Field label="PO File Name / Reference">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. PO-2026-9912.pdf" className="form-input" />
-      </Field>
-      <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-slate-200">
-        <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-        <button
-          onClick={() => onUpload(name || "PO.pdf")}
-          className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90"
-          style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}
-        >
-          Confirm
-        </button>
-      </div>
     </ModalShell>
   );
 }

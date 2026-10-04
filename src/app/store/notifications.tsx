@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { Role } from "../components/Login";
 
@@ -69,8 +69,40 @@ interface Ctx {
 
 const NotifContext = createContext<Ctx | null>(null);
 
+const NOTIFICATIONS_STORAGE_KEY = "enterflow.notifications.v1";
+
+function loadPersistedNotifications(): Notification[] {
+  if (typeof window === "undefined") return seed;
+  try {
+    const raw = window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+    if (!raw) return seed;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return seed;
+    if (!parsed.every((notification) => (
+      notification && typeof notification === "object"
+      && typeof (notification as Notification).id === "string"
+      && typeof (notification as Notification).title === "string"
+      && typeof (notification as Notification).body === "string"
+      && Array.isArray((notification as Notification).recipients)
+      && typeof (notification as Notification).read === "boolean"
+    ))) return seed;
+    return parsed as Notification[];
+  } catch {
+    return seed;
+  }
+}
+
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const [list, setList] = useState<Notification[]>(seed);
+  const [list, setList] = useState<Notification[]>(loadPersistedNotifications);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(list));
+    } catch (error) {
+      console.error("[EnterFlow] Could not persist notifications to localStorage.", error);
+    }
+  }, [list]);
 
   const unreadFor: Ctx["unreadFor"] = (role, clientName) =>
     list.filter((n) => n.recipients.includes(role) && (role !== "client" || !n.clientName || n.clientName === clientName));

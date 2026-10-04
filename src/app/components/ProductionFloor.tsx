@@ -514,7 +514,7 @@ export function ProductionFloor() {
                     className="font-dm flex items-center justify-center gap-2 py-2 rounded-md hover:opacity-90 border"
                     style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#1A2B4A", color: "white", letterSpacing: 0.3, border: "none" }}
                   >
-                    <ClipboardList size={14} /> 📋 View Production Stages →
+                    <ClipboardList size={14} /> 📋 View Stages →
                   </button>
                 </div>
 
@@ -523,7 +523,7 @@ export function ProductionFloor() {
                   {completed ? (
                     <div className="flex flex-nowrap items-center justify-end gap-2">
                       <button onClick={() => setArchiveConfirmJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                        <Archive size={14} strokeWidth={2.5} /> MARK COMPLETE &amp; ARCHIVE
+                        <Archive size={14} strokeWidth={2.5} /> COMPLETE &amp; ARCHIVE
                       </button>
                     </div>
                   ) : job.paused ? (

@@ -519,15 +519,15 @@ export function ProductionFloor() {
                 </div>
 
                 {/* Card Footer */}
-                <div className="mt-auto min-h-[68px] px-4 py-3 border-t border-slate-200/70 flex items-center justify-end sm:px-5" style={{ backgroundColor: "#FAFBFC" }}>
+                <div className="mt-auto h-[68px] shrink-0 px-4 py-3 border-t border-slate-200/70 flex items-center justify-end sm:px-5" style={{ backgroundColor: "#FAFBFC" }}>
                   {completed ? (
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       <button onClick={() => setArchiveConfirmJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
                         <Archive size={14} strokeWidth={2.5} /> MARK COMPLETE &amp; ARCHIVE
                       </button>
                     </div>
                   ) : job.paused ? (
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       <span className="font-dm flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: "#D97706" }}>
                         <Pause size={12} /> On hold — material shortage
                       </span>
@@ -541,7 +541,7 @@ export function ProductionFloor() {
                     </div>
                   ) : job.stageIndex === 8 ? (
                     /* Quality / Product Inspection — special pass/fail flow */
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       {qcFailed.has(job.id) ? (
                         <>
                           <span className="font-dm flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#991B1B" }}>
@@ -562,11 +562,7 @@ export function ProductionFloor() {
                         </>
                       )}
                     </div>
-                  ) : (
-                    <button onClick={() => advanceStage(job.id)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                      <CheckCircle2 size={14} strokeWidth={2.5} /> MARK STAGE DONE
-                    </button>
-                  )}
+                  ) : null}
                 </div>
               </article>
             );

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
-  Clock, CheckCircle2, Circle, AlertTriangle, Pause, Archive, Eye, X,
-  User, Package, Calendar, Wrench, ArrowLeft, ClipboardList, Pencil, XCircle,
+  Clock, CheckCircle2, Circle, AlertTriangle, Pause, Eye, X, Search,
+  User, Package, Calendar, Wrench, ArrowLeft, ClipboardList, Pencil, Filter,
 } from "lucide-react";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -143,22 +143,13 @@ function DetailStat({ icon: Icon, label, value }: { icon: any; label: string; va
   );
 }
 
-const filterTabs = [
-  { id: "all", label: "ALL" },
-  { id: "molding", label: "MOLDING" },
-  { id: "spotting", label: "SPOTTING OF FILTER CORE" },
-  { id: "assembling", label: "ASSEMBLING" },
-  { id: "quality", label: "QUALITY / P.I." },
+const stageFilters = [
+  { id: "all", label: "All" },
+  { id: "molding", label: "Molding" },
+  { id: "spotting", label: "Spotting of Filter Core" },
+  { id: "assembling", label: "Assembling" },
+  { id: "quality", label: "Quality / P.I." },
 ];
-
-function tabCount(jobs: Job[], tab: string) {
-  if (tab === "all") return jobs.length;
-  if (tab === "molding") return jobs.filter((j) => j.stageIndex === 0).length;
-  if (tab === "spotting") return jobs.filter((j) => j.stageIndex === 2).length;
-  if (tab === "assembling") return jobs.filter((j) => j.stageIndex === 3).length;
-  if (tab === "quality") return jobs.filter((j) => j.stageIndex >= 7).length;
-  return 0;
-}
 
 function jobMatches(j: Job, tab: string) {
   if (tab === "all") return true;
@@ -202,7 +193,10 @@ function getJOTemplateData(job: Job): JOTemplateData {
 }
 
 export function ProductionFloor() {
-  const [tab, setTab] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<"today" | "7days" | "30days" | "all">("all");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [stageMonitorId, setStageMonitorId] = useState<string | null>(null);
   /* Section K — confirm modal before archiving completed JO */
@@ -211,7 +205,6 @@ export function ProductionFloor() {
   const [editingDueId, setEditingDueId] = useState<string | null>(null);
   const [editingDueValue, setEditingDueValue] = useState("");
   const [editingDueReason, setEditingDueReason] = useState("");
-  const [qcFailed, setQcFailed] = useState<Set<string>>(new Set());
   const { push: pushNotif } = useNotifications();
   const { completedJOs, inquiriesByStage, updateInquiry, markInventoryDeducted } = useOrders();
   const { deductForJO } = useMaterials();
@@ -250,31 +243,39 @@ export function ProductionFloor() {
     toast.success("Due date updated · client & team notified");
   };
 
-  const markQCFailed = (id: string) => {
-    setQcFailed(prev => new Set(prev).add(id));
-    const inq = inqOf(id);
-    if (!inq) return;
-    pushNotif({
-      dept: "production",
-      title: `❌ QC Failed: ${inq.joNumber ?? inq.code}`,
-      body: `${inq.clientName} · Stage stays at Quality Inspection until passed. Rework required.`,
-      link: "production",
-      recipients: ["owner", "operations", "production", "warehouse"],
-    });
-    toast.error("Quality check failed", { description: "Job stays at QC stage until rework passes" });
-  };
-
-  const markQCPassed = (id: string) => {
-    setQcFailed(prev => { const next = new Set(prev); next.delete(id); return next; });
-    advanceStage(id);
-    toast.success("QC passed → moving to next stage");
-  };
-
   const sortedJobs = useMemo(
     () => [...jobs].sort((a, b) => b.stageIndex - a.stageIndex),
     [jobs]
   );
-  const visible = useMemo(() => sortedJobs.filter((j) => jobMatches(j, tab)), [sortedJobs, tab]);
+  const visible = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateCutoff = new Date(today);
+    if (dateFilter === "7days") dateCutoff.setDate(dateCutoff.getDate() - 6);
+    if (dateFilter === "30days") dateCutoff.setDate(dateCutoff.getDate() - 29);
+
+    return sortedJobs.filter((job) => {
+      if (!jobMatches(job, stageFilter)) return false;
+      const inquiry = productionInquiries.find((item) => item.id === job.id);
+      const submittedDate = inquiry ? new Date(inquiry.submittedDate) : new Date(Number.NaN);
+      const matchesDate = dateFilter === "all" ||
+        (!Number.isNaN(submittedDate.getTime()) && submittedDate >= dateCutoff && submittedDate < tomorrow);
+      if (!matchesDate) return false;
+      if (!query) return true;
+      const searchableFields = [
+        job.jo,
+        job.po,
+        job.client,
+        job.product,
+        ...job.specs,
+        ...(inquiry?.products.flatMap((product) => [product.type, product.filterName, product.oem]) ?? []),
+      ];
+      return searchableFields.some((field) => field?.toLocaleLowerCase().includes(query));
+    });
+  }, [sortedJobs, stageFilter, dateFilter, searchQuery, productionInquiries]);
   const pausedJob = jobs.find((j) => j.paused);
 
   const advanceStage = (id: string) => {
@@ -371,25 +372,74 @@ export function ProductionFloor() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 mt-5">
-          {filterTabs.map((t) => {
-            const isActive = tab === t.id;
-            const count = tabCount(jobs, t.id);
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className="font-dm px-4 py-2 rounded-full transition-colors"
-                style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5, backgroundColor: isActive ? "#C8102E" : "#F1F5F9", color: isActive ? "#FFFFFF" : "#0F172A" }}
-              >
-                {t.label} ({count})
-              </button>
-            );
-          })}
-        </div>
       </header>
 
       <div className="px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:py-8">
+        <div className="relative mb-5 flex w-full max-w-6xl items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search JO, client, or product..."
+              aria-label="Search JO, client, product, or item code"
+              className="font-dm w-full rounded-md border border-slate-200 bg-white py-2 pl-9 pr-3 outline-none focus:border-slate-400"
+              style={{ fontSize: 12, color: "#0F172A" }}
+            />
+          </div>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen((open) => !open)}
+              aria-label="Filter production jobs"
+              aria-expanded={isFilterOpen}
+              className="font-dm flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              style={{ color: stageFilter !== "all" || dateFilter !== "all" ? "#1A2B4A" : "#64748B" }}
+            >
+              <Filter size={15} />
+            </button>
+            {isFilterOpen && (
+              <div className="absolute right-0 top-11 z-20 w-64 rounded-lg border border-slate-200 bg-white p-4 shadow-lg">
+                <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.6 }}>FILTER</div>
+                <label className="font-dm block" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>
+                  Stage
+                  <select
+                    value={stageFilter}
+                    onChange={(event) => setStageFilter(event.target.value)}
+                    aria-label="Filter by production stage"
+                    className="font-dm mt-1.5 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 outline-none focus:border-slate-400"
+                    style={{ fontSize: 12, color: "#0F172A" }}
+                  >
+                    {stageFilters.map((filter) => (
+                      <option key={filter.id} value={filter.id}>{filter.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="font-dm mt-3 block" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>
+                  Date
+                  <select
+                    value={dateFilter}
+                    onChange={(event) => setDateFilter(event.target.value as typeof dateFilter)}
+                    aria-label="Filter by job order date"
+                    className="font-dm mt-1.5 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 outline-none focus:border-slate-400"
+                    style={{ fontSize: 12, color: "#0F172A" }}
+                  >
+                    <option value="today">Today</option>
+                    <option value="7days">Last 7 days</option>
+                    <option value="30days">Last 30 days</option>
+                    <option value="all">All</option>
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+        {visible.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
+            No matching job orders found
+          </div>
+        ) : (
         <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 lg:gap-6">
           {visible.map((job) => {
             const completed = job.stageIndex >= STAGES.length - 1;
@@ -523,7 +573,7 @@ export function ProductionFloor() {
                   {completed ? (
                     <div className="flex flex-nowrap items-center justify-end gap-2">
                       <button onClick={() => setArchiveConfirmJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-                        <Archive size={14} strokeWidth={2.5} /> COMPLETE &amp; ARCHIVE
+                        <CheckCircle2 size={14} strokeWidth={2.5} /> COMPLETE JO
                       </button>
                     </div>
                   ) : job.paused ? (
@@ -539,32 +589,13 @@ export function ProductionFloor() {
                         ✅ Resume Production
                       </button>
                     </div>
-                  ) : job.stageIndex === 8 ? (
-                    /* Quality / Product Inspection — special pass/fail flow */
-                    <div className="flex flex-nowrap items-center justify-end gap-2">
-                      {qcFailed.has(job.id) ? (
-                        <>
-                          <span className="font-dm flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#991B1B" }}>
-                            <AlertTriangle size={12} /> QC FAILED — REWORK
-                          </span>
-                          <button onClick={() => markQCPassed(job.id)} className="flex items-center gap-2 px-3 py-2 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>
-                            <CheckCircle2 size={13} /> Mark Rework Passed
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={() => markQCFailed(job.id)} className="flex items-center gap-2 px-3 py-2 rounded-md font-dm border-2 hover:bg-red-50" style={{ borderColor: "#FECACA", color: "#C8102E", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>
-                            <XCircle size={13} /> Mark Failed
-                          </button>
-                        </>
-                      )}
-                    </div>
                   ) : null}
                 </div>
               </article>
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Full Details Side Drawer */}
@@ -662,6 +693,7 @@ export function ProductionFloor() {
         <StageMonitoringPage
           job={monitoringJob}
           onClose={() => setStageMonitorId(null)}
+          onAdvance={() => advanceStage(monitoringJob.id)}
           onUpdate={(updatedJob) => {
             /* Map UI Job patches back into Inquiry shape */
             updateInquiry(updatedJob.id, {
@@ -671,9 +703,6 @@ export function ProductionFloor() {
               urgent: updatedJob.urgent,
               dueDate: updatedJob.due,
             });
-          }}
-          onAdvance={() => {
-            advanceStage(monitoringJob.id);
           }}
         />
       )}
@@ -691,12 +720,12 @@ export function ProductionFloor() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setArchiveConfirmJob(null)}>
           <div className="bg-white rounded-xl w-full max-w-md flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF3C7" }}>
-              <Archive size={18} style={{ color: "#B45309" }} />
-              <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#92400E" }}>Mark Complete &amp; Archive</h3>
+              <CheckCircle2 size={18} style={{ color: "#B45309" }} />
+              <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#92400E" }}>Complete JO</h3>
             </div>
             <div className="p-5 flex flex-col gap-3">
               <p className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-                Are you sure you want to archive this completed JO? It will be moved to <strong>Logistics</strong>.
+                Are you sure you want to complete this JO? It will be moved to <strong>Warehouse</strong>.
               </p>
               <div className="rounded-md p-3 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                 <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Job Order</span>
@@ -704,7 +733,7 @@ export function ProductionFloor() {
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button onClick={() => { archive(archiveConfirmJob); setArchiveConfirmJob(null); }} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 flex items-center gap-2" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>
-                  <Archive size={14} /> Confirm Archive
+                  <CheckCircle2 size={14} /> Complete
                 </button>
               </div>
             </div>
@@ -783,12 +812,12 @@ function StageMonitoringPage({
       </div>
 
       {/* Content */}
-      <div className="px-8 py-8 overflow-auto" style={{ height: "calc(100vh - 65px - 80px)" }}>
+      <div className="px-4 py-6 overflow-auto sm:px-8 sm:py-8" style={{ height: "calc(100vh - 65px)" }}>
         <div className="max-w-2xl mx-auto">
           <h2 className="font-syne mb-2" style={{ fontSize: 20, fontWeight: 700, color: "#0F172A" }}>Production Timeline</h2>
-          <p className="font-dm mb-6" style={{ fontSize: 13, color: "#64748B" }}>Full stage history · Click ✏ Edit/Revert to update any completed stage</p>
+          <p className="font-dm mb-5" style={{ fontSize: 13, color: "#64748B" }}>Full stage history · Click ✏ Edit/Revert to update any completed stage</p>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2.5">
             {STAGES.map((stageName, i) => {
               const isDone = i < job.stageIndex;
               const isCurrent = i === job.stageIndex && !completed;
@@ -811,13 +840,14 @@ function StageMonitoringPage({
               return (
                 <div
                   key={stageName}
-                  className="bg-white rounded-xl border overflow-hidden"
+                  className="rounded-xl border overflow-hidden"
                   style={{
-                    borderColor: isCurrent ? "#2563EB" : isDone || isCompleted ? "#86EFAC" : "#E2E8F0",
+                    backgroundColor: isCurrent ? "#EFF6FF" : isDone || isCompleted ? "#F0FDF4" : "#F8FAFC",
+                    borderColor: isCurrent ? "#2563EB" : isDone || isCompleted ? "#BBF7D0" : "#E2E8F0",
                     boxShadow: isCurrent ? "0 0 0 2px #DBEAFE" : "0 1px 2px rgba(15,23,42,0.04)",
                   }}
                 >
-                  <div className="px-5 py-4 flex items-center gap-4">
+                  <div className="px-4 py-3 sm:px-5 flex items-center gap-3 sm:gap-4">
                     {/* Stage Number */}
                     <div
                       className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 font-syne"
@@ -850,8 +880,18 @@ function StageMonitoringPage({
                         </div>
                       )}
                       {isCurrent && (
-                        <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#2563EB", fontWeight: 600 }}>
-                          ← Currently in progress
+                        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                          <span className="font-dm" style={{ fontSize: 12, color: "#2563EB", fontWeight: 600 }}>
+                            ← Currently in progress
+                          </span>
+                          <button
+                            onClick={markDone}
+                            disabled={job.paused}
+                            className="flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 font-dm text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                            style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}
+                          >
+                            <CheckCircle2 size={14} /> COMPLETE STAGE
+                          </button>
                         </div>
                       )}
                     </div>
@@ -898,56 +938,21 @@ function StageMonitoringPage({
         </div>
       </div>
 
-      {/* Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-8 py-4 flex items-center gap-4" style={{ boxShadow: "0 -2px 8px rgba(0,0,0,0.06)" }}>
-        <button
-          onClick={markDone}
-          disabled={completed || job.paused}
-          className="flex items-center gap-2 px-6 py-3 rounded-lg text-white font-syne hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ backgroundColor: "#C8102E", fontSize: 14, fontWeight: 700, letterSpacing: 0.4 }}
-        >
-          <CheckCircle2 size={18} strokeWidth={2.5} /> ✅ MARK CURRENT STAGE DONE
-        </button>
-        <button
-          onClick={() => {
-            toast.warning("Material shortage reported", { description: "Management has been notified" });
-          }}
-          className="flex items-center gap-2 px-5 py-3 rounded-lg font-dm border-2 hover:bg-slate-50"
-          style={{ borderColor: "#D97706", color: "#92400E", fontSize: 13, fontWeight: 700 }}
-        >
-          <AlertTriangle size={16} /> ⚠️ REPORT MATERIAL SHORTAGE
-        </button>
-        <div className="flex-1 text-right">
-          <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>
-            Stage {Math.min(job.stageIndex + 1, STAGES.length)} of {STAGES.length} · {Math.round(((job.stageIndex + (completed ? 1 : 0)) / STAGES.length) * 100)}% complete
-          </span>
-        </div>
-      </div>
-
       {/* Revert/Edit Stage Modal */}
       {revertStageIdx !== null && (
         <RevertStageModal
           stageName={STAGES[revertStageIdx]}
-          stageIndex={revertStageIdx}
-          job={job}
           onClose={() => setRevertStageIdx(null)}
-          onSave={(newStatus, reason) => {
+          onSave={(reason) => {
             const newHistory = [...job.stageHistory];
             newHistory[revertStageIdx] = {
               markedBy: "Tricia (Management)",
               date: "Apr 26",
-              status: newStatus === "Completed" ? "done" : "reverted",
+              status: "reverted",
               reason,
             };
 
-            let newStageIndex = job.stageIndex;
-            if (newStatus === "Set as Current") {
-              newStageIndex = revertStageIdx;
-            } else if (newStatus === "Pending" && revertStageIdx < job.stageIndex) {
-              newStageIndex = revertStageIdx;
-              // Clear history for stages after this
-              for (let k = revertStageIdx; k < 10; k++) { newHistory[k] = null; }
-            }
+            const newStageIndex = revertStageIdx;
 
             const logEntry: ActivityEntry = {
               id: `log-${Date.now()}`,
@@ -955,13 +960,13 @@ function StageMonitoringPage({
               user: "Tricia (Management)",
               stageName: STAGES[revertStageIdx],
               oldStatus: "Done",
-              newStatus,
+              newStatus: "Set as Current",
               reason,
             };
 
             onUpdate({ ...job, stageIndex: newStageIndex, stageHistory: newHistory, activityLog: [...job.activityLog, logEntry] });
             setRevertStageIdx(null);
-            toast.success("Stage updated", { description: `${STAGES[revertStageIdx]} → ${newStatus}` });
+            toast.success("Stage updated", { description: `${STAGES[revertStageIdx]} → Set as Current` });
           }}
         />
       )}
@@ -971,20 +976,17 @@ function StageMonitoringPage({
 
 /* ─── Revert/Edit Stage Modal ─── */
 function RevertStageModal({
-  stageName, stageIndex, job, onClose, onSave,
+  stageName, onClose, onSave,
 }: {
   stageName: string;
-  stageIndex: number;
-  job: Job;
   onClose: () => void;
-  onSave: (newStatus: "Completed" | "Set as Current" | "Pending", reason: string) => void;
+  onSave: (reason: string) => void;
 }) {
-  const [newStatus, setNewStatus] = useState<"Completed" | "Set as Current" | "Pending">("Completed");
   const [reason, setReason] = useState("");
 
   const save = () => {
     if (!reason.trim()) { toast.error("Reason is required"); return; }
-    onSave(newStatus, reason.trim());
+    onSave(reason.trim());
   };
 
   return (
@@ -997,43 +999,21 @@ function RevertStageModal({
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
 
-        <div className="p-6 flex flex-col gap-4">
+        <div className="p-5 flex flex-col gap-3.5 sm:p-6">
           {/* Warning Banner */}
           <div className="rounded-lg px-4 py-3 flex items-start gap-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
             <AlertTriangle size={16} style={{ color: "#D97706", marginTop: 2, shrink: 0 }} />
             <span className="font-dm" style={{ fontSize: 13, color: "#92400E" }}>
-              Reverting a stage will update the production timeline and notify management.
+              Reverting this stage will update the production timeline and notify management.
             </span>
           </div>
 
-          {/* Status Options */}
-          <div>
-            <div className="font-dm mb-2" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Change status to:</div>
-            <div className="flex gap-2">
-              {(["Completed", "Set as Current", "Pending"] as const).map((s) => {
-                const active = newStatus === s;
-                const icons = { Completed: "✅", "Set as Current": "🔵", Pending: "⬜" };
-                return (
-                  <button
-                    key={s}
-                    onClick={() => setNewStatus(s)}
-                    className="flex-1 py-2.5 rounded-lg font-dm transition-colors"
-                    style={{
-                      fontSize: 12, fontWeight: 700,
-                      backgroundColor: active ? (s === "Completed" ? "#DCFCE7" : s === "Set as Current" ? "#DBEAFE" : "#F1F5F9") : "#F8FAFC",
-                      color: active ? (s === "Completed" ? "#15803D" : s === "Set as Current" ? "#1D4ED8" : "#475569") : "#64748B",
-                      border: active ? `2px solid ${s === "Completed" ? "#86EFAC" : s === "Set as Current" ? "#93C5FD" : "#CBD5E1"}` : "1px solid #E2E8F0",
-                    }}
-                  >
-                    {icons[s]} {s}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="inline-flex self-start items-center rounded-lg px-3 py-2 font-dm" style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#DBEAFE", color: "#1D4ED8", border: "2px solid #93C5FD" }}>
+            🔵 Set as Current
           </div>
 
           {/* Reason */}
-          <div>
+          <div className="w-full">
             <div className="font-dm mb-1" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Reason (required)</div>
             <textarea
               value={reason}
@@ -1046,8 +1026,8 @@ function RevertStageModal({
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
-          <button onClick={save} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Save Stage Update</button>
+        <div className="px-5 py-3.5 border-t border-slate-200 flex items-center justify-end gap-3 sm:px-6">
+          <button onClick={save} disabled={!reason.trim()} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Save Stage Update</button>
         </div>
       </div>
     </div>

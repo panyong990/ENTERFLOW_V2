@@ -293,6 +293,7 @@ export interface Inquiry {
   urgentUpgradeResponse?: string;
   /* — waybill / dispatch (used by WaybillScanner) — */
   waybillNumber?: string;
+  waybillIdentifier?: string;
   waybillLog?: { ts: string; status: string; note?: string }[];
   dispatchedAt?: string;
   /* — Downpayment workflow (Section D) — */

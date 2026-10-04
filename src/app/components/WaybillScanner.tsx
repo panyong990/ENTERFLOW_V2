@@ -1,177 +1,154 @@
-import { useMemo, useState, Fragment } from "react";
-import { Printer, FileDown, CheckCircle2, X, ScanLine, Info, Eye, Paperclip, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { IScannerControls } from "@zxing/browser";
+import { Fragment } from "react";
+import { Printer, CheckCircle2, X, ScanLine, Info, Camera, Search, Filter, QrCode, ShieldCheck } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, type Inquiry } from "../store/orders";
+import { useOrders } from "../store/orders";
+import { clientCompanyAddress, getClientCompanySettings } from "../store/clientCompanySettings";
 import { NotificationBell } from "./NotificationBell";
+import { inquiryToDispatchRow, type DispatchRow } from "./waybillData";
 
-interface DispatchRow {
-  id: string;          // inquiry id (single source of truth)
-  jo: string;
-  po: string;
-  si: string;
-  client: string;
-  contact: string;
+interface WaybillPreviewData {
+  shipment: DispatchRow;
+  qrDataUrl: string;
+  dispatchDate: string;
   clientAddress: string;
-  clientPhone: string;
-  item: string;
-  itemCode?: string;
-  enterFilPN?: string;
-  qty: number;
-  method: string;
-  barcode: string;
-  status: "Ready for Dispatch" | "Dispatched" | "Delivered" | "Paid";
-  sketch?: string;
-  specs?: { od1?: string; od2?: string; id1?: string; id2?: string; height?: string; overallHeight?: string; media?: string; innerCore?: string; outerCore?: string; oring?: string; gasket?: string; oem?: string; brand?: string };
-}
-
-interface LogRow {
-  id: string;          // synthetic key per log entry
-  date: string;
-  waybillNo: string;
-  jo: string;
-  client: string;
-  item: string;
-  qty: number;
-  method: string;
-  status: string;
-  note?: string;
-  processedBy: string;
-  matchedJob?: DispatchRow;
-}
-
-const stageStatus = (s: Inquiry["stage"]): DispatchRow["status"] => {
-  if (s === "ready_for_dispatch") return "Ready for Dispatch";
-  if (s === "dispatched") return "Dispatched";
-  if (s === "paid") return "Paid";
-  return "Delivered";
-};
-
-function inquiryToDispatchRow(inq: Inquiry): DispatchRow {
-  const p = inq.products[0];
-  const oem = p?.oem;
-  const desc = p?.filterName ?? p?.type ?? "—";
-  return {
-    id: inq.id,
-    jo: inq.joNumber ?? `JO-${inq.code}`,
-    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
-    si: inq.invoiceNo ?? `SI-${inq.code}`,
-    client: inq.clientName,
-    contact: inq.contactPerson,
-    clientAddress: "—",
-    clientPhone: "—",
-    item: oem ? `${desc} — ${oem}` : desc,
-    itemCode: p?.type,
-    enterFilPN: oem,
-    qty: inq.products.reduce((s, x) => s + x.qty, 0),
-    method: inq.deliveryMethod ?? "—",
-    barcode: `EF-${(inq.joNumber ?? inq.code).replace(/\D/g, "")}`,
-    status: stageStatus(inq.stage),
-    sketch: inq.joSketch,
-    specs: inq.joSpecs ? {
-      od1: inq.joSpecs.od1, od2: inq.joSpecs.od2, id1: inq.joSpecs.id1, id2: inq.joSpecs.id2,
-      height: inq.joSpecs.height, overallHeight: inq.joSpecs.overallHeight,
-      media: inq.joSpecs.media, innerCore: inq.joSpecs.innerCore, outerCore: inq.joSpecs.outerCore,
-      oring: inq.joSpecs.oring, gasket: inq.joSpecs.gasket, oem: inq.joSpecs.oem, brand: inq.joSpecs.brand,
-    } : undefined,
-  };
 }
 
 export function WaybillScanner() {
   const { inquiriesByStage, updateInquiry } = useOrders();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [scanInput, setScanInput] = useState("");
   const [scanPopup, setScanPopup] = useState<DispatchRow | null>(null);
-  const [waybillNo, setWaybillNo] = useState("");
-  const [confirmDispatch, setConfirmDispatch] = useState(false);
-  const [logQuery, setLogQuery] = useState("");
-  const [logFrom, setLogFrom] = useState("");
-  const [logTo, setLogTo] = useState("");
-  const [logStatusFilter, setLogStatusFilter] = useState<"all" | "Delivered" | "Dispatched">("all");
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [waybillPreview, setWaybillPreview] = useState<WaybillPreviewData | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [dispatchSearch, setDispatchSearch] = useState("");
+  const [dispatchDateFilter, setDispatchDateFilter] = useState("all");
+  const [isDispatchFilterOpen, setIsDispatchFilterOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scanControlsRef = useRef<IScannerControls | null>(null);
+  const scanSessionRef = useRef(0);
 
   /* DERIVED: live ready-for-dispatch JOs from production */
   const readyInquiries = useMemo(() => inquiriesByStage(["ready_for_dispatch"]), [inquiriesByStage]);
   const ready: DispatchRow[] = useMemo(() => readyInquiries.map(inquiryToDispatchRow), [readyInquiries]);
+  const filteredReady = useMemo(() => {
+    const query = dispatchSearch.trim().toLocaleLowerCase();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateCutoff = new Date(today);
+    if (dispatchDateFilter === "7days") dateCutoff.setDate(dateCutoff.getDate() - 6);
+    if (dispatchDateFilter === "30days") dateCutoff.setDate(dateCutoff.getDate() - 29);
 
-  /* History rows: any inquiry with a non-empty waybillLog. Older rows fall back to stageHistory entries. */
-  const allInquiriesForHistory = useMemo(
+    return ready.filter((row) => {
+      const inquiry = readyInquiries.find((candidate) => candidate.id === row.id);
+      const matchesSearch = !query || [
+        row.jo,
+        row.client,
+        row.item,
+        row.itemCode,
+        row.enterFilPN,
+        ...(inquiry?.products.flatMap((product) => [product.filterName, product.type, product.oem]) ?? []),
+      ].some((value) => value?.toLocaleLowerCase().includes(query));
+      const submittedDate = inquiry ? new Date(inquiry.submittedDate) : new Date(Number.NaN);
+      const matchesDate = dispatchDateFilter === "all" ||
+        (!Number.isNaN(submittedDate.getTime()) && submittedDate >= dateCutoff && submittedDate < tomorrow);
+      return matchesSearch && matchesDate;
+    });
+  }, [dispatchSearch, dispatchDateFilter, ready, readyInquiries]);
+  const shipmentInquiries = useMemo(
     () => inquiriesByStage(["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"]),
     [inquiriesByStage]
   );
-  const log: LogRow[] = useMemo(() => {
-    const out: LogRow[] = [];
-    for (const inq of allInquiriesForHistory) {
-      const row = inquiryToDispatchRow(inq);
-      const wl = inq.waybillLog ?? [];
-      if (wl.length > 0) {
-        for (let i = 0; i < wl.length; i++) {
-          const e = wl[i];
-          out.push({
-            id: `${inq.id}-wl-${i}`,
-            date: new Date(e.ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-            waybillNo: inq.waybillNumber ?? row.barcode,
-            jo: row.jo,
-            client: row.client,
-            item: row.item,
-            qty: row.qty,
-            method: row.method,
-            status: e.status,
-            note: e.note,
-            processedBy: "P. Tan",
-            matchedJob: row,
-          });
-        }
-      } else if (inq.stageHistory && inq.stageHistory.length > 0 && (inq.stage === "delivered" || inq.stage === "paid" || inq.stage === "dispatched")) {
-        /* Fallback for older orders without a waybillLog */
-        const last = inq.stageHistory[inq.stageHistory.length - 1];
-        out.push({
-          id: `${inq.id}-sh`,
-          date: new Date(last.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          waybillNo: inq.waybillNumber ?? row.barcode,
-          jo: row.jo,
-          client: row.client,
-          item: row.item,
-          qty: row.qty,
-          method: row.method,
-          status: row.status,
-          processedBy: last.completedBy,
-          matchedJob: row,
-        });
-      }
-    }
-    return out.sort((a, b) => b.date.localeCompare(a.date));
-  }, [allInquiriesForHistory]);
+  const shipments = useMemo(() => shipmentInquiries.map(inquiryToDispatchRow), [shipmentInquiries]);
 
-  const selected = ready.find((c) => c.id === selectedId) ?? null;
-
-  const onScanKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== "Enter") return;
-    const q = scanInput.trim().toUpperCase();
-    const hit = ready.find((c) => c.barcode === q || c.jo === q || c.po === q);
-    if (hit) {
-      setSelectedId(hit.id);
-      setScanPopup(hit);
-    } else {
-      toast.error("No matching JO/PO/barcode — check the waybill number and try again");
-    }
-    setScanInput("");
+  const stopScanner = () => {
+    scanSessionRef.current += 1;
+    scanControlsRef.current?.stop();
+    scanControlsRef.current = null;
+    setIsScanning(false);
   };
 
-  const markDispatched = () => {
-    if (!selected) return;
-    const inqId = selected.id;
-    const ts = new Date().toISOString();
-    const wb = waybillNo || selected.barcode;
-    const inq = readyInquiries.find((i) => i.id === inqId);
-    const prevLog = inq?.waybillLog ?? [];
-    updateInquiry(inqId, {
-      stage: "dispatched",
-      waybillNumber: wb,
-      dispatchedAt: ts,
-      waybillLog: [...prevLog, { ts, status: "Dispatched", note: wb }],
-    });
-    setSelectedId(null); setWaybillNo(""); setConfirmDispatch(false);
-    toast.success(`${selected.jo} dispatched`, { description: `Logistics → In Transit · Waybill ${wb}` });
+  useEffect(() => () => {
+    scanSessionRef.current += 1;
+    scanControlsRef.current?.stop();
+  }, []);
+
+  const startScanner = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const scanSession = scanSessionRef.current + 1;
+    scanSessionRef.current = scanSession;
+    setCameraError("");
+    setIsScanning(true);
+    try {
+      const { BrowserQRCodeReader } = await import("@zxing/browser");
+      const reader = new BrowserQRCodeReader();
+      const controls = await reader.decodeFromVideoDevice(undefined, video, (result, _error, scannerControls) => {
+        if (scanSessionRef.current !== scanSession) return;
+        if (!result) return;
+        scanSessionRef.current += 1;
+        scannerControls.stop();
+        scanControlsRef.current = null;
+        setIsScanning(false);
+
+        const identifier = result.getText().trim();
+        const match = shipments.find(
+          (shipment) => shipment.waybillIdentifier.toLocaleLowerCase() === identifier.toLocaleLowerCase()
+        );
+        if (!match) {
+          setSelectedId(null);
+          setScanPopup(null);
+          toast.error("Waybill not found", { description: "No shipment matches this QR code." });
+          return;
+        }
+
+        setSelectedId(ready.some((shipment) => shipment.id === match.id) ? match.id : null);
+        setScanPopup(match);
+      });
+      if (scanSessionRef.current !== scanSession) controls.stop();
+      else scanControlsRef.current = controls;
+    } catch (error) {
+      if (scanSessionRef.current !== scanSession) return;
+      setIsScanning(false);
+      const message = error instanceof Error ? error.message : "Camera access could not be started.";
+      setCameraError(message);
+      toast.error("Unable to start QR scanner", { description: message });
+    }
+  };
+
+  const openWaybillPreview = async (shipment: DispatchRow) => {
+    const inquiry = readyInquiries.find((item) => item.id === shipment.id);
+    if (!inquiry) {
+      toast.error("Unable to open Waybill preview", { description: "The selected Ready-for-Dispatch JO could not be found." });
+      return;
+    }
+
+    const waybillIdentifier = inquiry.waybillIdentifier?.trim() || shipment.waybillIdentifier;
+    const previewShipment = { ...shipment, waybillIdentifier };
+    try {
+      const QRCode = await import("qrcode");
+      const qrDataUrl = await QRCode.toDataURL(waybillIdentifier, {
+        errorCorrectionLevel: "M",
+        margin: 2,
+        width: 320,
+      });
+      if (!inquiry.waybillIdentifier?.trim()) {
+        updateInquiry(inquiry.id, { waybillIdentifier });
+      }
+      setWaybillPreview({
+        shipment: previewShipment,
+        qrDataUrl,
+        dispatchDate: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+        clientAddress: clientCompanyAddress(getClientCompanySettings(inquiry.clientName)),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "QR code generation failed.";
+      toast.error("Unable to prepare Waybill preview", { description: message });
+    }
   };
 
   return (
@@ -184,351 +161,328 @@ export function WaybillScanner() {
             Waybill Scanner
           </h1>
           <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
-            Dispatch lookup tool — scan waybill / JO number to verify items before they leave the building
+            Scan the QR code on the waybill to verify the shipment
           </p>
         </div>
         <NotificationBell />
       </header>
 
-      <div className="px-8 py-8 flex flex-col gap-8">
-        {/* TOP: Scanner input + manual dropdown */}
-        <section className="flex flex-col gap-4">
-          <div className="bg-white rounded-xl overflow-hidden" style={{ border: "2px solid #1A2B4A" }}>
-            <div className="px-5 py-3 flex items-center gap-3" style={{ backgroundColor: "#1A2B4A" }}>
-              <ScanLine size={20} style={{ color: "white" }} />
-              <div>
-                <div className="font-syne text-white" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>Barcode / Waybill Scanner</div>
-                <div className="font-dm text-white/60" style={{ fontSize: 11 }}>Connect physical barcode scanner — input appears here automatically</div>
-              </div>
-              {/* Section I — 2D Barcode / QR Ready indicator */}
-              <span className="font-dm px-2 py-0.5 rounded-full ml-auto" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEF3C7", color: "#92400E", letterSpacing: 0.5 }}>2D BARCODE / QR READY</span>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: "#16A34A" }}>
-                <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                <span className="font-dm text-white" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>READY</span>
-              </div>
+      <div className="px-6 md:px-8 py-6 md:py-8 flex flex-col gap-6">
+        <section aria-label="Waybill Scanner" className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
+          <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_240px]">
+            <div className="flex items-center justify-center p-5 md:p-7 border-b lg:border-b-0 lg:border-r border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
+              {isScanning ? (
+                <video
+                  ref={videoRef}
+                  className="w-full h-48 md:h-52 rounded-lg bg-slate-950 object-contain"
+                  muted
+                  playsInline
+                  aria-label="QR code camera preview"
+                />
+              ) : (
+                <div className="relative flex items-center justify-center w-full h-48 md:h-52 rounded-lg border border-dashed border-slate-300" style={{ backgroundColor: "#EFF4FA" }}>
+                  <div className="absolute top-4 left-4 w-7 h-7 border-l-2 border-t-2 rounded-tl-md" style={{ borderColor: "#1A2B4A" }} />
+                  <div className="absolute top-4 right-4 w-7 h-7 border-r-2 border-t-2 rounded-tr-md" style={{ borderColor: "#1A2B4A" }} />
+                  <div className="absolute bottom-4 left-4 w-7 h-7 border-l-2 border-b-2 rounded-bl-md" style={{ borderColor: "#1A2B4A" }} />
+                  <div className="absolute bottom-4 right-4 w-7 h-7 border-r-2 border-b-2 rounded-br-md" style={{ borderColor: "#1A2B4A" }} />
+                  <QrCode size={88} strokeWidth={1.35} style={{ color: "#1A2B4A" }} aria-hidden="true" />
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-4 px-5 py-3">
-              <input
-                value={scanInput}
-                onChange={(e) => setScanInput(e.target.value)}
-                onKeyDown={onScanKey}
-                placeholder="Scan or type EF-XXXX / JO-XXXX / PO-XXXX then press Enter..."
-                className="font-mono-jb flex-1 outline-none bg-transparent"
-                style={{ fontSize: 14, color: "#0F172A" }}
-                autoFocus
-              />
-            </div>
-            <div className="px-5 pb-3 flex items-center gap-2">
-              <Info size={12} style={{ color: "#94A3B8" }} />
-              <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>
-                USB HID barcode scanner — scanner types the waybill number and auto-presses Enter. Camera scanning not used.
-              </span>
-            </div>
-          </div>
 
-          {/* Or pick from dropdown */}
-          <div className="flex items-center gap-3">
-            <label className="font-dm" style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>Or select Ready-for-Dispatch JO:</label>
-            <select
-              value={selectedId ?? ""}
-              onChange={(e) => setSelectedId(e.target.value || null)}
-              className="font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400"
-              style={{ fontSize: 13, color: "#0F172A", minWidth: 360 }}
-            >
-              <option value="">— Choose JO —</option>
-              {ready.map((c) => (
-                <option key={c.id} value={c.id}>{c.jo} · {c.client} · {c.item} · {c.qty} pcs</option>
-              ))}
-            </select>
+            <div className="p-5 md:p-7 flex flex-col justify-center">
+              <div className="flex items-center gap-2 mb-2">
+                <ScanLine size={18} style={{ color: "#C8102E" }} />
+                <span className="font-dm" style={{ fontSize: 10, fontWeight: 800, color: "#C8102E", letterSpacing: 0.8 }}>WAREHOUSE SCANNER</span>
+              </div>
+              <h2 className="font-syne" style={{ fontSize: 20, fontWeight: 800, color: "#0F172A" }}>QR Code Scanner</h2>
+              <p className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>Scan the QR code on the waybill to verify the shipment</p>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                {isScanning ? (
+                  <button onClick={stopScanner} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700 }}>
+                    <Camera size={15} /> Stop Camera
+                  </button>
+                ) : (
+                  <button onClick={startScanner} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>
+                    <Camera size={15} /> Start QR Scanner
+                  </button>
+                )}
+                <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>
+                  {isScanning ? "Point the camera at the Waybill QR code." : "Allow camera access to scan the QR code. The QR contains only the Waybill identifier."}
+                </span>
+              </div>
+              {cameraError && <p className="font-dm mt-3" role="alert" style={{ fontSize: 12, color: "#B91C1C" }}>{cameraError}</p>}
+            </div>
+
+            <aside className="p-5 md:p-6 border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col justify-center gap-4" style={{ backgroundColor: "#FBFCFE" }}>
+              <div>
+                <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.7 }}>SCANNER STATUS</div>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: isScanning ? "#DBEAFE" : "#DCFCE7" }}>
+                  <span className={`w-2 h-2 rounded-full ${isScanning ? "animate-pulse" : ""}`} style={{ backgroundColor: isScanning ? "#2563EB" : "#16A34A" }} />
+                  <span className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: isScanning ? "#1D4ED8" : "#166534", letterSpacing: 0.4 }}>{isScanning ? "SCANNING" : "READY"}</span>
+                </div>
+              </div>
+              <div className="pt-4 border-t border-slate-200">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={17} style={{ color: "#1A2B4A" }} />
+                  <span className="font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>Secure Verification</span>
+                </div>
+                <p className="font-dm mt-1.5" style={{ fontSize: 11, lineHeight: 1.5, color: "#64748B" }}>Scan the Waybill QR code to automatically verify the shipment details.</p>
+              </div>
+            </aside>
           </div>
         </section>
 
-        {/* BELOW: Dispatch Labels — Ready for Dispatch JOs from production */}
         <section>
-          <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-3">
             <div>
               <h2 className="font-syne" style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>📦 Dispatch Labels — Ready for Packing</h2>
               <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Print or reprint dispatch labels for finished production items before they ship.</p>
+            </div>
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="relative w-full md:w-72">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
+                <input
+                  type="search"
+                  value={dispatchSearch}
+                  onChange={(event) => setDispatchSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setIsDispatchFilterOpen(false);
+                  }}
+                  placeholder="Search JO, client, or item..."
+                  aria-label="Search ready-for-dispatch job orders"
+                  className="font-dm w-full pl-9 pr-3 py-2.5 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400"
+                  style={{ fontSize: 13, color: "#0F172A" }}
+                />
+              </div>
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsDispatchFilterOpen((open) => !open)}
+                  aria-label="Filter dispatch job orders"
+                  aria-expanded={isDispatchFilterOpen}
+                  className="font-dm flex items-center justify-center w-10 h-10 rounded-md border border-slate-200 bg-white hover:bg-slate-50"
+                  style={{ color: dispatchDateFilter !== "all" ? "#1A2B4A" : "#64748B" }}
+                >
+                  <Filter size={16} />
+                </button>
+                {isDispatchFilterOpen && (
+                  <div className="absolute right-0 top-12 z-20 w-64 bg-white rounded-lg border border-slate-200 p-4 shadow-lg">
+                    <label className="font-dm block" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                      Date
+                      <select
+                        value={dispatchDateFilter}
+                        onChange={(event) => setDispatchDateFilter(event.target.value)}
+                        className="font-dm mt-1.5 w-full px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400"
+                        style={{ fontSize: 13, color: "#0F172A" }}
+                      >
+                        <option value="today">Today</option>
+                        <option value="7days">Last 7 Days</option>
+                        <option value="30days">Last 30 Days</option>
+                        <option value="all">All</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
             <table className="w-full">
               <thead style={{ backgroundColor: "#F4F6F9" }}>
                 <tr>
-                  {["JO No.", "Client", "Item", "Qty", "Method", "Status", "Action"].map((h) => (
+                  {["JO No.", "Client", "Item", "Qty", "Method", "Status"].map((h) => (
                     <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {ready.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No items ready for dispatch.</td></tr>
-                ) : ready.map((c) => (
-                  <tr key={c.id} className="border-t border-slate-200/70 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{c.jo}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{c.client}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.item}</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.qty} pcs</td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.method}</td>
-                    <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>Ready for Dispatch</span></td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => { window.print(); toast.success(`Reprinting dispatch label for ${c.jo}`); }}
-                        className="font-dm flex items-center gap-1 px-3 py-1.5 rounded-md border-2 hover:bg-slate-50"
-                        style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 11, fontWeight: 700 }}
+                  <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No items ready for dispatch.</td></tr>
+                ) : filteredReady.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No matching job orders found.</td></tr>
+                ) : filteredReady.map((c) => {
+                  const inquiry = readyInquiries.find((item) => item.id === c.id);
+                  const isExpanded = selectedId === c.id;
+                  const hasWaybill = Boolean(inquiry?.waybillIdentifier?.trim() || inquiry?.waybillNumber?.trim());
+                  const displayedWaybill = inquiry?.waybillNumber?.trim() || c.waybillIdentifier;
+
+                  return (
+                    <Fragment key={c.id}>
+                      <tr
+                        onClick={() => setSelectedId(isExpanded ? null : c.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedId(isExpanded ? null : c.id);
+                          }
+                        }}
+                        tabIndex={0}
+                        aria-expanded={isExpanded}
+                        aria-controls={`dispatch-details-${c.id}`}
+                        className="border-t border-slate-200/70 hover:bg-slate-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
                       >
-                        <Printer size={11} /> Print Dispatch Label
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="px-4 py-2.5 font-dm border-t border-slate-200" style={{ fontSize: 11, color: "#94A3B8", fontStyle: "italic", backgroundColor: "#F8FAFC" }}>
-              💡 Forgot to print on the production floor? You can re-print the dispatch label here.
-            </div>
-          </div>
-        </section>
-
-        {/* Lookup details panel — only shown when a row is selected */}
-        {selected && (
-          <section className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: "#1A2B4A" }}>
-              <div>
-                <div className="font-mono-jb text-white" style={{ fontSize: 18, fontWeight: 700 }}>{selected.jo}</div>
-                <div className="font-dm text-white/70" style={{ fontSize: 12 }}>{selected.client} · {selected.contact}</div>
-              </div>
-              <span className="font-dm px-3 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>
-                {selected.status}
-              </span>
-            </div>
-
-            <div className="grid gap-6 p-6" style={{ gridTemplateColumns: "3fr 2fr" }}>
-              <div className="flex flex-col gap-5">
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    ["Item Code", selected.itemCode],
-                    ["Enter-Fil PN", selected.enterFilPN],
-                    ["PO Number", selected.po],
-                    ["SI Number", selected.si],
-                    ["Quantity", `${selected.qty} pcs`],
-                    ["Delivery Method", selected.method],
-                  ].map(([lbl, val]) => (
-                    <div key={lbl} className="flex flex-col gap-0.5">
-                      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{lbl}</div>
-                      <div className="font-mono-jb" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{val ?? "—"}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {selected.specs && (
-                  <div>
-                    <div className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Technical Specifications</div>
-                    <div className="rounded-lg p-3 grid grid-cols-3 gap-2" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                      {Object.entries(selected.specs).filter(([, v]) => v).map(([k, v]) => (
-                        <div key={k} className="font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>
-                          <span style={{ color: "#94A3B8", textTransform: "uppercase" }}>{k}: </span>
-                          <span style={{ color: "#0F172A", fontWeight: 600 }}>{v}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className="font-dm block mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Waybill Number (editable)</label>
-                  <input
-                    value={waybillNo}
-                    onChange={(e) => setWaybillNo(e.target.value)}
-                    placeholder={`Default: ${selected.barcode} — paste Lalamove / AP Cargo waybill if available`}
-                    className="font-mono-jb w-full px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
-                    style={{ fontSize: 13, color: "#0F172A" }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                {selected.sketch && (
-                  <div className="rounded-lg p-4" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                    <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", letterSpacing: 0.4, textTransform: "uppercase" }}>Product Sketch — visual verification</div>
-                    <div className="rounded-lg flex flex-col items-center justify-center py-8 gap-2 bg-white" style={{ border: "1.5px dashed #93C5FD" }}>
-                      <Paperclip size={28} style={{ color: "#1A2B4A" }} />
-                      <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#2563EB", textAlign: "center" }}>{selected.sketch}</div>
-                      <button onClick={() => toast.info(`Opening: ${selected.sketch}`)} className="font-dm flex items-center gap-1 px-3 py-1.5 mt-2 rounded-md hover:bg-blue-100" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A", border: "1px solid #BFDBFE" }}>
-                        <Eye size={11} /> View Drawing
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => { window.print(); toast("Reprinting label..."); }}
-                  className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90"
-                  style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 800, letterSpacing: 0.5 }}
-                >
-                  <Printer size={14} strokeWidth={2.5} /> 🖨 PRINT WAYBILL LABEL
-                </button>
-                <button
-                  onClick={() => toast("PDF download started")}
-                  className="flex items-center justify-center gap-2 py-2.5 rounded-md font-dm border-2 hover:bg-slate-50"
-                  style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
-                >
-                  <FileDown size={14} strokeWidth={2.5} /> Download PDF
-                </button>
-                <button
-                  onClick={() => setConfirmDispatch(true)}
-                  className="flex items-center justify-center gap-2 py-2.5 rounded-md text-white font-dm hover:opacity-90"
-                  style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
-                >
-                  <CheckCircle2 size={14} strokeWidth={2.5} /> Mark as Dispatched
-                </button>
-                <span className="font-dm text-center" style={{ fontSize: 11, color: "#94A3B8" }}>
-                  Logs to history · Updates Logistics → In Transit
-                </span>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* BELOW: Waybill History Log */}
-        <section>
-          <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <div className="px-5 py-4 border-b border-slate-200/70 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Waybill History Log</h3>
-                <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>All scanned/processed waybills · click a row to view full details + sketch</span>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="relative">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
-                  <input
-                    value={logQuery}
-                    onChange={(e) => setLogQuery(e.target.value)}
-                    placeholder="Search waybill / JO / client..."
-                    className="font-dm pl-8 pr-3 py-1.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
-                    style={{ fontSize: 12, width: 220 }}
-                  />
-                </div>
-                <input type="date" value={logFrom} onChange={(e) => setLogFrom(e.target.value)} title="From" className="font-dm px-2 py-1.5 rounded-md border border-slate-200 bg-white outline-none" style={{ fontSize: 11 }} />
-                <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>→</span>
-                <input type="date" value={logTo} onChange={(e) => setLogTo(e.target.value)} title="To" className="font-dm px-2 py-1.5 rounded-md border border-slate-200 bg-white outline-none" style={{ fontSize: 11 }} />
-                <select
-                  value={logStatusFilter}
-                  onChange={(e) => setLogStatusFilter(e.target.value as any)}
-                  className="font-dm px-2 py-1.5 rounded-md border border-slate-200 bg-white outline-none"
-                  style={{ fontSize: 11, color: "#0F172A" }}
-                >
-                  <option value="all">All</option>
-                  <option value="Delivered">Delivered</option>
-                  <option value="Dispatched">Dispatched</option>
-                </select>
-              </div>
-            </div>
-            <table className="w-full">
-              <thead style={{ backgroundColor: "#F4F6F9" }}>
-                <tr>
-                  {["", "Date", "Waybill No.", "JO", "Client", "Item", "Qty", "Method", "Status", "Note"].map((h, i) => (
-                    <th key={i} className="font-dm text-left px-4 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const filtered = log.filter(r => {
-                    const q = logQuery.toLowerCase();
-                    const searchOk = !q || r.waybillNo.toLowerCase().includes(q) || r.jo.toLowerCase().includes(q) || r.client.toLowerCase().includes(q);
-                    const statusOk = logStatusFilter === "all" || r.status === logStatusFilter;
-                    return searchOk && statusOk;
-                  });
-                  if (filtered.length === 0) {
-                    return <tr><td colSpan={10} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No waybills match your filters.</td></tr>;
-                  }
-                  return filtered.map((r) => {
-                    const isExpanded = expandedLogId === r.id;
-                    const matchedJob = r.matchedJob;
-                    const statusBg = r.status === "Delivered" ? "#DCFCE7" : r.status === "Dispatched" ? "#DBEAFE" : "#E2E8F0";
-                    const statusFg = r.status === "Delivered" ? "#15803D" : r.status === "Dispatched" ? "#1D4ED8" : "#475569";
-                    return (
-                      <Fragment key={r.id}>
-                        <tr className="border-t border-slate-200/70 hover:bg-slate-50 cursor-pointer" onClick={() => setExpandedLogId(isExpanded ? null : r.id)}>
-                          <td className="px-4 py-3">{isExpanded ? <ChevronUp size={14} style={{ color: "#94A3B8" }} /> : <ChevronDown size={14} style={{ color: "#94A3B8" }} />}</td>
-                          <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
-                          <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.waybillNo}</td>
-                          <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.jo}</td>
-                          <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
-                          <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
-                          <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.qty}</td>
-                          <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.method}</td>
-                          <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: statusBg, color: statusFg }}>{r.status}</span></td>
-                          <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, color: "#64748B" }}>{r.note ?? "—"}</td>
-                        </tr>
-                        {isExpanded && (
-                          <tr style={{ backgroundColor: "#F8FAFC" }}>
-                            <td colSpan={10} className="px-6 py-5">
-                              <div className="grid gap-5" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
+                        <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{c.jo}</td>
+                        <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{c.client}</td>
+                        <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.item}</td>
+                        <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.qty} pcs</td>
+                        <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{c.method}</td>
+                        <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>Ready for Dispatch</span></td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={6} className="p-0">
+                            <section id={`dispatch-details-${c.id}`} className="border-t border-slate-200/70 px-4 py-3" style={{ backgroundColor: "#F8FAFC" }}>
+                              <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div>
-                                  <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Order details</div>
-                                  <div className="rounded-lg p-3 grid grid-cols-2 gap-2" style={{ backgroundColor: "white", border: "1px solid #E2E8F0" }}>
-                                    {matchedJob ? (
-                                      [
-                                        ["Item Code", matchedJob.itemCode],
-                                        ["Enter-Fil PN", matchedJob.enterFilPN],
-                                        ["PO", matchedJob.po],
-                                        ["SI", matchedJob.si],
-                                        ["Contact", matchedJob.contact],
-                                      ].map(([k, v]) => (
-                                        <div key={k}>
-                                          <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: 0.4, textTransform: "uppercase" }}>{k}</div>
-                                          <div className="font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>{v ?? "—"}</div>
-                                        </div>
-                                      ))
-                                    ) : (
-                                      <div className="col-span-2 font-dm" style={{ fontSize: 12, color: "#94A3B8", fontStyle: "italic" }}>Original order data archived — basic log only.</div>
-                                    )}
-                                  </div>
-                                  {matchedJob?.specs && (
-                                    <div className="mt-3">
-                                      <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Technical specs</div>
-                                      <div className="rounded-lg p-3 grid grid-cols-3 gap-1.5" style={{ backgroundColor: "white", border: "1px solid #E2E8F0" }}>
-                                        {Object.entries(matchedJob.specs).filter(([, v]) => v).map(([k, v]) => (
-                                          <div key={k} className="font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>
-                                            <span style={{ color: "#94A3B8", textTransform: "uppercase" }}>{k}: </span>
-                                            <span style={{ color: "#0F172A", fontWeight: 600 }}>{v}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
+                                  <h3 className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.5 }}>WAYBILL</h3>
+                                  <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>Shipment document</p>
                                 </div>
-                                <div>
-                                  <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Product Sketch</div>
-                                  {matchedJob?.sketch ? (
-                                    <div className="rounded-lg flex flex-col items-center justify-center py-6 gap-2 bg-white" style={{ border: "1.5px dashed #93C5FD" }}>
-                                      <Paperclip size={28} style={{ color: "#1A2B4A" }} />
-                                      <div className="font-mono-jb" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB", textAlign: "center" }}>{matchedJob.sketch}</div>
-                                      <button onClick={(e) => { e.stopPropagation(); toast.info(`Opening: ${matchedJob.sketch}`); }} className="font-dm flex items-center gap-1 px-3 py-1.5 mt-1 rounded-md hover:bg-blue-50" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A", border: "1px solid #BFDBFE" }}>
-                                        <Eye size={11} /> View Drawing
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8", backgroundColor: "white", border: "1px dashed #CBD5E1" }}>
-                                      No sketch on file
-                                    </div>
-                                  )}
+                                <div className="flex flex-wrap items-center justify-end gap-4">
+                                  <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                                    {hasWaybill && (
+                                      <span className="font-mono-jb" style={{ fontSize: 14, fontWeight: 800, color: "#1A2B4A" }}>
+                                        {displayedWaybill}
+                                      </span>
+                                    )}
+                                    <span className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 700, color: hasWaybill ? "#15803D" : "#64748B" }}>
+                                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: hasWaybill ? "#16A34A" : "#94A3B8" }} />
+                                      {hasWaybill ? "Ready" : "Not Generated"}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => { void openWaybillPreview(c); }}
+                                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90"
+                                    style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 800, letterSpacing: 0.3 }}
+                                  >
+                                    <Printer size={14} strokeWidth={2.5} />
+                                    {hasWaybill ? "Print Waybill" : "Generate & Print Waybill"}
+                                  </button>
                                 </div>
                               </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  });
-                })()}
+                            </section>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </section>
+
       </div>
+
+      {waybillPreview && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(15,23,42,0.7)" }}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-4xl flex flex-col"
+            style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.35)", maxHeight: "90vh" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-5 py-2.5 border-b border-slate-200 flex items-center justify-between shrink-0 waybill-preview-actions">
+              <div>
+                <h3 className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Waybill Preview</h3>
+                <p className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{waybillPreview.shipment.waybillIdentifier} · ready to print</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-md text-white font-dm hover:opacity-90"
+                  style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700 }}
+                >
+                  <Printer size={13} /> Print Waybill
+                </button>
+                <button onClick={() => setWaybillPreview(null)} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center" aria-label="Close Waybill preview">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-auto p-4 md:p-5 print:p-0" style={{ backgroundColor: "#F4F6F9" }}>
+              <article
+                id="waybill-preview-document"
+                className="bg-white mx-auto print:shadow-none"
+                style={{ width: "100%", maxWidth: 560, padding: 20, boxShadow: "0 4px 16px rgba(15,23,42,0.08)", border: "1px solid #E2E8F0" }}
+              >
+                <div className="flex items-start justify-between gap-3 pb-3 border-b" style={{ borderColor: "#CBD5E1" }}>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex flex-col items-center">
+                      <span style={{ fontSize: 30, color: "#C8102E", fontWeight: 900, lineHeight: 0.9 }}>▲</span>
+                      <span className="font-dm" style={{ fontSize: 7, fontWeight: 800, color: "#C8102E", letterSpacing: 0.8, marginTop: 1 }}>EFIP</span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", letterSpacing: 0.3, textTransform: "uppercase" }}>
+                        Enter-Flow / Enter-Fil Industrial Products
+                      </div>
+                      <div className="font-dm mt-1" style={{ fontSize: 10, color: "#475569", lineHeight: 1.4 }}>
+                        Sitio Hulo, Barangay Balasing - San Jose Rd<br />
+                        Santa Maria, 3022 Bulacan
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-syne" style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", letterSpacing: 1, lineHeight: 1 }}>WAYBILL</div>
+                    <div className="font-dm mt-1.5" style={{ fontSize: 9, color: "#64748B" }}>Dispatch Date</div>
+                    <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{waybillPreview.dispatchDate}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 border-b border-slate-200">
+                  <div className="flex flex-col gap-2.5 min-w-0">
+                    <div>
+                      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.6, textTransform: "uppercase" }}>Waybill No.</div>
+                      <div className="font-mono-jb mt-0.5 break-words" style={{ fontSize: 19, fontWeight: 800, color: "#1A2B4A" }}>{waybillPreview.shipment.waybillIdentifier}</div>
+                    </div>
+                    <div>
+                      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.6, textTransform: "uppercase" }}>JO No.</div>
+                      <div className="font-mono-jb mt-0.5 break-words" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{waybillPreview.shipment.jo}</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <img src={waybillPreview.qrDataUrl} alt="QR code containing Waybill identifier" className="w-24 h-24" />
+                    <div className="font-dm mt-0.5 text-center" style={{ fontSize: 9, fontWeight: 700, color: "#475569" }}>QR Code</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-4 py-3 border-b border-slate-200">
+                  <div className="pr-4 border-r border-slate-200">
+                    <div className="font-dm pb-1 mb-1.5 border-b border-slate-200" style={{ fontSize: 10, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.8 }}>FROM</div>
+                    <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>Enter-Fil Industrial Products</div>
+                    <div className="font-dm mt-1" style={{ fontSize: 11, lineHeight: 1.45, color: "#475569" }}>
+                      Sitio Hulo, Barangay Balasing - San Jose Rd<br />
+                      Santa Maria, 3022 Bulacan
+                    </div>
+                  </div>
+                  <div className="pl-1">
+                    <div className="font-dm pb-1 mb-1.5 border-b border-slate-200" style={{ fontSize: 10, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.8 }}>TO</div>
+                    <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{waybillPreview.shipment.client}</div>
+                    <div className="font-dm mt-1" style={{ fontSize: 11, lineHeight: 1.45, color: "#475569", overflowWrap: "anywhere" }}>
+                      {waybillPreview.clientAddress}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  {[
+                    ["Item / Product", waybillPreview.shipment.item],
+                    ["Quantity", `${waybillPreview.shipment.qty} pcs`],
+                    ["PO Number", waybillPreview.shipment.po],
+                    ["SI Number", waybillPreview.shipment.si],
+                    ["Delivery Method", waybillPreview.shipment.method],
+                  ].map(([label, value]) => (
+                    <WaybillField key={label} label={label} value={value} />
+                  ))}
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scan popup */}
       {scanPopup && (
@@ -545,15 +499,18 @@ export function WaybillScanner() {
               <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: "#F0FDF4", border: "1px solid #86EFAC" }}>
                 <CheckCircle2 size={18} style={{ color: "#16A34A" }} />
                 <div>
-                  <div className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#166534" }}>{scanPopup.barcode}</div>
+                  <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase" }}>Waybill Number</div>
+                  <div className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#166534" }}>{scanPopup.waybillIdentifier}</div>
                   <div className="font-dm" style={{ fontSize: 11, color: "#16A34A" }}>Waybill matched successfully</div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ["Job Order", scanPopup.jo], ["PO", scanPopup.po], ["Client", scanPopup.client],
-                  ["Contact", scanPopup.contact], ["Item", scanPopup.item], ["Qty", `${scanPopup.qty} pcs`],
-                  ["Method", scanPopup.method],
+                  ["Job Order", scanPopup.jo], ["Client", scanPopup.client],
+                  ["Item / Product", scanPopup.item], ["Quantity", `${scanPopup.qty} pcs`],
+                  ["Shipment Status", scanPopup.status], ["PO", scanPopup.po],
+                  ["SI", scanPopup.si], ["Contact", scanPopup.contact],
+                  ["Delivery Method", scanPopup.method],
                 ].map(([lbl, val]) => (
                   <div key={lbl}>
                     <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>{lbl}</div>
@@ -563,34 +520,47 @@ export function WaybillScanner() {
               </div>
               <div className="flex gap-2 mt-2">
                 <button onClick={() => setScanPopup(null)} className="flex-1 py-2.5 rounded-md font-dm border border-slate-200 hover:bg-slate-50" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Close</button>
-                <button onClick={() => { setSelectedId(scanPopup.id); setScanPopup(null); toast.success("Order loaded"); }} className="flex-1 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Load & View Details</button>
+                {scanPopup.status === "Ready for Dispatch" && (
+                  <button onClick={() => { setSelectedId(scanPopup.id); setScanPopup(null); toast.success("Shipment details loaded"); }} className="flex-1 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Load & View Details</button>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Confirm dispatch */}
-      {confirmDispatch && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={() => setConfirmDispatch(false)}>
-          <div className="bg-white rounded-xl w-full max-w-md" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
-              <CheckCircle2 size={18} style={{ color: "#16A34A" }} />
-              <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Confirm Dispatch</h3>
-            </div>
-            <div className="p-5 font-dm flex flex-col gap-2" style={{ fontSize: 13, color: "#0F172A" }}>
-              <div><span style={{ fontWeight: 700 }}>{selected.jo}</span> · {selected.client} · {selected.qty} pcs</div>
-              <div>Waybill: <span className="font-mono-jb" style={{ fontWeight: 700 }}>{waybillNo || selected.barcode}</span></div>
-              <div>Method: <span style={{ fontWeight: 700 }}>{selected.method}</span></div>
-              <div style={{ color: "#475569", fontSize: 12 }}>Logistics → In Transit · Client portal updated · Logged to waybill history.</div>
-            </div>
-            <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
-              <button onClick={() => setConfirmDispatch(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-              <button onClick={markDispatched} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700 }}>Confirm Dispatch</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <style>{`
+        @media print {
+          @page { size: portrait; margin: 10mm; }
+          body * { visibility: hidden !important; }
+          #waybill-preview-document, #waybill-preview-document * { visibility: visible !important; }
+          #waybill-preview-document {
+            position: fixed !important;
+            inset: 0 auto auto 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 18px !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            aspect-ratio: auto !important;
+          }
+          .waybill-preview-actions { display: none !important; }
+        }
+        @media screen and (max-width: 640px) {
+          #waybill-preview-document { padding: 16px !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function WaybillField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-2.5 border-b border-slate-100 last:border-b-0 min-w-0">
+      <span className="font-dm" style={{ fontSize: 9, color: "#64748B" }}>{label}</span>
+      <span className="font-dm text-right break-words" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{value}</span>
     </div>
   );
 }

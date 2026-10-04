@@ -270,7 +270,7 @@ export interface Inquiry {
   quotedTotal?: number;
   /* — formal quotation document (Tab 3 output) — */
   quotationDoc?: QuotationDoc;
-  /* — flag set when materials have been deducted (avoid double-deducting on stage replays) — */
+  /* — flag set when this JO's materials have been deducted during JO generation — */
   inventoryDeducted?: boolean;
   /* — production tracking — */
   currentStage?: number;             // 0-9 index into PRODUCTION_STAGES
@@ -327,6 +327,18 @@ export interface Inquiry {
   /* — This inquiry is itself a replacement JO — */
   isReplacement?: boolean;
   replacementParentId?: string;   // id of the original inquiry
+}
+
+export function resolveProductBOM(inquiry: Inquiry, productIndex: number): BOMLine[] | undefined {
+  const productBOM = inquiry.productsBillOfMaterials?.[productIndex];
+  if (productBOM && productBOM.length > 0) return productBOM;
+
+  if (inquiry.products.length === 1) {
+    const sharedBOM = inquiry.billOfMaterials;
+    if (sharedBOM && sharedBOM.length > 0) return sharedBOM;
+  }
+
+  return undefined;
 }
 
 export interface FinalizeJOData {
@@ -1037,7 +1049,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           joSketch: jo.joSketch,
           dpReceiptFile: jo.dpReceiptFile,
           signedQuotationFile: jo.signedQuotationFile,
-          billOfMaterials: current.productsBillOfMaterials?.[idx] ?? current.billOfMaterials,
+          billOfMaterials: resolveProductBOM(current, idx),
           costConfig: current.productsCostConfig?.[idx] ?? current.costConfig,
           unitPrice: current.productsUnitPrice?.[idx] ?? current.unitPrice,
           quotedTotal: current.productsQuotedTotal?.[idx] ?? ((current.productsUnitPrice?.[idx] ?? current.unitPrice ?? 0) * product.qty),

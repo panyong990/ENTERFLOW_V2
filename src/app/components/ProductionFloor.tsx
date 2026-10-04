@@ -8,7 +8,6 @@ import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { useOrders, type Stage, type Inquiry } from "../store/orders";
-import { useMaterials } from "../store/materials";
 
 const STAGES = [
   "Molding",
@@ -213,8 +212,7 @@ export function ProductionFloor() {
   const [editingDueReason, setEditingDueReason] = useState("");
   const [qcFailed, setQcFailed] = useState<Set<string>>(new Set());
   const { push: pushNotif } = useNotifications();
-  const { completedJOs, inquiriesByStage, updateInquiry, markInventoryDeducted } = useOrders();
-  const { deductForJO } = useMaterials();
+  const { completedJOs, inquiriesByStage, updateInquiry } = useOrders();
 
   /* DERIVED: jobs come from the orders store. Any inquiry whose stage is in the production pipeline shows up. */
   const productionInquiries = useMemo(
@@ -283,32 +281,6 @@ export function ProductionFloor() {
     const currentIdx = inq.currentStage ?? 0;
     const newIdx = Math.min(currentIdx + 1, STAGES.length - 1);
     const joNumber = inq.joNumber ?? inq.code;
-
-    /* INVENTORY DEDUCT — first stage advance (Production Started) */
-    if (currentIdx === 0 && newIdx === 1) {
-      const bom = inq.billOfMaterials;
-      if (bom && bom.length > 0 && !inq.inventoryDeducted) {
-        const result = deductForJO(joNumber, bom);
-        if (!result.ok) {
-          toast.error("⚠️ Insufficient materials", {
-            description: result.shortages.map((s) => `${s.name}: need ${s.needed.toFixed(2)} ${s.unit}, have ${s.available.toFixed(2)}`).join(" · "),
-            duration: 6000,
-          });
-          pushNotif({
-            dept: "system",
-            title: `🚨 Material shortage on ${joNumber}`,
-            body: `Production paused. ${result.shortages.length} material(s) below required: ${result.shortages.map(s => s.name).join(", ")}`,
-            link: "inventory",
-            recipients: ["owner", "operations", "warehouse", "production"],
-          });
-          /* Pause the job instead of advancing — write to store */
-          updateInquiry(id, { paused: true, pauseReason: `Material shortage: ${result.shortages.map(s => s.name).join(", ")}` });
-          return;
-        }
-        markInventoryDeducted(joNumber);
-        toast.success("Inventory auto-deducted", { description: `${bom.length} material(s) consumed for ${joNumber}` });
-      }
-    }
 
     /* Append the just-completed stage to stageHistory */
     const newHistory = [

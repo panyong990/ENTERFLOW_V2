@@ -389,8 +389,8 @@ export function ProductionFloor() {
         </div>
       </header>
 
-      <div className="px-8 py-8 pb-28">
-        <div className="grid grid-cols-2 gap-6">
+      <div className="px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:py-8">
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 lg:gap-6">
           {visible.map((job) => {
             const completed = job.stageIndex >= STAGES.length - 1;
             const pct = Math.round(((job.stageIndex + (completed ? 1 : 0)) / STAGES.length) * 100);
@@ -400,18 +400,18 @@ export function ProductionFloor() {
             return (
               <article
                 key={job.id}
-                className="bg-white rounded-xl overflow-hidden flex flex-col"
+                className="bg-white rounded-xl overflow-hidden flex h-full min-w-0 flex-col"
                 style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)", border: "1px solid rgba(226,232,240,0.7)" }}
               >
                 {/* Card Header */}
-                <div className="px-5 py-4 border-b border-slate-200/70" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
+                <div className="px-4 py-3 border-b border-slate-200/70 sm:px-5" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
                   <div className="flex items-center justify-between">
                     <span className="font-mono-jb tracking-wide" style={{ fontSize: 18, fontWeight: 600, color: "white" }}>{job.jo}</span>
                     <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: b.bg, color: b.fg }}>{b.label}</span>
                   </div>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "white", letterSpacing: 0.5 }}>{job.client}</span>
-                    <div className="flex items-center gap-3">
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="font-syne min-w-0" style={{ fontSize: 13, fontWeight: 700, color: "white", letterSpacing: 0.5 }}>{job.client}</span>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:justify-end">
                       {/* View JO File */}
                       <button
                         onClick={() => setJoFileJob(job)}
@@ -435,7 +435,7 @@ export function ProductionFloor() {
                 </div>
 
                 {/* Card Body */}
-                <div className="px-5 py-4 flex flex-col gap-4">
+                <div className="flex flex-1 flex-col gap-3 px-4 py-3 sm:px-5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                       <Clock size={14} />
@@ -483,12 +483,12 @@ export function ProductionFloor() {
                     </div>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A", letterSpacing: 0.5 }}>{job.product}</div>
                     <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Qty: {job.qty}</div>
                   </div>
 
-                  <div className="rounded-lg p-3 flex flex-col gap-1" style={{ backgroundColor: "#F4F6F9" }}>
+                  <div className="rounded-lg p-2.5 flex flex-col gap-1" style={{ backgroundColor: "#F4F6F9" }}>
                     {job.specs.map((s, i) => (
                       <div key={i} className="font-dm" style={{ fontSize: 11, color: "#475569", lineHeight: 1.6 }}>{s}</div>
                     ))}
@@ -496,7 +496,7 @@ export function ProductionFloor() {
 
                   {/* Progress */}
                   <div>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1.5">
                       <span className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Stage {stageNum} of {STAGES.length}</span>
                       <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{pct}%</span>
                     </div>
@@ -511,7 +511,7 @@ export function ProductionFloor() {
                   {/* View Production Stages Button */}
                   <button
                     onClick={() => setStageMonitorId(job.id)}
-                    className="font-dm flex items-center justify-center gap-2 py-2.5 rounded-md hover:opacity-90 border"
+                    className="font-dm flex items-center justify-center gap-2 py-2 rounded-md hover:opacity-90 border"
                     style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#1A2B4A", color: "white", letterSpacing: 0.3, border: "none" }}
                   >
                     <ClipboardList size={14} /> 📋 View Production Stages →
@@ -519,15 +519,15 @@ export function ProductionFloor() {
                 </div>
 
                 {/* Card Footer */}
-                <div className="px-5 py-4 border-t border-slate-200/70 flex justify-end" style={{ backgroundColor: "#FAFBFC" }}>
+                <div className="mt-auto min-h-[68px] px-4 py-3 border-t border-slate-200/70 flex items-center justify-end sm:px-5" style={{ backgroundColor: "#FAFBFC" }}>
                   {completed ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       <button onClick={() => setArchiveConfirmJob(job)} className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
                         <Archive size={14} strokeWidth={2.5} /> MARK COMPLETE &amp; ARCHIVE
                       </button>
                     </div>
                   ) : job.paused ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       <span className="font-dm flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: "#D97706" }}>
                         <Pause size={12} /> On hold — material shortage
                       </span>
@@ -541,7 +541,7 @@ export function ProductionFloor() {
                     </div>
                   ) : job.stageIndex === 8 ? (
                     /* Quality / Product Inspection — special pass/fail flow */
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       {qcFailed.has(job.id) ? (
                         <>
                           <span className="font-dm flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#991B1B" }}>

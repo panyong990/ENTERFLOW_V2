@@ -231,6 +231,11 @@ export function Accounting() {
   };
 
   const addPayment = (id: string) => {
+    const invoice = rows.find((row) => row.id === id);
+    if (!invoice || invoice.paymentState.currentPaymentType === null) {
+      toast.info("This invoice is already fully paid; no further payment can be recorded.");
+      return;
+    }
     const f = newPmt[id];
     if (!f?.amount || !f?.method) { toast.error("Amount and method required"); return; }
     const amt = parseFloat(f.amount);
@@ -245,7 +250,7 @@ export function Accounting() {
     setPayments((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), entry] }));
     setNewPmt((prev) => ({ ...prev, [id]: { amount: "", method: "", ref: "", datePaid: "" } }));
     /* Sync to client portal — find matching inquiry by client name */
-    const inv = rows.find(r => r.id === id);
+    const inv = invoice;
     if (inv) {
       const clientInqs = byClient(inv.client);
       const target = clientInqs.find(i => i.poFileName?.includes(inv.po) || i.invoiceNo === inv.inv) ?? clientInqs[clientInqs.length - 1];
@@ -266,6 +271,10 @@ export function Accounting() {
   const clearAccount = (id: string) => {
     const inv = rows.find(r => r.id === id);
     if (!inv) return;
+    if (inv.paymentState.state !== "FULLY_PAID") {
+      toast.info("Verify payments until the remaining balance reaches zero before clearing this account.");
+      return;
+    }
     /* Single store write — `paid` stage triggers derived removal from active table everywhere */
     updateInquiry(id, { stage: "paid", paidAt: new Date().toISOString(), amountPaid: inv.amount });
     markPOCleared(inv.po); /* sync → auto-removes from Logistics active too */
@@ -802,6 +811,7 @@ export function Accounting() {
                               </div>
 
                               {/* Record new payment */}
+                              {view === "active" && (
                               <div className="flex flex-col gap-3">
                                 <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Record Payment</div>
                                 <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
@@ -873,6 +883,7 @@ export function Accounting() {
                                   </button>
                                 </div>
                               </div>
+                              )}
                             </div>
 
                             {/* Client-uploaded receipts */}

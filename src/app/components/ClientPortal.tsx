@@ -2267,6 +2267,14 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const [openId, setOpenId] = useState<string | null>(focusInvoiceId ?? activeRows[0]?.id ?? null);
 
   const submitReceipt = (rowId: string, invNo: string) => {
+    const currentRow = rows.find((row) => row.id === rowId);
+    const pendingDownpayment = currentRow?.payments.some((payment) =>
+      payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
+    );
+    if (!currentRow?.paymentState.currentPaymentType || (currentRow.paymentState.currentPaymentType === "DOWNPAYMENT" && pendingDownpayment)) {
+      toast.info("A downpayment is already awaiting Accountant verification, or this invoice is fully paid.");
+      return;
+    }
     const f = receiptForm[rowId];
     if (!f?.file || !f.receiptDataUrl) { toast.error("Please attach a receipt file first"); return; }
     const amt = parseFloat(f.amount);
@@ -2352,7 +2360,11 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
               const payments = r.payments;
               const pendingPayments = payments.filter((p) => p.verificationStatus === "pending");
               const rejectedPayments = payments.filter((p) => p.verificationStatus === "rejected");
-              const isPayable = state.currentPaymentType !== null;
+              const pendingDownpayment = payments.some((payment) =>
+                payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
+              );
+              const isPayable = state.currentPaymentType !== null
+                && !(state.currentPaymentType === "DOWNPAYMENT" && pendingDownpayment);
               const isPartial = state.totalVerifiedPayments > 0 && isPayable;
               const status = pendingPayments.length > 0
                 ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Awaiting Verification" }

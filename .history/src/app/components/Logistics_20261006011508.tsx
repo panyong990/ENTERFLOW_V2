@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -16,6 +17,12 @@ import {
 import { Toaster, toast } from "sonner";
 import { hasValidSignedDeliveryReceipt, useOrders, type Inquiry } from "../store/orders";
 import { readFileAsDataUrl } from "../store/attachments";
+=======
+import { useMemo, useState } from "react";
+import { Search, Download, ChevronRight, Camera, History, CheckCircle2, Send, Truck, Filter, ArrowLeft } from "lucide-react";
+import { Toaster, toast } from "sonner";
+import { PRODUCTION_STAGES, stageColor, stageLabel, useOrders, type Inquiry } from "../store/orders";
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import {
@@ -32,6 +39,7 @@ import {
 type LogisticsView = "active" | "history";
 type DateFilter = "today" | "7days" | "30days" | "all";
 
+<<<<<<< HEAD
 const deliveryStages = ["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"] as const;
 
 function hasReachedLogistics(inquiry: Inquiry): boolean {
@@ -85,7 +93,7 @@ function currency(amount?: number): string | undefined {
 
 function stageStatus(inquiry: Inquiry): { label: string; tone: string } {
   if (isDelivered(inquiry)) return { label: "DELIVERED", tone: "bg-green-50 text-green-800 ring-green-200" };
-  if (inquiry.deliveryReceiptSentAt && (inquiry.deliveryTrackingLink || inquiry.trackingRef)) return { label: "IN TRANSIT", tone: "bg-blue-50 text-blue-800 ring-blue-200" };
+  if (inquiry.waybillPrintedAt || inquiry.stage === "dispatched") return { label: "IN TRANSIT", tone: "bg-blue-50 text-blue-800 ring-blue-200" };
   return { label: "READY FOR DISPATCH", tone: "bg-amber-50 text-amber-800 ring-amber-200" };
 }
 
@@ -209,6 +217,66 @@ function SignedReceiptViewer({ dataUrl, fileName, onClose }: { dataUrl?: string;
       </div>
     </div>
   );
+=======
+interface Row {
+  id: string;
+  date: string;
+  po: string;
+  si: string;
+  dr: string;
+  customer: string;
+  item: string;
+  qty: number;
+  amount: number;
+  status: Status;
+  statusBg: string;
+  statusFg: string;
+  statusLabel: string;
+  delivery?: string;
+  trackingRef?: string;
+  drFileName?: string;
+  clientSignedDRFileName?: string;
+  clientSignedDRUploadedAt?: string;
+  paymentCycleStartedAt?: string;
+  invoiceDueDate?: string;
+  paymentTerms: Inquiry["paymentTerms"];
+  isReplacement?: boolean;
+  inq: Inquiry;
+}
+
+function inquiryToRow(inq: Inquiry): Row {
+  /* Both ready_for_dispatch and dispatched belong to the active Logistics queue:
+     • ready_for_dispatch → waiting to be picked up
+     • dispatched         → waybill scanned, courier en route — driver/proof still needs to come back */
+  const isDispatch = inq.stage === "ready_for_dispatch" || inq.stage === "dispatched";
+  const status: Status = isDispatch ? "pending" : "delivered";
+  const statusColors = stageColor[inq.stage];
+  return {
+    id: inq.id,
+    date: isDispatch ? inq.submittedDate : (inq.deliveredDate ?? inq.submittedDate),
+    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
+    si: inq.invoiceNo ?? "—",
+    dr: inq.drFileName ? `DR-${inq.code.replace("INQ-", "")}` : "—",
+    customer: inq.clientName,
+    item: inq.products[0]?.type ?? "—",
+    qty: inq.products.reduce((s, p) => s + p.qty, 0),
+    amount: inq.invoiceAmount ?? inq.quotedTotal ?? 0,
+    status,
+    statusBg: statusColors.bg,
+    statusFg: statusColors.fg,
+    statusLabel: stageLabel[inq.stage],
+    delivery: inq.deliveryMethod,
+    trackingRef: inq.trackingRef,
+    drFileName: inq.drFileName,
+    clientSignedDRFileName: inq.clientSignedDRFileName,
+    clientSignedDRUploadedAt: inq.clientSignedDRUploadedAt,
+    paymentCycleStartedAt: inq.paymentCycleStartedAt,
+    invoiceDueDate: inq.paymentCycleStartedAt ? inq.invoiceDueDate : undefined,
+    paymentTerms: inq.paymentTerms,
+    isReplacement: inq.isReplacement,
+    inq,
+  };
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
 }
 
 function DeliveryDetailModal({
@@ -272,6 +340,7 @@ function DeliveryDetailModal({
   };
 
   return (
+<<<<<<< HEAD
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/60">
       <div className="h-full w-full overflow-auto bg-[#F4F6F9]" onClick={(event) => event.stopPropagation()}>
         <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200/70 bg-white px-5 py-4 sm:px-8">
@@ -317,10 +386,90 @@ function DeliveryDetailModal({
             {!delivered && inquiry.deliveryMethod === "Company Vehicle" && (
               <button onClick={() => onMarkDelivered(inquiry.id)} className="mt-5 inline-flex items-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2.5 font-dm text-xs font-bold text-white hover:bg-[#263d62] sm:hidden">
                 <Truck size={14} /> MARK DELIVERED
+=======
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center" style={{ backgroundColor: "rgba(15,23,42,0.6)" }}>
+      <div className="bg-white w-full h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
+
+        {/* ── Header ── */}
+        <header className="bg-white border-b border-slate-200/70 px-4 py-4 sm:px-8 sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <button onClick={onClose} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 500 }}>
+              ← Back to Logistics
+            </button>
+            <h1 className="font-syne" style={{ fontSize: 24, fontWeight: 650, color: "#0F172A", lineHeight: 1.2 }}>
+              Delivery Detail — {row.po}
+            </h1>
+            <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
+              {row.customer} · {row.item} · {row.qty} pcs · ₱{row.amount.toLocaleString("en-PH")}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-dm px-2.5 py-1 rounded-full whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600, backgroundColor: row.statusBg, color: row.statusFg }}>
+              {row.statusLabel}
+            </span>
+
+            {!isDelivered && isCompanyVehicle && (
+              <button
+                onClick={() => onMarkDelivered(row.id)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-dm hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: "#1A2B4A", color: "#fff", fontSize: 12, fontWeight: 700 }}
+              >
+                <Truck size={13} strokeWidth={2.5} />
+                Mark as Delivered
+              </button>
+            )}
+
+          </div>
+        </header>
+
+        {/* ── DR Upload hint banner (shows only when no DR yet) ── */}
+        {!isDelivered && isCompanyVehicle && !drUploaded && (
+          <div className="mx-4 mt-4 rounded-lg px-4 py-3 flex items-center gap-3 font-dm sm:mx-8" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 12, color: "#92400E" }}>
+            <Camera size={14} />
+            <span>Upload Logistics delivery documentation here. Confirm delivery separately; the client signed DR controls payment-cycle activation.</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 px-4 py-5 md:grid-cols-2 xl:grid-cols-3 sm:px-8 sm:py-6">
+
+          {/* ── Delivery Method + Tracking ── */}
+          <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <h2 className="font-dm mb-4" style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>Delivery Information</h2>
+            <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 500, color: "#64748B" }}>Delivery Method</div>
+            <div className="font-dm mb-5" style={{ fontSize: 14, fontWeight: 600, color: "#1A2B4A" }}>{row.delivery || "Not selected by Sales"}</div>
+            <label className="font-dm block mb-1.5" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>
+              Tracking / Waybill No.
+            </label>
+            <input
+              value={row.trackingRef ?? ""}
+              onChange={(event) => onTrackingRefChange(row.id, event.target.value)}
+              placeholder="Enter tracking or waybill number"
+              aria-label="Tracking or waybill number"
+              className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+              style={{ fontSize: 13, color: "#1A2B4A" }}
+            />
+            {row.trackingRef && (
+              <div className="mt-4 rounded-md p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Saved Tracking / Waybill No.</div>
+                <div className="font-dm break-all" style={{ fontSize: 12, color: "#1A2B4A" }}>{row.trackingRef}</div>
+              </div>
+            )}
+
+            {/* Send Delivery Details to Client — anchored to delivery method (Figma) */}
+            {!isDelivered && (
+              <button
+                onClick={() => onSendToClient(row.id)}
+                className="mt-4 inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-dm text-slate-700 hover:bg-slate-50 transition-colors"
+                style={{ fontSize: 12, fontWeight: 500 }}
+              >
+                <Send size={13} strokeWidth={2.5} />
+                Send Delivery Details to Client
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
               </button>
             )}
           </section>
 
+<<<<<<< HEAD
           <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <FileText size={16} className="text-[#1A2B4A]" />
@@ -346,10 +495,69 @@ function DeliveryDetailModal({
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
                 <div className="font-dm text-sm font-bold text-slate-800">Pending Accounting Generation</div>
                 <p className="font-dm mt-1 text-xs text-slate-500">Logistics does not generate Delivery Receipts. Once Accounting generates the DR, it will appear here.</p>
+=======
+          {/* ── Signed DR Upload ── */}
+          <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <h2 className="font-dm mb-3" style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>
+              {isCompanyVehicle ? "Signed Delivery Receipt" : "Delivery Proof"}
+            </h2>
+            {isCompanyVehicle && drUploaded && (
+              <div className="font-dm mb-1 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 500, color: "#64748B" }}>
+                <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#FEF3C7", color: "#B45309", letterSpacing: 0.3, textTransform: "none" }}>
+                  Signed DR Uploaded
+                </span>
+              </div>
+            )}
+            {isCompanyVehicle ? (
+              <>
+                <p className="font-dm mb-3" style={{ fontSize: 11, color: "#94A3B8" }}>
+                  Logistics may upload its signed DR as delivery documentation. Client confirmation is required separately to start payment terms.
+                </p>
+                <label
+                  className="block w-full h-36 rounded-lg border-2 border-dashed cursor-pointer hover:bg-slate-50 flex flex-col items-center justify-center gap-1.5 font-dm transition-colors"
+                  style={{
+                    borderColor: drUploaded ? "#16A34A" : "#CBD5E1",
+                    color: drUploaded ? "#16A34A" : "#64748B",
+                    fontSize: 12,
+                    pointerEvents: isDelivered ? "none" : "auto",
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    disabled={isDelivered}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      onUploadDR(row.id, file.name);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  {drUploaded ? (
+                    <>
+                      <CheckCircle2 size={22} />
+                      <span style={{ fontWeight: 700 }}>Signed DR on file</span>
+                      <span className="font-dm" style={{ fontSize: 10 }}>{row.drFileName}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera size={22} />
+                      <span style={{ fontWeight: 600 }}>Upload signed DR photo</span>
+                      <span className="font-dm" style={{ fontSize: 10 }}>PNG, JPG or PDF</span>
+                    </>
+                  )}
+                </label>
+              </>
+            ) : (
+              <div className="rounded-lg p-3 font-dm" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 12, color: "#64748B" }}>
+                Signed delivery receipt uploads are not configured for third-party carriers.
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
               </div>
             )}
           </section>
 
+<<<<<<< HEAD
           <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Truck size={16} className="text-[#1A2B4A]" />
@@ -361,6 +569,16 @@ function DeliveryDetailModal({
               onChange={(event) => onTrackingRefChange(inquiry.id, event.target.value)}
               placeholder="Enter tracking or waybill number"
               className="w-full rounded-md border border-slate-200 px-3 py-2.5 font-mono-jb text-sm text-[#1A2B4A] outline-none focus:border-[#1A2B4A] focus:ring-2 focus:ring-[#1A2B4A]/10"
+=======
+          {/* ── Notes ── */}
+          <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <h2 className="font-dm mb-3" style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>Notes</h2>
+            <textarea
+              placeholder="Add delivery or payment notes..."
+              aria-label="Delivery notes"
+              className="w-full h-28 rounded-lg border border-slate-300 p-3 outline-none focus:border-slate-400 font-dm resize-y bg-white"
+              style={{ fontSize: 13 }}
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
             />
             <label className="font-dm mb-1.5 mt-4 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Tracking Link</label>
             <input
@@ -715,6 +933,7 @@ export function Logistics() {
 
     return source.filter((inquiry) => {
       const searchableValues = [
+<<<<<<< HEAD
         inquiry.joNumber ?? "",
         inquiry.poNumber ?? "",
         inquiry.poFileName ?? "",
@@ -730,6 +949,26 @@ export function Logistics() {
       const searchOk = !searchTerm || searchableValues.some((value) => value.toLocaleLowerCase().includes(searchTerm));
       const rowDate = new Date(deliveryDate(inquiry));
       const dateOk = dateFilter === "all" || (!Number.isNaN(rowDate.getTime()) && rowDate >= cutoff && rowDate < tomorrow);
+=======
+        r.po,
+        r.inq.code,
+        r.inq.joNumber ?? "",
+        r.inq.contactPerson,
+        r.inq.contactEmail,
+        r.si,
+        r.customer,
+        r.item,
+        r.delivery ?? "",
+        r.trackingRef ?? "",
+        r.inq.waybillNumber ?? "",
+        r.inq.waybillIdentifier ?? "",
+        ...r.inq.products.flatMap((product) => [product.type, product.filterName ?? ""]),
+      ];
+      const searchOk = !searchTerm || searchableValues.some((value) => value.toLocaleLowerCase().includes(searchTerm));
+      const rowDate = new Date(r.date);
+      const dateOk = dateFilter === "all" ||
+        (!Number.isNaN(rowDate.getTime()) && rowDate >= cutoff && rowDate < tomorrow);
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
       return searchOk && dateOk;
     });
   }, [query, view, activeDateFilter, historyDateFilter, activeInquiries, historyInquiries]);
@@ -816,27 +1055,66 @@ export function Logistics() {
     }
   };
 
+<<<<<<< HEAD
   const selectedDateFilter = view === "active" ? activeDateFilter : historyDateFilter;
   const setSelectedDateFilter = (value: DateFilter) => {
     if (view === "active") setActiveDateFilter(value);
     else setHistoryDateFilter(value);
   };
+=======
+  const exportHistoryCsv = () => {
+    const csvValue = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const header = ["Date", "JO No.", "SI No.", "Customer", "Item", "Quantity", "Delivery Method", "Status"];
+    const lines = [
+      header.map(csvValue).join(","),
+      ...visible.map((row) => [
+        row.date,
+        row.inq.joNumber ?? "—",
+        row.si,
+        row.customer,
+        row.item,
+        row.qty,
+        row.delivery ?? "—",
+        row.statusLabel,
+      ].map(csvValue).join(",")),
+    ];
+    const url = URL.createObjectURL(new Blob([`\uFEFF${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "enter-flow-delivered-history.csv";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    toast.success("Delivered history exported", { description: `${visible.length} rows` });
+  };
+
+  const openRow = rows.find((r) => r.id === openId);
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
 
   return (
     <main className="flex-1 h-full overflow-auto bg-[#F4F6F9]">
       <Toaster position="bottom-right" richColors />
+<<<<<<< HEAD
       <header className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200/70 bg-white px-5 py-5 sm:px-8">
+=======
+
+      <header className="bg-white border-b border-slate-200/70 px-4 py-4 sm:px-8 sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3">
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
         <div>
           {view === "history" && (
             <button onClick={() => setView("active")} className="font-dm mb-1 inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900">
               <ArrowLeft size={13} /> Back to active deliveries
             </button>
           )}
+<<<<<<< HEAD
           <div className="font-dm flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#65748B]">
             <Truck size={14} /> Delivery operations
           </div>
           <h1 className="font-syne mt-2 text-[26px] font-extrabold leading-tight text-[#1A2B4A]">
             {view === "active" ? "LOGISTICS" : "DELIVERED HISTORY"}
+=======
+          <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 650, color: "#0F172A", lineHeight: 1.2 }}>
+            {view === "active" ? "Logistics" : "Delivered History"}
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
           </h1>
           <p className="font-dm mt-1 text-[13px] text-slate-600">
             {view === "active" ? "Manage Warehouse handoffs, tracking, Delivery Receipts, and signed delivery records." : "Delivery records marked delivered."}
@@ -852,6 +1130,7 @@ export function Logistics() {
         </div>
       </header>
 
+<<<<<<< HEAD
       <div className="flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-8">
         <div className="flex flex-wrap items-center gap-3">
           <label className="relative min-w-[240px] max-w-lg flex-1">
@@ -862,6 +1141,20 @@ export function Logistics() {
               placeholder="Search JO, PO, invoice, customer, item..."
               aria-label="Search delivery records"
               className="font-dm w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-[13px] outline-none focus:border-[#1A2B4A] focus:ring-2 focus:ring-[#1A2B4A]/10"
+=======
+      <div className="px-4 py-5 flex flex-col gap-5 sm:px-8 sm:py-6">
+        {/* Controls */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative w-full min-w-0 max-w-md flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={view === "history" ? "Search JO, SI, customer, item, or waybill..." : "Search JO, PO, customer, item, or waybill..."}
+              aria-label="Search by JO, PO, SI, customer, item, or waybill"
+              className="font-dm w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 outline-none focus:border-slate-400 bg-white"
+              style={{ fontSize: 13 }}
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
             />
           </label>
           <label className="font-dm flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-500">
@@ -888,6 +1181,7 @@ export function Logistics() {
             </div>
             <span className="font-dm rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{visible.length}</span>
           </div>
+<<<<<<< HEAD
 
           {visible.length === 0 ? (
             <div className="flex flex-col items-center px-6 py-14 text-center">
@@ -938,6 +1232,126 @@ export function Logistics() {
             </div>
           )}
         </section>
+=======
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => view === "history"
+                ? setIsHistoryFilterOpen((open) => !open)
+                : setIsActiveFilterOpen((open) => !open)}
+              aria-label={`Filter ${view === "history" ? "delivered history" : "logistics deliveries"} by date`}
+              aria-expanded={view === "history" ? isHistoryFilterOpen : isActiveFilterOpen}
+              className="font-dm flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              style={{ color: (view === "history" ? historyDateFilter : activeDateFilter) !== "all" ? "#1A2B4A" : "#64748B" }}
+            >
+              <Filter size={15} />
+            </button>
+            {(view === "history" ? isHistoryFilterOpen : isActiveFilterOpen) && (
+              <div role="group" aria-label="Date filter" className="absolute right-0 top-11 z-20 w-40 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg">
+                {([
+                  ["today", "Today"],
+                  ["7days", "Last 7 days"],
+                  ["30days", "Last 30 days"],
+                  ["all", "All"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      if (view === "history") {
+                        setHistoryDateFilter(value);
+                        setIsHistoryFilterOpen(false);
+                      } else {
+                        setActiveDateFilter(value);
+                        setIsActiveFilterOpen(false);
+                      }
+                    }}
+                    aria-pressed={(view === "history" ? historyDateFilter : activeDateFilter) === value}
+                    className="font-dm block w-full rounded-md px-3 py-2 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    style={{ fontSize: 12, fontWeight: (view === "history" ? historyDateFilter : activeDateFilter) === value ? 700 : 500, color: "#0F172A" }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {view === "history" && (
+            <button
+              onClick={exportHistoryCsv}
+              className="flex shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 font-dm hover:bg-slate-50"
+              style={{ color: "#1A2B4A", fontSize: 12, fontWeight: 500 }}
+            >
+              <Download size={14} /> Export History CSV
+            </button>
+          )}
+        </div>
+
+        {view === "history" && (
+          <div className="rounded-lg p-3 flex items-center gap-2 font-dm" style={{ fontSize: 12, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+            <History size={14} /> Read-only delivery history. Delivered orders are automatically removed from active deliveries.
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="bg-white rounded-xl border border-slate-200/70 overflow-x-auto" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+          <table className="w-full table-auto">
+            <thead style={{ backgroundColor: "#F4F6F9" }}>
+              <tr>
+                {(view === "history"
+                  ? ["Date", "JO No.", "SI No.", "Customer", "Item", "Qty", "Delivery Method", "Status"]
+                  : ["Date", "JO No.", "SI No.", "Customer", "Item", "Qty", "Amount", "Status", ""]
+                ).map((h) => (
+                  <th key={h} className={`font-dm text-left px-3 py-3 sm:px-4 ${h === "SI No." ? "hidden lg:table-cell" : ""} ${h === "Amount" ? "hidden xl:table-cell" : ""}`} style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.2, textTransform: "uppercase" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((r) => (
+                <tr
+                  key={r.id}
+                  className={`border-t border-slate-200/70 hover:bg-slate-50${view === "active" ? " cursor-pointer" : ""}`}
+                  onClick={view === "active" ? () => setOpenId(r.id) : undefined}
+                >
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
+                    {r.inq.joNumber ?? "—"}
+                  </td>
+                  <td className="hidden px-3 py-3 font-dm lg:table-cell sm:px-4" style={{ fontSize: 12, color: "#475569" }}>{r.si}</td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>
+                    {r.customer}
+                    {r.isReplacement && (
+                      <span className="ml-1.5 font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#EDE9FE", color: "#7C3AED", verticalAlign: "middle" }}>REPLACEMENT</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, color: "#475569" }}>{r.qty}</td>
+                  {view === "history" ? (
+                    <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, color: "#475569" }}>{r.delivery ?? "—"}</td>
+                  ) : (
+                    <td className="hidden px-3 py-3 font-dm xl:table-cell sm:px-4" style={{ fontSize: 13, color: "#475569" }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                  )}
+                  <td className="px-3 py-3 sm:px-4">
+                    <span className="font-dm whitespace-nowrap px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 500, backgroundColor: r.statusBg, color: r.statusFg }}>
+                      {r.statusLabel}
+                    </span>
+                  </td>
+                  {view === "active" && (
+                    <td className="px-3 py-3 sm:px-4">
+                      <button aria-label="Open delivery detail" className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center" onClick={(e) => { e.stopPropagation(); setOpenId(r.id); }}>
+                        <ChevronRight size={16} />
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {visible.length === 0 && (
+                <tr><td colSpan={view === "history" ? 8 : 9} className="px-4 py-8 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No deliveries match your filters.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
       </div>
       {selectedInquiry && (
         <DeliveryDetailModal

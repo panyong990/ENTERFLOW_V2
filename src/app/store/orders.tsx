@@ -1288,8 +1288,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const confirmClientPayment: Ctx["confirmClientPayment"] = (inquiryId, payment) => {
     const id = `cp-${Date.now()}`;
-    setAllInquiries((prev) => prev.map((x) => x.id === inquiryId ? {
-      ...x,
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== inquiryId || paymentState(x).currentPaymentType === null) return x;
+      return {
+        ...x,
       payments: [
         ...(x.payments ?? []),
         {
@@ -1306,13 +1308,21 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         },
       ],
       confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, id }],
-    } : x));
+      };
+    }));
   };
 
   const submitPayment: Ctx["submitPayment"] = (inquiryId, payment) => {
     const id = `pmt-${Date.now()}`;
-    setAllInquiries((prev) => prev.map((x) => x.id === inquiryId ? {
-      ...x,
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== inquiryId) return x;
+      const state = paymentState(x);
+      const pendingDownpayment = paymentRecords(x).some((record) =>
+        record.paymentType === "DOWNPAYMENT" && record.verificationStatus === "pending",
+      );
+      if (state.currentPaymentType === null || (state.currentPaymentType === "DOWNPAYMENT" && pendingDownpayment)) return x;
+      return {
+        ...x,
       clientPaymentReceipts: payment.receiptFile
         ? [
             ...(x.clientPaymentReceipts ?? []),
@@ -1344,7 +1354,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           verificationStatus: "pending" as const,
         },
       ],
-    } : x));
+      };
+    }));
   };
 
   const verifyPayment: Ctx["verifyPayment"] = (inquiryId, paymentId, verifiedAmount) => {

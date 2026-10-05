@@ -129,10 +129,10 @@ function matchesFilter(inquiry: Inquiry, filter: DeliveryFilter): boolean {
 }
 
 function deliveryStatus(inquiry: Inquiry): { label: string; tone: "amber" | "blue" | "green" } {
-  if (isSignedDRReceived(inquiry) || ["delivered", "paid", "overdue"].includes(inquiry.stage)) {
+  if (isSignedDRReceived(inquiry)) {
     return { label: "DELIVERED", tone: "green" };
   }
-  if (inquiry.waybillPrintedAt || inquiry.stage === "dispatched") return { label: "IN TRANSIT", tone: "blue" };
+  if (inquiry.deliveryReceiptSentAt && (inquiry.deliveryTrackingLink || inquiry.trackingRef)) return { label: "IN TRANSIT", tone: "blue" };
   return { label: "READY FOR DISPATCH", tone: "amber" };
 }
 

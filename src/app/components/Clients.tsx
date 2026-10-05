@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Search, Building2, Phone, Mail, MapPin, X,
+  Search, Building2, Phone, Mail, MapPin, X, Pencil,
   ChevronDown, ChevronUp, Eye, Save,
 } from "lucide-react";
 import { useOrders } from "../store/orders";
@@ -303,15 +303,32 @@ function ClientDetailDrawer({
   const [editing, setEditing] = useState(false);
   const [transactionQuery, setTransactionQuery] = useState("");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [pendingTab, setPendingTab] = useState<"overview" | "transactionsOrders" | null>(null);
   const [formError, setFormError] = useState("");
   const hasUnsavedChanges = clientInfoChanged(client, draft);
 
   const requestClose = () => {
     if (editing && hasUnsavedChanges) {
+      setPendingTab(null);
       setConfirmDiscard(true);
       return;
     }
     onClose();
+  };
+
+  const requestTabChange = (nextTab: "overview" | "transactionsOrders") => {
+    if (nextTab === tab) return;
+    if (editing && hasUnsavedChanges) {
+      setPendingTab(nextTab);
+      setConfirmDiscard(true);
+      return;
+    }
+    if (editing) {
+      setDraft({ ...client });
+      setEditing(false);
+      setFormError("");
+    }
+    setTab(nextTab);
   };
 
   const startEditing = () => {
@@ -329,7 +346,19 @@ function ClientDetailDrawer({
   const discardAndClose = () => {
     setDraft({ ...client });
     setConfirmDiscard(false);
-    onClose();
+    if (pendingTab) {
+      setTab(pendingTab);
+      setEditing(false);
+      setFormError("");
+      setPendingTab(null);
+    } else {
+      onClose();
+    }
+  };
+
+  const cancelDiscard = () => {
+    setConfirmDiscard(false);
+    setPendingTab(null);
   };
 
   const saveOverview = () => {
@@ -416,16 +445,17 @@ function ClientDetailDrawer({
                   Cancel
                 </button>
               </>
-            ) : (
+            ) : tab === "overview" ? (
               <button
                 type="button"
                 onClick={startEditing}
-                className="rounded-md border border-slate-200 px-3 py-2 font-dm hover:bg-slate-50"
-                style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
+                aria-label="Edit client"
+                title="Edit client"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                Edit
+                <Pencil size={14} aria-hidden="true" />
               </button>
-            )}
+            ) : null}
             <button onClick={requestClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center">
               <X size={16} aria-hidden />
             </button>
@@ -439,7 +469,7 @@ function ClientDetailDrawer({
             return (
               <button
                 key={id}
-                onClick={() => setTab(id)}
+                onClick={() => requestTabChange(id)}
                 className="font-dm px-4 py-3 transition-colors"
                 style={{
                   fontSize: 13, fontWeight: 600,
@@ -649,7 +679,7 @@ function ClientDetailDrawer({
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           style={{ backgroundColor: "rgba(15,23,42,0.35)" }}
-          onClick={() => setConfirmDiscard(false)}
+          onClick={cancelDiscard}
         >
           <div
             role="alertdialog"
@@ -663,12 +693,14 @@ function ClientDetailDrawer({
               Discard unsaved changes?
             </h3>
             <p id="discard-client-changes-description" className="mt-2 font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-              Your changes to this client will be lost.
+              {pendingTab
+                ? "Your changes to this client will be lost if you continue to the other tab."
+                : "Your changes to this client will be lost."}
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setConfirmDiscard(false)}
+                onClick={cancelDiscard}
                 className="rounded-md border border-slate-200 px-3 py-2 font-dm hover:bg-slate-50"
                 style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}
               >
@@ -680,7 +712,7 @@ function ClientDetailDrawer({
                 className="rounded-md px-3 py-2 font-dm text-white hover:opacity-90"
                 style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}
               >
-                Discard Changes
+                {pendingTab ? "Discard & Continue" : "Discard Changes"}
               </button>
             </div>
           </div>

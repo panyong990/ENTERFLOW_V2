@@ -196,6 +196,7 @@ export function ProductionFloor() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [openFilterMenu, setOpenFilterMenu] = useState<"status" | "stage" | "date" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(() => new Set());
   const [detailId, setDetailId] = useState<string | null>(null);
   const [stageMonitorId, setStageMonitorId] = useState<string | null>(null);
   const [completeJoJob, setCompleteJoJob] = useState<Job | null>(null);
@@ -205,6 +206,7 @@ export function ProductionFloor() {
   const [editingDueReason, setEditingDueReason] = useState("");
   const { push: pushNotif } = useNotifications();
   const { completedJOs, updateInquiry } = useOrders();
+  const hasActiveFilters = joStatusFilter !== "active" || stageFilter !== "all" || dateFilter !== "all";
 
   /* Include JO workflow records through Logistics so completed JOs remain viewable. */
   const productionInquiries = useMemo(
@@ -335,18 +337,26 @@ export function ProductionFloor() {
   };
 
   const monitoringJob = jobs.find((j) => j.id === stageMonitorId);
+  const toggleJobDetails = (jobId: string) => {
+    setExpandedJobIds((current) => {
+      const next = new Set(current);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  };
 
   return (
-    <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
+    <div className="production-floor flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
 
-      <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+      <header className="bg-white border-b border-slate-200/70 px-4 py-5 sticky top-0 z-10 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="font-syne max-w-full" style={{ fontSize: 28, fontWeight: 700, color: "#0F172A", lineHeight: 1.1 }}>
               Production Floor
             </h1>
-            <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
+            <p className="font-dm mt-1 break-words" style={{ fontSize: 13, color: "#64748B" }}>
               Kiosk mode — tap to update job stages · 9 production stages
             </p>
           </div>
@@ -358,8 +368,8 @@ export function ProductionFloor() {
       </header>
 
       <div className="px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:py-8">
-        <div className="relative mb-5 flex w-full max-w-6xl items-center gap-2">
-          <div className="relative min-w-0 flex-1">
+        <div className="relative mb-5 flex w-full max-w-[450px] flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          <div className="relative w-full min-w-0 sm:flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} aria-hidden />
             <input
               type="search"
@@ -371,7 +381,7 @@ export function ProductionFloor() {
               style={{ fontSize: 12, color: "#0F172A" }}
             />
           </div>
-          <div className="relative shrink-0">
+          <div className="relative shrink-0 self-end sm:self-auto">
             <button
               type="button"
               onClick={() => {
@@ -380,24 +390,28 @@ export function ProductionFloor() {
               }}
               aria-label="Filter production jobs"
               aria-expanded={isFilterOpen}
+              aria-pressed={hasActiveFilters}
               className="font-dm flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              style={{ color: joStatusFilter !== "active" || stageFilter !== "all" || dateFilter !== "all" ? "#1A2B4A" : "#64748B" }}
+              style={{ color: hasActiveFilters ? "#1A2B4A" : "#64748B", position: "relative" }}
             >
               <Filter size={15} />
+              {hasActiveFilters && (
+                <span aria-hidden="true" className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "#C8102E" }} />
+              )}
             </button>
             {isFilterOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
-                <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.7 }}>FILTER BY</div>
-                <div className="space-y-2">
+              <div className="absolute right-0 top-full z-50 mt-2 max-h-[calc(100vh-2rem)] w-[min(16rem,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-slate-200 bg-white p-2.5 shadow-md">
+                <div className="font-dm mb-1.5" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.7 }}>FILTER BY</div>
+                <div className="space-y-1.5">
                   <div className={`relative ${openFilterMenu === "status" ? "z-50" : ""}`}>
-                    <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>Job Order Status</div>
+                    <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>Job Order Status</div>
                     <button
                       type="button"
                       onClick={() => setOpenFilterMenu((open) => open === "status" ? null : "status")}
                       aria-label="Choose Job Order Status filter"
                       aria-expanded={openFilterMenu === "status"}
                       className="font-dm flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+                      style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
                     >
                       <span>{joStatusFilter === "active" ? "Active / Current" : "Completed"}</span>
                       <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform ${openFilterMenu === "status" ? "rotate-180" : ""}`} />
@@ -418,7 +432,7 @@ export function ProductionFloor() {
                               setOpenFilterMenu(null);
                             }}
                             className="font-dm block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
-                            style={{ fontSize: 11, color: joStatusFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: joStatusFilter === option.id ? 700 : 500, backgroundColor: joStatusFilter === option.id ? "#F1F5F9" : "transparent" }}
+                            style={{ fontSize: 12, color: joStatusFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: joStatusFilter === option.id ? 700 : 500, backgroundColor: joStatusFilter === option.id ? "#F1F5F9" : "transparent" }}
                           >
                             {option.label}
                           </button>
@@ -427,14 +441,14 @@ export function ProductionFloor() {
                     )}
                   </div>
                   <div className={`relative ${openFilterMenu === "stage" ? "z-50" : ""}`}>
-                    <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>Stage</div>
+                    <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>Stage</div>
                     <button
                       type="button"
                       onClick={() => setOpenFilterMenu((open) => open === "stage" ? null : "stage")}
                       aria-label="Choose production stage filter"
                       aria-expanded={openFilterMenu === "stage"}
                       className="font-dm flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+                      style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
                     >
                       <span className="truncate">{stageFilters.find((filter) => filter.id === stageFilter)?.label ?? "All"}</span>
                       <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform ${openFilterMenu === "stage" ? "rotate-180" : ""}`} />
@@ -452,7 +466,7 @@ export function ProductionFloor() {
                               setOpenFilterMenu(null);
                             }}
                             className="font-dm block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
-                            style={{ fontSize: 11, color: stageFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: stageFilter === option.id ? 700 : 500, backgroundColor: stageFilter === option.id ? "#F1F5F9" : "transparent" }}
+                            style={{ fontSize: 12, color: stageFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: stageFilter === option.id ? 700 : 500, backgroundColor: stageFilter === option.id ? "#F1F5F9" : "transparent" }}
                           >
                             {option.label}
                           </button>
@@ -461,14 +475,14 @@ export function ProductionFloor() {
                     )}
                   </div>
                   <div className={`relative ${openFilterMenu === "date" ? "z-50" : ""}`}>
-                    <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>Date</div>
+                    <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>Date</div>
                     <button
                       type="button"
                       onClick={() => setOpenFilterMenu((open) => open === "date" ? null : "date")}
                       aria-label="Choose job order date filter"
                       aria-expanded={openFilterMenu === "date"}
                       className="font-dm flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+                      style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
                     >
                       <span>{dateFilters.find((filter) => filter.id === dateFilter)?.label ?? "All"}</span>
                       <ChevronDown size={13} className={`shrink-0 text-slate-400 transition-transform ${openFilterMenu === "date" ? "rotate-180" : ""}`} />
@@ -485,7 +499,7 @@ export function ProductionFloor() {
                               setOpenFilterMenu(null);
                             }}
                             className="font-dm block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
-                            style={{ fontSize: 11, color: dateFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: dateFilter === option.id ? 700 : 500, backgroundColor: dateFilter === option.id ? "#F1F5F9" : "transparent" }}
+                            style={{ fontSize: 12, color: dateFilter === option.id ? "#1A2B4A" : "#475569", fontWeight: dateFilter === option.id ? 700 : 500, backgroundColor: dateFilter === option.id ? "#F1F5F9" : "transparent" }}
                           >
                             {option.label}
                           </button>
@@ -503,9 +517,10 @@ export function ProductionFloor() {
             No matching job orders found
           </div>
         ) : (
-        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 lg:gap-6">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
           {visible.map((job) => {
             const completed = job.joCompleted;
+            const detailsExpanded = expandedJobIds.has(job.id);
             const allStagesCompleted = job.stageIndex >= STAGES.length;
             const pct = Math.round((Math.min(job.stageIndex, STAGES.length) / STAGES.length) * 100);
             const stageNum = Math.min(job.stageIndex + 1, STAGES.length);
@@ -515,8 +530,25 @@ export function ProductionFloor() {
             return (
               <article
                 key={job.id}
-                className="bg-white rounded-xl overflow-hidden flex h-full min-w-0 flex-col"
-                style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)", border: "1px solid rgba(226,232,240,0.7)" }}
+                role="group"
+                tabIndex={0}
+                aria-label={`Job order ${job.jo}. Press Enter or Space to ${detailsExpanded ? "collapse" : "expand"} details.`}
+                aria-expanded={detailsExpanded}
+                aria-controls={detailsExpanded ? `production-details-${job.id}` : undefined}
+                onClick={(event) => {
+                  if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button'], [contenteditable='true']")) return;
+                  toggleJobDetails(job.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+                  event.preventDefault();
+                  toggleJobDetails(job.id);
+                }}
+                className="cursor-pointer rounded-xl bg-white overflow-hidden flex min-w-0 flex-col transition-[box-shadow,border-color] duration-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                style={{
+                  boxShadow: detailsExpanded ? "0 4px 12px rgba(15,23,42,0.08)" : "0 1px 2px rgba(15,23,42,0.04)",
+                  border: detailsExpanded ? "1px solid rgba(148,163,184,0.8)" : "1px solid rgba(226,232,240,0.7)",
+                }}
               >
                 {/* Card Header */}
                 <div className="px-4 py-3 border-b border-slate-200/70 sm:px-5" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
@@ -547,10 +579,13 @@ export function ProductionFloor() {
                       </button>
                     </div>
                   </div>
+                  <div className="font-dm mt-1 text-white/70" style={{ fontSize: 11, fontWeight: 500 }}>
+                    {completed ? "Completed" : allStagesCompleted ? "All production stages completed" : `Current: ${STAGES[Math.min(job.stageIndex, STAGES.length - 1)]}`}
+                  </div>
                 </div>
 
                 {/* Card Body */}
-                <div className="flex flex-1 flex-col gap-3 px-4 py-3 sm:px-5">
+                <div className="flex flex-col gap-3 px-4 py-3 sm:px-5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                       <Clock size={14} />
@@ -603,38 +638,44 @@ export function ProductionFloor() {
                     <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Qty: {job.qty}</div>
                   </div>
 
-                  <div className="rounded-lg p-2.5 flex flex-col gap-1" style={{ backgroundColor: "#F4F6F9" }}>
-                    {job.specs.map((s, i) => (
-                      <div key={i} className="font-dm" style={{ fontSize: 11, color: "#475569", lineHeight: 1.6 }}>{s}</div>
-                    ))}
-                  </div>
+                  {detailsExpanded && (
+                    <div
+                      id={`production-details-${job.id}`}
+                      className="flex flex-col gap-3"
+                      style={{ animation: "production-details-in 160ms ease-out" }}
+                    >
+                      <div className="rounded-lg p-2.5 flex flex-col gap-1" style={{ backgroundColor: "#F4F6F9" }}>
+                        {job.specs.map((s, i) => (
+                          <div key={i} className="font-dm break-words" style={{ fontSize: 11, color: "#475569", lineHeight: 1.6 }}>{s}</div>
+                        ))}
+                      </div>
 
-                  {/* Progress */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Stage {stageNum} of {STAGES.length}</span>
-                      <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{pct}%</span>
-                    </div>
-                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "#E2E8F0" }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: completed ? "#16A34A" : "#C8102E" }} />
-                    </div>
-                    <div className="font-dm mt-1.5" style={{ fontSize: 11, color: completed ? "#15803D" : "#64748B" }}>
-                      {completed ? "JO Status: Completed" : allStagesCompleted ? "All production stages completed" : `Current: ${STAGES[Math.min(job.stageIndex, STAGES.length - 1)]}`}
-                    </div>
-                  </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Stage {stageNum} of {STAGES.length}</span>
+                          <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{pct}%</span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "#E2E8F0" }}>
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: completed ? "#16A34A" : "#C8102E" }} />
+                        </div>
+                        <div className="font-dm mt-1.5" style={{ fontSize: 11, color: completed ? "#15803D" : "#64748B" }}>
+                          {completed ? "JO Status: Completed" : allStagesCompleted ? "All production stages completed" : `Current: ${STAGES[Math.min(job.stageIndex, STAGES.length - 1)]}`}
+                        </div>
+                      </div>
 
-                  {/* View Production Stages Button */}
-                  <button
-                    onClick={() => setStageMonitorId(job.id)}
-                    className="font-dm flex items-center justify-center gap-2 py-2 rounded-md hover:opacity-90 border"
-                    style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#1A2B4A", color: "white", letterSpacing: 0.3, border: "none" }}
-                  >
-                    <ClipboardList size={14} /> View Stages →
-                  </button>
+                      <button
+                        onClick={() => setStageMonitorId(job.id)}
+                        className="font-dm flex items-center justify-center gap-2 py-2 rounded-md hover:opacity-90 border"
+                        style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#1A2B4A", color: "white", letterSpacing: 0.3, border: "none" }}
+                      >
+                        <ClipboardList size={14} /> View Stages →
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Footer */}
-                <div className="mt-auto h-[68px] shrink-0 px-4 py-3 border-t border-slate-200/70 flex items-center justify-end sm:px-5" style={{ backgroundColor: "#FAFBFC" }}>
+                <div className="shrink-0 px-4 py-2 border-t border-slate-200/70 flex items-center justify-end sm:px-5" style={{ backgroundColor: "#FAFBFC" }}>
                   {completed ? (
                     <div className="flex flex-nowrap items-center justify-end gap-2">
                       <span className="font-dm px-3 py-1.5 rounded-full" style={{ backgroundColor: "#DCFCE7", color: "#15803D", fontSize: 11, fontWeight: 700 }}>JO COMPLETED</span>

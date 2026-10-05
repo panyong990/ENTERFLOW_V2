@@ -189,7 +189,7 @@ function getJOTemplateData(job: Job): JOTemplateData {
   };
 }
 
-export function ProductionFloor() {
+export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
   const [stageFilter, setStageFilter] = useState("all");
   const [joStatusFilter, setJoStatusFilter] = useState<"active" | "completed">("active");
   const [dateFilter, setDateFilter] = useState<"today" | "7days" | "30days" | "all">("all");
@@ -227,6 +227,7 @@ export function ProductionFloor() {
   const inqOf = (jobId: string) => productionInquiries.find((i) => i.id === jobId);
 
   const saveDue = (id: string, due: string) => {
+    if (readOnly) return;
     if (!due.trim()) { toast.error("Enter a valid date"); return; }
     const inq = inqOf(id);
     if (!inq) return;
@@ -279,6 +280,7 @@ export function ProductionFloor() {
   const pausedJob = jobs.find((j) => j.paused);
 
   const advanceStage = (id: string) => {
+    if (readOnly) return;
     const inq = inqOf(id);
     if (!inq) return;
     const currentIdx = inq.currentStage ?? 0;
@@ -310,6 +312,7 @@ export function ProductionFloor() {
   };
 
   const completeJO = (job: Job): boolean => {
+    if (readOnly) return false;
     const inq = inqOf(job.id);
     if (!inq || Math.max(inq.currentStage ?? 0, job.stageIndex) < STAGES.length || job.joCompleted) {
       toast.error("Complete all 9 production stages before completing this JO.");
@@ -331,6 +334,7 @@ export function ProductionFloor() {
   };
 
   const resumeJob = (id: string) => {
+    if (readOnly) return;
     const inq = inqOf(id);
     updateInquiry(id, { paused: false, pauseReason: undefined });
     toast.success("Production resumed", { description: `${inq?.joNumber ?? inq?.code} is back in progress` });
@@ -357,7 +361,7 @@ export function ProductionFloor() {
               Production Floor
             </h1>
             <p className="font-dm mt-1 break-words" style={{ fontSize: 13, color: "#64748B" }}>
-              Kiosk mode — tap to update job stages · 9 production stages
+              {readOnly ? "Read-only production monitoring · 9 production stages" : "Kiosk mode — tap to update job stages · 9 production stages"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -367,7 +371,7 @@ export function ProductionFloor() {
 
       </header>
 
-      <div className="px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:py-8">
+      <div className={`px-4 py-5 ${readOnly ? "pb-8" : "pb-28"} sm:px-6 lg:px-8 lg:py-8`}>
         <div className="relative mb-5 flex w-full max-w-[450px] flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           <div className="relative w-full min-w-0 sm:flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} aria-hidden />
@@ -618,9 +622,11 @@ export function ProductionFloor() {
                       ) : (
                         <>
                           <span>Due: {job.due}</span>
-                          <button onClick={() => { setEditingDueId(job.id); setEditingDueValue(job.due); }} className="hover:bg-slate-100 px-1.5 py-0.5 rounded" title="Edit due date">
-                            <Pencil size={10} style={{ color: "#94A3B8" }} />
-                          </button>
+                          {!readOnly && (
+                            <button onClick={() => { setEditingDueId(job.id); setEditingDueValue(job.due); }} className="hover:bg-slate-100 px-1.5 py-0.5 rounded" title="Edit due date">
+                              <Pencil size={10} style={{ color: "#94A3B8" }} />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -687,13 +693,15 @@ export function ProductionFloor() {
                       <span className="font-dm flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: "#D97706" }}>
                         <Pause size={12} /> On hold — material shortage
                       </span>
-                      <button
-                        onClick={() => resumeJob(job.id)}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90"
-                        style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
-                      >
-                        ✅ Resume Production
-                      </button>
+                      {!readOnly && (
+                        <button
+                          onClick={() => resumeJob(job.id)}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90"
+                          style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
+                        >
+                          ✅ Resume Production
+                        </button>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -798,10 +806,12 @@ export function ProductionFloor() {
       {monitoringJob && (
         <StageMonitoringPage
           job={monitoringJob}
+          readOnly={readOnly}
           onClose={() => setStageMonitorId(null)}
-          onAdvance={() => advanceStage(monitoringJob.id)}
-          onRequestComplete={() => setCompleteJoJob(monitoringJob)}
+          onAdvance={() => { if (!readOnly) advanceStage(monitoringJob.id); }}
+          onRequestComplete={() => { if (!readOnly) setCompleteJoJob(monitoringJob); }}
           onUpdate={(updatedJob) => {
+            if (readOnly) return;
             /* Map UI Job patches back into Inquiry shape */
             updateInquiry(updatedJob.id, {
               currentStage: updatedJob.stageIndex,
@@ -825,7 +835,7 @@ export function ProductionFloor() {
         />
       )}
 
-      {completeJoJob && (
+      {!readOnly && completeJoJob && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setCompleteJoJob(null)}>
           <div className="bg-white rounded-xl w-full max-w-md flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FEF3C7" }}>
@@ -851,7 +861,7 @@ export function ProductionFloor() {
       )}
 
       {/* Paused Banner */}
-      {pausedJob && (
+      {pausedJob && !readOnly && (
         <div className="fixed bottom-0 left-[240px] right-0 px-8 py-3 flex items-center gap-4 text-white" style={{ backgroundColor: "#92400E", boxShadow: "0 -2px 8px rgba(0,0,0,0.15)" }}>
           <AlertTriangle size={18} />
           <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>⚠️ MATERIAL SHORTAGE — PRODUCTION PAUSED</span>
@@ -874,9 +884,10 @@ export function ProductionFloor() {
 
 /* ─── Stage Monitoring Page ─── */
 function StageMonitoringPage({
-  job, onClose, onUpdate, onAdvance, onRequestComplete,
+  job, readOnly, onClose, onUpdate, onAdvance, onRequestComplete,
 }: {
   job: Job;
+  readOnly: boolean;
   onClose: () => void;
   onUpdate: (job: Job) => void;
   onAdvance: () => void;
@@ -930,7 +941,9 @@ function StageMonitoringPage({
       <div className="px-4 py-6 overflow-auto sm:px-8 sm:py-8" style={{ height: "calc(100vh - 65px)" }}>
         <div className="max-w-2xl mx-auto">
           <h2 className="font-syne mb-2" style={{ fontSize: 20, fontWeight: 700, color: "#0F172A" }}>Production Timeline</h2>
-          <p className="font-dm mb-5" style={{ fontSize: 13, color: "#64748B" }}>Full stage history · Click ✏ Edit/Revert to update any completed stage</p>
+          <p className="font-dm mb-5" style={{ fontSize: 13, color: "#64748B" }}>
+            {readOnly ? "Read-only production stage history" : "Full stage history · Click ✏ Edit/Revert to update any completed stage"}
+          </p>
 
           <div className="flex flex-col gap-2.5">
             {STAGES.map((stageName, i) => {
@@ -993,7 +1006,7 @@ function StageMonitoringPage({
                           {history.reason && <span style={{ color: "#B45309" }}> · Reason: {history.reason}</span>}
                         </div>
                       )}
-                      {isCurrent && (
+                      {isCurrent && !readOnly && (
                         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                           <span className="font-dm" style={{ fontSize: 12, color: "#2563EB", fontWeight: 600 }}>
                             ← Currently in progress
@@ -1011,7 +1024,7 @@ function StageMonitoringPage({
                     </div>
 
                     {/* Edit/Revert Button (only on done stages) */}
-                    {isDone && (
+                    {isDone && !readOnly && (
                       <button
                         onClick={() => setRevertStageIdx(i)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 font-dm shrink-0"
@@ -1036,7 +1049,7 @@ function StageMonitoringPage({
                   {joCompleted ? "This Job Order is available in Warehouse." : "Complete the JO to hand it off to Warehouse."}
                 </div>
               </div>
-              {!joCompleted && (
+              {!joCompleted && !readOnly && (
                 <button
                   onClick={onRequestComplete}
                   className="flex shrink-0 items-center justify-center gap-2 rounded-md px-4 py-2.5 font-dm text-white hover:opacity-90"

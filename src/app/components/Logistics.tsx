@@ -1,16 +1,11 @@
 import { useMemo, useState } from "react";
-import { Search, Download, ChevronRight, Camera, X, History, CheckCircle2, Send, Truck, Filter } from "lucide-react";
+import { Search, Download, ChevronRight, Camera, History, CheckCircle2, Send, Truck, Filter, ArrowLeft } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, type Inquiry } from "../store/orders";
+import { PRODUCTION_STAGES, stageColor, stageLabel, useOrders, type Inquiry } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 
 type Status = "pending" | "delivered";
-
-const statusStyle: Record<Status, { bg: string; fg: string; label: string }> = {
-  pending:    { bg: "#E2E8F0", fg: "#475569", label: "Pending Delivery" },
-  delivered:  { bg: "#DBEAFE", fg: "#1D4ED8", label: "Delivered" },
-};
 
 interface Row {
   id: string;
@@ -44,7 +39,7 @@ function inquiryToRow(inq: Inquiry): Row {
      • dispatched         → waybill scanned, courier en route — driver/proof still needs to come back */
   const isDispatch = inq.stage === "ready_for_dispatch" || inq.stage === "dispatched";
   const status: Status = isDispatch ? "pending" : "delivered";
-  const s = statusStyle[status];
+  const statusColors = stageColor[inq.stage];
   return {
     id: inq.id,
     date: isDispatch ? inq.submittedDate : (inq.deliveredDate ?? inq.submittedDate),
@@ -56,9 +51,9 @@ function inquiryToRow(inq: Inquiry): Row {
     qty: inq.products.reduce((s, p) => s + p.qty, 0),
     amount: inq.invoiceAmount ?? inq.quotedTotal ?? 0,
     status,
-    statusBg: s.bg,
-    statusFg: s.fg,
-    statusLabel: s.label,
+    statusBg: statusColors.bg,
+    statusFg: statusColors.fg,
+    statusLabel: stageLabel[inq.stage],
     delivery: inq.deliveryMethod,
     trackingRef: inq.trackingRef,
     drFileName: inq.drFileName,
@@ -97,21 +92,20 @@ function DeliveryDetailModal({
       <div className="bg-white w-full h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
 
         {/* ── Header ── */}
-        <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-center justify-between">
+        <header className="bg-white border-b border-slate-200/70 px-4 py-4 sm:px-8 sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <button onClick={onClose} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
+            <button onClick={onClose} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 500 }}>
               ← Back to Logistics
             </button>
-            <h1 className="font-syne" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+            <h1 className="font-syne" style={{ fontSize: 24, fontWeight: 650, color: "#0F172A", lineHeight: 1.2 }}>
               Delivery Detail — {row.po}
             </h1>
             <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
               {row.customer} · {row.item} · {row.qty} pcs · ₱{row.amount.toLocaleString("en-PH")}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Status pill */}
-            <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: row.statusBg, color: row.statusFg }}>
+          <div className="flex items-center gap-2">
+            <span className="font-dm px-2.5 py-1 rounded-full whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600, backgroundColor: row.statusBg, color: row.statusFg }}>
               {row.statusLabel}
             </span>
 
@@ -126,26 +120,24 @@ function DeliveryDetailModal({
               </button>
             )}
 
-            <button onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-md border border-slate-200 hover:bg-slate-100 flex items-center justify-center">
-              <X size={16} />
-            </button>
           </div>
         </header>
 
         {/* ── DR Upload hint banner (shows only when no DR yet) ── */}
         {!isDelivered && isCompanyVehicle && !drUploaded && (
-          <div className="mx-8 mt-5 rounded-lg px-4 py-3 flex items-center gap-3 font-dm" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 12, color: "#92400E" }}>
+          <div className="mx-4 mt-4 rounded-lg px-4 py-3 flex items-center gap-3 font-dm sm:mx-8" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 12, color: "#92400E" }}>
             <Camera size={14} />
             <span>Upload Logistics delivery documentation here. Confirm delivery separately; the client signed DR controls payment-cycle activation.</span>
           </div>
         )}
 
-        <div className="px-8 py-8 grid gap-6" style={{ gridTemplateColumns: "1.2fr 1fr 1fr" }}>
+        <div className="grid grid-cols-1 gap-4 px-4 py-5 md:grid-cols-2 xl:grid-cols-3 sm:px-8 sm:py-6">
 
           {/* ── Delivery Method + Tracking ── */}
           <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Delivery Method</div>
-            <div className="font-syne mb-4" style={{ fontSize: 16, fontWeight: 700, color: "#1A2B4A" }}>{row.delivery || "Not selected by Sales"}</div>
+            <h2 className="font-dm mb-4" style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>Delivery Information</h2>
+            <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 500, color: "#64748B" }}>Delivery Method</div>
+            <div className="font-dm mb-5" style={{ fontSize: 14, fontWeight: 600, color: "#1A2B4A" }}>{row.delivery || "Not selected by Sales"}</div>
             <label className="font-dm block mb-1.5" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>
               Tracking / Waybill No.
             </label>
@@ -154,13 +146,13 @@ function DeliveryDetailModal({
               onChange={(event) => onTrackingRefChange(row.id, event.target.value)}
               placeholder="Enter tracking or waybill number"
               aria-label="Tracking or waybill number"
-              className="w-full font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
-              style={{ fontSize: 12, color: "#1A2B4A" }}
+              className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+              style={{ fontSize: 13, color: "#1A2B4A" }}
             />
             {row.trackingRef && (
               <div className="mt-4 rounded-md p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                 <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Saved Tracking / Waybill No.</div>
-                <div className="font-mono-jb break-all" style={{ fontSize: 11, color: "#1A2B4A" }}>{row.trackingRef}</div>
+                <div className="font-dm break-all" style={{ fontSize: 12, color: "#1A2B4A" }}>{row.trackingRef}</div>
               </div>
             )}
 
@@ -168,8 +160,8 @@ function DeliveryDetailModal({
             {!isDelivered && (
               <button
                 onClick={() => onSendToClient(row.id)}
-                className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-dm hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: "#16A34A", color: "#fff", fontSize: 12, fontWeight: 700 }}
+                className="mt-4 inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-dm text-slate-700 hover:bg-slate-50 transition-colors"
+                style={{ fontSize: 12, fontWeight: 500 }}
               >
                 <Send size={13} strokeWidth={2.5} />
                 Send Delivery Details to Client
@@ -179,14 +171,16 @@ function DeliveryDetailModal({
 
           {/* ── Signed DR Upload ── */}
           <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <div className="font-dm mb-1 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>
+            <h2 className="font-dm mb-3" style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>
               {isCompanyVehicle ? "Signed Delivery Receipt" : "Delivery Proof"}
-              {isCompanyVehicle && drUploaded && (
+            </h2>
+            {isCompanyVehicle && drUploaded && (
+              <div className="font-dm mb-1 flex items-center gap-2" style={{ fontSize: 11, fontWeight: 500, color: "#64748B" }}>
                 <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#FEF3C7", color: "#B45309", letterSpacing: 0.3, textTransform: "none" }}>
                   Signed DR Uploaded
                 </span>
-              )}
-            </div>
+              </div>
+            )}
             {isCompanyVehicle ? (
               <>
                 <p className="font-dm mb-3" style={{ fontSize: 11, color: "#94A3B8" }}>
@@ -229,23 +223,143 @@ function DeliveryDetailModal({
                 </label>
               </>
             ) : (
-              <div className="rounded-lg p-4 font-dm" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 12, color: "#64748B" }}>
-                Signed DR upload is available for Company Vehicle deliveries only.
+              <div className="rounded-lg p-3 font-dm" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 12, color: "#64748B" }}>
+                Signed delivery receipt uploads are not configured for third-party carriers.
               </div>
             )}
           </div>
 
           {/* ── Notes ── */}
           <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-            <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Notes</div>
+            <h2 className="font-dm mb-3" style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>Notes</h2>
             <textarea
               placeholder="Add delivery or payment notes..."
-              className="w-full h-40 rounded-lg border border-slate-300 p-3 outline-none focus:border-slate-400 font-dm resize-none bg-white"
+              aria-label="Delivery notes"
+              className="w-full h-28 rounded-lg border border-slate-300 p-3 outline-none focus:border-slate-400 font-dm resize-y bg-white"
               style={{ fontSize: 13 }}
             />
           </div>
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+export function LogisticsActiveJobs({ onBack }: { onBack: () => void }) {
+  const [query, setQuery] = useState("");
+  const { inquiriesByStage } = useOrders();
+  const activeJobs = useMemo(
+    () => inquiriesByStage(["jo", "in_production", "quality_inspection"]),
+    [inquiriesByStage]
+  );
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleJobs = useMemo(() => activeJobs.filter((inquiry) => {
+    if (!normalizedQuery) return true;
+    const searchableValues = [
+      inquiry.joNumber ?? `JO-${inquiry.code}`,
+      inquiry.code,
+      inquiry.clientName,
+      inquiry.dueDate ?? "",
+      stageLabel[inquiry.stage],
+      ...inquiry.products.flatMap((product) => [product.type, product.filterName ?? "", product.oem ?? ""]),
+    ];
+    return searchableValues.some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+  }), [activeJobs, normalizedQuery]);
+
+  return (
+    <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
+      <header className="bg-white border-b border-slate-200/70 px-4 py-4 sm:px-8 sticky top-0 z-10">
+        <button
+          onClick={onBack}
+          className="font-dm mb-2 inline-flex items-center gap-1.5 hover:underline"
+          style={{ fontSize: 12, color: "#64748B", fontWeight: 500 }}
+        >
+          <ArrowLeft size={14} /> Back to Logistics Dashboard
+        </button>
+        <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 650, color: "#0F172A", lineHeight: 1.2 }}>
+          Active Jobs
+        </h1>
+        <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
+          Read-only view of active job orders
+        </p>
+      </header>
+
+      <div className="px-4 py-5 flex flex-col gap-4 sm:px-8 sm:py-6">
+        <div className="relative w-full max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} aria-hidden />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search JO, client, or product..."
+            aria-label="Search active jobs"
+            className="font-dm w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 outline-none focus:border-slate-400 bg-white"
+            style={{ fontSize: 13 }}
+          />
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200/70 overflow-x-auto" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+          <table className="w-full min-w-[900px]">
+            <thead style={{ backgroundColor: "#F4F6F9" }}>
+              <tr>
+                {["JO Code", "Client", "Product / Item", "Qty", "Current Stage", "Due Date", "Current Status"].map((heading) => (
+                  <th
+                    key={heading}
+                    className="font-dm text-left px-4 py-3"
+                    style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.2, textTransform: "uppercase" }}
+                  >
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleJobs.map((inquiry) => {
+                const currentStage = inquiry.currentStage === undefined
+                  ? stageLabel[inquiry.stage]
+                  : PRODUCTION_STAGES[Math.min(inquiry.currentStage, PRODUCTION_STAGES.length - 1)];
+                const statusColors = stageColor[inquiry.stage];
+                return (
+                  <tr key={inquiry.id} className="border-t border-slate-200/70">
+                    <td className="px-4 py-3 font-dm whitespace-nowrap" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
+                      {inquiry.joNumber ?? `JO-${inquiry.code}`}
+                    </td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>
+                      {inquiry.clientName}
+                    </td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>
+                      {inquiry.products.map((product) => product.filterName ?? product.type).join(", ") || "—"}
+                    </td>
+                    <td className="px-4 py-3 font-dm whitespace-nowrap" style={{ fontSize: 13, color: "#475569" }}>
+                      {inquiry.products.reduce((total, product) => total + product.qty, 0)}
+                    </td>
+                    <td className="px-4 py-3 font-dm whitespace-nowrap" style={{ fontSize: 13, color: "#475569" }}>
+                      {currentStage}
+                    </td>
+                    <td className="px-4 py-3 font-dm whitespace-nowrap" style={{ fontSize: 13, color: "#475569" }}>
+                      {inquiry.dueDate ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className="font-dm whitespace-nowrap px-2.5 py-1 rounded-full"
+                        style={{ fontSize: 11, fontWeight: 500, backgroundColor: statusColors.bg, color: statusColors.fg }}
+                      >
+                        {stageLabel[inquiry.stage]}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {visibleJobs.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>
+                    No active jobs match your search.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -288,16 +402,21 @@ export function Logistics() {
 
     return source.filter((r) => {
       const searchableValues = [
+        r.po,
+        r.inq.code,
         r.inq.joNumber ?? "",
+        r.inq.contactPerson,
+        r.inq.contactEmail,
         r.si,
         r.customer,
         r.item,
         r.delivery ?? "",
+        r.trackingRef ?? "",
+        r.inq.waybillNumber ?? "",
+        r.inq.waybillIdentifier ?? "",
         ...r.inq.products.flatMap((product) => [product.type, product.filterName ?? ""]),
       ];
-      const searchOk = !searchTerm || (view === "history"
-        ? searchableValues.some((value) => value.toLocaleLowerCase().includes(searchTerm))
-        : (r.inq.joNumber ?? "").toLocaleLowerCase().includes(searchTerm) || r.customer.toLocaleLowerCase().includes(searchTerm));
+      const searchOk = !searchTerm || searchableValues.some((value) => value.toLocaleLowerCase().includes(searchTerm));
       const rowDate = new Date(r.date);
       const dateOk = dateFilter === "all" ||
         (!Number.isNaN(rowDate.getTime()) && rowDate >= cutoff && rowDate < tomorrow);
@@ -370,20 +489,45 @@ export function Logistics() {
     updateInquiry(id, { trackingRef });
   };
 
+  const exportHistoryCsv = () => {
+    const csvValue = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const header = ["Date", "JO No.", "SI No.", "Customer", "Item", "Quantity", "Delivery Method", "Status"];
+    const lines = [
+      header.map(csvValue).join(","),
+      ...visible.map((row) => [
+        row.date,
+        row.inq.joNumber ?? "—",
+        row.si,
+        row.customer,
+        row.item,
+        row.qty,
+        row.delivery ?? "—",
+        row.statusLabel,
+      ].map(csvValue).join(",")),
+    ];
+    const url = URL.createObjectURL(new Blob([`\uFEFF${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "enter-flow-delivered-history.csv";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    toast.success("Delivered history exported", { description: `${visible.length} rows` });
+  };
+
   const openRow = rows.find((r) => r.id === openId);
 
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
 
-      <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-start justify-between">
+      <header className="bg-white border-b border-slate-200/70 px-4 py-4 sm:px-8 sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3">
         <div>
           {view === "history" && (
             <button onClick={() => setView("active")} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
               ← Back to active
             </button>
           )}
-          <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+          <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 650, color: "#0F172A", lineHeight: 1.2 }}>
             {view === "active" ? "Logistics" : "Delivered History"}
           </h1>
           <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
@@ -406,89 +550,90 @@ export function Logistics() {
         </div>
       </header>
 
-      <div className="px-8 py-8 flex flex-col gap-6">
+      <div className="px-4 py-5 flex flex-col gap-5 sm:px-8 sm:py-6">
         {/* Controls */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[260px] max-w-md">
+          <div className="relative w-full min-w-0 max-w-md flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={view === "history" ? "Search JO, customer, item..." : "Search PO or customer..."}
+              placeholder={view === "history" ? "Search JO, SI, customer, item, or waybill..." : "Search JO, PO, customer, item, or waybill..."}
+              aria-label="Search by JO, PO, SI, customer, item, or waybill"
               className="font-dm w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 outline-none focus:border-slate-400 bg-white"
               style={{ fontSize: 13 }}
             />
           </div>
-          {(
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => view === "history"
-                  ? setIsHistoryFilterOpen((open) => !open)
-                  : setIsActiveFilterOpen((open) => !open)}
-                aria-label={`Filter ${view === "history" ? "delivered history" : "logistics deliveries"} by date`}
-                aria-expanded={view === "history" ? isHistoryFilterOpen : isActiveFilterOpen}
-                className="font-dm flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                style={{ color: (view === "history" ? historyDateFilter : activeDateFilter) !== "all" ? "#1A2B4A" : "#64748B" }}
-              >
-                <Filter size={15} />
-              </button>
-              {(view === "history" ? isHistoryFilterOpen : isActiveFilterOpen) && (
-                <div role="group" aria-label="Date filter" className="absolute right-0 top-11 z-20 w-40 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg">
-                  {([
-                    ["today", "Today"],
-                    ["7days", "Last 7 days"],
-                    ["30days", "Last 30 days"],
-                    ["all", "All"],
-                  ] as const).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => {
-                        if (view === "history") {
-                          setHistoryDateFilter(value);
-                          setIsHistoryFilterOpen(false);
-                        } else {
-                          setActiveDateFilter(value);
-                          setIsActiveFilterOpen(false);
-                        }
-                      }}
-                      aria-pressed={(view === "history" ? historyDateFilter : activeDateFilter) === value}
-                      className="font-dm block w-full rounded-md px-3 py-2 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      style={{ fontSize: 12, fontWeight: (view === "history" ? historyDateFilter : activeDateFilter) === value ? 700 : 500, color: "#0F172A" }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => view === "history"
+                ? setIsHistoryFilterOpen((open) => !open)
+                : setIsActiveFilterOpen((open) => !open)}
+              aria-label={`Filter ${view === "history" ? "delivered history" : "logistics deliveries"} by date`}
+              aria-expanded={view === "history" ? isHistoryFilterOpen : isActiveFilterOpen}
+              className="font-dm flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              style={{ color: (view === "history" ? historyDateFilter : activeDateFilter) !== "all" ? "#1A2B4A" : "#64748B" }}
+            >
+              <Filter size={15} />
+            </button>
+            {(view === "history" ? isHistoryFilterOpen : isActiveFilterOpen) && (
+              <div role="group" aria-label="Date filter" className="absolute right-0 top-11 z-20 w-40 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg">
+                {([
+                  ["today", "Today"],
+                  ["7days", "Last 7 days"],
+                  ["30days", "Last 30 days"],
+                  ["all", "All"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      if (view === "history") {
+                        setHistoryDateFilter(value);
+                        setIsHistoryFilterOpen(false);
+                      } else {
+                        setActiveDateFilter(value);
+                        setIsActiveFilterOpen(false);
+                      }
+                    }}
+                    aria-pressed={(view === "history" ? historyDateFilter : activeDateFilter) === value}
+                    className="font-dm block w-full rounded-md px-3 py-2 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    style={{ fontSize: 12, fontWeight: (view === "history" ? historyDateFilter : activeDateFilter) === value ? 700 : 500, color: "#0F172A" }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {view === "history" && (
+            <button
+              onClick={exportHistoryCsv}
+              className="flex shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 font-dm hover:bg-slate-50"
+              style={{ color: "#1A2B4A", fontSize: 12, fontWeight: 500 }}
+            >
+              <Download size={14} /> Export History CSV
+            </button>
           )}
-          <button
-            onClick={() => toast.success("Export started", { description: `Generating ${view === "history" ? "history" : "active"} CSV · ${visible.length} rows` })}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 bg-white font-dm hover:bg-slate-50"
-            style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 600 }}
-          >
-            <Download size={14} strokeWidth={2.5} /> Export {view === "history" ? "History CSV" : "CSV"}
-          </button>
         </div>
 
         {view === "history" && (
           <div className="rounded-lg p-3 flex items-center gap-2 font-dm" style={{ fontSize: 12, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-            <History size={14} /> Read-only — these orders were both delivered and fully paid. Auto-removed from active table.
+            <History size={14} /> Read-only delivery history. Delivered orders are automatically removed from active deliveries.
           </div>
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-          <table className="w-full">
+        <div className="bg-white rounded-xl border border-slate-200/70 overflow-x-auto" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+          <table className="w-full table-auto">
             <thead style={{ backgroundColor: "#F4F6F9" }}>
               <tr>
                 {(view === "history"
                   ? ["Date", "JO No.", "SI No.", "Customer", "Item", "Qty", "Delivery Method", "Status"]
                   : ["Date", "JO No.", "SI No.", "Customer", "Item", "Qty", "Amount", "Status", ""]
                 ).map((h) => (
-                  <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
+                  <th key={h} className={`font-dm text-left px-3 py-3 sm:px-4 ${h === "SI No." ? "hidden lg:table-cell" : ""} ${h === "Amount" ? "hidden xl:table-cell" : ""}`} style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.2, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -499,31 +644,31 @@ export function Logistics() {
                   className={`border-t border-slate-200/70 hover:bg-slate-50${view === "active" ? " cursor-pointer" : ""}`}
                   onClick={view === "active" ? () => setOpenId(r.id) : undefined}
                 >
-                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
-                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
                     {r.inq.joNumber ?? "—"}
                   </td>
-                  <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.si}</td>
-                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
+                  <td className="hidden px-3 py-3 font-dm lg:table-cell sm:px-4" style={{ fontSize: 12, color: "#475569" }}>{r.si}</td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>
                     {r.customer}
                     {r.isReplacement && (
                       <span className="ml-1.5 font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 700, backgroundColor: "#EDE9FE", color: "#7C3AED", verticalAlign: "middle" }}>REPLACEMENT</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
-                  <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.qty}</td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
+                  <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, color: "#475569" }}>{r.qty}</td>
                   {view === "history" ? (
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.delivery ?? "—"}</td>
+                    <td className="px-3 py-3 font-dm sm:px-4" style={{ fontSize: 13, color: "#475569" }}>{r.delivery ?? "—"}</td>
                   ) : (
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                    <td className="hidden px-3 py-3 font-dm xl:table-cell sm:px-4" style={{ fontSize: 13, color: "#475569" }}>₱{r.amount.toLocaleString("en-PH")}</td>
                   )}
-                  <td className="px-4 py-3">
-                    <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: r.statusBg, color: r.statusFg }}>
+                  <td className="px-3 py-3 sm:px-4">
+                    <span className="font-dm whitespace-nowrap px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 500, backgroundColor: r.statusBg, color: r.statusFg }}>
                       {r.statusLabel}
                     </span>
                   </td>
                   {view === "active" && (
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 sm:px-4">
                       <button aria-label="Open delivery detail" className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center" onClick={(e) => { e.stopPropagation(); setOpenId(r.id); }}>
                         <ChevronRight size={16} />
                       </button>

@@ -59,6 +59,21 @@ export async function saveInquiryAttachments(
   db.close();
 }
 
+export async function discardPendingSignedDeliveryReceiptAttachment(inquiryId: string): Promise<void> {
+  const db = await openAttachmentsDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(ATTACHMENTS_STORE_NAME, "readwrite");
+      transaction.objectStore(ATTACHMENTS_STORE_NAME).delete(attachmentKey(inquiryId, "pending-signed-dr"));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("Could not discard the pending signed Delivery Receipt"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("Pending signed Delivery Receipt discard was aborted"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export async function loadInquiryAttachments(inquiryId: string): Promise<PersistedAttachmentSet> {
   const db = await openAttachmentsDb();
   const records = await new Promise<AttachmentRecord[]>((resolve, reject) => {

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BOMLine, CostConfig } from "./materials";
-import { loadInquiryAttachments, promotePendingSignedDeliveryReceipt, saveInquiryAttachments } from "./attachments";
+import { discardPendingSignedDeliveryReceiptAttachment, loadInquiryAttachments, promotePendingSignedDeliveryReceipt, saveInquiryAttachments } from "./attachments";
 
 /* Quotation document — what the client sees */
 export interface QuotationLineItem {
@@ -536,6 +536,36 @@ export const paymentState = (inq: Inquiry): PaymentStateSummary => {
   };
 };
 
+export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: PaymentType | null; maxAmount: number } {
+  const state = paymentState(inq);
+  const paymentType = state.currentPaymentType;
+  if (!paymentType || inq.stage === "paid") return { paymentType: null, maxAmount: 0 };
+
+  const records = paymentRecords(inq);
+  if (paymentType === "DOWNPAYMENT" && records.some((payment) =>
+    payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
+  )) return { paymentType: null, maxAmount: 0 };
+
+  if (
+    paymentType === "BALANCE_PAYMENT"
+    && (!hasValidSignedDeliveryReceipt(inq)
+      || inq.paymentCycleStartedAt !== inq.signedDeliveryReceiptReceivedAt)
+  ) return { paymentType: null, maxAmount: 0 };
+
+  const pendingAmount = records
+    .filter((payment) => payment.verificationStatus === "pending")
+    .reduce((sum, payment) => sum + payment.submittedAmount, 0);
+  const availableBalance = Math.max(0, state.remainingInvoiceBalance - pendingAmount);
+  const typeBalance = paymentType === "DOWNPAYMENT"
+    ? state.remainingDownpayment
+    : state.remainingInvoiceBalance;
+  const maxAmount = Math.min(availableBalance, typeBalance);
+
+  return maxAmount > paymentEpsilon
+    ? { paymentType, maxAmount }
+    : { paymentType: null, maxAmount: 0 };
+}
+
 const seed: Inquiry[] = [
   {
     id: "i1", code: "INQ-005", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
@@ -797,6 +827,7 @@ interface Ctx {
     fileDataUrl: string,
     submittedBy: "Client" | "Logistics Staff",
   ) => Promise<void>;
+  discardPendingSignedDeliveryReceipt: (id: string) => Promise<void>;
   submitPendingSignedDeliveryReceipt: (id: string) => Promise<void>;
   /* — Downpayment workflow (Section D) — */
   sendDownpaymentDetails: (id: string, details: NonNullable<Inquiry["downpaymentPaymentDetails"]>) => void;
@@ -913,6 +944,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => savedOrders?.inquiries ?? seed);
   const [clearedPOs, setClearedPOs] = useState<string[]>(() => savedOrders?.clearedPOs ?? []);
   const signedDRUploadsInProgress = useRef(new Set<string>());
+  const paymentSequence = useRef(0);
 
   useEffect(() => {
     setAllInquiries((current) => {
@@ -1287,9 +1319,16 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   const confirmClientPayment: Ctx["confirmClientPayment"] = (inquiryId, payment) => {
-    const id = `cp-${Date.now()}`;
+    const id = `cp-${Date.now()}-${++paymentSequence.current}`;
     setAllInquiries((prev) => prev.map((x) => {
-      if (x.id !== inquiryId || paymentState(x).currentPaymentType === null) return x;
+      const allowance = paymentSubmissionAllowance(x);
+      if (
+        x.id !== inquiryId
+        || !allowance.paymentType
+        || !Number.isFinite(payment.amount)
+        || payment.amount <= 0
+        || payment.amount > allowance.maxAmount
+      ) return x;
       return {
         ...x,
       payments: [
@@ -1298,7 +1337,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           id,
           inquiryId,
           invoiceNo: x.invoiceNo,
-          paymentType: paymentState(x).currentPaymentType ?? "FULL_PAYMENT",
+          paymentType: allowance.paymentType,
           submittedAmount: payment.amount,
           verifiedAmount: payment.amount,
           method: payment.method,
@@ -1313,14 +1352,16 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   const submitPayment: Ctx["submitPayment"] = (inquiryId, payment) => {
-    const id = `pmt-${Date.now()}`;
+    const id = `pmt-${Date.now()}-${++paymentSequence.current}`;
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== inquiryId) return x;
-      const state = paymentState(x);
-      const pendingDownpayment = paymentRecords(x).some((record) =>
-        record.paymentType === "DOWNPAYMENT" && record.verificationStatus === "pending",
-      );
-      if (state.currentPaymentType === null || (state.currentPaymentType === "DOWNPAYMENT" && pendingDownpayment)) return x;
+      const allowance = paymentSubmissionAllowance(x);
+      if (
+        !allowance.paymentType
+        || !Number.isFinite(payment.submittedAmount)
+        || payment.submittedAmount <= 0
+        || payment.submittedAmount > allowance.maxAmount
+      ) return x;
       return {
         ...x,
       clientPaymentReceipts: payment.receiptFile
@@ -1342,15 +1383,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           id,
           inquiryId,
           invoiceNo: payment.invoiceNo ?? x.invoiceNo,
-          paymentType: (() => {
-            const state = paymentState(x);
-            if (state.currentPaymentType === "DOWNPAYMENT") {
-              return payment.submittedAmount + paymentEpsilon >= state.remainingInvoiceBalance
-                ? "FULL_PAYMENT"
-                : "DOWNPAYMENT";
-            }
-            return state.currentPaymentType ?? "FULL_PAYMENT";
-          })(),
+          paymentType: allowance.paymentType,
           verificationStatus: "pending" as const,
         },
       ],
@@ -1457,6 +1490,26 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         pendingSignedDeliveryReceiptFileName: fileName,
         pendingSignedDeliveryReceiptSubmittedBy: submittedBy,
         pendingSignedDeliveryReceiptDataUrl: fileDataUrl,
+      } : x));
+    } finally {
+      signedDRUploadsInProgress.current.delete(id);
+    }
+  };
+
+  const discardPendingSignedDeliveryReceipt: Ctx["discardPendingSignedDeliveryReceipt"] = async (id) => {
+    const inquiry = allInquiries.find((x) => x.id === id);
+    if (!inquiry) throw new Error("Delivery order was not found");
+    if (hasValidSignedDeliveryReceipt(inquiry)) throw new Error("A received signed Delivery Receipt cannot be discarded");
+    if (signedDRUploadsInProgress.current.has(id)) throw new Error("A signed delivery receipt is already being processed for this order");
+
+    signedDRUploadsInProgress.current.add(id);
+    try {
+      await discardPendingSignedDeliveryReceiptAttachment(id);
+      setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+        ...x,
+        pendingSignedDeliveryReceiptFileName: undefined,
+        pendingSignedDeliveryReceiptSubmittedBy: undefined,
+        pendingSignedDeliveryReceiptDataUrl: undefined,
       } : x));
     } finally {
       signedDRUploadsInProgress.current.delete(id);
@@ -1589,6 +1642,12 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         clientPaymentReceipts: [],
         trackingRef: undefined,
         deliveryTrackingLink: undefined,
+        waybillNumber: undefined,
+        waybillIdentifier: undefined,
+        waybillPrintedAt: undefined,
+        waybillLog: [],
+        dispatchedAt: undefined,
+        deliveredDate: undefined,
         drFileName: undefined,
         drUploadedAt: undefined,
         deliveryReceiptNumber: undefined,
@@ -1596,6 +1655,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         deliveryReceiptGeneratedBy: undefined,
         deliveryReceiptSentToLogisticsAt: undefined,
         deliveryReceiptSentAt: undefined,
+        pendingSignedDeliveryReceiptFileName: undefined,
+        pendingSignedDeliveryReceiptSubmittedBy: undefined,
+        pendingSignedDeliveryReceiptDataUrl: undefined,
         clientSignedDRFileName: undefined,
         clientSignedDRUploadedAt: undefined,
         signedDeliveryReceiptFileName: undefined,
@@ -1695,7 +1757,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, generateInvoice, generateDeliveryReceipt, sendDeliveryReceiptToLogistics, markDeliveryReceiptSent, sendInvoice, finalizeProductJOs,
       addClientReceipt, addReplacementRequest, resolveReplacement, reorderToProduction, markPOCleared,
       updateInquiry, inquiriesByStage,
-      setStage, setUrgent, setDueDate, markDelivered, savePendingSignedDeliveryReceipt, submitPendingSignedDeliveryReceipt,
+      setStage, setUrgent, setDueDate, markDelivered, savePendingSignedDeliveryReceipt, discardPendingSignedDeliveryReceipt, submitPendingSignedDeliveryReceipt,
       sendDownpaymentDetails, uploadDownpaymentReceipt, confirmDownpayment,
       createReplacementJO,
       byClient, isNewClient,

@@ -7,7 +7,6 @@ import { Inventory } from "./components/Inventory";
 import { WaybillScanner } from "./components/WaybillScanner";
 import { WaybillHistory } from "./components/WaybillHistory";
 import { Logistics } from "./components/Logistics";
-import { DeliveryReceipts } from "./components/DeliveryReceipts";
 import { Accounting } from "./components/Accounting";
 import { UserManagement } from "./components/UserManagement";
 import { Clients } from "./components/Clients";
@@ -61,7 +60,8 @@ function Shell() {
 
   const role = session.role;
   const allowed = allowedFor[role];
-  const isAllowed = allowed.includes(active);
+  const isLogisticsActiveJobs = role === "logistics" && active === "logistics-active-jobs";
+  const isAllowed = allowed.includes(active) || isLogisticsActiveJobs;
 
   const poCount = inquiries.filter((i) => i.stage === "po").length;
   const inquiryCount = inquiries.filter((i) => i.stage === "inquiry").length;
@@ -75,7 +75,6 @@ function Shell() {
     active === "waybill" ? <WaybillScanner /> :
     active === "waybill-history" ? <WaybillHistory /> :
     active === "logistics" ? <Logistics /> :
-    active === "delivery-receipts" ? <DeliveryReceipts /> :
     active === "accounting" ? <Accounting /> :
     active === "users" ? <UserManagement currentRole={role} /> :
     active === "clients" ? <Clients /> :
@@ -87,7 +86,7 @@ function Shell() {
   return (
     <SessionProvider role={role} name={session.name} navigate={setActive}>
       <div className="size-full flex font-dm" style={{ backgroundColor: "#F4F6F9" }}>
-        <Sidebar role={role} active={active} onNavigate={setActive} onLogout={logout} badges={badges} unreadNotif={unreadCount} />
+        <Sidebar role={role} active={isLogisticsActiveJobs ? "dashboard" : active} onNavigate={setActive} onLogout={logout} badges={badges} unreadNotif={unreadCount} />
         {screen}
       </div>
     </SessionProvider>

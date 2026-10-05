@@ -1,4 +1,4 @@
-import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, Repeat2, ArrowRight } from "lucide-react";
+import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, Repeat2, ArrowRight, CheckCircle2, Truck } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -6,7 +6,7 @@ import {
 import { KPICard } from "./KPICard";
 import { StatusBadge } from "./StatusBadge";
 import { NotificationBell } from "./NotificationBell";
-import { useOrders } from "../store/orders";
+import { PRODUCTION_STAGES, stageLabel, useOrders } from "../store/orders";
 import type { Role } from "./Login";
 
 const weekly = [
@@ -76,7 +76,7 @@ const dashboardTitle: Partial<Record<Role, { title: string; subtitle: string }>>
   accounting: { title: "Finance Dashboard",     subtitle: "Receivables · Collections · Overdue accounts" },
   production: { title: "Production Dashboard",  subtitle: "Active JOs by client · Stage progress · Rush orders" },
   warehouse:  { title: "Warehouse Dashboard",   subtitle: "Stock alerts · Materials to reorder" },
-  logistics:  { title: "Logistics Dashboard",   subtitle: "Today's deliveries · Dispatch queue" },
+  logistics:  { title: "Logistics Dashboard",   subtitle: "Active deliveries · Delivery status · History" },
 };
 
 export function Dashboard({ variant = "operations", onNavigate }: { variant?: Role; onNavigate?: (id: string) => void }) {
@@ -106,8 +106,23 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
   });
   const overdueAmount = overdueInvoices.reduce((s, i) => s + ((i.invoiceAmount ?? 0) - (i.amountPaid ?? 0)), 0);
   const partialPaymentsCount = completedJOs.filter(i => (i.amountPaid ?? 0) > 0 && i.stage !== "paid").length;
-  const todayDeliveries = completedJOs.filter(i => i.stage === "delivered").length;
-  const dispatchQueue = completedJOs.filter(i => i.stage === "ready_for_dispatch").length;
+  const logisticsActiveDeliveries = completedJOs.filter(
+    (inquiry) => inquiry.stage === "dispatched" || (inquiry.stage === "ready_for_dispatch" && Boolean(inquiry.waybillPrintedAt))
+  );
+  const logisticsInTransit = completedJOs.filter((inquiry) => inquiry.stage === "dispatched").length;
+  const logisticsDelivered = completedJOs.filter(
+    (inquiry) => inquiry.stage === "delivered" || inquiry.stage === "paid" || inquiry.stage === "overdue"
+  ).length;
+  const logisticsActiveJobs = completedJOs.filter(
+    (inquiry) => inquiry.stage === "jo" || inquiry.stage === "in_production" || inquiry.stage === "quality_inspection"
+  );
+  const logisticsDeliveryMethods = completedJOs
+    .filter((inquiry) => ["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"].includes(inquiry.stage) && inquiry.deliveryMethod)
+    .reduce<Record<string, number>>((counts, inquiry) => {
+      const method = inquiry.deliveryMethod!;
+      counts[method] = (counts[method] ?? 0) + 1;
+      return counts;
+    }, {});
 
   const formatPeso = (n: number) => n >= 1000000 ? `₱${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `₱${(n / 1000).toFixed(0)}K` : `₱${n.toFixed(0)}`;
 
@@ -123,17 +138,19 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
             {meta.subtitle}
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
-            <input
-              placeholder="Search PO, JO, client..."
-              className="font-dm pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 outline-none focus:border-slate-400 w-72 max-[1200px]:w-48"
-              style={{ fontSize: 13, backgroundColor: "#F4F6F9" }}
-            />
+        {role !== "logistics" && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
+              <input
+                placeholder="Search PO, JO, client..."
+                className="font-dm pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 outline-none focus:border-slate-400 w-72 max-[1200px]:w-48"
+                style={{ fontSize: 13, backgroundColor: "#F4F6F9" }}
+              />
+            </div>
+            <NotificationBell role={role} onNavigate={onNavigate} />
           </div>
-          <NotificationBell role={role} onNavigate={onNavigate} />
-        </div>
+        )}
       </header>
 
       <div className="px-8 py-8" style={{ paddingLeft: 32, paddingRight: 32 }}>
@@ -205,10 +222,10 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
           )}
           {role === "logistics" && (
             <>
-              <KPICard label="Pending Delivery"  value={String(dispatchQueue)}   delta="ready to dispatch" trend="up" icon={ShoppingCart} accent="#C8102E" />
-              <KPICard label="Delivered"         value={String(todayDeliveries)} delta="awaiting payment"  trend="up" icon={Factory}      accent="#16A34A" />
-              <KPICard label="Rush in Queue"     value={String(rushOrdersCount)} delta="priority"           trend="up" icon={AlertTriangle} accent="#D97706" />
-              <KPICard label="Total Active"      value={String(activeOrdersCount)} delta="across pipeline" trend="up" icon={ShoppingCart} accent="#1A2B4A" />
+              <KPICard label="Active Deliveries" value={String(logisticsActiveDeliveries.length)} delta="Ready or dispatched" showTrend={false} icon={Truck} accent="#C8102E" />
+              <KPICard label="In Transit" value={String(logisticsInTransit)} delta="Dispatched" showTrend={false} icon={Truck} accent="#1A2B4A" />
+              <KPICard label="Delivered" value={String(logisticsDelivered)} delta="Delivery history" showTrend={false} icon={CheckCircle2} accent="#16A34A" />
+              <KPICard label="Active Jobs" value={String(logisticsActiveJobs.length)} delta="Read-only monitoring" showTrend={false} icon={Factory} accent="#64748B" />
             </>
           )}
         </div>
@@ -220,9 +237,9 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={weekly} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748B", fontFamily: "DM Sans" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748B", fontFamily: "DM Sans" }} axisLine={false} tickLine={false} />
-                <Tooltip cursor={{ fill: "#F1F5F9" }} contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "DM Sans", fontSize: 12 }} />
+                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{ fill: "#F1F5F9" }} contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif", fontSize: 12 }} />
                 <Bar dataKey="orders" fill="#C8102E" radius={[6, 6, 0, 0]} barSize={28} />
               </BarChart>
             </ResponsiveContainer>
@@ -232,9 +249,9 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={revenueTrend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="m" tick={{ fontSize: 11, fill: "#64748B", fontFamily: "DM Sans" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748B", fontFamily: "DM Sans" }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "DM Sans", fontSize: 12 }} formatter={(v: number) => [`₱${v}K`, "Revenue"]} />
+                <XAxis dataKey="m" tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif", fontSize: 12 }} formatter={(v: number) => [`₱${v}K`, "Revenue"]} />
                 <Line type="monotone" dataKey="v" stroke="#1A2B4A" strokeWidth={2.5} dot={{ r: 4, fill: "#C8102E", strokeWidth: 0 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -249,9 +266,9 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
                 <Legend
                   verticalAlign="bottom"
                   iconType="circle"
-                  wrapperStyle={{ fontSize: 11, fontFamily: "DM Sans" }}
+                  wrapperStyle={{ fontSize: 11, fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }}
                 />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "DM Sans", fontSize: 12 }} />
+                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif", fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
           </Card>
@@ -456,10 +473,10 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
           </div>
         )}
 
-        {/* Logistics: Today's Deliveries + Method Breakdown */}
+        {/* Logistics: Active Deliveries + Method Breakdown */}
         {role === "logistics" && (
-          <div className="grid grid-cols-12 gap-6 mb-8">
-            <Card title="Today's Delivery Queue" className="col-span-7">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-8">
+            <Card title="Active Deliveries" className="xl:col-span-7">
               <table className="w-full">
                 <thead style={{ backgroundColor: "#F4F6F9" }}>
                   <tr>
@@ -469,40 +486,36 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    { jo: "JO-2026-001", client: "B.E. Aerospace", item: "Air Filter", qty: 50, method: "Company Vehicle", status: "Loading" },
-                    { jo: "JO-2026-002", client: "Maynilad", item: "Pleated Filter ZS20", qty: 100, method: "Lalamove", status: "In Transit" },
-                  ].map((r) => (
-                    <tr key={r.jo} className="border-t border-slate-200/70">
-                      <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 12, color: "#1A2B4A", fontWeight: 600 }}>{r.jo}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.item}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.qty}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.method}</td>
-                      <td className="px-3 py-2"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: r.status === "In Transit" ? "#DBEAFE" : "#FEF3C7", color: r.status === "In Transit" ? "#1D4ED8" : "#B45309" }}>{r.status}</span></td>
+                  {logisticsActiveDeliveries.map((inquiry) => (
+                    <tr key={inquiry.id} className="border-t border-slate-200/70">
+                      <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 12, color: "#1A2B4A", fontWeight: 600 }}>{inquiry.joNumber ?? `JO-${inquiry.code}`}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{inquiry.clientName}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inquiry.products[0]?.filterName ?? inquiry.products[0]?.type ?? "—"}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inquiry.products.reduce((total, product) => total + product.qty, 0)}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inquiry.deliveryMethod ?? "—"}</td>
+                      <td className="px-3 py-2"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 600, backgroundColor: inquiry.stage === "dispatched" ? "#DBEAFE" : "#E2E8F0", color: inquiry.stage === "dispatched" ? "#1D4ED8" : "#475569" }}>{stageLabel[inquiry.stage]}</span></td>
                     </tr>
                   ))}
+                  {logisticsActiveDeliveries.length === 0 && (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No active deliveries.</td></tr>
+                  )}
                 </tbody>
               </table>
             </Card>
-            <Card title="Method Breakdown · This Month" className="col-span-5">
+            <Card title="Delivery Method Breakdown" className="xl:col-span-5">
               <div className="flex flex-col gap-2">
-                {[
-                  { method: "Lalamove", count: 8, color: "#7C3AED", help: "Local · urgent" },
-                  { method: "Company Vehicle", count: 5, color: "#1A2B4A", help: "Batangas / Laguna" },
-                  { method: "AP Cargo", count: 3, color: "#D97706", help: "Northern provinces" },
-                  { method: "Fast Cargo", count: 2, color: "#16A34A", help: "Mindanao" },
-                  { method: "Client Pick-up", count: 1, color: "#475569", help: "Customer collects" },
-                ].map((m) => (
-                  <div key={m.method} className="flex items-center gap-3 px-3 py-2 rounded-md border border-slate-200">
-                    <div className="w-2 h-8 rounded-sm" style={{ backgroundColor: m.color }} />
+                {Object.entries(logisticsDeliveryMethods).map(([method, count]) => (
+                  <div key={method} className="flex items-center gap-3 px-3 py-2 rounded-md border border-slate-200">
+                    <div className="w-2 h-8 rounded-sm" style={{ backgroundColor: "#1A2B4A" }} />
                     <div className="flex-1">
-                      <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{m.method}</div>
-                      <div className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>{m.help}</div>
+                      <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{method}</div>
                     </div>
-                    <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: m.color }}>{m.count}</div>
+                    <div className="font-dm" style={{ fontSize: 16, fontWeight: 600, color: "#1A2B4A" }}>{count}</div>
                   </div>
                 ))}
+                {Object.keys(logisticsDeliveryMethods).length === 0 && (
+                  <p className="font-dm py-4 text-center" style={{ fontSize: 12, color: "#94A3B8" }}>No delivery method data yet.</p>
+                )}
               </div>
             </Card>
           </div>
@@ -583,14 +596,14 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
         </div>
         )}
 
-        {/* Bottom row: jobs + alerts — hidden for sales/accounting */}
+        {/* Active Jobs remain informational for Logistics. */}
         {role !== "sales" && role !== "accounting" && (
         <div className="grid grid-cols-12 gap-6">
           <Card
             title="Active Jobs"
-            className="col-span-8"
+            className={role === "logistics" ? "col-span-12" : "col-span-8"}
             action={
-              <button className="font-dm px-3 py-1.5 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#C8102E" }}>
+              <button onClick={() => onNavigate?.(role === "logistics" ? "logistics-active-jobs" : "production")} className="font-dm px-3 py-1.5 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#C8102E" }}>
                 View all →
               </button>
             }
@@ -607,7 +620,16 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
                   </tr>
                 </thead>
                 <tbody>
-                  {activeJobs.map((j) => (
+                  {(role === "logistics" ? logisticsActiveJobs.map((inquiry) => ({
+                    jo: inquiry.joNumber ?? `JO-${inquiry.code}`,
+                    client: inquiry.clientName,
+                    item: inquiry.products[0]?.filterName ?? inquiry.products[0]?.type ?? "—",
+                    status: inquiry.stage === "jo" ? "pending" as const : "in-progress" as const,
+                    stage: inquiry.currentStage === undefined
+                      ? stageLabel[inquiry.stage]
+                      : PRODUCTION_STAGES[Math.min(inquiry.currentStage, PRODUCTION_STAGES.length - 1)],
+                    due: inquiry.dueDate ?? "—",
+                  })) : activeJobs).map((j) => (
                     <tr key={j.jo} className="border-t border-slate-200/70 hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 13, fontWeight: 500, color: "#1A2B4A" }}>{j.jo}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{j.client}</td>
@@ -621,7 +643,7 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
             </div>
           </Card>
 
-          <div className="col-span-4 bg-white rounded-xl border border-slate-200/60 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+          {role !== "logistics" && <div className="col-span-4 bg-white rounded-xl border border-slate-200/60 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
             <div className="px-5 py-4 flex items-center justify-between" style={{ backgroundColor: "#C8102E" }}>
               <div className="flex items-center gap-2 text-white">
                 <AlertTriangle size={16} />
@@ -642,7 +664,7 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
                 );
               })}
             </div>
-          </div>
+          </div>}
         </div>
         )}
       </div>

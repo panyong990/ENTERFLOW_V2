@@ -8,6 +8,8 @@ export interface StockRequestMaterial {
   materialName: string;
   unit: string;
   requiredQuantity: number;
+  stockAtRequest?: number;
+  shortageAtRequest?: number;
 }
 
 export interface StockResponseMaterial extends StockRequestMaterial {
@@ -125,19 +127,21 @@ export function StockRequestsProvider({ children }: { children: ReactNode }) {
 
   const respondToRequest: StockRequestsContextValue["respondToRequest"] = (requestId, materials, respondedBy) => {
     const request = requestsRef.current.find((item) => item.requestId === requestId);
-    if (!request || (request.status !== "pending" && request.status !== "update_requested")) return false;
+    if (!request || (request.status !== "pending" && request.status !== "responded" && request.status !== "update_requested")) return false;
     const response: StockRequestResponse = {
       responseAt: new Date().toISOString(),
       respondedBy,
       type: request.status === "pending" ? "initial" : "updated",
       materials,
     };
+    const allSufficient = materials.length > 0 && materials.every((material) => material.status === "sufficient");
     const next = requestsRef.current.map((item) => item.requestId !== requestId ? item : {
       ...item,
-      status: response.type === "initial" ? "responded" : "updated",
+      status: allSufficient ? "updated" : "update_requested",
       latestResponse: response,
       responseAt: response.responseAt,
-      updatedResponseAt: response.type === "updated" ? response.responseAt : item.updatedResponseAt,
+      updateRequestedAt: allSufficient ? item.updateRequestedAt : response.responseAt,
+      updatedResponseAt: allSufficient ? response.responseAt : item.updatedResponseAt,
       responseHistory: [...item.responseHistory, response],
     });
     requestsRef.current = next;

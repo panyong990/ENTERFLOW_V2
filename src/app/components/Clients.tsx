@@ -1,15 +1,10 @@
 import { useState } from "react";
 import {
-  Search, Plus, Building2, Phone, Mail, MapPin, X,
-  ChevronDown, ChevronUp, Eye, Save, RefreshCw, KeyRound,
+  Search, Building2, Phone, Mail, MapPin, X, Pencil,
+  ChevronDown, ChevronUp, Eye, Save,
 } from "lucide-react";
 import { useOrders } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
-
-function genPortalPassword() {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
 import { toast, Toaster } from "sonner";
 
 interface LinkedDoc { type: string; ref: string }
@@ -151,7 +146,6 @@ export function Clients() {
   const [rawClients, setClients] = useState<Client[]>(CLIENTS_DATA);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Client | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
 
   /* DERIVED: override totalOrders + totalRevenue with live values from the orders store. The seed values are used only as a baseline for clients with historical orders that pre-date the store seed. */
   const clients = rawClients.map((c) => {
@@ -171,36 +165,6 @@ export function Clients() {
     c.industry.toLowerCase().includes(query.toLowerCase())
   );
 
-  // Add Client form state
-  const [addForm, setAddForm] = useState({
-    name: "", industry: "", contact: "", phone: "", email: "",
-    address: "", paymentTerms: "30-Day Terms", notes: "",
-  });
-  const [portalPwd, setPortalPwd] = useState(() => genPortalPassword());
-
-  const saveClient = () => {
-    if (!addForm.name.trim()) { toast.error("Company name required"); return; }
-    const newClient: Client = {
-      id: `c${Date.now()}`,
-      name: addForm.name.trim(),
-      industry: addForm.industry,
-      contact: addForm.contact,
-      email: addForm.email,
-      phone: addForm.phone,
-      address: addForm.address,
-      since: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
-      totalOrders: 0, totalRevenue: 0, status: "active",
-      paymentTerms: addForm.paymentTerms,
-      notes: addForm.notes,
-      transactions: [], jobs: [],
-    };
-    setClients((prev) => [...prev, newClient]);
-    toast.success("Client account created", { description: `${addForm.name} — portal credentials generated` });
-    setShowAdd(false);
-    setAddForm({ name: "", industry: "", contact: "", phone: "", email: "", address: "", paymentTerms: "30-Day Terms", notes: "" });
-    setPortalPwd(genPortalPassword());
-  };
-
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
@@ -214,16 +178,7 @@ export function Clients() {
             Customer directory · transaction history · associated job orders
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
-            style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}
-          >
-            <Plus size={15} strokeWidth={2.5} aria-hidden /> Add Client
-          </button>
-          <NotificationBell />
-        </div>
+        <NotificationBell />
       </header>
 
       <div className="px-8 py-8 flex flex-col gap-6">
@@ -259,7 +214,7 @@ export function Clients() {
           <table className="w-full">
             <thead style={{ backgroundColor: "#F4F6F9" }}>
               <tr>
-                {["Client", "Industry", "Contact", "Total Orders", "Active Jobs", "Status", ""].map((h) => (
+                {["Client", "Industry", "Contact", "Total Orders", "Active Jobs", "Status"].map((h) => (
                   <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -268,8 +223,16 @@ export function Clients() {
               {visible.map((c) => (
                 <tr
                   key={c.id}
-                  className="border-t border-slate-200/70 hover:bg-slate-50 cursor-pointer"
+                  className="border-t border-slate-200/70 transition-colors hover:bg-slate-50 cursor-pointer focus-visible:outline-none focus-visible:bg-slate-50"
+                  tabIndex={0}
+                  aria-label={`View ${c.name} details`}
                   onClick={() => setSelected(c)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelected(c);
+                    }
+                  }}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -305,15 +268,6 @@ export function Clients() {
                       {c.status === "active" ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSelected(c); }}
-                      className="font-dm px-3 py-1.5 rounded-md border border-slate-200 hover:bg-white"
-                      style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}
-                    >
-                      View Details
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -333,154 +287,6 @@ export function Clients() {
         />
       )}
 
-      {/* Add Client Modal */}
-      {showAdd && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
-          onClick={() => setShowAdd(false)}
-        >
-          <div
-            className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-auto"
-            style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h3 className="font-syne" style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>
-                  Add New Client
-                </h3>
-                <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>
-                  Create a client profile and set their payment terms.
-                </p>
-              </div>
-              <button onClick={() => setShowAdd(false)} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center">
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="p-6 flex flex-col gap-4">
-              {/* Company Name */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Company Name *</label>
-                <input value={addForm.name} onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. ABC Corporation" className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
-              </div>
-
-              {/* Industry */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Industry</label>
-                <input value={addForm.industry} onChange={(e) => setAddForm((p) => ({ ...p, industry: e.target.value }))} placeholder="e.g. Aerospace, Water Utilities" className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
-              </div>
-
-              {/* Contact Person + Phone side by side */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Contact Person</label>
-                  <input value={addForm.contact} onChange={(e) => setAddForm((p) => ({ ...p, contact: e.target.value }))} placeholder="Full name" className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Phone</label>
-                  <input value={addForm.phone} onChange={(e) => setAddForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+63 9XX XXX XXXX" className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
-                </div>
-              </div>
-
-              {/* Email */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email</label>
-                <input type="email" value={addForm.email} onChange={(e) => setAddForm((p) => ({ ...p, email: e.target.value }))} placeholder="contact@company.com" className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
-              </div>
-
-              {/* Address */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Address</label>
-                <input value={addForm.address} onChange={(e) => setAddForm((p) => ({ ...p, address: e.target.value }))} placeholder="Full address" className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
-              </div>
-
-              {/* Payment Terms */}
-              <div className="flex flex-col gap-2">
-                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Payment Terms</label>
-                <div className="flex flex-col gap-2">
-                  {(["15-Day Terms", "30-Day Terms"] as const).map((term) => {
-                    const active = addForm.paymentTerms === term;
-                    return (
-                      <label
-                        key={term}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer"
-                        style={{
-                          border: active ? "2px solid #C8102E" : "1px solid #CBD5E1",
-                          backgroundColor: active ? "#FEF2F2" : "#FFFFFF",
-                          padding: active ? 11 : 12,
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="addPaymentTerms"
-                          checked={active}
-                          onChange={() => setAddForm((p) => ({ ...p, paymentTerms: term }))}
-                          style={{ accentColor: "#C8102E" }}
-                        />
-                        <div className="flex-1">
-                          <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{term}</div>
-                          <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>
-                            {term === "15-Day Terms" ? "Invoice due 15 days after delivery" :
-                             "Invoice due 30 days after delivery"}
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Notes <span style={{ color: "#94A3B8", fontWeight: 400 }}>(optional)</span></label>
-                <textarea value={addForm.notes} onChange={(e) => setAddForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Internal notes about this client..." rows={2} className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 resize-none" style={{ fontSize: 13 }} />
-              </div>
-
-              {/* Portal Login Credentials */}
-              <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                <div className="flex items-center gap-2">
-                  <KeyRound size={14} style={{ color: "#2563EB" }} />
-                  <span className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>Client Portal Access</span>
-                </div>
-                <p className="font-dm" style={{ fontSize: 12, color: "#1D4ED8" }}>
-                  This creates a login account for the client to access the Enter-Fil Client Portal. Their username will be their email address.
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#1E3A8A" }}>
-                    Temporary Password <span style={{ color: "#93C5FD", fontWeight: 400 }}>(auto-generated, shown once)</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 font-mono-jb px-3 py-2.5 rounded-md border border-blue-200 bg-white" style={{ fontSize: 13, color: "#0F172A", letterSpacing: 1 }}>
-                      {portalPwd}
-                    </div>
-                    <button
-                      onClick={() => setPortalPwd(genPortalPassword())}
-                      className="w-10 h-10 rounded-md border border-blue-200 flex items-center justify-center hover:bg-blue-50 bg-white"
-                      aria-label="Regenerate password"
-                    >
-                      <RefreshCw size={14} style={{ color: "#2563EB" }} />
-                    </button>
-                  </div>
-                  <p className="font-dm" style={{ fontSize: 11, color: "#3B82F6" }}>
-                    Copy this password and share it with the client — it won't be shown again. The client will be asked to change it on first login.
-                  </p>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <button onClick={saveClient} className="w-full flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
-                <Save size={14} /> Create Client Account
-              </button>
-              <p className="font-dm text-center" style={{ fontSize: 12, color: "#64748B" }}>
-                Client will receive their login credentials and can access the portal to complete their profile.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -494,27 +300,119 @@ function ClientDetailDrawer({
   const [tab, setTab] = useState<"overview" | "transactionsOrders">("overview");
   const [draft, setDraft] = useState({ ...client });
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [transactionQuery, setTransactionQuery] = useState("");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [pendingTab, setPendingTab] = useState<"overview" | "transactionsOrders" | null>(null);
+  const [formError, setFormError] = useState("");
+  const hasUnsavedChanges = clientInfoChanged(client, draft);
+
+  const requestClose = () => {
+    if (editing && hasUnsavedChanges) {
+      setPendingTab(null);
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  };
+
+  const requestTabChange = (nextTab: "overview" | "transactionsOrders") => {
+    if (nextTab === tab) return;
+    if (editing && hasUnsavedChanges) {
+      setPendingTab(nextTab);
+      setConfirmDiscard(true);
+      return;
+    }
+    if (editing) {
+      setDraft({ ...client });
+      setEditing(false);
+      setFormError("");
+    }
+    setTab(nextTab);
+  };
+
+  const startEditing = () => {
+    setDraft({ ...client });
+    setFormError("");
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setDraft({ ...client });
+    setFormError("");
+    setEditing(false);
+  };
+
+  const discardAndClose = () => {
+    setDraft({ ...client });
+    setConfirmDiscard(false);
+    if (pendingTab) {
+      setTab(pendingTab);
+      setEditing(false);
+      setFormError("");
+      setPendingTab(null);
+    } else {
+      onClose();
+    }
+  };
+
+  const cancelDiscard = () => {
+    setConfirmDiscard(false);
+    setPendingTab(null);
+  };
+
   const saveOverview = () => {
-    onUpdate(draft);
-    toast.success("Client updated", { description: draft.name });
+    const name = draft.name.trim();
+    const email = draft.email.trim();
+    if (!name) {
+      setFormError("Company name is required.");
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setFormError("Enter a valid email address.");
+      return;
+    }
+
+    const updated = {
+      ...draft,
+      name,
+      industry: draft.industry.trim(),
+      contact: draft.contact.trim(),
+      email,
+      phone: draft.phone.trim(),
+      address: draft.address.trim(),
+      notes: draft.notes?.trim() ?? "",
+    };
+    onUpdate(updated);
+    setDraft(updated);
+    setEditing(false);
+    setFormError("");
+    toast.success("Client updated", { description: updated.name });
   };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-end"
       style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         className="bg-white h-full overflow-auto flex flex-col"
         style={{ width: 580, boxShadow: "-20px 0 40px rgba(0,0,0,0.2)" }}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            requestClose();
+          }
+        }}
         role="dialog"
         aria-label={`${client.name} details`}
+        aria-modal="true"
       >
         {/* Drawer Header */}
-        <div className="px-6 py-5 border-b border-slate-200 flex items-start justify-between shrink-0">
-          <div className="flex items-center gap-4">
+        <div className="px-6 py-5 border-b border-slate-200 flex items-start justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-4 min-w-0">
             <div
               className="w-12 h-12 rounded-lg flex items-center justify-center font-syne text-white"
               style={{ backgroundColor: "#1A2B4A", fontSize: 16, fontWeight: 700 }}
@@ -523,23 +421,55 @@ function ClientDetailDrawer({
               {client.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
             </div>
             <div>
-              <h2 className="font-syne" style={{ fontSize: 20, fontWeight: 700, color: "#0F172A" }}>{client.name}</h2>
-              <p className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{client.industry} · Client since {client.since}</p>
+              <h2 className="font-syne" style={{ fontSize: 20, fontWeight: 700, color: "#0F172A" }}>{draft.name}</h2>
+              <p className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{draft.industry || "Industry not specified"} · Client since {client.since}</p>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center">
-            <X size={16} aria-hidden />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={saveOverview}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-white font-dm hover:opacity-90"
+                  style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}
+                >
+                  <Save size={14} /> Save Changes
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  className="rounded-md border border-slate-200 px-3 py-2 font-dm hover:bg-slate-50"
+                  style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : tab === "overview" ? (
+              <button
+                type="button"
+                onClick={startEditing}
+                aria-label="Edit client"
+                title="Edit client"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <Pencil size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+            <button onClick={requestClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center">
+              <X size={16} aria-hidden />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
         <nav className="px-6 border-b border-slate-200 flex gap-1 shrink-0">
-                  {([["overview", "Overview"], ["transactionsOrders", "Transactions & Orders"]] as const).map(([id, label]) => {
+          {([["overview", "Overview"], ["transactionsOrders", "Transactions & Orders"]] as const).map(([id, label]) => {
             const active = tab === id;
             return (
               <button
                 key={id}
-                onClick={() => setTab(id)}
+                onClick={() => requestTabChange(id)}
                 className="font-dm px-4 py-3 transition-colors"
                 style={{
                   fontSize: 13, fontWeight: 600,
@@ -553,6 +483,7 @@ function ClientDetailDrawer({
             );
           })}
         </nav>
+        {formError && <p role="alert" className="mx-6 mt-4 font-dm text-sm text-red-700">{formError}</p>}
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6 flex flex-col gap-5">
@@ -562,12 +493,25 @@ function ClientDetailDrawer({
               <section>
                 <div className="font-syne mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Company Information</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <EditField label="Company Name" value={draft.name} onChange={(v) => setDraft((p) => ({ ...p, name: v }))} />
-                  <EditField label="Industry" value={draft.industry} onChange={(v) => setDraft((p) => ({ ...p, industry: v }))} />
-                  <EditField label="Contact Person" value={draft.contact} onChange={(v) => setDraft((p) => ({ ...p, contact: v }))} />
-                  <EditField label="Phone" value={draft.phone} onChange={(v) => setDraft((p) => ({ ...p, phone: v }))} />
-                  <EditField label="Email" value={draft.email} onChange={(v) => setDraft((p) => ({ ...p, email: v }))} fullWidth />
-                  <EditField label="Address" value={draft.address} onChange={(v) => setDraft((p) => ({ ...p, address: v }))} fullWidth />
+                  {editing ? (
+                    <>
+                      <EditField label="Company Name" value={draft.name} onChange={(v) => setDraft((p) => ({ ...p, name: v }))} />
+                      <EditField label="Industry" value={draft.industry} onChange={(v) => setDraft((p) => ({ ...p, industry: v }))} />
+                      <EditField label="Contact Person" value={draft.contact} onChange={(v) => setDraft((p) => ({ ...p, contact: v }))} />
+                      <EditField label="Phone" value={draft.phone} onChange={(v) => setDraft((p) => ({ ...p, phone: v }))} />
+                      <EditField label="Email" value={draft.email} onChange={(v) => setDraft((p) => ({ ...p, email: v }))} fullWidth type="email" />
+                      <EditField label="Address" value={draft.address} onChange={(v) => setDraft((p) => ({ ...p, address: v }))} fullWidth />
+                    </>
+                  ) : (
+                    <>
+                      <ReadOnlyField label="Company Name" value={client.name} />
+                      <ReadOnlyField label="Industry" value={client.industry} />
+                      <ReadOnlyField label="Contact Person" value={client.contact} />
+                      <ReadOnlyField label="Phone" value={client.phone} />
+                      <ReadOnlyField label="Email" value={client.email} fullWidth />
+                      <ReadOnlyField label="Address" value={client.address} fullWidth />
+                    </>
+                  )}
                 </div>
               </section>
 
@@ -582,36 +526,61 @@ function ClientDetailDrawer({
 
               <section>
                 <div className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Internal Notes</div>
-                <textarea
-                  value={draft.notes ?? ""}
-                  onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
-                  placeholder="Add internal notes about this client..."
-                  rows={4}
-                  className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 resize-none"
-                  style={{ fontSize: 13 }}
-                />
+                {editing ? (
+                  <textarea
+                    aria-label="Internal Notes"
+                    value={draft.notes ?? ""}
+                    onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
+                    placeholder="Add internal notes about this client..."
+                    rows={4}
+                    className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 resize-none"
+                    style={{ fontSize: 13 }}
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap font-dm" style={{ fontSize: 13, lineHeight: 1.6, color: client.notes ? "#334155" : "#64748B" }}>
+                    {client.notes || "No internal notes."}
+                  </p>
+                )}
               </section>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={saveOverview}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90"
-                  style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}
-                >
-                  <Save size={14} /> Save Changes
-                </button>
-              </div>
             </>
           )}
 
           {/* ─── TRANSACTIONS & ORDERS TAB ─── */}
           {tab === "transactionsOrders" && (() => {
-            const transactions = client.transactions;
+            const normalizedQuery = transactionQuery.trim().toLocaleLowerCase();
+            const transactions = client.transactions.filter((transaction) => {
+              if (!normalizedQuery) return true;
+              const searchable = [
+                transaction.po,
+                transaction.item,
+                transaction.status,
+                transaction.date,
+                ...(transaction.docs ?? []).map((doc) => doc.ref),
+              ];
+              return searchable.some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+            });
             return (
               <section className="flex flex-col gap-0">
-                {transactions.length === 0 && (
+                <div className="relative mb-4 max-w-md">
+                  <Search size={15} aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    aria-label="Search transactions or orders"
+                    placeholder="Search transactions or orders..."
+                    value={transactionQuery}
+                    onChange={(event) => setTransactionQuery(event.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white py-2 pl-9 pr-3 font-dm outline-none focus:border-slate-400"
+                    style={{ fontSize: 12 }}
+                  />
+                </div>
+                {client.transactions.length === 0 && (
                   <div className="p-8 text-center font-dm rounded-lg border border-slate-200" style={{ fontSize: 13, color: "#64748B" }}>
                     No transactions available.
+                  </div>
+                )}
+                {client.transactions.length > 0 && transactions.length === 0 && (
+                  <div className="p-8 text-center font-dm rounded-lg border border-slate-200" style={{ fontSize: 13, color: "#64748B" }}>
+                    No transactions found.
                   </div>
                 )}
                 {transactions.map((t) => {
@@ -706,29 +675,88 @@ function ClientDetailDrawer({
 
         </div>
       </div>
+      {confirmDiscard && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(15,23,42,0.35)" }}
+          onClick={cancelDiscard}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="discard-client-changes-title"
+            aria-describedby="discard-client-changes-description"
+            className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="discard-client-changes-title" className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>
+              Discard unsaved changes?
+            </h3>
+            <p id="discard-client-changes-description" className="mt-2 font-dm" style={{ fontSize: 13, color: "#64748B" }}>
+              {pendingTab
+                ? "Your changes to this client will be lost if you continue to the other tab."
+                : "Your changes to this client will be lost."}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelDiscard}
+                className="rounded-md border border-slate-200 px-3 py-2 font-dm hover:bg-slate-50"
+                style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={discardAndClose}
+                className="rounded-md px-3 py-2 font-dm text-white hover:opacity-90"
+                style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}
+              >
+                {pendingTab ? "Discard & Continue" : "Discard Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ─── Helpers ─── */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function clientInfoChanged(client: Client, draft: Client): boolean {
+  return client.name !== draft.name
+    || client.industry !== draft.industry
+    || client.contact !== draft.contact
+    || client.phone !== draft.phone
+    || client.email !== draft.email
+    || client.address !== draft.address
+    || (client.notes ?? "") !== (draft.notes ?? "");
+}
+
+function ReadOnlyField({
+  label, value, fullWidth,
+}: {
+  label: string; value: string; fullWidth?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{label}</label>
-      {children}
+    <div className={`min-w-0 ${fullWidth ? "col-span-2" : ""}`}>
+      <div className="font-dm" style={{ fontSize: 10, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
+      <div className="mt-1 break-words font-dm" style={{ fontSize: 13, color: value ? "#0F172A" : "#64748B" }}>{value || "—"}</div>
     </div>
   );
 }
 
 function EditField({
-  label, value, onChange, fullWidth,
+  label, value, onChange, fullWidth, type = "text",
 }: {
-  label: string; value: string; onChange: (v: string) => void; fullWidth?: boolean;
+  label: string; value: string; onChange: (v: string) => void; fullWidth?: boolean; type?: "text" | "email";
 }) {
   return (
     <div className={`flex flex-col gap-1.5 ${fullWidth ? "col-span-2" : ""}`}>
       <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</label>
       <input
+        type={type}
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400"

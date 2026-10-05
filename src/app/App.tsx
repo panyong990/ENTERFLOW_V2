@@ -7,6 +7,7 @@ import { Inventory } from "./components/Inventory";
 import { WaybillScanner } from "./components/WaybillScanner";
 import { WaybillHistory } from "./components/WaybillHistory";
 import { Logistics } from "./components/Logistics";
+import { DeliveryReceipts } from "./components/DeliveryReceipts";
 import { Accounting } from "./components/Accounting";
 import { UserManagement } from "./components/UserManagement";
 import { Clients } from "./components/Clients";
@@ -74,6 +75,7 @@ function Shell() {
     active === "waybill" ? <WaybillScanner /> :
     active === "waybill-history" ? <WaybillHistory /> :
     active === "logistics" ? <Logistics /> :
+    active === "delivery-receipts" ? <DeliveryReceipts /> :
     active === "accounting" ? <Accounting /> :
     active === "users" ? <UserManagement currentRole={role} /> :
     active === "clients" ? <Clients /> :

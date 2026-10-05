@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BOMLine, CostConfig } from "./materials";
-import { loadInquiryAttachments, saveInquiryAttachments } from "./attachments";
+import { loadInquiryAttachments, promotePendingSignedDeliveryReceipt, saveInquiryAttachments } from "./attachments";
 
 /* Quotation document — what the client sees */
 export interface QuotationLineItem {
@@ -310,11 +310,26 @@ export interface Inquiry {
   /* — payment tracking — */
   amountPaid?: number;
   paidAt?: string;
-  /* — logistics — */
+  /* — logistics / delivery receipt workflow — */
   deliveryMethod?: "Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up";
   trackingRef?: string;
+  deliveryTrackingLink?: string;
   drFileName?: string;
   drUploadedAt?: string;
+  deliveryReceiptNumber?: string;
+  deliveryReceiptGeneratedAt?: string;
+  deliveryReceiptGeneratedBy?: string;
+  deliveryReceiptSentToLogisticsAt?: string;
+  deliveryReceiptSentAt?: string;
+  pendingSignedDeliveryReceiptFileName?: string;
+  pendingSignedDeliveryReceiptSubmittedBy?: string;
+  pendingSignedDeliveryReceiptDataUrl?: string;
+  signedDeliveryReceiptFileName?: string;
+  signedDeliveryReceiptSubmittedBy?: string;
+  signedDeliveryReceiptReceivedAt?: string;
+  signedDeliveryReceiptNumber?: string;
+  signedDeliveryReceiptDataUrl?: string;
+  fulfillmentCompletedAt?: string;
   /* — quotation revision flow (client requests, sales reviews, version history) — */
   revisionNote?: string;
   quotationHistory?: QuotationDoc[];
@@ -366,6 +381,25 @@ function paymentDueDate(paymentTerms: Inquiry["paymentTerms"], receiptAt: string
   if (Number.isNaN(due.getTime())) return undefined;
   due.setDate(due.getDate() + (paymentTerms === "30-Day Terms" ? 30 : 15));
   return due.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+export function hasValidSignedDeliveryReceipt(inquiry: Inquiry): boolean {
+  return Boolean(
+    inquiry.signedDeliveryReceiptFileName
+    && inquiry.deliveryReceiptNumber
+    && inquiry.signedDeliveryReceiptNumber === inquiry.deliveryReceiptNumber
+    && inquiry.signedDeliveryReceiptReceivedAt
+    && !Number.isNaN(Date.parse(inquiry.signedDeliveryReceiptReceivedAt)),
+  );
+}
+
+export function paymentDaysRemaining(invoiceDueDate: string, now = new Date()): number | undefined {
+  const dueDate = new Date(invoiceDueDate);
+  if (Number.isNaN(dueDate.getTime())) return undefined;
+  dueDate.setHours(0, 0, 0, 0);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((dueDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 export function resolveProductBOM(inquiry: Inquiry, productIndex: number): BOMLine[] | undefined {
@@ -739,6 +773,9 @@ interface Ctx {
   generatePONumber: () => string;
   generateJONumber: () => string;
   generateInvoice: (id: string) => string | undefined;
+  generateDeliveryReceipt: (id: string) => string | undefined;
+  sendDeliveryReceiptToLogistics: (id: string) => boolean;
+  markDeliveryReceiptSent: (id: string, trackingLink?: string) => void;
   sendInvoice: (id: string) => boolean;
   finalizeProductJOs: (id: string, data: FinalizeJOData[]) => string[];
   addClientReceipt: (inquiryId: string, receipt: Omit<ClientReceipt, "id">) => void;
@@ -754,7 +791,13 @@ interface Ctx {
   setUrgent: (id: string, urgent: boolean, dueDate?: string) => void;
   setDueDate: (id: string, due: string) => void;
   markDelivered: (id: string, deliveredDate: string, invoiceNo: string, invoiceAmount: number) => void;
-  uploadClientSignedDR: (id: string, fileName: string) => void;
+  savePendingSignedDeliveryReceipt: (
+    id: string,
+    fileName: string,
+    fileDataUrl: string,
+    submittedBy: "Client" | "Logistics Staff",
+  ) => Promise<void>;
+  submitPendingSignedDeliveryReceipt: (id: string) => Promise<void>;
   /* — Downpayment workflow (Section D) — */
   sendDownpaymentDetails: (id: string, details: NonNullable<Inquiry["downpaymentPaymentDetails"]>) => void;
   uploadDownpaymentReceipt: (id: string, fileName: string) => void;
@@ -776,15 +819,58 @@ interface PersistedOrdersState {
 }
 
 function businessState(inquiries: Inquiry[]): Inquiry[] {
-  return inquiries.map(({ poFileDataUrl, payments, ...inquiry }) => ({
+  return inquiries.map(({ poFileDataUrl, pendingSignedDeliveryReceiptDataUrl, signedDeliveryReceiptDataUrl, payments, ...inquiry }) => ({
     ...inquiry,
     payments: payments?.map(({ receiptDataUrl, ...payment }) => payment),
   }));
 }
 
+function repairPersistedDemoOilfilBom(inquiries: Inquiry[]): { inquiries: Inquiry[]; changed: boolean } {
+  const matches = inquiries.filter((inquiry) => {
+    if (inquiry.products.length !== 1) return false;
+    const product = inquiry.products[0];
+    const productCode = product.type.trim().toUpperCase();
+    const filterCode = product.filterName?.trim().toUpperCase();
+    return (productCode === "OILFIL" || filterCode === "OILFIL")
+      && Number(product.od1) === 175
+      && Number(product.id1) === 20
+      && Number(product.height) === 87
+      && product.qty === 20;
+  });
+
+  if (matches.length !== 1) return { inquiries, changed: false };
+  const target = matches[0];
+  const productBOM = target.productsBillOfMaterials?.[0];
+  const activeBOM = productBOM && productBOM.length > 0 ? productBOM : target.billOfMaterials;
+  if (!activeBOM) return { inquiries, changed: false };
+
+  const matchingLines = activeBOM.filter((line) => line.materialId === "OR-NBR-STD");
+  if (matchingLines.length !== 1) return { inquiries, changed: false };
+  const line = matchingLines[0];
+  if (Number.isFinite(line.qtyConsumed) && line.qtyConsumed > 0) return { inquiries, changed: false };
+
+  // Demo/test data repair only; this is not an authoritative manufacturing quantity.
+  const repairedBOM = activeBOM.map((bomLine) =>
+    bomLine === line ? { ...bomLine, qtyConsumed: 1 } : bomLine
+  );
+  const repairedInquiry: Inquiry = productBOM && productBOM.length > 0
+    ? {
+        ...target,
+        productsBillOfMaterials: target.productsBillOfMaterials?.map((bom, index) => index === 0 ? repairedBOM : bom),
+      }
+    : { ...target, billOfMaterials: repairedBOM };
+
+  return {
+    inquiries: inquiries.map((inquiry) => inquiry.id === target.id ? repairedInquiry : inquiry),
+    changed: true,
+  };
+}
+
 function attachmentState(inquiry: Inquiry) {
   return {
     poFileDataUrl: inquiry.poFileDataUrl,
+    pendingSignedDeliveryReceiptDataUrl: inquiry.pendingSignedDeliveryReceiptDataUrl,
+    signedDeliveryReceiptDataUrl: inquiry.signedDeliveryReceiptDataUrl,
     paymentReceiptDataUrls: Object.fromEntries(
       (inquiry.payments ?? [])
         .filter((payment): payment is typeof payment & { receiptDataUrl: string } => Boolean(payment.receiptDataUrl))
@@ -809,7 +895,14 @@ function loadPersistedOrders(): PersistedOrdersState | null {
       && typeof (inquiry as Inquiry).stage === "string"
     ))) return null;
     if (!value.clearedPOs.every((po) => typeof po === "string")) return null;
-    return { inquiries: value.inquiries as Inquiry[], clearedPOs: value.clearedPOs as string[] };
+    const repaired = repairPersistedDemoOilfilBom(value.inquiries as Inquiry[]);
+    if (repaired.changed) {
+      window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify({
+        inquiries: businessState(repaired.inquiries),
+        clearedPOs: value.clearedPOs,
+      }));
+    }
+    return { inquiries: repaired.inquiries, clearedPOs: value.clearedPOs as string[] };
   } catch {
     return null;
   }
@@ -819,6 +912,40 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const [savedOrders] = useState<PersistedOrdersState | null>(() => loadPersistedOrders());
   const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => savedOrders?.inquiries ?? seed);
   const [clearedPOs, setClearedPOs] = useState<string[]>(() => savedOrders?.clearedPOs ?? []);
+  const signedDRUploadsInProgress = useRef(new Set<string>());
+
+  useEffect(() => {
+    setAllInquiries((current) => {
+      let changed = false;
+      const next = current.map((inquiry) => {
+        if (!hasValidSignedDeliveryReceipt(inquiry)) {
+          if (!inquiry.fulfillmentCompletedAt && !inquiry.paymentCycleStartedAt) return inquiry;
+          changed = true;
+          return {
+            ...inquiry,
+            fulfillmentCompletedAt: undefined,
+            paymentCycleStartedAt: undefined,
+            invoiceDueDate: undefined,
+          };
+        }
+        const receivedAt = inquiry.signedDeliveryReceiptReceivedAt!;
+        const dueDate = paymentDueDate(inquiry.paymentTerms, receivedAt);
+        if (
+          inquiry.fulfillmentCompletedAt === receivedAt
+          && inquiry.paymentCycleStartedAt === receivedAt
+          && inquiry.invoiceDueDate === dueDate
+        ) return inquiry;
+        changed = true;
+        return {
+          ...inquiry,
+          fulfillmentCompletedAt: receivedAt,
+          paymentCycleStartedAt: receivedAt,
+          invoiceDueDate: dueDate,
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [allInquiries]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -847,6 +974,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           return {
             ...inquiry,
             poFileDataUrl: entry.attachments.poFileDataUrl ?? inquiry.poFileDataUrl,
+            pendingSignedDeliveryReceiptDataUrl: entry.attachments.pendingSignedDeliveryReceiptDataUrl ?? inquiry.pendingSignedDeliveryReceiptDataUrl,
+            signedDeliveryReceiptDataUrl: entry.attachments.signedDeliveryReceiptDataUrl ?? inquiry.signedDeliveryReceiptDataUrl,
             payments: inquiry.payments?.map((payment) => ({
               ...payment,
               receiptDataUrl: payment.receiptDataUrl ?? paymentReceiptDataUrls[payment.id],
@@ -1052,6 +1181,51 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     return invoiceNo;
   };
 
+  const generateDeliveryReceipt: Ctx["generateDeliveryReceipt"] = (id) => {
+    const inquiry = allInquiries.find((x) => x.id === id);
+    if (!inquiry) return undefined;
+    if (inquiry.deliveryReceiptNumber) return inquiry.deliveryReceiptNumber;
+
+    const year = new Date().getFullYear();
+    const used = allInquiries
+      .map((x) => x.deliveryReceiptNumber ?? "")
+      .map((n) => {
+        const m = n.match(new RegExp(`DR-${year}-(\\d+)`));
+        return m ? parseInt(m[1], 10) : 0;
+      });
+    const next = ((used.length ? Math.max(...used) : 0) + 1).toString().padStart(4, "0");
+    const deliveryReceiptNumber = `DR-${year}-${next}`;
+    const timestamp = new Date().toISOString();
+
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+      ...x,
+      deliveryReceiptNumber,
+      deliveryReceiptGeneratedAt: timestamp,
+      deliveryReceiptGeneratedBy: "Accountant",
+    } : x));
+    return deliveryReceiptNumber;
+  };
+
+  const sendDeliveryReceiptToLogistics: Ctx["sendDeliveryReceiptToLogistics"] = (id) => {
+    const inquiry = allInquiries.find((x) => x.id === id);
+    if (!inquiry?.deliveryReceiptNumber || !inquiry.waybillPrintedAt) return false;
+    if (inquiry.deliveryReceiptSentToLogisticsAt) return true;
+
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+      ...x,
+      deliveryReceiptSentToLogisticsAt: new Date().toISOString(),
+    } : x));
+    return true;
+  };
+
+  const markDeliveryReceiptSent: Ctx["markDeliveryReceiptSent"] = (id, trackingLink) => {
+    setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+      ...x,
+      deliveryReceiptSentAt: new Date().toISOString(),
+      deliveryTrackingLink: trackingLink ?? x.deliveryTrackingLink,
+    } : x));
+  };
+
   const sendInvoice: Ctx["sendInvoice"] = (id) => {
     const invoice = allInquiries.find((x) => x.id === id);
     if (!invoice?.invoiceNo) return false;
@@ -1251,24 +1425,61 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const uploadClientSignedDR: Ctx["uploadClientSignedDR"] = (id, fileName) => {
-    const uploadedAt = new Date().toISOString();
-    setAllInquiries((prev) => prev.map((x) => {
-      if (x.id !== id) return x;
-      const receiptAt = x.clientSignedDRUploadedAt ?? uploadedAt;
-      const deliveryConfirmed = x.stage === "delivered" || x.stage === "paid" || x.stage === "overdue";
-      return {
+  const savePendingSignedDeliveryReceipt: Ctx["savePendingSignedDeliveryReceipt"] = async (id, fileName, fileDataUrl, submittedBy) => {
+    const inquiry = allInquiries.find((x) => x.id === id);
+    if (!inquiry) throw new Error("Delivery order was not found");
+    if (!inquiry.deliveryReceiptNumber) throw new Error("Generate a delivery receipt before uploading its signed copy");
+    if (inquiry.signedDeliveryReceiptFileName) throw new Error("A signed delivery receipt has already been received for this order");
+    if (signedDRUploadsInProgress.current.has(id)) throw new Error("A signed delivery receipt is already being processed for this order");
+    if (!/^data:(application\/pdf|image\/jpeg|image\/png);base64,/.test(fileDataUrl)) {
+      throw new Error("Upload a valid PDF, JPG, or PNG signed receipt");
+    }
+
+    signedDRUploadsInProgress.current.add(id);
+    try {
+      await saveInquiryAttachments(id, {
+        paymentReceiptDataUrls: {},
+        pendingSignedDeliveryReceiptDataUrl: fileDataUrl,
+      });
+      setAllInquiries((prev) => prev.map((x) => x.id === id ? {
         ...x,
-        clientSignedDRFileName: fileName,
-        clientSignedDRUploadedAt: receiptAt,
-        ...(deliveryConfirmed && !x.paymentCycleStartedAt
-          ? {
-              paymentCycleStartedAt: receiptAt,
-              invoiceDueDate: paymentDueDate(x.paymentTerms, receiptAt),
-            }
-          : {}),
-      };
-    }));
+        pendingSignedDeliveryReceiptFileName: fileName,
+        pendingSignedDeliveryReceiptSubmittedBy: submittedBy,
+        pendingSignedDeliveryReceiptDataUrl: fileDataUrl,
+      } : x));
+    } finally {
+      signedDRUploadsInProgress.current.delete(id);
+    }
+  };
+
+  const submitPendingSignedDeliveryReceipt: Ctx["submitPendingSignedDeliveryReceipt"] = async (id) => {
+    const inquiry = allInquiries.find((x) => x.id === id);
+    if (!inquiry) throw new Error("Delivery order was not found");
+    if (!inquiry.deliveryReceiptNumber) throw new Error("Generate a delivery receipt before submitting its signed copy");
+    if (inquiry.signedDeliveryReceiptFileName) throw new Error("A signed delivery receipt has already been received for this order");
+    if (!inquiry.pendingSignedDeliveryReceiptFileName || !inquiry.pendingSignedDeliveryReceiptSubmittedBy) {
+      throw new Error("Upload a signed Delivery Receipt before submitting it");
+    }
+    if (signedDRUploadsInProgress.current.has(id)) throw new Error("A signed delivery receipt is already being processed for this order");
+
+    signedDRUploadsInProgress.current.add(id);
+    try {
+      const receivedAt = new Date().toISOString();
+      const signedDeliveryReceiptDataUrl = await promotePendingSignedDeliveryReceipt(id);
+      setAllInquiries((prev) => prev.map((x) => x.id === id ? {
+        ...x,
+        pendingSignedDeliveryReceiptFileName: undefined,
+        pendingSignedDeliveryReceiptSubmittedBy: undefined,
+        pendingSignedDeliveryReceiptDataUrl: undefined,
+        signedDeliveryReceiptFileName: inquiry.pendingSignedDeliveryReceiptFileName,
+        signedDeliveryReceiptSubmittedBy: inquiry.pendingSignedDeliveryReceiptSubmittedBy,
+        signedDeliveryReceiptReceivedAt: receivedAt,
+        signedDeliveryReceiptNumber: inquiry.deliveryReceiptNumber,
+        signedDeliveryReceiptDataUrl,
+      } : x));
+    } finally {
+      signedDRUploadsInProgress.current.delete(id);
+    }
   };
 
   /* — Downpayment workflow actions — */
@@ -1365,6 +1576,23 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         submittedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         joNumber: joNum,
         clientPaymentReceipts: [],
+        trackingRef: undefined,
+        deliveryTrackingLink: undefined,
+        drFileName: undefined,
+        drUploadedAt: undefined,
+        deliveryReceiptNumber: undefined,
+        deliveryReceiptGeneratedAt: undefined,
+        deliveryReceiptGeneratedBy: undefined,
+        deliveryReceiptSentToLogisticsAt: undefined,
+        deliveryReceiptSentAt: undefined,
+        clientSignedDRFileName: undefined,
+        clientSignedDRUploadedAt: undefined,
+        signedDeliveryReceiptFileName: undefined,
+        signedDeliveryReceiptSubmittedBy: undefined,
+        signedDeliveryReceiptReceivedAt: undefined,
+        signedDeliveryReceiptNumber: undefined,
+        signedDeliveryReceiptDataUrl: undefined,
+        fulfillmentCompletedAt: undefined,
         archived: false,
         archiveReason: undefined,
         archiveDate: undefined,
@@ -1453,10 +1681,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       requestCancellation, approveCancellation, declineCancellation,
       confirmClientPayment, submitPayment, verifyPayment, rejectPayment,
       setBillOfMaterials, setProductsCosting, markInventoryDeducted,
-      setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, generateInvoice, sendInvoice, finalizeProductJOs,
+      setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, generateInvoice, generateDeliveryReceipt, sendDeliveryReceiptToLogistics, markDeliveryReceiptSent, sendInvoice, finalizeProductJOs,
       addClientReceipt, addReplacementRequest, resolveReplacement, reorderToProduction, markPOCleared,
       updateInquiry, inquiriesByStage,
-      setStage, setUrgent, setDueDate, markDelivered, uploadClientSignedDR,
+      setStage, setUrgent, setDueDate, markDelivered, savePendingSignedDeliveryReceipt, submitPendingSignedDeliveryReceipt,
       sendDownpaymentDetails, uploadDownpaymentReceipt, confirmDownpayment,
       createReplacementJO,
       byClient, isNewClient,

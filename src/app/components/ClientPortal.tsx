@@ -1,18 +1,29 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ClipboardList, MapPin, Truck, CreditCard, Upload, CheckCircle2, Circle,
   Building2, User as UserIcon, Info, Camera, Send, Plus, Trash2, ChevronDown,
-  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw,
+  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw, Printer,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, type Inquiry, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
+import { hasValidSignedDeliveryReceipt, paymentDaysRemaining, useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, type Inquiry, type PaymentStateSummary, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { useSettings } from "../store/settings";
 import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
+import { readFileAsDataUrl } from "../store/attachments";
 import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../store/filterTemplates";
 
 type Tab = "orders" | "status" | "logistics" | "accounting" | "settings";
@@ -1678,89 +1689,248 @@ function TimelineCard({ po, product, qty, client, badge, steps, action }: {
 }
 
 /* ---------- Logistics Tab ---------- */
-type DeliveryMethod = "Company Vehicle" | "Lalamove" | "Client Pick-up";
+type DeliveryMethod = NonNullable<Inquiry["deliveryMethod"]>;
+type ClientDeliveryStatus =
+  | "Job Order Created"
+  | "In Production"
+  | "Quality Inspection"
+  | "Ready for Dispatch"
+  | "In Transit"
+  | "Delivered"
+  | "Fulfillment Completed"
+  | "Not Yet in Logistics";
+
 interface LogisticsRow {
   id: string;
-  po: string; item: string; qty: number; method: DeliveryMethod;
-  status: "Pending" | "In Transit" | "Delivered";
+  clientName: string;
+  po: string; joNumber?: string; item: string; qty: number; method?: DeliveryMethod;
+  status: ClientDeliveryStatus;
   statusBg: string; statusFg: string;
-  trackingNumber?: string; hasSignedDR?: boolean; signedDRFileName?: string;
-  signedDRUploadedAt?: string; paymentCycleStartedAt?: string;
-  paymentTerms: Inquiry["paymentTerms"]; invoiceDueDate?: string;
-  driverName?: string; estimatedDate?: string;
+  trackingNumber?: string; trackingLink?: string;
+  paymentTerms: Inquiry["paymentTerms"];
+  paymentCycleStartedAt?: string; paymentDueDate?: string;
+  paymentState: PaymentStateSummary;
+  paymentIsFullyPaid: boolean;
+  hasPendingPayment: boolean;
+  deliveryReceiptNumber?: string; deliveryReceiptSentAt?: string;
+  signedDRFileName?: string; signedDRSubmittedBy?: string; signedDRReceivedAt?: string;
+  signedDRNumber?: string; signedDRDataUrl?: string;
+  pendingSignedDRFileName?: string; pendingSignedDRSubmittedBy?: string; pendingSignedDRDataUrl?: string;
   dateISO?: string;
 }
 
-/* DERIVED: build a LogisticsRow from a store inquiry. Status maps cleanly off the inquiry stage. */
 function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
-  const method: DeliveryMethod = (inq.deliveryMethod ?? "Company Vehicle") as DeliveryMethod;
-  const isDelivered = inq.stage === "delivered" || inq.stage === "paid" || inq.stage === "overdue";
-  const isInTransit = inq.stage === "ready_for_dispatch" && !!inq.trackingRef;
-  const status = isDelivered ? "Delivered" : isInTransit ? "In Transit" : "Pending";
-  const statusBg = isDelivered ? "#DCFCE7" : isInTransit ? "#DBEAFE" : "#E2E8F0";
-  const statusFg = isDelivered ? "#15803D" : isInTransit ? "#1D4ED8" : "#475569";
+  const signedDRReceived = hasValidSignedDeliveryReceipt(inq);
+  const orderPaymentState = paymentState(inq);
+  const stageStatus: ClientDeliveryStatus = ({
+    jo: "Job Order Created",
+    in_production: "In Production",
+    quality_inspection: "Quality Inspection",
+    ready_for_dispatch: "Ready for Dispatch",
+    dispatched: "In Transit",
+    delivered: "Delivered",
+    paid: "Delivered",
+    overdue: "Delivered",
+  } as Partial<Record<Inquiry["stage"], ClientDeliveryStatus>>)[inq.stage] ?? "Not Yet in Logistics";
+  const status: ClientDeliveryStatus = signedDRReceived ? "Fulfillment Completed" : stageStatus;
+  const statusColors: Record<ClientDeliveryStatus, { bg: string; fg: string }> = {
+    "Job Order Created": { bg: "#E2E8F0", fg: "#475569" },
+    "In Production": { bg: "#DBEAFE", fg: "#1D4ED8" },
+    "Quality Inspection": { bg: "#EDE9FE", fg: "#6D28D9" },
+    "Ready for Dispatch": { bg: "#FFE4E6", fg: "#9F1239" },
+    "In Transit": { bg: "#DBEAFE", fg: "#1D4ED8" },
+    Delivered: { bg: "#DCFCE7", fg: "#15803D" },
+    "Fulfillment Completed": { bg: "#DCFCE7", fg: "#166534" },
+    "Not Yet in Logistics": { bg: "#E2E8F0", fg: "#475569" },
+  };
+  const { bg: statusBg, fg: statusFg } = statusColors[status];
   const firstProduct = inq.products[0];
-  const item = firstProduct?.product ?? "—";
-  const qty = inq.products.reduce((s, p) => s + p.quantity, 0);
+  const item = firstProduct?.filterName || firstProduct?.type || "—";
+  const qty = inq.products.reduce((sum, product) => sum + product.qty, 0);
+  const signedDRMatchesOrder = signedDRReceived;
   const dateISO = inq.deliveredDate ?? inq.dueDate ?? inq.submittedDate;
   return {
     id: inq.id,
+    clientName: inq.clientName,
     po: inq.code,
+    joNumber: inq.joNumber,
     item,
     qty,
-    method,
-    status: status as any,
+    method: inq.deliveryMethod,
+    status,
     statusBg,
     statusFg,
-    hasSignedDR: !!inq.clientSignedDRFileName,
-    signedDRFileName: inq.clientSignedDRFileName,
-    signedDRUploadedAt: inq.clientSignedDRUploadedAt,
-    paymentCycleStartedAt: inq.paymentCycleStartedAt,
     paymentTerms: inq.paymentTerms,
-    invoiceDueDate: inq.paymentCycleStartedAt ? inq.invoiceDueDate : undefined,
-    driverName: method === "Company Vehicle" ? "D. Santos" : undefined,
-    estimatedDate: inq.deliveredDate ?? inq.dueDate ?? "—",
+    paymentCycleStartedAt: signedDRReceived
+      && inq.paymentCycleStartedAt === inq.signedDeliveryReceiptReceivedAt
+      ? inq.paymentCycleStartedAt
+      : undefined,
+    paymentDueDate: signedDRReceived
+      && inq.paymentCycleStartedAt === inq.signedDeliveryReceiptReceivedAt
+      ? inq.invoiceDueDate
+      : undefined,
+    paymentState: orderPaymentState,
+    paymentIsFullyPaid: inq.stage === "paid"
+      || (orderPaymentState.invoiceTotal > 0 && orderPaymentState.state === "FULLY_PAID"),
+    hasPendingPayment: paymentRecords(inq).some((payment) => payment.verificationStatus === "pending"),
+    deliveryReceiptNumber: inq.deliveryReceiptNumber,
+    deliveryReceiptSentAt: inq.deliveryReceiptSentAt,
     trackingNumber: inq.trackingRef,
+    trackingLink: inq.deliveryTrackingLink,
+    signedDRFileName: signedDRMatchesOrder ? inq.signedDeliveryReceiptFileName : undefined,
+    signedDRSubmittedBy: signedDRMatchesOrder ? inq.signedDeliveryReceiptSubmittedBy : undefined,
+    signedDRReceivedAt: signedDRMatchesOrder ? inq.signedDeliveryReceiptReceivedAt : undefined,
+    signedDRNumber: signedDRMatchesOrder ? inq.signedDeliveryReceiptNumber : undefined,
+    signedDRDataUrl: signedDRMatchesOrder ? inq.signedDeliveryReceiptDataUrl : undefined,
+    pendingSignedDRFileName: inq.pendingSignedDeliveryReceiptFileName,
+    pendingSignedDRSubmittedBy: inq.pendingSignedDeliveryReceiptSubmittedBy,
+    pendingSignedDRDataUrl: inq.pendingSignedDeliveryReceiptDataUrl,
     dateISO,
   };
 }
 
+function trackingHref(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function ClientDeliveryReceiptModal({ row, onClose }: { row: LogisticsRow; onClose: () => void }) {
+  if (!row.deliveryReceiptNumber || !row.deliveryReceiptSentAt) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Delivery Receipt">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #client-delivery-receipt-print, #client-delivery-receipt-print * { visibility: visible !important; }
+          #client-delivery-receipt-print { position: fixed; inset: 0; width: 100%; padding: 32px; background: white; }
+          .client-delivery-receipt-actions { display: none !important; }
+        }
+      `}</style>
+      <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
+        <div id="client-delivery-receipt-print" className="rounded-lg border-2 border-slate-200 p-8">
+          <div className="mb-6 flex items-start justify-between border-b border-slate-200 pb-4">
+            <div>
+              <div className="font-syne text-xl font-extrabold text-slate-900">ENTER-FIL</div>
+              <div className="font-dm text-xs text-slate-500">Industrial Products · Delivery Receipt</div>
+            </div>
+            <div className="text-right">
+              <div className="font-dm text-[11px] font-bold uppercase tracking-wider text-slate-500">Delivery Receipt</div>
+              <div className="font-mono-jb text-lg font-bold text-slate-900">{row.deliveryReceiptNumber}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 font-dm text-sm">
+            <InfoPair label="Job Order" value={row.joNumber ?? "—"} />
+            <InfoPair label="Order Reference" value={row.po} />
+            <InfoPair label="Client" value={row.clientName} />
+            <InfoPair label="Delivery Method" value={row.method ?? "Not specified"} />
+            <InfoPair label="Tracking Number" value={row.trackingNumber ?? "—"} />
+            <InfoPair label="Item" value={row.item} />
+            <InfoPair label="Quantity" value={`${row.qty}`} />
+            <InfoPair label="Delivery Status" value={row.status} />
+            <InfoPair label="Receipt Shared" value={new Date(row.deliveryReceiptSentAt).toLocaleString()} />
+          </div>
+          {row.trackingLink && <div className="mt-4 break-all font-dm text-xs text-slate-600">Tracking Link: {row.trackingLink}</div>}
+        </div>
+        <div className="client-delivery-receipt-actions mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-slate-300 px-4 py-2 font-dm text-sm font-semibold text-slate-700 hover:bg-slate-50">Close</button>
+          <button onClick={() => window.print()} className="flex items-center gap-2 rounded-md bg-[#1A2B4A] px-4 py-2 font-dm text-sm font-bold text-white hover:opacity-90">
+            <Printer size={15} /> DOWNLOAD / PRINT
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LogisticsTab({ clientName }: { clientName: string }) {
-  const { byClient, uploadClientSignedDR } = useOrders();
-  /* Section H — client contact pulled from settings (email only, no phone). */
-  const { settings } = useSettings();
-  const [filter, setFilter] = useState("All");
-  const [expandedPo, setExpandedPo] = useState<string | null>(null);
+  const { byClient, savePendingSignedDeliveryReceipt, submitPendingSignedDeliveryReceipt } = useOrders();
+  const [filter, setFilter] = useState<ClientDeliveryStatus | "All">("All");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [viewReceiptId, setViewReceiptId] = useState<string | null>(null);
+  const [uploadingSignedDRId, setUploadingSignedDRId] = useState<string | null>(null);
+  const [submitSignedDRId, setSubmitSignedDRId] = useState<string | null>(null);
+  const signedDRSubmitInProgress = useRef(false);
+  const [now, setNow] = useState(() => new Date());
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "status">("date-desc");
-  const filters = ["All", "Pending", "In Transit", "Delivered"];
+  const filters: (ClientDeliveryStatus | "All")[] = [
+    "All", "Job Order Created", "In Production", "Quality Inspection",
+    "Ready for Dispatch", "In Transit", "Delivered", "Fulfillment Completed",
+  ];
 
-  /* DERIVED: this client's inquiries that have entered the logistics phase (jo onward) — exclude inquiry/quotation/po stages */
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /* Each JO/delivery remains its own order record and receipt. */
   const myInquiries = byClient(clientName).filter((i) =>
-    !i.archived && ["in_production", "quality_inspection", "ready_for_dispatch", "delivered", "paid", "overdue"].includes(i.stage)
+    !i.archived && ["jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"].includes(i.stage)
   );
   const rows: LogisticsRow[] = myInquiries.map(inquiryToLogisticsRow);
+  const receiptRow = rows.find((row) => row.id === viewReceiptId);
+  const submitInquiry = myInquiries.find((inquiry) => inquiry.id === submitSignedDRId);
+  const stageSignedDR = async (id: string, file: File, drNumber: string) => {
+    if (signedDRSubmitInProgress.current) return;
+    signedDRSubmitInProgress.current = true;
+    setUploadingSignedDRId(id);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await savePendingSignedDeliveryReceipt(id, file.name, dataUrl, "Client");
+      toast.success("Signed Delivery Receipt uploaded", { description: `${drNumber} · pending submission` });
+    } catch (error) {
+      toast.error("Could not upload the pending Signed Delivery Receipt", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      signedDRSubmitInProgress.current = false;
+      setUploadingSignedDRId(null);
+    }
+  };
+  const confirmSignedDRSubmission = async () => {
+    if (!submitInquiry || signedDRSubmitInProgress.current) return;
+    signedDRSubmitInProgress.current = true;
+    setUploadingSignedDRId(submitInquiry.id);
+    try {
+      await submitPendingSignedDeliveryReceipt(submitInquiry.id);
+      toast.success("Signed Delivery Receipt submitted", { description: "The official receipt has been saved and delivery completed." });
+      setSubmitSignedDRId(null);
+    } catch (error) {
+      toast.error("Could not submit the Signed Delivery Receipt", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      signedDRSubmitInProgress.current = false;
+      setUploadingSignedDRId(null);
+    }
+  };
 
-  const methodIcon = (m: DeliveryMethod) => m === "Company Vehicle" ? Building2 : m === "Lalamove" ? Truck : UserIcon;
-  const methodColor = (m: DeliveryMethod) => m === "Company Vehicle" ? "#1A2B4A" : m === "Lalamove" ? "#7C3AED" : "#0D9488";
+  const methodIcon = (method?: DeliveryMethod) => method === "Company Vehicle" ? Building2 : method === "Client Pick-up" ? UserIcon : Truck;
+  const methodColor = (method?: DeliveryMethod) => method === "Company Vehicle" ? "#1A2B4A" : method === "Lalamove" ? "#7C3AED" : method === "Client Pick-up" ? "#0D9488" : "#2563EB";
 
-  let visible = filter === "All" ? rows : rows.filter((r) => r.status === filter);
+  let visible = filter === "All" ? rows : rows.filter((row) => row.status === filter);
   visible = visible.filter((r) => {
     if (dateFrom && (r.dateISO ?? "") < dateFrom) return false;
     if (dateTo && (r.dateISO ?? "") > dateTo) return false;
     return true;
   });
-  visible = [...visible].sort((a, b) => {
-    if (sortBy === "date-desc") return (b.dateISO ?? "").localeCompare(a.dateISO ?? "");
-    if (sortBy === "date-asc")  return (a.dateISO ?? "").localeCompare(b.dateISO ?? "");
-    return a.status.localeCompare(b.status);
+  visible = [...visible].sort((left, right) => {
+    if (sortBy === "date-desc") return (right.dateISO ?? "").localeCompare(left.dateISO ?? "");
+    if (sortBy === "date-asc") return (left.dateISO ?? "").localeCompare(right.dateISO ?? "");
+    return left.status.localeCompare(right.status);
   });
 
   return (
     <div className="px-8 py-8 flex flex-col gap-6">
       <div>
-        <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>My Deliveries</h1>
+        <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>DELIVERY &amp; TRACKING</h1>
+        <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Delivery method, live tracking, order status, and receipts for each of your orders.</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -1789,13 +1959,16 @@ function LogisticsTab({ clientName }: { clientName: string }) {
 
       <div className="flex flex-col gap-3">
         {visible.map((r) => {
-          const isExpanded = expandedPo === r.po;
+          const isExpanded = expandedId === r.id;
           const Icon = methodIcon(r.method);
+          const receiptIsAvailable = Boolean(r.deliveryReceiptNumber && r.deliveryReceiptSentAt);
+          const hasSignedDR = Boolean(r.signedDRFileName && r.signedDRNumber === r.deliveryReceiptNumber);
+          const trackUrl = trackingHref(r.trackingLink);
           return (
-            <div key={r.po} className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <div key={r.id} className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
               {/* Row Header */}
               <button
-                onClick={() => setExpandedPo(isExpanded ? null : r.po)}
+                onClick={() => setExpandedId(isExpanded ? null : r.id)}
                 className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 text-left"
               >
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#F1F5F9" }}>
@@ -1803,11 +1976,11 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                 </div>
                 <div className="flex-1 grid grid-cols-4 gap-3 items-center">
                   <div>
-                    <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.po}</div>
+                    <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.joNumber ?? r.po}</div>
                     <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item} · Qty {r.qty}</div>
                   </div>
-                  <div className="font-dm" style={{ fontSize: 13, color: methodColor(r.method), fontWeight: 600 }}>{r.method}</div>
-                  <span className="font-dm px-2.5 py-1 rounded-full justify-self-start" style={{ fontSize: 11, fontWeight: 600, backgroundColor: r.statusBg, color: r.statusFg }}>{r.status}</span>
+                  <div className="font-dm" style={{ fontSize: 13, color: methodColor(r.method), fontWeight: 600 }}>{r.method ?? "Delivery method not specified"}</div>
+                  <span className="font-dm px-3 py-1.5 rounded-full justify-self-start" style={{ fontSize: 12, fontWeight: 800, backgroundColor: r.statusBg, color: r.statusFg }}>{r.status}</span>
                   <div className="flex justify-end">
                     {isExpanded ? <ChevronUp size={16} style={{ color: "#64748B" }} /> : <ChevronDown size={16} style={{ color: "#64748B" }} />}
                   </div>
@@ -1817,109 +1990,177 @@ function LogisticsTab({ clientName }: { clientName: string }) {
               {/* Expanded Detail */}
               {isExpanded && (
                 <div className="px-5 py-5 border-t border-slate-200" style={{ backgroundColor: "#FAFBFC" }}>
-                  <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-                    <div className="font-syne mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Delivery &amp; Payment Status</div>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
+                  <section className="mb-4 rounded-xl border border-slate-200 bg-white p-5">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="font-syne text-base font-extrabold text-slate-900">DELIVERY &amp; TRACKING</div>
+                      <span className="rounded-full px-4 py-2 font-dm text-sm font-extrabold" style={{ backgroundColor: r.statusBg, color: r.statusFg }}>{r.status}</span>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <InfoPair label="Delivery Method" value={r.method ?? "Not specified"} />
                       <InfoPair label="Delivery Status" value={r.status} />
-                      <InfoPair label="Client Receipt" value={r.hasSignedDR ? "Signed DR Uploaded" : "Awaiting Signed DR"} />
-                      <InfoPair label="Payment Status" value={r.paymentCycleStartedAt ? `${r.paymentTerms} Active` : "Not Active"} />
-                      <InfoPair label="Remaining Balance Due" value={r.invoiceDueDate ?? "—"} />
-                    </div>
-                    {r.signedDRUploadedAt && (
-                      <p className="font-dm mb-3" style={{ fontSize: 11, color: "#64748B" }}>
-                        Client signed DR confirmed {new Date(r.signedDRUploadedAt).toLocaleDateString()}
-                        {r.signedDRFileName ? ` · ${r.signedDRFileName}` : ""}
-                      </p>
-                    )}
-                    {!r.hasSignedDR && (
-                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-dm hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
-                        <Upload size={14} />
-                        Upload Signed Delivery Receipt
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          className="hidden"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            uploadClientSignedDR(r.id, file.name);
-                            toast.success("Signed Delivery Receipt uploaded", {
-                              description: r.status === "Delivered"
-                                ? `The ${r.paymentTerms} payment term is now active from today.`
-                                : "The payment cycle will start after delivery is confirmed.",
-                            });
-                            event.currentTarget.value = "";
-                          }}
-                        />
-                      </label>
-                    )}
-                    {r.hasSignedDR && (
-                      <button onClick={() => toast("Opening client signed DR...")} className="font-dm px-3 py-2 rounded-md border border-slate-200 hover:bg-slate-50 flex items-center gap-2" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
-                        📸 View Signed DR
-                      </button>
-                    )}
-                    {!r.paymentCycleStartedAt && (
-                      <p className="font-dm mt-2" style={{ fontSize: 11, color: "#64748B" }}>
-                        Payment terms start only after both delivery confirmation and this signed receipt are recorded.
-                      </p>
-                    )}
-                  </div>
-                  {r.method === "Company Vehicle" && (
-                    <div className="flex flex-col gap-3">
-                      <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Company Vehicle Delivery</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <InfoPair label="Enter-Fil Contact" value={settings.email} />
-                        <InfoPair label="Driver" value={r.driverName ?? "—"} />
-                        <InfoPair label="Estimated Delivery" value={r.estimatedDate ?? "—"} />
+                      <InfoPair label="Job Order" value={r.joNumber ?? "—"} />
+                      <InfoPair label="Order Reference" value={r.po} />
+                      <InfoPair label="Tracking Number" value={r.trackingNumber ?? "Not provided"} />
+                      <div>
+                        <div className="font-dm text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tracking Link</div>
+                        {trackUrl ? (
+                          <a href={trackUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 break-all font-dm text-sm font-semibold text-blue-700 underline">
+                            {r.trackingLink} <ExternalLink size={13} />
+                          </a>
+                        ) : <div className="mt-1 font-dm text-sm text-slate-700">{r.trackingLink || "Not provided"}</div>}
                       </div>
                     </div>
-                  )}
-
-                  {r.method === "Lalamove" && (
-                    <div className="flex flex-col gap-3">
-                      <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Lalamove Delivery</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <InfoPair label="Tracking Number" value={r.trackingNumber ?? "—"} />
-                        <InfoPair label="Enter-Fil Contact" value={settings.email} />
-                      </div>
-                      {r.trackingNumber && (
-                        <button
-                          onClick={() => window.open("https://www.lalamove.com", "_blank")}
-                          className="self-start font-dm px-4 py-2 rounded-md text-white flex items-center gap-2 hover:opacity-90"
-                          style={{ backgroundColor: "#7C3AED", fontSize: 12, fontWeight: 700 }}
-                        >
-                          <ExternalLink size={13} /> 🔗 Track on Lalamove
+                    <div className="mt-4">
+                      {trackUrl ? (
+                        <a href={trackUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-[#1A2B4A] px-4 py-3 font-dm text-sm font-bold text-white hover:opacity-90">
+                          <ExternalLink size={15} /> TRACK DELIVERY
+                        </a>
+                      ) : (
+                        <button type="button" disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-slate-200 px-4 py-3 font-dm text-sm font-bold text-slate-500" title="A tracking link has not been provided">
+                          <ExternalLink size={15} /> TRACK DELIVERY · LINK NOT AVAILABLE
                         </button>
                       )}
-                      <div className="rounded-md px-3 py-2 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                        For live tracking, use the Lalamove app with tracking number <span style={{ fontWeight: 700 }}>{r.trackingNumber}</span>.
-                      </div>
                     </div>
-                  )}
+                  </section>
 
-                  {r.method === "Client Pick-up" && (
-                    <div className="flex flex-col gap-3">
-                      <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Client Pick-up Instructions</div>
-                      <div className="rounded-lg p-4 flex flex-col gap-2" style={{ backgroundColor: "#F4F6F9", border: "1px solid #E2E8F0" }}>
-                        <div className="font-dm" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>📍 Enter-Fil Industrial Products</div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>123 Industrial Ave., Valenzuela City, Metro Manila 1440</div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>✉️ {settings.email}</div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>🕐 Mon–Sat, 8:00 AM – 5:00 PM</div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => window.open("https://www.google.com/maps/search/Enter-Fil+Industrial+Products", "_blank")}
-                          className="font-dm px-4 py-2 rounded-md border border-slate-200 hover:bg-white flex items-center gap-2"
-                          style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
-                        >
-                          🗺 Get Directions
+                  <section className="rounded-xl border border-slate-200 bg-white p-5">
+                    <div className="font-syne text-base font-extrabold text-slate-900">DELIVERY RECEIPT</div>
+                    {receiptIsAvailable ? (
+                      <>
+                        <div className="mt-2 flex flex-wrap items-center gap-3">
+                          <span className="font-mono-jb text-lg font-bold text-slate-900">{r.deliveryReceiptNumber}</span>
+                          <span className="rounded-full bg-green-100 px-3 py-1 font-dm text-xs font-extrabold text-green-800">AVAILABLE</span>
+                        </div>
+                        <button type="button" onClick={() => setViewReceiptId(r.id)} className="mt-4 rounded-md border border-slate-300 px-4 py-2.5 font-dm text-sm font-bold text-[#1A2B4A] hover:bg-slate-50">
+                          VIEW DELIVERY RECEIPT
                         </button>
+                      </>
+                    ) : (
+                      <p className="mt-2 font-dm text-sm text-slate-600">
+                        The Delivery Receipt will appear here after Logistics shares it for this order.
+                      </p>
+                    )}
+                  </section>
+
+                  <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
+                    <div className="font-syne text-base font-extrabold text-slate-900">SIGNED DELIVERY RECEIPT</div>
+                    {hasSignedDR ? (
+                      <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-4">
+                        <div className="font-dm font-extrabold text-green-800">✓ RECEIVED</div>
+                        <div className="mt-2 font-dm text-sm text-slate-700">Submitted by: {r.signedDRSubmittedBy ?? "—"}</div>
+                        <div className="font-dm text-sm text-slate-700">Received: {r.signedDRReceivedAt ? new Date(r.signedDRReceivedAt).toLocaleString() : "—"}</div>
+                        <div className="mt-1 font-dm text-xs text-slate-600">{r.signedDRFileName}</div>
+                        {r.signedDRDataUrl && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <a href={r.signedDRDataUrl} target="_blank" rel="noreferrer" className="rounded-md border border-green-300 bg-white px-3 py-2 font-dm text-xs font-bold text-green-800 hover:bg-green-50">VIEW SIGNED DR</a>
+                            <a href={r.signedDRDataUrl} download={r.signedDRFileName} className="rounded-md border border-green-300 bg-white px-3 py-2 font-dm text-xs font-bold text-green-800 hover:bg-green-50">DOWNLOAD SIGNED DR</a>
+                          </div>
+                        )}
                       </div>
-                      <div className="rounded-md px-3 py-2 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                        Please bring valid ID upon pick-up.
+                    ) : receiptIsAvailable ? (
+                      <>
+                        {r.pendingSignedDRFileName && (
+                          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                            <div className="font-dm text-sm font-extrabold text-amber-900">SIGNED DR UPLOADED — PENDING SUBMISSION</div>
+                            <div className="mt-2 font-dm break-all text-xs text-slate-700">{r.pendingSignedDRFileName}</div>
+                            {r.pendingSignedDRDataUrl && (
+                              <a
+                                href={r.pendingSignedDRDataUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-300 bg-white px-3 py-2 font-dm text-xs font-bold text-amber-900 hover:bg-amber-100"
+                              >
+                                VIEW PENDING SIGNED DR
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSubmitSignedDRId(r.id)}
+                              disabled={uploadingSignedDRId === r.id || !r.pendingSignedDRDataUrl}
+                              className="mt-3 block rounded-md bg-[#1A2B4A] px-4 py-2.5 font-dm text-xs font-extrabold text-white hover:bg-[#263d62] disabled:cursor-wait disabled:opacity-60"
+                            >
+                              SUBMIT SIGNED DR
+                            </button>
+                          </div>
+                        )}
+                        <label className={`mt-3 inline-flex items-center gap-2 rounded-md px-4 py-3 font-dm text-sm font-bold text-white ${uploadingSignedDRId === r.id ? "cursor-wait bg-slate-500" : "cursor-pointer bg-[#1A2B4A] hover:opacity-90"}`}>
+                          <Upload size={15} /> {uploadingSignedDRId === r.id ? "UPLOADING SIGNED DELIVERY RECEIPT..." : r.pendingSignedDRFileName ? "UPLOAD A DIFFERENT SIGNED DR" : "UPLOAD SIGNED DELIVERY RECEIPT"}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            className="hidden"
+                            disabled={uploadingSignedDRId === r.id}
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0];
+                              event.currentTarget.value = "";
+                              if (!file || uploadingSignedDRId === r.id) return;
+                              void stageSignedDR(r.id, file, r.deliveryReceiptNumber ?? "—");
+                            }}
+                          />
+                        </label>
+                      </>
+                    ) : (
+                      <p className="mt-2 font-dm text-sm text-slate-600">
+                        Signed DR upload is available after Logistics sends this order's Delivery Receipt.
+                      </p>
+                    )}
+                  </section>
+
+                  <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
+                    <div className="font-syne text-base font-extrabold text-slate-900">PAYMENT CYCLE</div>
+                    {!hasSignedDR ? (
+                      <div className="mt-3 rounded-lg bg-slate-100 p-4 font-dm text-sm font-bold text-slate-600">
+                        PAYMENT CYCLE NOT ACTIVE · AWAITING SIGNED DELIVERY RECEIPT
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      (() => {
+                        const daysRemaining = r.paymentDueDate ? paymentDaysRemaining(r.paymentDueDate, now) : undefined;
+                        const isOverdue = !r.paymentIsFullyPaid
+                          && r.paymentState.remainingInvoiceBalance > 0
+                          && daysRemaining !== undefined
+                          && daysRemaining < 0;
+                        const status = r.paymentIsFullyPaid
+                          ? "FULLY PAID"
+                          : isOverdue
+                            ? "PAYMENT OVERDUE"
+                            : r.paymentCycleStartedAt
+                              ? "PAYMENT CYCLE ACTIVE"
+                              : "PAYMENT CYCLE STARTING";
+                        const statusClass = r.paymentIsFullyPaid
+                          ? "bg-green-100 text-green-800"
+                          : isOverdue
+                            ? "bg-red-100 text-red-800"
+                            : r.paymentCycleStartedAt
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-slate-100 text-slate-700";
+                        const remainingTime = daysRemaining === undefined
+                          ? "Due date unavailable"
+                          : daysRemaining < 0
+                            ? `${Math.abs(daysRemaining)} ${Math.abs(daysRemaining) === 1 ? "day" : "days"} overdue`
+                            : daysRemaining === 0
+                              ? "Due today"
+                              : `${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} remaining`;
+                        return (
+                          <>
+                            <div className="mt-3">
+                              <span className={`rounded-full px-3 py-1.5 font-dm text-xs font-extrabold ${statusClass}`}>{status}</span>
+                            </div>
+                            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                              <InfoPair label="Payment Terms" value={r.paymentTerms} />
+                              <InfoPair label="Payment Cycle Started" value={r.paymentCycleStartedAt ? new Date(r.paymentCycleStartedAt).toLocaleString() : "—"} />
+                              <InfoPair label="Payment Due" value={r.paymentDueDate ?? "—"} />
+                              <InfoPair label="Remaining" value={r.paymentIsFullyPaid
+                                ? "Fully paid"
+                                : `${remainingTime}${isOverdue ? ` · ₱${r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} overdue` : ""}`} />
+                            </div>
+                            {r.hasPendingPayment && !r.paymentIsFullyPaid && (
+                              <p className="mt-3 font-dm text-xs font-semibold text-blue-700">A submitted payment is awaiting Accountant verification.</p>
+                            )}
+                          </>
+                        );
+                      })()
+                    )}
+                  </section>
                 </div>
               )}
             </div>
@@ -1927,12 +2168,49 @@ function LogisticsTab({ clientName }: { clientName: string }) {
         })}
       </div>
 
-      <div className="rounded-lg p-4 flex items-start gap-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-        <Info size={16} style={{ color: "#D97706", marginTop: 2 }} />
-        <span className="font-dm" style={{ fontSize: 13, color: "#92400E" }}>
-          For Lalamove deliveries, tracking is done through the Lalamove app. Contact us for the tracking link.
-        </span>
-      </div>
+      {visible.length === 0 && <div className="rounded-xl border border-slate-200 bg-white p-6 font-dm text-sm text-slate-600">No orders match this delivery filter.</div>}
+      {receiptRow && <ClientDeliveryReceiptModal row={receiptRow} onClose={() => setViewReceiptId(null)} />}
+      <AlertDialog open={Boolean(submitSignedDRId)} onOpenChange={(open) => {
+        if (!signedDRSubmitInProgress.current) setSubmitSignedDRId(open ? submitSignedDRId : null);
+      }}>
+        <AlertDialogContent onEscapeKeyDown={(event) => {
+          if (signedDRSubmitInProgress.current) event.preventDefault();
+        }}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-syne text-[#1A2B4A]">SUBMIT SIGNED DELIVERY RECEIPT?</AlertDialogTitle>
+            <AlertDialogDescription className="font-dm text-slate-600">
+              Confirming will make this file the official Signed Delivery Receipt and complete delivery for this order.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {submitInquiry?.pendingSignedDeliveryReceiptFileName && (
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="font-dm text-sm text-slate-700"><span className="font-bold">JO:</span> {submitInquiry.joNumber ?? submitInquiry.code}</div>
+              <div className="font-dm text-sm text-slate-700"><span className="font-bold">DR:</span> {submitInquiry.deliveryReceiptNumber}</div>
+              <div className="font-dm break-all text-xs text-slate-600">{submitInquiry.pendingSignedDeliveryReceiptFileName}</div>
+              {submitInquiry.pendingSignedDeliveryReceiptDataUrl?.startsWith("data:image/") ? (
+                <img src={submitInquiry.pendingSignedDeliveryReceiptDataUrl} alt="Pending signed Delivery Receipt preview" className="max-h-64 w-full rounded border border-slate-200 bg-white object-contain" />
+              ) : submitInquiry.pendingSignedDeliveryReceiptDataUrl?.startsWith("data:application/pdf") ? (
+                <iframe src={submitInquiry.pendingSignedDeliveryReceiptDataUrl} title="Pending signed Delivery Receipt preview" className="h-64 w-full rounded border border-slate-200 bg-white" />
+              ) : (
+                <div className="rounded border border-slate-200 bg-white p-4 font-dm text-xs text-slate-600">Preview is unavailable for this file type.</div>
+              )}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(uploadingSignedDRId)} className="font-dm">CANCEL</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={Boolean(uploadingSignedDRId) || !submitInquiry?.pendingSignedDeliveryReceiptFileName || !submitInquiry.pendingSignedDeliveryReceiptDataUrl}
+              className="font-dm bg-[#1A2B4A] text-white hover:bg-[#263d62]"
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmSignedDRSubmission();
+              }}
+            >
+              {uploadingSignedDRId ? "SUBMITTING..." : "CONFIRM / SUBMIT SIGNED DR"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

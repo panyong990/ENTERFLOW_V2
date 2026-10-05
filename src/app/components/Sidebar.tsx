@@ -1,4 +1,4 @@
-import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, Users, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, Users, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt } from "lucide-react";
 import type { Role } from "./Login";
 import { roleMetas } from "./Login";
 
@@ -10,6 +10,7 @@ const navItems = [
   { id: "waybill",    label: "Waybill Scanner",   icon: ScanLine },
   { id: "waybill-history", label: "Waybill History", icon: ClipboardList },
   { id: "logistics",  label: "Logistics",         icon: Truck },
+  { id: "delivery-receipts", label: "Delivery Receipts", icon: Receipt },
   { id: "accounting", label: "Payments Ledger",   icon: Calculator },
   { id: "analytics",  label: "Analytics",         icon: BarChart3 },
   { id: "clients",    label: "Client Management", icon: Building2 },
@@ -22,7 +23,7 @@ export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   /* Operations Manager: full operational access — analytics and user management are owner-only */
   operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "accounting", "clients", "notifications", "settings"],
   sales:      ["dashboard", "sales", "clients", "notifications"],
-  accounting: ["dashboard", "sales", "logistics", "accounting", "notifications"],
+  accounting: ["dashboard", "sales", "delivery-receipts", "accounting", "notifications"],
   production: ["dashboard", "production", "notifications"],
   /* Warehouse: dashboard, inventory, waybill scanner, and waybill history */
   warehouse:  ["dashboard", "inventory", "waybill", "waybill-history", "notifications"],

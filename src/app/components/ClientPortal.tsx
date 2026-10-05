@@ -1333,14 +1333,15 @@ function stageBadgeForClient(inq: Inquiry): { label: string; bg: string; fg: str
   switch (inq.stage) {
     case "inquiry":            return { label: "Awaiting Quotation",  bg: "#E2E8F0", fg: "#475569" };
     case "quotation":          return { label: "Quotation Received",  bg: "#FEF3C7", fg: "#B45309" };
-    case "po":                 return { label: "PO Submitted ✅",      bg: "#DCFCE7", fg: "#15803D" };
+    case "po":                 return { label: "PO Submitted ✓",       bg: "#DCFCE7", fg: "#15803D" };
     case "jo":                 return { label: "JO Created",          bg: "#FEE2E2", fg: "#991B1B" };
     case "in_production":      return inq.paused
       ? { label: "On Hold",                                            bg: "#FEF3C7", fg: "#92400E" }
       : { label: "In Production",                                      bg: "#DBEAFE", fg: "#1D4ED8" };
     case "quality_inspection": return { label: "Quality Inspection",   bg: "#EDE9FE", fg: "#6D28D9" };
-    case "ready_for_dispatch": return { label: "Ready for Dispatch",   bg: "#FFE4E6", fg: "#9F1239" };
-    case "delivered":          return { label: "Delivered",            bg: "#CCFBF1", fg: "#0F766E" };
+    case "ready_for_dispatch": return { label: "Ready for Dispatch",   bg: "#FFEDD5", fg: "#C2410C" };
+    case "dispatched":         return { label: "Out for Delivery",     bg: "#EDE9FE", fg: "#6D28D9" };
+    case "delivered":          return { label: "Delivered",            bg: "#DCFCE7", fg: "#15803D" };
     case "paid":               return { label: "Paid & Closed",        bg: "#DCFCE7", fg: "#15803D" };
     case "overdue":             return { label: "⚠️ Overdue",          bg: "#FEE2E2", fg: "#C8102E" };
     default:                   return { label: inq.stage,              bg: "#E2E8F0", fg: "#475569" };
@@ -1350,11 +1351,36 @@ function stageBadgeForClient(inq: Inquiry): { label: string; bg: string; fg: str
 function StatusTab({ clientName }: { clientName: string }) {
   const { byClient } = useOrders();
   const [showJO, setShowJO] = useState(false);
+  const [searchOrders, setSearchOrders] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
   const myInquiries = byClient(clientName).filter((i) => !i.archived && i.stage !== "paid");
-  const activeOrders = myInquiries.map(inquiryToActiveOrder);
-  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.po ?? null);
+  const activeOrders = myInquiries.map((inquiry) => ({ inquiry, order: inquiryToActiveOrder(inquiry) }));
+  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.po ?? null);
+  const statusBadgeLabels: Record<string, string> = {
+    po: "PO Submitted ✓",
+    production: "In Production",
+    dispatch: "Ready for Dispatch",
+    delivery: "Out for Delivery",
+    delivered: "Delivered",
+  };
+  const filteredOrders = activeOrders
+    .filter(({ inquiry, order }) => {
+      const query = searchOrders.trim().toLowerCase();
+      const matchesSearch = !query || [
+        inquiry.code,
+        inquiry.poFileName,
+        inquiry.poNumber,
+        inquiry.clientName,
+        inquiry.contactPerson,
+        order.po,
+        order.product,
+      ].some((value) => value?.toLowerCase().includes(query));
+      const matchesStatus = statusFilter === "all"
+        || order.badge.label === statusBadgeLabels[statusFilter];
+      return matchesSearch && matchesStatus;
+    });
 
   return (
     <div className="px-8 py-8 flex flex-col gap-6">
@@ -1368,24 +1394,51 @@ function StatusTab({ clientName }: { clientName: string }) {
         </span>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/70 bg-white p-3">
+        <input
+          type="search"
+          value={searchOrders}
+          onChange={(event) => setSearchOrders(event.target.value)}
+          placeholder="Search orders, PO, inquiry, or product..."
+          aria-label="Search orders"
+          className="font-dm min-w-[220px] flex-1 rounded-md border border-slate-200 px-3 py-2 outline-none focus:border-slate-400"
+          style={{ fontSize: 12, color: "#0F172A" }}
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          aria-label="Filter orders by status"
+          className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
+          style={{ fontSize: 12, color: "#475569" }}
+        >
+          <option value="all">All Orders</option>
+          <option value="po">PO Submitted</option>
+          <option value="production">In Production</option>
+          <option value="dispatch">Ready for Dispatch</option>
+          <option value="delivery">Out for Delivery</option>
+          <option value="delivered">Delivered</option>
+        </select>
+      </div>
+
       {activeOrders.length === 0 ? (
         <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
           ✅ All your orders are fully paid and archived. Submit a new inquiry to track progress here.
         </div>
-      ) : activeOrders.map((order, idx) => {
+      ) : filteredOrders.length === 0 ? (
+        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-10 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
+          No orders match your search or status filter.
+        </div>
+      ) : filteredOrders.map(({ order, inquiry }) => {
         const expanded = expandedPO === order.po;
-        const currentStep = order.steps.find(s => s.state === "current");
         /* Section F — JO exists only once the inquiry reaches the "jo" stage or later. */
-        const inq = myInquiries[idx];
-        const hasJO = !!inq && (["jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"] as const).includes(inq.stage as any);
+        const hasJO = (["jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"] as const).includes(inquiry.stage as any);
         return (
           <CollapsibleStatusCard
-            key={order.po}
+            key={inquiry.id}
             order={order}
             expanded={expanded}
             onToggle={() => setExpandedPO(expanded ? null : order.po)}
             onViewJO={() => setShowJO(true)}
-            currentStep={currentStep}
             hasJO={hasJO}
           />
         );
@@ -1415,12 +1468,11 @@ function StatusTab({ clientName }: { clientName: string }) {
   );
 }
 
-function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, currentStep, hasJO }: {
+function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, hasJO }: {
   order: ActiveOrder;
   expanded: boolean;
   onToggle: () => void;
   onViewJO: () => void;
-  currentStep?: Step;
   hasJO?: boolean;
 }) {
   const stepCount = order.steps.length;
@@ -1429,25 +1481,26 @@ function CollapsibleStatusCard({ order, expanded, onToggle, onViewJO, currentSte
   return (
     <article className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
       {/* Compact header (always visible) */}
-      <button onClick={onToggle} className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-left">
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <span className="font-mono-jb" style={{ fontSize: 14, fontWeight: 700, color: "#1A2B4A" }}>{order.po}</span>
+      <button onClick={onToggle} className="w-full px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-slate-50 transition-colors text-left">
+        <div className="flex items-start gap-4 flex-1 min-w-0">
+          <span className="font-mono-jb shrink-0" style={{ fontSize: 14, fontWeight: 700, color: "#1A2B4A" }}>{order.po}</span>
           <div className="hidden md:block w-px h-6 bg-slate-200" />
           <div className="min-w-0 flex-1">
             <div className="font-syne truncate" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{order.product}</div>
-            <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>Qty {order.qty} · {currentStep?.label ?? order.badge.label}</div>
+            <div className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>Qty {order.qty}</div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Inline progress bar */}
-          <div className="hidden lg:flex flex-col items-end gap-1">
+        <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-3 shrink-0">
+          <div className="flex flex-col items-start sm:items-end gap-1">
             <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: 0.4, textTransform: "uppercase" }}>{doneCount} of {stepCount} stages</div>
             <div className="w-32 h-1.5 rounded-full bg-slate-200 overflow-hidden">
               <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: "#16A34A" }} />
             </div>
           </div>
-          <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: order.badge.bg, color: order.badge.fg }}>{order.badge.label}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-dm px-2.5 py-1 rounded-full whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600, backgroundColor: order.badge.bg, color: order.badge.fg }}>{order.badge.label}</span>
           <span className="text-slate-400" style={{ fontSize: 18 }}>{expanded ? "▴" : "▾"}</span>
+          </div>
         </div>
       </button>
 

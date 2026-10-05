@@ -83,7 +83,13 @@ function inquiryToInvoice(inq: Inquiry): Invoice {
   };
 }
 
-type GranularStatus = "Paid" | "Partial" | "Overdue" | "Pending" | "Awaiting Verification" | "Rejected";
+function hasActivePaymentCycle(inquiry: Inquiry): boolean {
+  return hasValidSignedDeliveryReceipt(inquiry)
+    && Boolean(inquiry.paymentCycleStartedAt)
+    && inquiry.paymentCycleStartedAt === inquiry.signedDeliveryReceiptReceivedAt;
+}
+
+type GranularStatus = "Paid" | "Partial" | "Overdue" | "Pending" | "Awaiting Verification" | "Rejected" | "Verified" | "Paid/Completed";
 function granularStatus(inv: Invoice, totalPaid: number, now = new Date()): GranularStatus {
   if (inv.status === "paid") return "Paid";
   if (inv.paymentRecords.some((payment) => payment.verificationStatus === "pending")) return "Awaiting Verification";
@@ -99,8 +105,10 @@ const granularStyle: Record<GranularStatus, { bg: string; fg: string }> = {
   Partial: { bg: "#DBEAFE", fg: "#1D4ED8" },
   Pending: { bg: "#FEF3C7", fg: "#B45309" },
   Overdue: { bg: "#FEE2E2", fg: "#C8102E" },
-  "Awaiting Verification": { bg: "#DBEAFE", fg: "#1D4ED8" },
+  "Awaiting Verification": { bg: "#FEF3C7", fg: "#B45309" },
   Rejected: { bg: "#FEE2E2", fg: "#C8102E" },
+  Verified: { bg: "#DCFCE7", fg: "#15803D" },
+  "Paid/Completed": { bg: "#DCFCE7", fg: "#15803D" },
 };
 
 function StatusPill({ status }: { status: GranularStatus }) {
@@ -110,6 +118,14 @@ function StatusPill({ status }: { status: GranularStatus }) {
       {status === "Overdue" ? "⚠️ " : ""}{status}
     </span>
   );
+}
+
+function downpaymentDisplayStatus(inv: Invoice): GranularStatus {
+  const downpaymentRecords = inv.paymentRecords.filter((payment) => payment.paymentType === "DOWNPAYMENT");
+  if (downpaymentRecords.some((payment) => payment.verificationStatus === "pending")) return "Awaiting Verification";
+  if (downpaymentRecords.some((payment) => payment.verificationStatus === "verified")) return "Verified";
+  if (downpaymentRecords.some((payment) => payment.verificationStatus === "rejected")) return "Rejected";
+  return inv.paymentState.downpaymentStatus === "COMPLETE" ? "Paid/Completed" : "Awaiting Verification";
 }
 
 function KPI({ label, value, accent = "#0F172A" }: { label: string; value: string; accent?: string }) {
@@ -127,6 +143,8 @@ export function Accounting() {
   const [newPmt, setNewPmt] = useState<Record<string, { amount: string; method: string; ref: string; datePaid: string }>>({});
   const [viewReceiptsId, setViewReceiptsId] = useState<string | null>(null);
   const [view, setView] = useState<"active" | "history">("active");
+  const [downpaymentFilter, setDownpaymentFilter] = useState<"ALL" | "AWAITING VERIFICATION" | "VERIFIED" | "REJECTED" | "PAID/COMPLETED">("ALL");
+  const [activeCycleFilter, setActiveCycleFilter] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID/COMPLETED" | "OVERDUE" | "AWAITING VERIFICATION" | "REJECTED">("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
@@ -147,13 +165,15 @@ export function Accounting() {
     [inquiriesByStage]
   );
   const invoiceInquiries = useMemo(
-    () => trackedInquiries.filter((inquiry) => !!inquiry.invoiceSentAt && !!inquiry.invoiceNo),
+    () => trackedInquiries.filter((inquiry) =>
+      (!!inquiry.invoiceSentAt && !!inquiry.invoiceNo) || hasActivePaymentCycle(inquiry)
+    ),
     [trackedInquiries]
   );
   const rows = useMemo(() => invoiceInquiries.map(inquiryToInvoice), [invoiceInquiries]);
   const fulfillmentRows = useMemo(
     () => trackedInquiries
-      .filter((inquiry) => hasValidSignedDeliveryReceipt(inquiry) && !inquiry.invoiceSentAt)
+      .filter((inquiry) => hasValidSignedDeliveryReceipt(inquiry) && !inquiry.invoiceSentAt && !hasActivePaymentCycle(inquiry))
       .map(inquiryToInvoice),
     [trackedInquiries]
   );
@@ -186,6 +206,53 @@ export function Accounting() {
   const activeInvoices = rows.filter((r) => r.status === "pending" && matchesSearch(r) && inDateRange(r));
   const historyInvoices = rows.filter((r) => r.status === "paid" && matchesSearch(r) && inDateRange(r));
   const visible = view === "active" ? activeInvoices : historyInvoices;
+  const isActivePaymentCycle = (r: Invoice) => Boolean(r.signedDeliveryReceiptReceivedAt && r.paymentCycleStartedAt);
+  const isActiveBalancePaymentCycle = (r: Invoice) =>
+    isActivePaymentCycle(r)
+    && (r.paymentState.currentPaymentType === "BALANCE_PAYMENT" || r.paymentState.currentPaymentType === null);
+  const downpaymentRows = visible.filter((r) =>
+    !isActiveBalancePaymentCycle(r)
+    && (r.paymentState.currentPaymentType === "DOWNPAYMENT"
+      || r.paymentRecords.some((payment) => payment.paymentType === "DOWNPAYMENT"))
+  );
+  const activePaymentCycleRows = visible.filter((r) =>
+    isActiveBalancePaymentCycle(r)
+  );
+  const downpaymentRowsForFilter = (filter: typeof downpaymentFilter) => downpaymentRows.filter((r) => {
+    if (filter === "ALL") return true;
+    const records = r.paymentRecords.filter((payment) => payment.paymentType === "DOWNPAYMENT");
+    if (filter === "AWAITING VERIFICATION") return records.some((payment) => payment.verificationStatus === "pending");
+    if (filter === "VERIFIED") return records.some((payment) => payment.verificationStatus === "verified");
+    if (filter === "REJECTED") return records.some((payment) => payment.verificationStatus === "rejected");
+    return r.paymentState.downpaymentStatus === "COMPLETE";
+  });
+  const activePaymentCycleRowsForFilter = (filter: typeof activeCycleFilter) => activePaymentCycleRows.filter((r) => {
+    if (filter === "ALL") return true;
+    const status = granularStatus(r, r.paymentState.totalVerifiedPayments, now);
+    if (filter === "PAID/COMPLETED") return status === "Paid";
+    const statusMap: Record<Exclude<typeof activeCycleFilter, "ALL" | "PAID/COMPLETED">, GranularStatus> = {
+      PENDING: "Pending",
+      PARTIAL: "Partial",
+      OVERDUE: "Overdue",
+      "AWAITING VERIFICATION": "Awaiting Verification",
+      REJECTED: "Rejected",
+    };
+    return status === statusMap[filter as keyof typeof statusMap];
+  });
+  const paymentSections = [
+    {
+      key: "downpayment",
+      label: "DOWNPAYMENT / PAYMENT SETUP",
+      description: "Downpayment-stage records, including awaiting verification, verified, and rejected submissions.",
+      rows: downpaymentRowsForFilter(downpaymentFilter),
+    },
+    {
+      key: "active-cycle",
+      label: "ACTIVE PAYMENT CYCLE",
+      description: "Orders with a received signed Delivery Receipt and an active balance-payment cycle.",
+      rows: activePaymentCycleRowsForFilter(activeCycleFilter),
+    },
+  ];
 
   /* Auto-overdue notification: fire once per overdue invoice on mount */
   const [overdueNotified, setOverdueNotified] = useState<Set<string>>(new Set());
@@ -460,7 +527,7 @@ export function Accounting() {
         {view === "active" && fulfillmentRows.length > 0 && (
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <div className="font-syne mb-1" style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>FULFILLMENT COMPLETED · PAYMENT CYCLE</div>
-            <p className="font-dm mb-4" style={{ fontSize: 12, color: "#64748B" }}>Signed-receipt orders whose invoices have not been sent yet. Invoice and payment verification controls are unchanged.</p>
+            <p className="font-dm mb-4" style={{ fontSize: 12, color: "#64748B" }}>Signed-receipt orders awaiting payment-cycle start. Invoice and payment verification controls are unchanged.</p>
             <div className="flex flex-col gap-3">
               {fulfillmentRows.map((r) => {
                 const daysRemaining = r.dueDate ? paymentDaysRemaining(r.dueDate, now) : undefined;
@@ -538,8 +605,39 @@ export function Accounting() {
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {visible.map((r) => {
+            {paymentSections.map((section) => (
+              <Fragment key={section.key}>
+                <tbody>
+                  <tr>
+                    <td colSpan={8} className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="font-syne" style={{ fontSize: 13, fontWeight: 800, color: "#0F172A", letterSpacing: 0.4 }}>{section.label}</div>
+                        <select
+                          value={section.key === "downpayment" ? downpaymentFilter : activeCycleFilter}
+                          onChange={(event) => section.key === "downpayment"
+                            ? setDownpaymentFilter(event.target.value as typeof downpaymentFilter)
+                            : setActiveCycleFilter(event.target.value as typeof activeCycleFilter)}
+                          className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-dm outline-none"
+                          style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}
+                          aria-label={`${section.label} status filter`}
+                        >
+                          {(section.key === "downpayment"
+                            ? ["ALL", "AWAITING VERIFICATION", "VERIFIED", "REJECTED", "PAID/COMPLETED"]
+                            : ["ALL", "PENDING", "PARTIAL", "PAID/COMPLETED", "OVERDUE", "AWAITING VERIFICATION", "REJECTED"]
+                          ).map((filter) => <option key={filter} value={filter}>{filter === "ALL" ? "All" : filter}</option>)}
+                        </select>
+                      </div>
+                      <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{section.description}</div>
+                    </td>
+                  </tr>
+                  {section.rows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-4 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>
+                        No orders in this payment stage.
+                      </td>
+                    </tr>
+                  )}
+                  {section.rows.map((r) => {
                 const isOpen = openId === r.id;
                 return (
                   <Fragment key={r.id}>
@@ -558,7 +656,7 @@ export function Accounting() {
                         <div style={{ fontWeight: 700, color: "#1A2B4A" }}>{r.paymentType}</div>
                         <div style={{ fontSize: 11, color: "#64748B" }}>{r.payment}</div>
                       </td>
-                      <td className="px-4 py-3"><StatusPill status={granularStatus(r, r.paymentState.totalVerifiedPayments, now)} /></td>
+                      <td className="px-4 py-3"><StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} /></td>
                     </tr>
                     {isOpen && (() => {
                       const pmts = payments[r.id] ?? [];
@@ -697,17 +795,17 @@ export function Accounting() {
                                     : p.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
                                   const statusLabel = p.verificationStatus === "pending" ? "AWAITING VERIFICATION"
                                     : p.verificationStatus === "verified" ? "VERIFIED" : "REJECTED";
-                                  const statusColor = p.verificationStatus === "pending" ? "#1D4ED8"
+                                  const statusColor = p.verificationStatus === "pending" ? "#B45309"
                                     : p.verificationStatus === "verified" ? "#15803D" : "#C8102E";
                                   const dpPercent = r.downpaymentPercent;
                                   const remainingAfter = Math.max(0, r.paymentState.remainingInvoiceBalance - p.submittedAmount);
                                   return (
-                                  <div key={p.id} className="rounded-md p-3 mb-2 last:mb-0 bg-white border border-blue-200">
-                                    <div className="flex items-center justify-between gap-3 mb-3">
+                                  <div key={p.id} className="rounded-lg p-3 mb-2 last:mb-0 bg-white border border-blue-200 shadow-sm">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                                       <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>PAYMENT {p.verificationStatus === "pending" ? "SUBMITTED" : statusLabel}</div>
                                       <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 800, color: statusColor, backgroundColor: `${statusColor}18` }}>{statusLabel}</span>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-x-5 gap-y-1 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4 xl:grid-cols-6 font-dm" style={{ fontSize: 11, color: "#475569" }}>
                                       <span>Client</span><strong>{r.client}</strong>
                                       <span>Invoice</span><strong>{p.invoiceNo ?? r.inv}</strong>
                                       <span>PO</span><strong>{r.po}</strong>
@@ -728,8 +826,9 @@ export function Accounting() {
                                       <span>Payment Method</span><strong>{p.method ?? "Not specified"}</strong>
                                       <span>Reference Number</span><strong>{p.referenceNumber ?? "—"}</strong>
                                       {p.verifiedAt && <><span>Date Verified</span><strong>{new Date(p.verifiedAt).toLocaleString()}</strong></>}
+                                      {p.rejectedAt && <><span>Date Rejected</span><strong>{new Date(p.rejectedAt).toLocaleString()}</strong></>}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-3">
+                                    <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-blue-100">
                                       <button onClick={() => p.receiptDataUrl && setProofToView({ filename: p.receiptFile ?? "Uploaded receipt", dataUrl: p.receiptDataUrl })} disabled={!p.receiptDataUrl} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB" }}><Eye size={11} /> VIEW PROOF OF PAYMENT</button>
                                       {p.verificationStatus === "pending" && <>
                                         <button onClick={() => handleRejectClientPayment(r, p)} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-red-200 hover:bg-red-50" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}><X size={11} /> Reject Payment</button>
@@ -886,53 +985,16 @@ export function Accounting() {
                               )}
                             </div>
 
-                            {/* Client-uploaded receipts */}
-                            {clientReceipts.length > 0 && (
-                              <div className="mt-4 pt-4 border-t border-slate-200">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <Receipt size={14} style={{ color: "#1D4ED8" }} />
-                                  <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8", letterSpacing: 0.5, textTransform: "uppercase" }}>
-                                    Client-Sent Receipts ({clientReceipts.length})
-                                  </span>
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  {clientReceipts.map(cr => (
-                                    <div key={cr.id} className="flex items-center gap-3 rounded-lg px-4 py-3 border" style={{ backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }}>
-                                      <FileText size={16} style={{ color: "#2563EB" }} />
-                                      <div className="flex-1">
-                                        <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#1E3A8A" }}>{cr.filename}</div>
-                                        <div className="font-dm" style={{ fontSize: 11, color: "#3B82F6" }}>
-                                          Sent {cr.date} · ₱{cr.amount.toLocaleString("en-PH")}
-                                          {cr.note ? ` · ${cr.note}` : ""}
-                                        </div>
-                                      </div>
-                                      <button
-                                        disabled={!clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl}
-                                        className="font-dm flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                                        style={{ fontSize: 11, fontWeight: 600, color: "#2563EB" }}
-                                        onClick={() => {
-                                          const dataUrl = clientPayments.find((payment) => payment.id === cr.id)?.receiptDataUrl;
-                                          if (dataUrl) setProofToView({ filename: cr.filename, dataUrl });
-                                        }}
-                                      >
-                                        <Eye size={11} /> View
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="font-dm mt-2" style={{ fontSize: 11, color: "#64748B", fontStyle: "italic" }}>
-                                  Use these as reference when recording payment above.
-                                </div>
-                              </div>
-                            )}
                           </td>
                         </tr>
                       );
                     })()}
                   </Fragment>
                 );
-              })}
-            </tbody>
+                  })}
+                </tbody>
+              </Fragment>
+            ))}
           </table>
         </div>
       </div>

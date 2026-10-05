@@ -38,6 +38,10 @@ export function SalesOrders() {
   const [viewInvoiceId, setViewInvoiceId] = useState<string | null>(null);
   const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [showStockRequests, setShowStockRequests] = useState(false);
+  const [expandedCards, setExpandedCards] = useState<{ quotation: string | null; readyForJobOrder: string | null }>({
+    quotation: null,
+    readyForJobOrder: null,
+  });
 
   const filtered = useMemo(
     () => inquiries.filter((i) =>
@@ -113,7 +117,7 @@ export function SalesOrders() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
             style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
           >
-            <ArrowRight size={15} strokeWidth={2.5} /> + New Inquiry
+            <ArrowRight size={15} strokeWidth={2.5} /> New Inquiry
           </button>
           <NotificationBell />
         </div>
@@ -156,6 +160,7 @@ export function SalesOrders() {
         <div className="grid grid-cols-3 gap-6">
           {columns.map((col) => {
             /* Part 4B will provide the payment-verified source for the ready-for-job-order column. */
+            const isCollapsibleColumn = col.id === "quotation" || col.id === "readyForJobOrder";
             const colCards = col.id === "readyForJobOrder"
               ? filtered.filter(isReadyForJobOrder)
               : filtered.filter((c) => col.id === "quotation"
@@ -184,6 +189,16 @@ export function SalesOrders() {
                       inquiry={c}
                       isNew={isNewClient(c.clientName)}
                       isReadyForJobOrder={col.id === "readyForJobOrder"}
+                      collapsible={isCollapsibleColumn}
+                      expanded={!isCollapsibleColumn || expandedCards[col.id] === c.id}
+                      onToggle={() => {
+                        if (!isCollapsibleColumn) return;
+                        const columnId = col.id === "quotation" ? "quotation" : "readyForJobOrder";
+                        setExpandedCards((current) => ({
+                          ...current,
+                          [columnId]: current[columnId] === c.id ? null : c.id,
+                        }));
+                      }}
                       onReview={() => setReviewId(c.id)}
                       onViewQuote={() => setViewQuoteId(c.id)}
                       onViewPO={() => setPoViewId(c.id)}
@@ -410,8 +425,8 @@ export function SalesOrders() {
 }
 
 /* ---- Inquiry Card with collapsible product list ---- */
-function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote, onViewPO, onMarkPOReceived, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
-  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; onReview: () => void; onViewQuote: () => void; onViewPO: () => void; onMarkPOReceived: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
+function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded, onToggle, onReview, onViewQuote, onViewPO, onMarkPOReceived, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
+  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; collapsible: boolean; expanded: boolean; onToggle: () => void; onReview: () => void; onViewQuote: () => void; onViewPO: () => void; onMarkPOReceived: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
@@ -424,11 +439,30 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
     : latestVerifiedPayment?.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT"
     : latestVerifiedPayment?.paymentType === "FULL_PAYMENT" ? "FULL PAYMENT"
     : payment.requiredDownpaymentAmount > 0 ? "DOWNPAYMENT" : "FULL PAYMENT";
+  const isDownpaymentPending = inquiry.stage === "po" && inquiry.poReceived && !isReadyForJobOrder
+    && payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus !== "COMPLETE";
+  const isAwaitingClientPayment = inquiry.stage === "po" && inquiry.poReceived && !isReadyForJobOrder
+    && !!inquiry.invoiceNo && !!inquiry.invoiceSentAt;
+  const isGenerateInvoicePending = inquiry.stage === "po" && inquiry.poReceived && !inquiry.invoiceNo;
+  const cardBorderColor = inquiry.pendingCancellation ? "#FBBF24"
+    : inquiry.urgent ? "#FECACA"
+    : isReadyForJobOrder ? "#BBF7D0"
+    : isDownpaymentPending || isGenerateInvoicePending ? "#FDBA74"
+    : isAwaitingClientPayment ? "#FDE68A"
+    : inquiry.stage === "po" && inquiry.poReceived ? "#BBF7D0"
+    : "#E2E8F0";
 
   return (
-    <article className="rounded-lg border bg-white p-4 hover:shadow-sm transition-all" style={{ borderColor: inquiry.pendingCancellation ? "#FBBF24" : inquiry.urgent ? "#FECACA" : "#E2E8F0", borderWidth: inquiry.pendingCancellation ? 2 : 1 }}>
+    <article
+      onClick={(event) => {
+        if (!collapsible || (event.target instanceof Element && event.target.closest("button, a, input, textarea, select"))) return;
+        onToggle();
+      }}
+      className={`rounded-lg border bg-white p-5 hover:shadow-sm transition-all ${collapsible ? "cursor-pointer" : ""}`}
+      style={{ borderColor: cardBorderColor, borderWidth: inquiry.pendingCancellation ? 2 : 1 }}
+    >
       {/* Pending cancellation banner */}
-      {inquiry.pendingCancellation && (
+      {(!collapsible || expanded) && inquiry.pendingCancellation && (
         <div className="rounded-md p-3 mb-3" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
           <div className="flex items-center gap-2 mb-1">
             <span style={{ fontSize: 14 }}>⏳</span>
@@ -448,7 +482,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-2 gap-2">
+      <div className="flex items-center justify-between mb-3 gap-2">
         <span className="font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{inquiry.code}</span>
         <div className="flex items-center gap-2">
           {inquiry.urgent && (
@@ -462,38 +496,82 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           {total > 0 && (
             <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>₱{total.toLocaleString("en-PH")}</span>
           )}
+          {collapsible && (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="flex items-center justify-center rounded-full p-1 hover:bg-slate-100"
+              style={{ color: "#64748B" }}
+              aria-label={expanded ? "Collapse order details" : "Expand order details"}
+              aria-expanded={expanded}
+            >
+              {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="font-dm mb-1" style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>{inquiry.clientName}</div>
-      <div className="font-dm mb-1" style={{ fontSize: 12, color: "#64748B" }}>{inquiry.contactPerson} · {inquiry.paymentTerms}</div>
+      <div className="font-dm mb-1.5" style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>{inquiry.clientName}</div>
+      <div className="font-dm mb-2" style={{ fontSize: 12, color: "#64748B" }}>{inquiry.contactPerson} · {inquiry.paymentTerms}</div>
+      {collapsible && !expanded && (
+        <div className="flex flex-col items-start gap-2">
+          <span className="font-dm px-2.5 py-1 rounded-full flex items-center gap-1" style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}>
+            {inquiry.products.length} {inquiry.products.length === 1 ? "product" : "products"}
+          </span>
+          <div className="flex flex-col items-start gap-1.5">
+            {isReadyForJobOrder && (
+              <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#15803D", backgroundColor: "#F0FDF4" }}>PAYMENT VERIFIED</span>
+            )}
+            {!isReadyForJobOrder && inquiry.stage === "po" && inquiry.poReceived && inquiry.invoiceNo && inquiry.invoiceSentAt && (
+              <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", backgroundColor: "#FFFBEB" }}>INVOICE SENT · AWAITING CLIENT PAYMENT</span>
+            )}
+            {inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
+              <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", backgroundColor: "#FFFBEB" }}>QUOTATION SENT · AWAITING CLIENT PO</span>
+            )}
+            {isDownpaymentPending && (
+              <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#C2410C", backgroundColor: "#FFF7ED" }}>REQUIRED DOWNPAYMENT PENDING</span>
+            )}
+          </div>
+        </div>
+      )}
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${!collapsible || expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+        inert={collapsible && !expanded}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className={collapsible ? "pt-2" : ""}>
       {inquiry.urgent && inquiry.dueDate && (
         <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 600, color: "#C8102E" }}>⏰ Required by: {inquiry.dueDate}</div>
       )}
 
-      <div className="flex items-center justify-between mb-3 gap-2">
+      <div className="flex flex-col items-start mb-4 gap-2">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="font-dm px-2 py-0.5 rounded-full flex items-center gap-1"
+          className="font-dm px-2.5 py-1 rounded-full flex items-center gap-1"
           style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}
         >
           {inquiry.products.length} {inquiry.products.length === 1 ? "product" : "products"}
           {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
-        {(inquiry.stage === "quotation" || inquiry.stage === "po") && inquiry.quotation && (
-          <button onClick={onViewQuote} className="font-dm flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: "#C8102E" }}>
-            <Calculator size={12} /> View Quotation
-          </button>
-        )}
-        {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && (
-          <button onClick={onViewPO} className="font-dm flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-green-50" style={{ fontSize: 11, color: "#16A34A", fontWeight: 700, border: "1px solid #BBF7D0" }} title="View client-submitted PO">
-            <Eye size={11} /> View PO
-          </button>
-        )}
+        {((inquiry.stage === "quotation" || inquiry.stage === "po") && inquiry.quotation)
+          || (inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName) ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {(inquiry.stage === "quotation" || inquiry.stage === "po") && inquiry.quotation && (
+              <button onClick={onViewQuote} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md hover:bg-red-50" style={{ fontSize: 11, fontWeight: 600, color: "#C8102E", border: "1px solid #FECACA" }}>
+                <Calculator size={12} /> View Quotation
+              </button>
+            )}
+            {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && (
+              <button onClick={onViewPO} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md hover:bg-green-50" style={{ fontSize: 11, color: "#16A34A", fontWeight: 700, border: "1px solid #BBF7D0" }} title="View client-submitted PO">
+                <Eye size={11} /> View PO
+              </button>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {open && (
-        <div className="rounded-md mb-3 p-2 flex flex-col gap-1.5" style={{ backgroundColor: "#F8FAFC" }}>
+        <div className="rounded-md mb-4 p-2.5 flex flex-col gap-1.5" style={{ backgroundColor: "#F8FAFC" }}>
           {inquiry.products.map((p, i) => (
             <div key={p.id} className="font-dm flex items-start justify-between gap-2" style={{ fontSize: 12 }}>
               <span style={{ color: "#0F172A" }}>
@@ -526,8 +604,8 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
         </button>
       )}
       {inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
-        <div className="w-full rounded-md px-3 py-2 font-dm text-center" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 11, color: "#64748B" }}>
-          Awaiting client PO submission
+        <div className="w-full rounded-md px-3 py-2 font-dm text-center" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", fontSize: 11, fontWeight: 700, color: "#92400E" }}>
+          QUOTATION SENT · AWAITING CLIENT PO
         </div>
       )}
       {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && !inquiry.poReceived && (
@@ -540,13 +618,13 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
         </button>
       )}
       {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poReceived && (
-        <div className="w-full rounded-md px-3 py-2" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", color: "#15803D", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
+        <div className="w-full mb-3 rounded-md px-3 py-2.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", color: "#15803D", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
           ✓ PO RECEIVED
         </div>
       )}
       {isReadyForJobOrder && (
-        <div className="flex flex-col gap-2">
-          <div className="rounded-md p-3" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-md p-3.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
             <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
               ✓ PAYMENT VERIFIED
             </div>
@@ -573,16 +651,16 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
         <>
           {/* ── Downpayment Banner ── */}
           {(inquiry.downpaymentPercent ?? 0) > 0 && (
-            <div className="mb-2 rounded-md p-3" style={{ backgroundColor: payment.downpaymentStatus === "COMPLETE" ? "#F0FDF4" : "#FFFBEB", border: `1.5px solid ${payment.downpaymentStatus === "COMPLETE" ? "#86EFAC" : "#FDE68A"}` }}>
-              <div className="font-dm flex items-center gap-1.5 mb-1" style={{ fontSize: 11, fontWeight: 800, color: payment.downpaymentStatus === "COMPLETE" ? "#15803D" : "#92400E", letterSpacing: 0.4, textTransform: "uppercase" }}>
+            <div className="mb-2 rounded-md p-3" style={{ backgroundColor: payment.downpaymentStatus === "COMPLETE" ? "#F0FDF4" : "#FFF7ED", border: `1.5px solid ${payment.downpaymentStatus === "COMPLETE" ? "#86EFAC" : "#FDBA74"}` }}>
+              <div className="font-dm flex items-center gap-1.5 mb-1" style={{ fontSize: 11, fontWeight: 800, color: payment.downpaymentStatus === "COMPLETE" ? "#15803D" : "#C2410C", letterSpacing: 0.4, textTransform: "uppercase" }}>
                 {payment.downpaymentStatus === "COMPLETE" ? "✅ Required Downpayment Verified" : "⏳ Required Downpayment Pending"}
               </div>
-              <div className="font-dm" style={{ fontSize: 12, color: payment.downpaymentStatus === "COMPLETE" ? "#166534" : "#78350F" }}>
+              <div className="font-dm" style={{ fontSize: 12, color: payment.downpaymentStatus === "COMPLETE" ? "#166534" : "#9A3412" }}>
                 {inquiry.downpaymentPercent}% of total
                 {inquiry.downpaymentAmount ? ` = ₱${inquiry.downpaymentAmount.toLocaleString("en-PH")}` : ""}
               </div>
               {payment.verifiedDownpaymentAmount > 0 && payment.downpaymentStatus !== "COMPLETE" && (
-                <div className="font-dm mt-1" style={{ fontSize: 10, color: "#92400E" }}>
+                <div className="font-dm mt-1" style={{ fontSize: 10, color: "#C2410C" }}>
                   Verified so far: {peso(payment.verifiedDownpaymentAmount)} · Remaining: {peso(payment.remainingDownpayment)}
                 </div>
               )}
@@ -594,7 +672,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
             </div>
           )}
           {inquiry.invoiceNo ? (
-            <div className="rounded-md p-3" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
+            <div className="rounded-md mt-3 p-3.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
               {!!inquiry.invoiceNo && !!inquiry.invoiceSentAt && (
                 <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
                   ✓ INVOICE SENT
@@ -606,7 +684,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
               <div className="font-mono-jb mt-1" style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>{inquiry.invoiceNo}</div>
               <div className="font-syne" style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>{peso(inquiry.invoiceAmount ?? total)}</div>
               {!!inquiry.invoiceNo && !!inquiry.invoiceSentAt ? (
-                <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 700, color: "#166534", letterSpacing: 0.35 }}>AWAITING CLIENT PAYMENT</div>
+                <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", letterSpacing: 0.35 }}>INVOICE SENT · AWAITING CLIENT PAYMENT</div>
               ) : (
                 <>
                   <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", letterSpacing: 0.35 }}>DRAFT — NOT SENT</div>
@@ -619,7 +697,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
             <button
               onClick={onGenerateInvoice}
               className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90"
-              style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
+              style={{ backgroundColor: "#D97706", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
             >
               <FileText size={14} strokeWidth={2.5} /> GENERATE INVOICE <ArrowRight size={14} strokeWidth={2.5} />
             </button>
@@ -670,6 +748,9 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, onReview, onViewQuote
           )}
         </div>
       )}
+          </div>
+        </div>
+      </div>
     </article>
   );
 }

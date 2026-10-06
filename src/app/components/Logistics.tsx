@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Search, Download, ChevronRight, Camera, X, History, CheckCircle2, Send, Truck, Filter } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, type Inquiry } from "../store/orders";
+import { useOrders, poNumberForDisplay, type Inquiry } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 
@@ -48,7 +48,7 @@ function inquiryToRow(inq: Inquiry): Row {
   return {
     id: inq.id,
     date: isDispatch ? inq.submittedDate : (inq.deliveredDate ?? inq.submittedDate),
-    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
+    po: poNumberForDisplay(inq) ?? inq.code,
     si: inq.invoiceNo ?? "—",
     dr: inq.drFileName ? `DR-${inq.code.replace("INQ-", "")}` : "—",
     customer: inq.clientName,
@@ -323,12 +323,11 @@ export function Logistics() {
   const handleMarkDelivered = (id: string) => {
     const row = rows.find((r) => r.id === id);
     if (!row || row.status === "delivered") return;
-    const invoiceNo = `SI-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    markDelivered(id, today, invoiceNo, row.amount);
+    markDelivered(id, today);
     const patch: Partial<Inquiry> = {};
     const ts = new Date().toISOString();
-    patch.waybillLog = [...(row.inq.waybillLog ?? []), { ts, status: "Delivered", note: row.trackingRef ?? invoiceNo }];
+    patch.waybillLog = [...(row.inq.waybillLog ?? []), { ts, status: "Delivered", note: row.trackingRef ?? row.dr }];
     updateInquiry(id, patch);
     const paymentCycleActive = Boolean(row.clientSignedDRUploadedAt);
     toast.success("Delivery status: Delivered", {

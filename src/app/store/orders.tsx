@@ -348,6 +348,7 @@ export interface Inquiry {
   downpaymentConfirmedBy?: string;
   /* — Multiple JOs per inquiry (Section F) — */
   parentInquiryId?: string;             // child JOs reference the original inquiry's id
+  reorderSourceInquiryId?: string;
   /* — Per-product BOM/cost data (Sections C/N) — */
   productsBillOfMaterials?: (BOMLine[] | null)[];
   productsCostConfig?: (CostConfig | null)[];
@@ -377,6 +378,16 @@ export function resolveProductBOM(inquiry: Inquiry, productIndex: number): BOMLi
     if (sharedBOM && sharedBOM.length > 0) return sharedBOM;
   }
   return undefined;
+}
+
+export function poNumberForDisplay(inquiry: Pick<Inquiry, "poNumber" | "poFileName">): string | undefined {
+  const storedPONumber = inquiry.poNumber?.trim();
+  if (storedPONumber && /^PO-\d{4}-\d+$/i.test(storedPONumber)) return storedPONumber;
+
+  const filenameReference = inquiry.poFileName?.replace(/\.[^.]+$/, "");
+  return filenameReference && /^PO-\d{4}-\d+$/i.test(filenameReference)
+    ? filenameReference
+    : undefined;
 }
 
 export interface FinalizeJOData {
@@ -753,7 +764,7 @@ interface Ctx {
   setStage: (id: string, stage: Stage) => void;
   setUrgent: (id: string, urgent: boolean, dueDate?: string) => void;
   setDueDate: (id: string, due: string) => void;
-  markDelivered: (id: string, deliveredDate: string, invoiceNo: string, invoiceAmount: number) => void;
+  markDelivered: (id: string, deliveredDate: string) => void;
   uploadClientSignedDR: (id: string, fileName: string) => void;
   /* — Downpayment workflow (Section D) — */
   sendDownpaymentDetails: (id: string, details: NonNullable<Inquiry["downpaymentPaymentDetails"]>) => void;
@@ -1005,17 +1016,19 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     return `Q-${year}-${next}`;
   };
 
-  /* PO-YYYY-NNNN — sequential within year, scans existing poFileName prefixes */
+  /* PO-YYYY-NNNN — sequential within year, based on stored PO references */
   const generatePONumber: Ctx["generatePONumber"] = () => {
     const year = new Date().getFullYear();
-    const used = allInquiries
-      .map((i) => i.poFileName ?? "")
-      .map((n) => {
-        const m = n.match(new RegExp(`PO-${year}-(\\d+)`));
-        return m ? parseInt(m[1], 10) : 0;
-      });
-    const next = ((used.length ? Math.max(...used) : 0) + 1).toString().padStart(4, "0");
-    return `PO-${year}-${next}`;
+    const poPattern = new RegExp(`^PO-${year}-(\\d+)$`, "i");
+    const used = new Set(
+      allInquiries
+        .map((inquiry) => inquiry.poNumber?.trim().match(poPattern)?.[1])
+        .filter((number): number is string => number !== undefined)
+        .map((number) => Number.parseInt(number, 10)),
+    );
+    let next = (used.size ? Math.max(...used) : 0) + 1;
+    while (used.has(next)) next += 1;
+    return `PO-${year}-${next.toString().padStart(4, "0")}`;
   };
 
   /* SI-YYYY-NNNN — creates a shared invoice draft. Sending is a separate action. */
@@ -1234,7 +1247,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, dueDate: due } : x));
   };
 
-  const markDelivered: Ctx["markDelivered"] = (id, deliveredDate, invoiceNo, invoiceAmount) => {
+  const markDelivered: Ctx["markDelivered"] = (id, deliveredDate) => {
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== id) return x;
       const receiptAt = x.clientSignedDRUploadedAt;
@@ -1243,8 +1256,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         ...x,
         stage: "delivered",
         deliveredDate,
-        invoiceNo,
-        invoiceAmount,
         paymentCycleStartedAt: receiptAt,
         invoiceDueDate: dueDate,
       };
@@ -1364,7 +1375,33 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         stage: "jo",
         submittedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         joNumber: joNum,
+        reorderSourceInquiryId: sourceInquiryId,
+        parentInquiryId: undefined,
+        isReplacement: false,
+        replacementParentId: undefined,
+        poUploaded: false,
+        poFileName: undefined,
+        poNumber: undefined,
+        poFileDataUrl: undefined,
+        poUploadedAt: undefined,
+        poReceived: false,
+        invoiceNo: undefined,
+        invoiceAmount: undefined,
+        invoiceDate: undefined,
+        invoiceDueDate: undefined,
+        invoiceSentAt: undefined,
+        paymentCycleStartedAt: undefined,
+        payments: [],
+        confirmedPayments: [],
         clientPaymentReceipts: [],
+        amountPaid: undefined,
+        paidAt: undefined,
+        dpReceiptFile: undefined,
+        downpaymentReceiptFile: undefined,
+        downpaymentReceiptUploadedAt: undefined,
+        downpaymentConfirmed: false,
+        downpaymentConfirmedAt: undefined,
+        downpaymentConfirmedBy: undefined,
         archived: false,
         archiveReason: undefined,
         archiveDate: undefined,

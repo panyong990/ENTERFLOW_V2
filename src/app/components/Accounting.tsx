@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
 import { FileText, ClipboardList, Search, Plus, CheckCircle2, X, Send, AlertTriangle, ChevronDown, ChevronUp, PlusCircle, Receipt, Eye, History, Pencil, Download } from "lucide-react";
-import { useOrders, paymentRecords, paymentState, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
+import { useOrders, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
@@ -46,7 +46,7 @@ function inquiryToInvoice(inq: Inquiry): Invoice {
     id: inq.id,
     date: inq.deliveredDate ?? inq.submittedDate,
     inv: inq.invoiceNo ?? `SI-${inq.code.replace("INQ-", "")}`,
-    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
+    po: poNumberForDisplay(inq) ?? inq.code,
     client: inq.clientName,
     item: `${inq.products[0]?.type ?? "Filter"} (${inq.products.reduce((s, p) => s + p.qty, 0)} pcs)`,
     amount: state.invoiceTotal,

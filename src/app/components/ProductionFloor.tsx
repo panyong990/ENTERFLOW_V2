@@ -7,7 +7,7 @@ import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
-import { PRODUCTION_STAGES, useOrders, type Stage, type Inquiry } from "../store/orders";
+import { PRODUCTION_STAGES, poNumberForDisplay, useOrders, type Stage, type Inquiry } from "../store/orders";
 
 const STAGES = [...PRODUCTION_STAGES];
 
@@ -102,7 +102,7 @@ function inquiryToJob(inq: Inquiry): Job {
   return {
     id: inq.id,
     jo: inq.joNumber ?? inq.code,
-    po: inq.poNumber ?? inq.poFileName ?? "—",
+    po: poNumberForDisplay(inq) ?? inq.code,
     client: inq.clientName.toUpperCase(),
     product: (product?.type ?? "FILTER").toUpperCase(),
     qty: inq.products.reduce((s, p) => s + p.qty, 0),

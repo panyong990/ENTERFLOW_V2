@@ -1,4 +1,4 @@
-import type { Inquiry } from "../store/orders";
+import { poNumberForDisplay, type Inquiry } from "../store/orders";
 
 export interface DispatchRow {
   id: string;
@@ -58,7 +58,7 @@ export function inquiryToDispatchRow(inquiry: Inquiry): DispatchRow {
   return {
     id: inquiry.id,
     jo: inquiry.joNumber ?? `JO-${inquiry.code}`,
-    po: inquiry.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inquiry.code}`,
+    po: poNumberForDisplay(inquiry) ?? inquiry.code,
     si: inquiry.invoiceNo ?? `SI-${inquiry.code}`,
     client: inquiry.clientName,
     contact: inquiry.contactPerson,

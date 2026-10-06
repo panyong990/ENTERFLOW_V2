@@ -5,7 +5,7 @@ import {
   ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, type Inquiry, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { useSettings } from "../store/settings";
 import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
@@ -26,6 +26,94 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
 ];
 
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
+
+type ClientOrderStatusId =
+  | "awaitingQuotation"
+  | "awaitingPOVerification"
+  | "poReceived"
+  | "invoiceSent"
+  | "awaitingPaymentVerification"
+  | "fullPaymentVerified"
+  | "downpaymentVerified";
+
+type ClientOrderStatus = {
+  id: ClientOrderStatusId;
+  label: string;
+  bg: string;
+  fg: string;
+  message: string;
+};
+
+const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
+  const payment = paymentState(inquiry);
+  const invoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
+  if (invoiceSent && payment.invoiceTotal > 0 && payment.state === "FULLY_PAID") {
+    return {
+      id: "fullPaymentVerified",
+      label: "FULL PAYMENT VERIFIED",
+      bg: "#DCFCE7",
+      fg: "#15803D",
+      message: "Full payment verified — order is ready to proceed to production.",
+    };
+  }
+  if (invoiceSent && payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE") {
+    return {
+      id: "downpaymentVerified",
+      label: "DOWNPAYMENT VERIFIED",
+      bg: "#DCFCE7",
+      fg: "#166534",
+      message: "Required downpayment verified — order is ready to proceed to production.",
+    };
+  }
+  const submittedPayments = paymentRecords(inquiry);
+  if (invoiceSent && submittedPayments.some((paymentRecord) => paymentRecord.verificationStatus === "pending")) {
+    return {
+      id: "awaitingPaymentVerification",
+      label: "AWAITING PAYMENT VERIFICATION",
+      bg: "#DBEAFE",
+      fg: "#1D4ED8",
+      message: "Payment submitted — awaiting verification.",
+    };
+  }
+  if (invoiceSent) {
+    return {
+      id: "invoiceSent",
+      label: "INVOICE SENT",
+      bg: "#FEF3C7",
+      fg: "#B45309",
+      message: "Invoice sent — awaiting required payment.",
+    };
+  }
+  if (
+    (inquiry.quotationDoc?.quotationNo || inquiry.quotation)
+    && inquiry.stage === "po"
+    && inquiry.poFileName
+  ) {
+    if (inquiry.poReceived) {
+      return {
+        id: "poReceived",
+        label: "PO SUBMITTED",
+        bg: "#FEF3C7",
+        fg: "#B45309",
+        message: "Purchase order received by Sales.",
+      };
+    }
+    return {
+      id: "awaitingPOVerification",
+      label: "AWAITING PO VERIFICATION",
+      bg: "#DBEAFE",
+      fg: "#1D4ED8",
+      message: "Purchase order submitted — awaiting verification.",
+    };
+  }
+  return {
+    id: "awaitingQuotation",
+    label: "AWAITING QUOTATION",
+    bg: "#E2E8F0",
+    fg: "#475569",
+    message: "Quotation is currently being prepared.",
+  };
+};
 
 function Shell({ active, onChange, children, clientName, onLogout }: {
   active: Tab; onChange: (t: Tab) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
@@ -125,6 +213,25 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   const { push: pushNotif } = useNotifications();
   /* Active orders only — Job Orders and Transactions live in their own tabs now */
   const myOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "inquiry" || i.stage === "quotation" || i.stage === "po"));
+  const [orderSearch, setOrderSearch] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
+  const normalizedOrderSearch = orderSearch.trim().toLowerCase();
+  const visibleOrders = myOrders.filter((inquiry) => {
+    const matchesStatus = orderStatusFilter === "all" || clientOrderStatus(inquiry).id === orderStatusFilter;
+    const searchableValues = [
+      inquiry.code,
+      inquiry.clientName,
+      inquiry.contactPerson,
+      inquiry.paymentTerms,
+      inquiry.poNumber,
+      inquiry.poFileName,
+      inquiry.invoiceNo,
+      inquiry.generalNotes,
+      ...inquiry.products.flatMap((product) => [product.type, product.filterName, product.oem]),
+    ];
+    const matchesSearch = !normalizedOrderSearch || searchableValues.some((value) => value?.toLowerCase().includes(normalizedOrderSearch));
+    return matchesStatus && matchesSearch;
+  });
   /* Sent invoices have their own visibility rule and remain available after the order advances. */
   const myInvoices = byClient(clientName).filter((i) =>
     !i.archived && !!i.invoiceNo && !!i.invoiceSentAt
@@ -173,12 +280,13 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
           </div>
           {myInvoices.map((invoice) => {
             const state = paymentState(invoice);
+            const status = clientOrderStatus(invoice);
             return (
               <div key={invoice.id} className="bg-white rounded-xl border border-emerald-200 p-4 flex items-center gap-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
                 <div className="flex-1 min-w-0">
-                  <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>INVOICE SENT</div>
+                  <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: status.fg, letterSpacing: 0.4 }}>{status.label}</div>
                   <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{invoice.invoiceNo}</div>
-                  <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{invoice.poNumber ?? invoice.poFileName ?? invoice.code} · {invoice.paymentTerms}</div>
+                  <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{poNumberForDisplay(invoice) ?? invoice.code} · {invoice.paymentTerms}</div>
                 </div>
                 <div className="text-right">
                   <div className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{peso(state.invoiceTotal)}</div>
@@ -189,7 +297,40 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
           })}
         </section>
       )}
-      {myOrders.map((inq) => (
+      {myOrders.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/70 bg-white p-3">
+          <input
+            type="search"
+            value={orderSearch}
+            onChange={(event) => setOrderSearch(event.target.value)}
+            placeholder="Search My Orders..."
+            aria-label="Search My Orders"
+            className="font-dm min-w-[220px] flex-1 rounded-md border border-slate-200 px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#0F172A" }}
+          />
+          <select
+            value={orderStatusFilter}
+            onChange={(event) => setOrderStatusFilter(event.target.value as ClientOrderStatusId | "all")}
+            aria-label="Filter My Orders by status"
+            className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#475569" }}
+          >
+            <option value="all">All Statuses</option>
+            <option value="awaitingQuotation">Awaiting Quotation</option>
+            <option value="poReceived">PO SUBMITTED</option>
+            <option value="invoiceSent">Invoice Sent</option>
+            <option value="awaitingPaymentVerification">Awaiting Payment Verification</option>
+            <option value="fullPaymentVerified">Full Payment Verified</option>
+            <option value="downpaymentVerified">Downpayment Verified</option>
+          </select>
+        </div>
+      )}
+      {myOrders.length > 0 && visibleOrders.length === 0 && (
+        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
+          No orders match your search or status filter.
+        </div>
+      )}
+      {visibleOrders.map((inq) => (
         <ClientOrderCard
           key={inq.id}
           inquiry={inq}
@@ -849,9 +990,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const [showTerms, setShowTerms] = useState(false);
   const total = inquiry.quotationDoc?.total ?? quotationTotal(inquiry);
   const invoicePayment = paymentState(inquiry);
-  const invoiceDownpaymentPercent = inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 0;
   const submittedPayments = paymentRecords(inquiry);
   const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
+  const status = clientOrderStatus(inquiry);
 
   const submitRevision = () => {
     const note = revisionNoteDraft.trim();
@@ -869,13 +1010,6 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
     setRevisionNoteDraft("");
   };
 
-  const badge =
-    inquiry.stage === "inquiry" ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Quotation" } :
-    inquiry.stage === "quotation" ? { bg: "#FEF3C7", fg: "#B45309", label: "Quotation Received" } :
-    hasPORecord(inquiry)
-      ? { bg: "#DCFCE7", fg: "#15803D", label: "PO Submitted ✅" }
-      : { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Client PO" };
-
   return (
     <article className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50">
@@ -886,7 +1020,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
         </div>
         <div className="flex items-center gap-3">
           {inquiry.urgent && <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#FEE2E2", color: "#C8102E", letterSpacing: 0.3 }}>🚨 RUSH</span>}
-          <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: badge.bg, color: badge.fg }}>{badge.label}</span>
+          <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: status.bg, color: status.fg }}>{status.label}</span>
           {total > 0 && <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{peso(total)}</span>}
           {open ? <ChevronUp size={16} style={{ color: "#64748B" }} /> : <ChevronDown size={16} style={{ color: "#64748B" }} />}
         </div>
@@ -894,41 +1028,19 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
 
       {open && (
         <div className="px-5 pb-5 border-t border-slate-200" style={{ backgroundColor: "#FAFBFC" }}>
-          {inquiry.stage === "inquiry" && (
-            <div className="py-4 font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-              We've received your inquiry — our team will send a quotation within 1 business day.
+          <div className="mt-4 rounded-md px-3 py-2.5 font-dm" style={{ backgroundColor: status.bg, color: status.fg, fontSize: 12, fontWeight: 700 }}>
+            {status.message}
+          </div>
+          {latestSubmittedPayment?.verificationStatus === "rejected" && (
+            <div className="mt-2 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12, fontWeight: 700 }}>
+              Payment rejected — please resubmit proof in Accounting.
             </div>
           )}
 
           {inquiry.invoiceNo && inquiry.invoiceSentAt && (
-            <div className="my-4 rounded-lg p-4" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
-              <div className="font-dm mb-3" style={{ fontSize: 12, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>INVOICE</div>
-              <div className="grid grid-cols-2 gap-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>
-                <span>Invoice No.</span><strong>{inquiry.invoiceNo}</strong>
-                <span>PO No.</span><strong>{inquiry.poNumber ?? inquiry.poFileName ?? "—"}</strong>
-                <span>Invoice Total</span><strong>{peso(invoicePayment.invoiceTotal)}</strong>
-                <span>Payment Terms</span><strong>{inquiry.quotationDoc?.termsOfPayment ?? inquiry.paymentTerms}</strong>
-                {invoiceDownpaymentPercent > 0 && <>
-                  <span>DOWNPAYMENT REQUIRED</span><strong>{invoiceDownpaymentPercent}%</strong>
-                  <span>AMOUNT DUE</span><strong>{peso(invoicePayment.requiredDownpaymentAmount)}</strong>
-                  <span>REMAINING BALANCE</span><strong>{peso(invoicePayment.remainingInvoiceBalance)}</strong>
-                </>}
-              </div>
-              {invoicePayment.state === "FULLY_PAID" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#DCFCE7", color: "#166534", fontSize: 12, fontWeight: 800 }}>✓ PAYMENT VERIFIED · FULLY PAID</div>
-              ) : invoiceDownpaymentPercent > 0 && invoicePayment.downpaymentStatus === "COMPLETE" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#DCFCE7", color: "#166534", fontSize: 12, fontWeight: 800 }}>
-                  ✓ DOWNPAYMENT VERIFIED · {peso(invoicePayment.verifiedDownpaymentAmount)} verified · Remaining balance {peso(invoicePayment.remainingInvoiceBalance)}
-                </div>
-              ) : latestSubmittedPayment?.verificationStatus === "rejected" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12, fontWeight: 800 }}>PAYMENT REJECTED · Please resubmit proof in Accounting</div>
-              ) : latestSubmittedPayment?.verificationStatus === "pending" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#EFF6FF", color: "#1E40AF", fontSize: 12, fontWeight: 800 }}>PAYMENT SUBMITTED · AWAITING ACCOUNTING VERIFICATION</div>
-              ) : null}
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => setShowInvoice(true)} className="flex-1 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
-                {invoicePayment.currentPaymentType && <button onClick={onPayInvoice} className="flex-1 rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
-              </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setShowInvoice(true)} className="flex-1 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
+              {invoicePayment.currentPaymentType && <button onClick={onPayInvoice} className="flex-1 rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
             </div>
           )}
 
@@ -1056,26 +1168,10 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               )}
               {inquiry.stage === "po" && inquiry.poFileName && (
                 <div className="rounded-md p-3 font-dm" style={{ backgroundColor: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 13, color: "#166534" }}>
-                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span> — {invoicePayment.state === "FULLY_PAID"
-                    ? "payment verified in full; order is ready for Job Order processing."
-                    : invoiceDownpaymentPercent > 0 && invoicePayment.downpaymentStatus === "COMPLETE"
-                    ? `required downpayment verified; remaining balance ${peso(invoicePayment.remainingInvoiceBalance)}.`
-                    : latestSubmittedPayment?.verificationStatus === "pending"
-                    ? "payment submitted; awaiting Accounting verification."
-                    : latestSubmittedPayment?.verificationStatus === "rejected"
-                    ? "payment rejected; please resubmit proof in Accounting."
-                    : inquiry.invoiceSentAt
-                    ? "invoice sent; awaiting required payment."
-                    : "awaiting invoice and required payment; production has not started."}
+                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span>
                 </div>
               )}
 
-              {/* Downpayment confirmed — success badge */}
-              {(inquiry.downpaymentAmount ?? 0) > 0 && inquiry.downpaymentConfirmed && (
-                <div className="rounded-md p-3 font-dm flex items-center gap-2" style={{ fontSize: 13, color: "#166534", backgroundColor: "#DCFCE7", border: "1px solid #86EFAC" }}>
-                  ✅ Downpayment received & confirmed by Accounting — ₱{(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({inquiry.downpaymentPercent}%). Production is greenlit.
-                </div>
-              )}
             </div>
           )}
 
@@ -1267,6 +1363,7 @@ const DEMO_JO_DATA: JOTemplateData = {
 };
 
 interface ActiveOrder {
+  id: string;
   po: string;
   product: string;
   qty: number;
@@ -1282,6 +1379,7 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
   const payment = paymentState(inq);
   const requiredPaymentVerified = payment.state === "FULLY_PAID"
     || (payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE");
+  const poReference = poNumberForDisplay(inq);
   /* Keep client milestones in business order; drafts remain invisible until sentAt exists. */
   const STAGE_ORDER: { key: string; label: string; matches: (i: Inquiry) => "done" | "current" | "pending"; detailFn: (i: Inquiry) => string }[] = [
     { key: "inquiry",    label: "Inquiry Submitted",     matches: (i) => i.stage === "inquiry" ? "current" : "done",
@@ -1289,7 +1387,7 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
     { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
     { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
-      detailFn: (i) => hasPORecord(i) ? `${i.poNumber ?? i.poFileName} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
+      detailFn: (i) => hasPORecord(i) ? `${poNumberForDisplay(i) ?? "PO document"} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
     { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
       detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.paymentCycleStartedAt && i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
     { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
@@ -1310,7 +1408,8 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
   ];
 
   return {
-    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `INQ-${inq.code.replace("INQ-", "")}`,
+    id: inq.id,
+    po: poReference ? `${poReference} · ${inq.code}` : inq.code,
     product: inq.products.length > 1
       ? `${inq.products.length} filters · ${inq.products.map((p) => p.type).join(", ")}`
       : `${inq.products[0]?.type ?? "Filter"}${inq.products[0]?.height ? ` ${inq.products[0].od1 ?? ""}×${inq.products[0].id1 ?? ""}×${inq.products[0].height}mm` : ""}`,
@@ -1352,19 +1451,21 @@ function StatusTab({ clientName }: { clientName: string }) {
   const { byClient } = useOrders();
   const [showJO, setShowJO] = useState(false);
   const [searchOrders, setSearchOrders] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "awaitingQuotation" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
+  >("all");
 
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
   const myInquiries = byClient(clientName).filter((i) => !i.archived && i.stage !== "paid");
   const activeOrders = myInquiries.map((inquiry) => ({ inquiry, order: inquiryToActiveOrder(inquiry) }));
-  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.po ?? null);
-  const statusBadgeLabels: Record<string, string> = {
-    po: "PO Submitted ✓",
-    production: "In Production",
-    dispatch: "Ready for Dispatch",
-    delivery: "Out for Delivery",
-    delivered: "Delivered",
-  };
+  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.id ?? null);
+  const statusStages = {
+    awaitingQuotation: "inquiry",
+    inProduction: "in_production",
+    readyForDispatch: "ready_for_dispatch",
+    outForDelivery: "dispatched",
+    delivered: "delivered",
+  } as const;
   const filteredOrders = activeOrders
     .filter(({ inquiry, order }) => {
       const query = searchOrders.trim().toLowerCase();
@@ -1378,7 +1479,7 @@ function StatusTab({ clientName }: { clientName: string }) {
         order.product,
       ].some((value) => value?.toLowerCase().includes(query));
       const matchesStatus = statusFilter === "all"
-        || order.badge.label === statusBadgeLabels[statusFilter];
+        || inquiry.stage === statusStages[statusFilter];
       return matchesSearch && matchesStatus;
     });
 
@@ -1411,11 +1512,11 @@ function StatusTab({ clientName }: { clientName: string }) {
           className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
           style={{ fontSize: 12, color: "#475569" }}
         >
-          <option value="all">All Orders</option>
-          <option value="po">PO Submitted</option>
-          <option value="production">In Production</option>
-          <option value="dispatch">Ready for Dispatch</option>
-          <option value="delivery">Out for Delivery</option>
+          <option value="all">All Statuses</option>
+          <option value="awaitingQuotation">Awaiting Quotation</option>
+          <option value="inProduction">In Production</option>
+          <option value="readyForDispatch">Ready for Dispatch</option>
+          <option value="outForDelivery">Out for Delivery</option>
           <option value="delivered">Delivered</option>
         </select>
       </div>
@@ -1429,7 +1530,7 @@ function StatusTab({ clientName }: { clientName: string }) {
           No orders match your search or status filter.
         </div>
       ) : filteredOrders.map(({ order, inquiry }) => {
-        const expanded = expandedPO === order.po;
+        const expanded = expandedPO === order.id;
         /* Section F — JO exists only once the inquiry reaches the "jo" stage or later. */
         const hasJO = (["jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"] as const).includes(inquiry.stage as any);
         return (
@@ -1437,7 +1538,7 @@ function StatusTab({ clientName }: { clientName: string }) {
             key={inquiry.id}
             order={order}
             expanded={expanded}
-            onToggle={() => setExpandedPO(expanded ? null : order.po)}
+            onToggle={() => setExpandedPO(expanded ? null : order.id)}
             onViewJO={() => setShowJO(true)}
             hasJO={hasJO}
           />
@@ -1457,7 +1558,7 @@ function StatusTab({ clientName }: { clientName: string }) {
           date: jo.submittedDate,
           itemCode: `${p0?.type ?? "FILTER"}-${jo.code.replace(/[^0-9]/g, "")}`,
           enterFilPN: p0?.oem ?? "—",
-          poRef: jo.poFileName?.replace(/\.[^.]+$/, "") ?? "—",
+          poRef: poNumberForDisplay(jo) ?? "—",
           specs: jo.joSpecs ?? { od1: p0?.od1, id1: p0?.id1, height: p0?.height, media: p0?.media, oem: p0?.oem },
           preparedBy: "Enter-Fil Management",
         };
@@ -1953,7 +2054,7 @@ function inquiryToClientInvoice(inq: Inquiry) {
   return {
     id: inq.id,
     inv: inq.invoiceNo ?? `SI-${inq.code.replace("PO-", "")}`,
-    po: inq.poNumber ?? inq.poFileName ?? inq.code,
+    po: poNumberForDisplay(inq) ?? inq.code,
     item: inq.products[0]?.filterName || inq.products[0]?.type || "—",
     amount: state.invoiceTotal,
     payment: inq.paymentTerms,

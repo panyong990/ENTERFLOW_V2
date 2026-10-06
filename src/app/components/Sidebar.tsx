@@ -29,6 +29,7 @@ export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   warehouse:  ["dashboard", "inventory", "waybill", "waybill-history", "notifications"],
   /* Logistics: dispatch tracking only; Waybill scanning is Warehouse-only */
   logistics:  ["dashboard", "logistics", "notifications"],
+  admin:      ["users"],
 };
 
 export const roleSidebar: Record<Exclude<Role, "client">, { user: string; title: string }> = {
@@ -39,6 +40,7 @@ export const roleSidebar: Record<Exclude<Role, "client">, { user: string; title:
   production: { user: "J. Reyes",   title: "Production Manager" },
   warehouse:  { user: "F. Santos",  title: "Warehouse Staff" },
   logistics:  { user: "P. Tan",     title: "Logistics Personnel" },
+  admin:      { user: "A. Garcia",  title: "Admin" },
 };
 
 interface SidebarProps {

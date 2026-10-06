@@ -1,10 +1,6 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
 import { FileText, ClipboardList, Search, Plus, CheckCircle2, X, Send, AlertTriangle, ChevronDown, ChevronUp, PlusCircle, Receipt, Eye, History, Pencil, Download } from "lucide-react";
-<<<<<<< HEAD
-import { useOrders, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
-=======
-import { hasValidSignedDeliveryReceipt, useOrders, paymentDaysRemaining, paymentRecords, paymentState, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
->>>>>>> 9d269ff244ec52a85886f60fc34ffda0546dd285
+import { hasValidSignedDeliveryReceipt, useOrders, paymentDaysRemaining, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
@@ -59,13 +55,9 @@ function inquiryToInvoice(inq: Inquiry): Invoice {
     id: inq.id,
     date: inq.deliveredDate ?? inq.submittedDate,
     inv: inq.invoiceNo ?? `SI-${inq.code.replace("INQ-", "")}`,
-<<<<<<< HEAD
     po: poNumberForDisplay(inq) ?? inq.code,
-=======
-    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `PO-${inq.code}`,
     joNumber: inq.joNumber,
     deliveryReceiptNumber: inq.deliveryReceiptNumber,
->>>>>>> 9d269ff244ec52a85886f60fc34ffda0546dd285
     client: inq.clientName,
     item: `${inq.products[0]?.type ?? "Filter"} (${inq.products.reduce((s, p) => s + p.qty, 0)} pcs)`,
     amount: state.invoiceTotal,
@@ -328,7 +320,7 @@ export function Accounting() {
     const inv = invoice;
     if (inv) {
       const clientInqs = byClient(inv.client);
-      const target = clientInqs.find(i => i.poFileName?.includes(inv.po) || i.invoiceNo === inv.inv) ?? clientInqs[clientInqs.length - 1];
+      const target = clientInqs.find((inquiry) => inquiry.id === inv.id);
       if (target) {
         confirmClientPayment(target.id, { date: entryDate, amount: amt, method: f.method, ref: f.ref || "—" });
         pushNotif({

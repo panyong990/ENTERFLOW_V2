@@ -5,11 +5,22 @@ import {
   ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw, Printer,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-<<<<<<< HEAD
-import { useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
-=======
-import { hasValidSignedDeliveryReceipt, paymentDaysRemaining, paymentSubmissionAllowance, useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, type Inquiry, type PaymentStateSummary, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
->>>>>>> 9d269ff244ec52a85886f60fc34ffda0546dd285
+import {
+  hasValidSignedDeliveryReceipt,
+  paymentDaysRemaining,
+  paymentSubmissionAllowance,
+  useOrders,
+  unitPrice,
+  quotationTotal,
+  paymentRecords,
+  paymentState,
+  poNumberForDisplay,
+  type Inquiry,
+  type PaymentStateSummary,
+  type ProductLine,
+  type ReplacementRequest,
+  type PaymentType,
+} from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { useSettings } from "../store/settings";
 import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
@@ -226,8 +237,16 @@ const FILTRATION_RATINGS = [
 function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void }) {
   const { uploadPO, requestCancellation, byClient } = useOrders();
   const { push: pushNotif } = useNotifications();
-  /* Active orders only — Job Orders and Transactions live in their own tabs now */
-  const myOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "inquiry" || i.stage === "quotation" || i.stage === "po"));
+  /* Keep sent invoices available here after their order advances beyond the active stages. */
+  const myOrders = byClient(clientName).filter((i) =>
+    !i.archived
+    && (
+      i.stage === "inquiry"
+      || i.stage === "quotation"
+      || i.stage === "po"
+      || Boolean(i.invoiceNo && i.invoiceSentAt)
+    )
+  );
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
   const normalizedOrderSearch = orderSearch.trim().toLowerCase();
@@ -247,11 +266,6 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
     const matchesSearch = !normalizedOrderSearch || searchableValues.some((value) => value?.toLowerCase().includes(normalizedOrderSearch));
     return matchesStatus && matchesSearch;
   });
-  /* Sent invoices have their own visibility rule and remain available after the order advances. */
-  const myInvoices = byClient(clientName).filter((i) =>
-    !i.archived && !!i.invoiceNo && !!i.invoiceSentAt
-  );
-
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showJobs, setShowJobs] = useState(false);
@@ -262,7 +276,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Orders</h2>
-          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Active inquiries, quotations, and POs · click <strong>+ New Order</strong> to start a new inquiry.</p>
+          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Inquiries, quotations, POs, and sent invoices · click <strong>+ New Order</strong> to start a new inquiry.</p>
         </div>
         <button
           onClick={() => setShowWizard(true)}
@@ -286,31 +300,6 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         <div className="bg-white rounded-xl border border-slate-200/70 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
           No active orders yet — click <strong>+ New Order</strong> to submit your first inquiry.
         </div>
-      )}
-      {myInvoices.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <h3 className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>Sent Invoices</h3>
-            <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Invoices remain available as your order moves through production and delivery.</p>
-          </div>
-          {myInvoices.map((invoice) => {
-            const state = paymentState(invoice);
-            const status = clientOrderStatus(invoice);
-            return (
-              <div key={invoice.id} className="bg-white rounded-xl border border-emerald-200 p-4 flex items-center gap-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-                <div className="flex-1 min-w-0">
-                  <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: status.fg, letterSpacing: 0.4 }}>{status.label}</div>
-                  <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{invoice.invoiceNo}</div>
-                  <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{poNumberForDisplay(invoice) ?? invoice.code} · {invoice.paymentTerms}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{peso(state.invoiceTotal)}</div>
-                  <button onClick={() => onPayInvoice(invoice.id)} className="font-dm mt-1 px-3 py-1.5 rounded-md text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 700 }}>VIEW IN ACCOUNTING</button>
-                </div>
-              </div>
-            );
-          })}
-        </section>
       )}
       {myOrders.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/70 bg-white p-3">
@@ -1053,10 +1042,25 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
           )}
 
           {inquiry.invoiceNo && inquiry.invoiceSentAt && (
-            <div className="flex gap-2 mt-3">
-              <button onClick={() => setShowInvoice(true)} className="flex-1 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
-              {invoicePayment.currentPaymentType && <button onClick={onPayInvoice} className="flex-1 rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
-            </div>
+            <section className="mt-3 rounded-xl border border-emerald-200 bg-white p-4 flex flex-wrap items-center gap-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+              <div className="flex-1 min-w-[220px]">
+                <div className="font-dm" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.6, textTransform: "uppercase" }}>Sent Invoice</div>
+                <div className="font-dm mt-1" style={{ fontSize: 11, fontWeight: 800, color: status.fg, letterSpacing: 0.4 }}>{status.label}</div>
+                <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{inquiry.invoiceNo}</div>
+                <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{poNumberForDisplay(inquiry) ?? inquiry.code} · {inquiry.paymentTerms}</div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="font-syne mr-1" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{peso(invoicePayment.invoiceTotal)}</div>
+                <button onClick={() => setShowInvoice(true)} className="rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
+                {(status.id === "downpaymentVerified" || status.id === "fullPaymentVerified") && (
+                  <button onClick={onPayInvoice} className="rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>VIEW IN ACCOUNTING</button>
+                )}
+                {invoicePayment.currentPaymentType
+                  && status.id !== "downpaymentVerified"
+                  && status.id !== "fullPaymentVerified"
+                  && <button onClick={onPayInvoice} className="rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
+              </div>
+            </section>
           )}
 
           {inquiry.quotation && (
@@ -1406,14 +1410,10 @@ interface ActiveOrder {
 /* DERIVED: expose client milestones without internal production or accounting stages. */
 function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
   const downstreamOfJO = ["in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"];
-<<<<<<< HEAD
   const payment = paymentState(inq);
   const requiredPaymentVerified = payment.state === "FULLY_PAID"
     || (payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE");
   const poReference = poNumberForDisplay(inq);
-=======
-  const deliveryStatus = clientDeliveryStatus(inq);
->>>>>>> 9d269ff244ec52a85886f60fc34ffda0546dd285
   /* Keep client milestones in business order; drafts remain invisible until sentAt exists. */
   const STAGE_ORDER: { key: string; label: string; matches: (i: Inquiry) => "done" | "current" | "pending"; detailFn: (i: Inquiry) => string }[] = [
     { key: "inquiry",    label: "Inquiry Submitted",     matches: (i) => i.stage === "inquiry" ? "current" : "done",
@@ -1421,7 +1421,6 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
     { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
     { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
-<<<<<<< HEAD
       detailFn: (i) => hasPORecord(i) ? `${poNumberForDisplay(i) ?? "PO document"} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
     { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
       detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.paymentCycleStartedAt && i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
@@ -1440,17 +1439,6 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
       detailFn: () => "Waybill prepared · awaiting logistics" },
     { key: "delivered",  label: "Delivered",              matches: (i) => i.stage === "delivered" ? "current" : (["paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.deliveredDate ? `Delivered ${i.deliveredDate}` : "Signed DR confirms delivery" },
-=======
-      detailFn: (i) => hasPORecord(i) ? `${i.poNumber ?? i.poFileName} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
-    { key: "invoiced",   label: "Invoice Issued",          matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : "done",
-      detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? i.invoiceNo : "Awaiting invoice from Enter-Fil" },
-    { key: "delivery",   label: "Delivery",                matches: () => deliveryStatus === "DELIVERED" ? "done" : deliveryStatus === "IN TRANSIT" || Boolean(inq.joNumber) ? "current" : "pending",
-      detailFn: (i) => deliveryStatus === "DELIVERED"
-        ? `Delivered ${i.signedDeliveryReceiptReceivedAt ? new Date(i.signedDeliveryReceiptReceivedAt).toLocaleDateString() : ""}`.trim()
-        : deliveryStatus === "IN TRANSIT"
-          ? "Delivery Receipt and tracking shared"
-          : "PENDING DELIVERY" },
->>>>>>> 9d269ff244ec52a85886f60fc34ffda0546dd285
   ];
 
   return {
@@ -1500,7 +1488,6 @@ function StatusTab({ clientName }: { clientName: string }) {
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
   const myInquiries = byClient(clientName).filter((i) => !i.archived && i.stage !== "paid");
   const activeOrders = myInquiries.map((inquiry) => ({ inquiry, order: inquiryToActiveOrder(inquiry) }));
-<<<<<<< HEAD
   const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.id ?? null);
   const statusStages = {
     awaitingQuotation: "inquiry",
@@ -1509,15 +1496,6 @@ function StatusTab({ clientName }: { clientName: string }) {
     outForDelivery: "dispatched",
     delivered: "delivered",
   } as const;
-=======
-  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.po ?? null);
-  const statusBadgeLabels: Record<string, string> = {
-    po: "PO Submitted ✓",
-    pending: "PENDING DELIVERY",
-    transit: "IN TRANSIT",
-    delivered: "DELIVERED",
-  };
->>>>>>> 9d269ff244ec52a85886f60fc34ffda0546dd285
   const filteredOrders = activeOrders
     .filter(({ inquiry, order }) => {
       const query = searchOrders.trim().toLowerCase();
@@ -1564,20 +1542,12 @@ function StatusTab({ clientName }: { clientName: string }) {
           className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
           style={{ fontSize: 12, color: "#475569" }}
         >
-<<<<<<< HEAD
           <option value="all">All Statuses</option>
           <option value="awaitingQuotation">Awaiting Quotation</option>
           <option value="inProduction">In Production</option>
           <option value="readyForDispatch">Ready for Dispatch</option>
           <option value="outForDelivery">Out for Delivery</option>
           <option value="delivered">Delivered</option>
-=======
-          <option value="all">All Orders</option>
-          <option value="po">PO Submitted</option>
-          <option value="pending">PENDING DELIVERY</option>
-          <option value="transit">IN TRANSIT</option>
-          <option value="delivered">DELIVERED</option>
->>>>>>> 9d269ff244ec52a85886f60fc34ffda0546dd285
         </select>
       </div>
 

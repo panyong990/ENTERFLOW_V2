@@ -44,8 +44,8 @@ interface Props {
   onClose: () => void;
 }
 
-const D: React.CSSProperties = { fontFamily: "'DM Sans', sans-serif", fontSize: 11 };
-const MONO: React.CSSProperties = { fontFamily: "'JetBrains Mono', monospace", fontSize: 11 };
+const D: React.CSSProperties = { fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: 11 };
+const MONO: React.CSSProperties = { fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: 11 };
 const BORDER = "1px solid #0F172A";
 const BORDER2 = "2px solid #0F172A";
 
@@ -228,12 +228,12 @@ export function JOTemplateModal({ data, onClose }: Props) {
                       <div style={{ flex: 1, position: "relative", backgroundColor: "#F8FAFC", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, gap: 14, minHeight: 320 }}>
                         <div style={{ width: 60, height: 76, backgroundColor: "white", border: "2px solid #1A2B4A", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, position: "relative" }}>
                           <span style={{ fontSize: 22 }}>📄</span>
-                          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 8, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.5 }}>
+                          <span style={{ fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: 8, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.5 }}>
                             {data.sketch.match(/\.([a-z]+)$/i)?.[1].toUpperCase() ?? "FILE"}
                           </span>
                         </div>
                         <div style={{ textAlign: "center" }}>
-                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: "#1A2B4A", wordBreak: "break-all", maxWidth: 340 }}>
+                          <div style={{ fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: 12, fontWeight: 700, color: "#1A2B4A", wordBreak: "break-all", maxWidth: 340 }}>
                             {data.sketch}
                           </div>
                           <div style={{ ...D, fontSize: 11, color: "#64748B", marginTop: 6 }}>
@@ -243,7 +243,7 @@ export function JOTemplateModal({ data, onClose }: Props) {
                         <button
                           onClick={() => window.open("#", "_blank")}
                           style={{
-                            fontFamily: "'DM Sans', sans-serif",
+                            fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
                             fontSize: 12, fontWeight: 700,
                             padding: "8px 16px",
                             borderRadius: 6,
@@ -262,7 +262,7 @@ export function JOTemplateModal({ data, onClose }: Props) {
                     )}
                     <div style={{ padding: "8px 12px", borderTop: "1px solid #E2E8F0", backgroundColor: "#F8FAFC", display: "flex", alignItems: "center", gap: 8 }}>
                       <Paperclip size={12} style={{ color: "#1A2B4A" }} />
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600, color: "#2563EB", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: 11, fontWeight: 600, color: "#2563EB", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {data.sketch}
                       </span>
                       <span style={{ ...D, fontSize: 10, color: "#94A3B8" }}>Approved drawing</span>
@@ -340,7 +340,7 @@ export function JOTemplateModal({ data, onClose }: Props) {
                   <span style={{ fontSize: 20, color: "#C8102E", fontWeight: 900, lineHeight: 1 }}>▲</span>
                   <span
                     style={{
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
                       fontSize: 7,
                       fontWeight: 800,
                       color: "#C8102E",
@@ -352,7 +352,7 @@ export function JOTemplateModal({ data, onClose }: Props) {
                 </div>
                 <span
                   style={{
-                    fontFamily: "'DM Sans', sans-serif",
+                    fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
                     fontSize: 10,
                     fontWeight: 700,
                     color: "#0F172A",
@@ -409,7 +409,7 @@ export function JOTemplateModal({ data, onClose }: Props) {
           <div
             style={{
               marginTop: 8,
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
               fontSize: 10,
               color: "#94A3B8",
               textAlign: "center",

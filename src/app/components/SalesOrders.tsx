@@ -1537,7 +1537,7 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
                 value={joNumbers[pIdx] ?? ""}
                 onChange={(e) => setJoNumbers((prev) => prev.map((n, i) => i === pIdx ? e.target.value : n))}
                 className="form-input"
-                style={{ maxWidth: 200, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#1A2B4A" }}
+                style={{ maxWidth: 200, fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontWeight: 700, color: "#1A2B4A" }}
               />
             </div>
 
@@ -1906,9 +1906,9 @@ function ModalShell({ title, subtitle, onClose, children, size = "md" }: { title
         <div className="p-6 overflow-auto">{children}</div>
       </div>
       <style>{`
-        .form-input { font-family: 'DM Sans', sans-serif; font-size: 13px; padding: 10px 12px; border: 1px solid #E2E8F0; border-radius: 6px; outline: none; width: 100%; background: white; }
+        .form-input { font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; padding: 10px 12px; border: 1px solid #E2E8F0; border-radius: 6px; outline: none; width: 100%; background: white; }
         .form-input:focus { border-color: #94A3B8; }
-        .form-input-sm { font-family: 'DM Sans', sans-serif; font-size: 13px; padding: 8px 10px; border: 1px solid #E2E8F0; border-radius: 6px; outline: none; width: 100%; background: white; }
+        .form-input-sm { font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; padding: 8px 10px; border: 1px solid #E2E8F0; border-radius: 6px; outline: none; width: 100%; background: white; }
       `}</style>
     </div>
   );

@@ -6,10 +6,14 @@ import { ProductionFloor } from "./components/ProductionFloor";
 import { Inventory } from "./components/Inventory";
 import { WaybillScanner } from "./components/WaybillScanner";
 import { WaybillHistory } from "./components/WaybillHistory";
+<<<<<<< HEAD
 import { Logistics } from "./components/Logistics";
-import { Accounting } from "./components/Accounting";
 import { DeliveryReceipts } from "./components/DeliveryReceipts";
-import { UserManagementView } from "./components/UserManagementView";
+=======
+import { Logistics, LogisticsActiveJobs } from "./components/Logistics";
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
+import { Accounting } from "./components/Accounting";
+import { UserManagement } from "./components/UserManagement";
 import { Clients } from "./components/Clients";
 import { Settings } from "./components/Settings";
 import { NotificationsCenter } from "./components/NotificationsCenter";
@@ -32,7 +36,6 @@ const landingFor: Record<Role, string> = {
   production: "dashboard",
   warehouse: "inventory",
   logistics: "dashboard",
-  admin: "users",
   client: "client",
 };
 
@@ -77,9 +80,13 @@ function Shell() {
     active === "waybill" ? <WaybillScanner /> :
     active === "waybill-history" ? <WaybillHistory /> :
     active === "logistics" ? <Logistics /> :
+<<<<<<< HEAD
     active === "delivery-receipts" ? <DeliveryReceipts /> :
+=======
+    isLogisticsActiveJobs ? <LogisticsActiveJobs onBack={() => setActive("dashboard")} /> :
+>>>>>>> cdc01b4887d8ae2f2bb667bd0ffa6ecf14ca3fa1
     active === "accounting" ? <Accounting /> :
-    active === "users" ? <UserManagementView /> :
+    active === "users" ? <UserManagement currentRole={role} /> :
     active === "clients" ? <Clients /> :
     active === "notifications" ? <NotificationsCenter /> :
     active === "analytics" ? <AnalyticsFullView onBack={() => setActive("dashboard")} /> :

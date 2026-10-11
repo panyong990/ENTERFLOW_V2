@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 /* ─────────── Types ─────────── */
 
@@ -49,20 +49,20 @@ export interface RawMaterial {
 }
 
 export interface RawMaterialStockStatus {
+  key: "out-of-stock" | "low-stock" | "in-stock";
   label: string;
   bg: string;
   fg: string;
 }
 
 export function getRawMaterialStockStatus(material: RawMaterial): RawMaterialStockStatus {
-  if (material.qtyInStock <= 0) return { label: "🔴 OUT OF STOCK", bg: "#FEE2E2", fg: "#991B1B" };
-  if (material.qtyInStock < material.threshold) {
-    const isCritical = material.category === "bonding_adhesive" || material.category === "packaging";
-    return isCritical
-      ? { label: "🔴 CRITICAL", bg: "#FEE2E2", fg: "#991B1B" }
-      : { label: "🟡 LOW", bg: "#FEF3C7", fg: "#B45309" };
+  if (material.qtyInStock <= 0) {
+    return { key: "out-of-stock", label: "🔴 Out of Stock", bg: "#FEE2E2", fg: "#991B1B" };
   }
-  return { label: "🟢 OK", bg: "#DCFCE7", fg: "#15803D" };
+  if (material.qtyInStock <= material.threshold) {
+    return { key: "low-stock", label: "🟠 Low Stock", bg: "#FFEDD5", fg: "#C2410C" };
+  }
+  return { key: "in-stock", label: "🟢 In Stock", bg: "#DCFCE7", fg: "#15803D" };
 }
 
 export interface FinishedGood {
@@ -341,6 +341,45 @@ const seedMaterials: RawMaterial[] = [
   MAT("OFF-CR-139",    "COLLECTION RECEIPT",  "packaging", "pcs", 190, 28, 8),
 ];
 
+const RAW_MATERIALS_STORAGE_KEY = "enterflow.raw-materials.v1";
+const rawMaterialUnits: readonly string[] = ["roll", "plate", "sheet", "kg", "gal", "pcs", "set", "m"];
+
+function isRawMaterial(value: unknown): value is RawMaterial {
+  if (!value || typeof value !== "object") return false;
+  const material = value as Record<string, unknown>;
+  return typeof material.id === "string"
+    && typeof material.name === "string"
+    && typeof material.category === "string"
+    && Object.prototype.hasOwnProperty.call(partCategoryMeta, material.category)
+    && typeof material.unit === "string"
+    && rawMaterialUnits.includes(material.unit)
+    && typeof material.unitPrice === "number"
+    && Number.isFinite(material.unitPrice)
+    && typeof material.qtyInStock === "number"
+    && Number.isFinite(material.qtyInStock)
+    && typeof material.threshold === "number"
+    && Number.isFinite(material.threshold)
+    && (material.supplier === undefined || typeof material.supplier === "string")
+    && Array.isArray(material.history);
+}
+
+function loadPersistedRawMaterials(): RawMaterial[] {
+  if (typeof window === "undefined") return seedMaterials;
+  try {
+    const stored = window.localStorage.getItem(RAW_MATERIALS_STORAGE_KEY);
+    if (!stored) return seedMaterials;
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed) || !parsed.every(isRawMaterial)) {
+      console.error("[EnterFlow] Persisted raw material inventory is invalid; using the default inventory.");
+      return seedMaterials;
+    }
+    return parsed;
+  } catch (error) {
+    console.error("[EnterFlow] Could not load raw material inventory from localStorage.", error);
+    return seedMaterials;
+  }
+}
+
 /* Pre-saved BOM templates — material IDs match the new seedMaterials list. */
 const seedTemplates: BOMTemplate[] = [
   {
@@ -452,11 +491,20 @@ interface Ctx {
 const MaterialsContext = createContext<Ctx | null>(null);
 
 export function MaterialsProvider({ children }: { children: ReactNode }) {
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(seedMaterials);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(loadPersistedRawMaterials);
   const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(seedFinishedGoods);
   const rawMaterialsRef = useRef(rawMaterials);
   const generatedJOsDeducted = useRef(new Set<string>());
   const [templates, setTemplates] = useState<BOMTemplate[]>(seedTemplates);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(RAW_MATERIALS_STORAGE_KEY, JSON.stringify(rawMaterials));
+    } catch (error) {
+      console.error("[EnterFlow] Could not persist raw material inventory to localStorage.", error);
+    }
+  }, [rawMaterials]);
 
   const commitRawMaterials = (update: (current: RawMaterial[]) => RawMaterial[]) => {
     const next = update(rawMaterialsRef.current);

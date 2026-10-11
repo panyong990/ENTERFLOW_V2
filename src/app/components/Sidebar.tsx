@@ -18,7 +18,7 @@ const navItems = [
 
 export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   /* Owner sees ONLY high-level: dashboard (all analytics + drill-down), client management, user management */
-  owner:      ["dashboard", "analytics", "clients", "users", "notifications", "settings"],
+  owner:      ["analytics", "clients", "users", "notifications", "settings"],
   /* Operations Manager: full operational access — analytics and user management are owner-only */
   operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "accounting", "clients", "notifications", "settings"],
   sales:      ["dashboard", "sales", "clients", "notifications"],

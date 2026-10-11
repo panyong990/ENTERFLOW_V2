@@ -21,11 +21,9 @@ import {
 type ViewKey = "all" | "revenue" | "sales" | "production" | "inventory" | "logistics" | "payments" | "reports";
 type ReportKey = "executive" | "sales" | "production" | "delivery" | "financial";
 type ReportMonth = `${number}-${string}`;
-type ComparisonMode = "none" | "previous-year";
 type StockStatus = "critical" | "low" | "ok";
 
 interface Props {
-  onBack: () => void;
   initialView?: ViewKey;
 }
 
@@ -41,8 +39,6 @@ interface MonthSummary {
   invoiced: number | null;
   collected: number | null;
   orders: number | null;
-  previousYearInvoiced: number | null;
-  previousYearCollected: number | null;
 }
 
 const palette = {
@@ -131,11 +127,6 @@ function monthEnd(key: string, throughDay?: number): Date {
   const finalDay = new Date(year, month, 0).getDate();
   const day = throughDay ? Math.min(throughDay, finalDay) : finalDay;
   return new Date(year, month - 1, day, 23, 59, 59, 999);
-}
-
-function previousYearPeriod(key: string): ReportMonth {
-  const [year, month] = key.split("-").map(Number);
-  return monthKeyFor(year - 1, month);
 }
 
 function historicalPeriods(orders: Inquiry[]): Set<string> {
@@ -256,36 +247,10 @@ function previousMonths(month: string, count: number): { key: string; label: str
   const [year, monthNumber] = month.split("-").map(Number);
   if (!year || !monthNumber) return [];
   return Array.from({ length: count }, (_, index) => {
-    const date = new Date(year, monthNumber - count + index, 1);
+    const date = new Date(year, monthNumber - count + index + 1, 1);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     return { key, label: monthLabel(key) };
   });
-}
-
-type ComparisonValueFormat = "money" | "count" | "percent";
-
-function comparisonDetail(current: number, previous: number, previousPeriod: string, format: ComparisonValueFormat = "money"): string {
-  const difference = current - previous;
-  const amount = format === "money"
-    ? compactMoney(Math.abs(difference))
-    : format === "percent"
-      ? `${Math.round(Math.abs(difference))} pp`
-      : String(Math.abs(difference));
-  const change = difference === 0 ? "No change" : `${difference > 0 ? "+" : "−"}${amount}`;
-  return `vs ${periodDisplay(previousPeriod)} · ${change}`;
-}
-
-function comparisonText(
-  enabled: boolean,
-  available: boolean,
-  periodAvailable: boolean,
-  current: number,
-  previous: number,
-  previousPeriod: string,
-  format: ComparisonValueFormat = "money",
-): string | undefined {
-  if (!enabled || !available || !periodAvailable) return undefined;
-  return comparisonDetail(current, previous, previousPeriod, format);
 }
 
 function csvCell(value: string | number): string {
@@ -309,11 +274,9 @@ function downloadCsv(filename: string, rows: (string | number)[][]): void {
 export function AnalyticsFullView({ initialView = "all" }: Props) {
   const [view, setView] = useState<ViewKey>(initialView);
   const [reportMonth, setReportMonth] = useState<ReportMonth>(localMonth);
-  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("none");
   const [periodOpen, setPeriodOpen] = useState(false);
   const [draftMonth, setDraftMonth] = useState(Number(localMonth().slice(5)));
   const [draftYear, setDraftYear] = useState(Number(localMonth().slice(0, 4)));
-  const [draftComparison, setDraftComparison] = useState<ComparisonMode>("none");
   const { rawMaterials } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
 
@@ -328,44 +291,29 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
     () => Array.from(new Set(Array.from(availablePeriods, (period) => Number(period.slice(0, 4))))).sort((a, b) => b - a),
     [availablePeriods],
   );
-  const comparisonMonth = previousYearPeriod(reportMonth);
   const reportYear = Number(reportMonth.slice(0, 4));
   const isCurrentMonth = reportMonth === localMonth();
   const periodEnd = useMemo(
     () => monthEnd(reportMonth, isCurrentMonth ? new Date().getDate() : undefined),
     [reportMonth, isCurrentMonth],
   );
-  const comparisonEnd = useMemo(
-    () => monthEnd(comparisonMonth, isCurrentMonth ? new Date().getDate() : undefined),
-    [comparisonMonth, isCurrentMonth],
-  );
   const periodAvailable = useMemo(
     () => hasPeriodRecords(allOrders, reportMonth, periodEnd),
     [allOrders, reportMonth, periodEnd],
   );
-  const comparisonAvailable = useMemo(
-    () => hasPeriodRecords(allOrders, comparisonMonth, comparisonEnd),
-    [allOrders, comparisonMonth, comparisonEnd],
-  );
-  const comparisonEnabled = comparisonMode === "previous-year";
 
   const updatePeriodPopover = (open: boolean) => {
     if (open) {
       const [year, month] = reportMonth.split("-").map(Number);
       setDraftYear(year);
       setDraftMonth(month);
-      setDraftComparison(comparisonMode);
     }
     setPeriodOpen(open);
   };
   const applyPeriodSelection = () => {
     setReportMonth(monthKeyFor(draftYear, draftMonth));
-    setComparisonMode(draftComparison);
     setPeriodOpen(false);
   };
-  const draftComparisonMonth = previousYearPeriod(monthKeyFor(draftYear, draftMonth));
-  const draftComparisonEnd = monthEnd(draftComparisonMonth, monthKeyFor(draftYear, draftMonth) === localMonth() ? new Date().getDate() : undefined);
-  const draftComparisonAvailable = hasPeriodRecords(allOrders, draftComparisonMonth, draftComparisonEnd);
   const periodOrders = useMemo(
     () => allOrders.filter((inquiry) => inPeriodThrough(inquiry.submittedDate, reportMonth, periodEnd)),
     [allOrders, reportMonth, periodEnd],
@@ -385,10 +333,8 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
     Boolean(inquiry.invoiceNo) && isInYear(invoiceDate(inquiry), reportYear)
     && (parseDate(invoiceDate(inquiry))?.getTime() ?? Infinity) <= periodEnd.getTime(),
   );
-  const comparisonInvoices = jobOrders.filter((inquiry) => Boolean(inquiry.invoiceNo) && inPeriodThrough(invoiceDate(inquiry), comparisonMonth, comparisonEnd));
   const periodRevenue = periodInvoices.reduce((sum, inquiry) => sum + orderValue(inquiry), 0);
   const yearRevenue = yearInvoices.reduce((sum, inquiry) => sum + orderValue(inquiry), 0);
-  const comparisonRevenue = comparisonInvoices.reduce((sum, inquiry) => sum + orderValue(inquiry), 0);
   const periodPayments = jobOrders.flatMap((inquiry) =>
     paymentRecords(inquiry)
       .filter((payment) => payment.verificationStatus === "verified" && inPeriodThrough(payment.paymentDate, reportMonth, periodEnd))
@@ -399,38 +345,27 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
       })),
   );
   const periodCollections = periodPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const comparisonCollections = jobOrders.reduce((total, inquiry) => total + paymentRecords(inquiry)
-    .filter((payment) => payment.verificationStatus === "verified" && inPeriodThrough(payment.paymentDate, comparisonMonth, comparisonEnd))
-    .reduce((sum, payment) => sum + (payment.verifiedAmount ?? payment.submittedAmount), 0), 0);
-  const comparisonOrders = allOrders.filter((inquiry) => inPeriodThrough(inquiry.submittedDate, comparisonMonth, comparisonEnd));
   const periodOpenOrders = periodOrders.filter((inquiry) => inquiry.stage !== "paid").length;
-  const comparisonOpenOrders = comparisonOrders.filter((inquiry) => inquiry.stage !== "paid").length;
   const collectionRate = periodRevenue > 0 ? Math.min(100, (periodCollections / periodRevenue) * 100) : null;
-  const comparisonCollectionRate = comparisonRevenue > 0
-    ? Math.min(100, (comparisonCollections / comparisonRevenue) * 100)
-    : null;
   const yearAvailable = Array.from(availablePeriods).some((period) => period.startsWith(`${reportYear}-`));
 
   const receivables = useMemo(() => receivablesAt(jobOrders, periodEnd), [jobOrders, periodEnd]);
-  const comparisonReceivables = useMemo(
-    () => comparisonAvailable ? receivablesAt(jobOrders, comparisonEnd) : [],
-    [jobOrders, comparisonAvailable, comparisonEnd],
-  );
+  const currentReceivables = useMemo(() => receivablesAt(jobOrders, new Date()), [jobOrders]);
   const outstandingReceivables = receivables.reduce((sum, item) => sum + item.balance, 0);
   const overdueReceivables = receivables
     .filter(({ dueDate }) => dueDate !== null && dueDate <= periodEnd)
     .reduce((sum, item) => sum + item.balance, 0);
-  const comparisonOutstandingReceivables = comparisonReceivables.reduce((sum, item) => sum + item.balance, 0);
-  const comparisonOverdueReceivables = comparisonReceivables
-    .filter(({ dueDate }) => dueDate !== null && dueDate <= comparisonEnd)
+  const currentOutstandingReceivables = currentReceivables.reduce((sum, item) => sum + item.balance, 0);
+  const currentOverdueReceivables = currentReceivables
+    .filter(({ dueDate }) => dueDate !== null && dueDate <= new Date())
     .reduce((sum, item) => sum + item.balance, 0);
 
   const activeOrders = periodOpenOrders;
+  const currentActiveOrders = allOrders.filter((inquiry) => !terminalStages.has(inquiry.stage));
   const activeProduction = jobOrders.filter((inquiry) => activeProductionStages.has(inquiry.stage));
   const productionComplete = jobOrders.filter(isCompletedJo).length;
   const completedJOPercent = jobOrders.length ? (productionComplete / jobOrders.length) * 100 : null;
   const periodCompletedJOs = jobOrders.filter((inquiry) => inPeriodThrough(inquiry.joCompletedAt, reportMonth, periodEnd)).length;
-  const comparisonCompletedJOs = jobOrders.filter((inquiry) => inPeriodThrough(inquiry.joCompletedAt, comparisonMonth, comparisonEnd)).length;
   const delayedOrders = jobOrders.filter((inquiry) => {
     if (!inquiry.dueDate || terminalStages.has(inquiry.stage)) return false;
     const dueDate = parseDate(inquiry.dueDate);
@@ -438,14 +373,12 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
   });
   const readyForDispatch = jobOrders.filter((inquiry) => inquiry.stage === "ready_for_dispatch").length;
   const inTransit = jobOrders.filter((inquiry) => inquiry.stage === "dispatched").length;
+  const deliveryInProgress = readyForDispatch + inTransit;
   const allDeliveredOrders = jobOrders.filter((inquiry) =>
     ["delivered", "paid", "overdue"].includes(inquiry.stage),
   );
   const deliveredOrders = allDeliveredOrders.filter((inquiry) =>
     ["delivered", "paid", "overdue"].includes(inquiry.stage) && inPeriodThrough(inquiry.deliveredDate, reportMonth, periodEnd),
-  );
-  const comparisonDeliveredOrders = jobOrders.filter((inquiry) =>
-    ["delivered", "paid", "overdue"].includes(inquiry.stage) && inPeriodThrough(inquiry.deliveredDate, comparisonMonth, comparisonEnd),
   );
   const onTimeDeliveries = deliveredOrders.filter((inquiry) => {
     const due = parseDate(inquiry.dueDate);
@@ -454,23 +387,10 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
   }).length;
   const deliveriesWithDates = deliveredOrders.filter((inquiry) => parseDate(inquiry.dueDate) && parseDate(inquiry.deliveredDate)).length;
   const onTimeRate = deliveriesWithDates ? (onTimeDeliveries / deliveriesWithDates) * 100 : null;
-  const comparisonOnTimeDeliveries = comparisonDeliveredOrders.filter((inquiry) => {
-    const due = parseDate(inquiry.dueDate);
-    const delivered = parseDate(inquiry.deliveredDate);
-    return Boolean(due && delivered && delivered.getTime() <= due.getTime());
-  }).length;
-  const comparisonDeliveriesWithDates = comparisonDeliveredOrders.filter((inquiry) => parseDate(inquiry.dueDate) && parseDate(inquiry.deliveredDate)).length;
-  const comparisonOnTimeRate = comparisonDeliveriesWithDates
-    ? (comparisonOnTimeDeliveries / comparisonDeliveriesWithDates) * 100
-    : null;
-
   const monthlySummary = useMemo<MonthSummary[]>(() => previousMonths(reportMonth, 6).map(({ key, label }) => {
-    const comparisonKey = previousYearPeriod(key);
     const throughDay = key === localMonth() ? new Date().getDate() : undefined;
     const monthEndDate = monthEnd(key, throughDay);
-    const previousYearEndDate = monthEnd(comparisonKey, throughDay);
     const hasData = hasPeriodRecords(allOrders, key, monthEndDate);
-    const hasComparisonData = hasPeriodRecords(allOrders, comparisonKey, previousYearEndDate);
     const invoices = jobOrders.filter((inquiry) => Boolean(inquiry.invoiceNo) && inPeriodThrough(invoiceDate(inquiry), key, monthEndDate));
     return {
       key,
@@ -480,15 +400,6 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
         .filter((payment) => payment.verificationStatus === "verified" && inPeriodThrough(payment.paymentDate, key, monthEndDate))
         .reduce((sum, payment) => sum + (payment.verifiedAmount ?? payment.submittedAmount), 0), 0) : null,
       orders: hasData ? allOrders.filter((inquiry) => inPeriodThrough(inquiry.submittedDate, key, monthEndDate)).length : null,
-      previousYearInvoiced: hasComparisonData
-        ? jobOrders.filter((inquiry) => Boolean(inquiry.invoiceNo) && inPeriodThrough(invoiceDate(inquiry), comparisonKey, previousYearEndDate))
-          .reduce((sum, inquiry) => sum + orderValue(inquiry), 0)
-        : null,
-      previousYearCollected: hasComparisonData
-        ? jobOrders.reduce((total, inquiry) => total + paymentRecords(inquiry)
-          .filter((payment) => payment.verificationStatus === "verified" && inPeriodThrough(payment.paymentDate, comparisonKey, previousYearEndDate))
-          .reduce((sum, payment) => sum + (payment.verifiedAmount ?? payment.submittedAmount), 0), 0)
-        : null,
     };
   }), [reportMonth, jobOrders, allOrders]);
 
@@ -575,43 +486,9 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
       .filter((category) => category.items > 0);
   }, [inventoryRows]);
 
-  const executiveAlerts = useMemo(() => {
-    const alerts: { severity: "critical" | "warning" | "info"; title: string; detail: string }[] = [];
-    const overdueReceivableCount = receivables.filter(({ dueDate }) => dueDate !== null && dueDate <= periodEnd).length;
-    if (overdueReceivables > 0) alerts.push({
-      severity: "critical",
-      title: `${formatMoney(overdueReceivables)} in overdue receivables`,
-      detail: `${overdueReceivableCount} outstanding invoice${overdueReceivableCount === 1 ? "" : "s"} past due as of ${periodDisplay(reportMonth)}.`,
-    });
-    if (delayedOrders.length > 0) alerts.push({
-      severity: "critical",
-      title: `${delayedOrders.length} job order${delayedOrders.length === 1 ? "" : "s"} past due`,
-      detail: delayedOrders.slice(0, 3).map((inquiry) => inquiry.joNumber).filter(Boolean).join(", "),
-    });
-    if (criticalInventory.length > 0) alerts.push({
-      severity: "critical",
-      title: `${criticalInventory.length} critical stock item${criticalInventory.length === 1 ? "" : "s"}`,
-      detail: criticalInventory.slice(0, 3).map(({ material }) => material.name).join(", "),
-    });
-    if (lowInventory.length > 0) alerts.push({
-      severity: "warning",
-      title: `${lowInventory.length} inventory item${lowInventory.length === 1 ? "" : "s"} at low stock`,
-      detail: "Stock is at or below its reorder threshold.",
-    });
-    if (readyForDispatch > 0) alerts.push({
-      severity: "info",
-      title: `${readyForDispatch} job order${readyForDispatch === 1 ? "" : "s"} ready for dispatch`,
-      detail: "Warehouse handoff is available for these completed JOs.",
-    });
-    return alerts.sort((a, b) => {
-      const rank = { critical: 0, warning: 1, info: 2 };
-      return rank[a.severity] - rank[b.severity];
-    });
-  }, [overdueReceivables, receivables, periodEnd, reportMonth, delayedOrders, criticalInventory, lowInventory, readyForDispatch]);
-
-  const companyHealth = criticalInventory.length || overdueReceivables > 0 || delayedOrders.length
+  const companyHealth = criticalInventory.length || currentOverdueReceivables > 0 || delayedOrders.length
     ? { label: "Needs attention", color: "#B91C1C", background: "#FEF2F2" }
-    : lowInventory.length || readyForDispatch
+    : lowInventory.length
       ? { label: "Monitor closely", color: "#B45309", background: "#FFFBEB" }
       : { label: "On track", color: "#15803D", background: "#F0FDF4" };
 
@@ -684,33 +561,19 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
   const periodAverageOrderValue = periodOrders.length
     ? periodOrders.reduce((sum, order) => sum + orderValue(order), 0) / periodOrders.length
     : 0;
-  const comparisonAverageOrderValue = comparisonOrders.length
-    ? comparisonOrders.reduce((sum, order) => sum + orderValue(order), 0) / comparisonOrders.length
-    : 0;
-  const comparisonTextFor = (current: number, previous: number, format: ComparisonValueFormat = "money") =>
-    comparisonText(comparisonEnabled, comparisonAvailable, periodAvailable, current, previous, comparisonMonth, format);
-
   return (
     <div className="ceo-analytics flex-1 h-full min-w-0 overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
 
       <header className="border-b border-slate-200/70 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-extrabold text-white" style={{ backgroundColor: palette.red }}>
-              EF
-            </div>
+          <div className="flex min-w-0 items-center">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-syne truncate" style={{ fontSize: 24, fontWeight: 700, color: palette.text, lineHeight: 1.2 }}>
-                  CEO Analytics
-                </h1>
-                <span className="rounded-full px-2.5 py-1 font-dm" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.3, backgroundColor: "#EFF6FF", color: palette.navy }}>
-                  EXECUTIVE VIEW
-                </span>
-              </div>
+              <h1 className="font-syne truncate" style={{ fontSize: 24, fontWeight: 700, color: palette.text, lineHeight: 1.2 }}>
+                CEO Analytics
+              </h1>
               <p className="font-dm mt-1 truncate" style={{ fontSize: 12, color: palette.muted }}>
-                Company performance and operational health at a glance
+                Executive-level company performance and operational health
               </p>
             </div>
           </div>
@@ -729,13 +592,6 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
                   {periodDisplay(reportMonth)}
                   <ChevronDown size={15} aria-hidden="true" />
                 </span>
-                {comparisonEnabled && (
-                  <span className="mt-1 font-dm" style={{ fontSize: 10, color: comparisonAvailable ? palette.muted : "#B45309" }}>
-                    {comparisonAvailable
-                      ? `${periodDisplay(reportMonth)} vs ${periodDisplay(comparisonMonth)}`
-                      : `Comparison data unavailable · ${periodDisplay(comparisonMonth)}`}
-                  </span>
-                )}
               </button>
             </PopoverTrigger>
             <PopoverContent aria-labelledby="reporting-period-title" align="end" sideOffset={6} className="w-[min(22rem,calc(100vw-2rem))] p-4">
@@ -775,23 +631,6 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
                   </Select>
                 </label>
               </div>
-              <label className="mt-3 block">
-                <span className="mb-1 block font-dm" style={{ fontSize: 11, fontWeight: 600, color: palette.muted }}>Compare</span>
-                <Select value={draftComparison} onValueChange={(value: ComparisonMode) => setDraftComparison(value)}>
-                  <SelectTrigger aria-label="Comparison period" className="h-9 bg-white font-dm text-xs focus-visible:ring-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No comparison</SelectItem>
-                    <SelectItem value="previous-year">Previous Year</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-              {draftComparison === "previous-year" && !draftComparisonAvailable && (
-                <p role="status" className="mt-2 font-dm" style={{ fontSize: 11, color: "#B45309" }}>
-                  No records are available for {periodDisplay(draftComparisonMonth)}.
-                </p>
-              )}
               <div className="mt-4 flex justify-end gap-2">
                 <button
                   type="button"
@@ -852,55 +691,50 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
         aria-labelledby={`analytics-tab-${view}`}
         className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 p-4 sm:p-5 xl:p-6"
       >
-        {(!periodAvailable || (comparisonEnabled && !comparisonAvailable)) && (
+        {!periodAvailable && (
           <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 font-dm" style={{ fontSize: 12, color: "#92400E" }}>
-            {!periodAvailable && `No transaction records are available for ${periodDisplay(reportMonth)}. `}
-            {comparisonEnabled && !comparisonAvailable && `Comparison data is unavailable for ${periodDisplay(comparisonMonth)}. `}
-            Current workflow and inventory indicators reflect the latest available system status.
+            No transaction records are available for {periodDisplay(reportMonth)}. Current workflow and inventory indicators reflect the latest available system status.
           </div>
         )}
         {view === "all" && (
           <>
             <section aria-labelledby="company-health-heading">
               <SectionHeading
-                eyebrow={`REPORTING PERIOD · ${periodDisplay(reportMonth).toUpperCase()}${comparisonEnabled && comparisonAvailable ? ` VS ${periodDisplay(comparisonMonth).toUpperCase()}` : ""}`}
+                eyebrow={`CURRENT BUSINESS STATUS · ${periodDisplay(reportMonth).toUpperCase()}`}
                 title="Company Health"
-                description="A concise view of revenue, orders, production, and cash collection."
-                action={<HealthBadge label={companyHealth.label} color={companyHealth.color} background={companyHealth.background} />}
+                description="Executive overview of current company performance and operational health."
                 id="company-health-heading"
               />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <MetricCard
-                  label="Invoiced Revenue"
-                  value={periodAvailable ? compactMoney(periodRevenue) : "—"}
-                  detail={periodDisplay(reportMonth)}
-                  comparison={comparisonTextFor(periodRevenue, comparisonRevenue)}
-                  icon={DollarSign}
-                  color={palette.green}
+                  label="Business Status"
+                  value={companyHealth.label}
+                  detail="Current operating health"
+                  icon={companyHealth.label === "On track" ? CheckCircle2 : AlertTriangle}
+                  color={companyHealth.color}
                 />
                 <MetricCard
-                  label="Open Orders"
-                  value={periodAvailable ? activeOrders : "—"}
-                  detail={periodAvailable ? `${periodOrders.length} submitted in period` : "No transaction records"}
-                  comparison={comparisonTextFor(activeOrders, comparisonOpenOrders, "count")}
+                  label="Active Orders"
+                  value={currentActiveOrders.length}
+                  detail="Current non-terminal orders"
                   icon={ShoppingCart}
                   color={palette.red}
                 />
-                <MetricCard label="Jobs in Production" value={activeProduction.length} detail={`Live status · ${productionComplete} completed JOs`} icon={Factory} color={palette.navy} />
+                <MetricCard label="Orders in Production" value={activeProduction.length} detail="Current production status" icon={Factory} color={palette.navy} />
+                <MetricCard label="Deliveries in Progress" value={deliveryInProgress} detail={`${readyForDispatch} ready · ${inTransit} in transit`} icon={Truck} color={palette.blue} />
                 <MetricCard
                   label="Outstanding Receivables"
-                  value={compactMoney(outstandingReceivables)}
-                  detail={`At ${periodDisplay(reportMonth)} month-end · ${compactMoney(overdueReceivables)} overdue`}
-                  comparison={comparisonTextFor(outstandingReceivables, comparisonOutstandingReceivables)}
+                  value={compactMoney(currentOutstandingReceivables)}
+                  detail={`Current balance · ${compactMoney(currentOverdueReceivables)} overdue`}
                   icon={Calculator}
-                  color={overdueReceivables ? palette.amber : palette.blue}
+                  color={currentOverdueReceivables ? palette.amber : palette.blue}
                 />
               </div>
             </section>
 
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
               <Panel className="xl:col-span-3" title="Revenue & Collections" description="Invoiced value and verified payments by month.">
-                <RevenueChart data={monthlySummary} comparePreviousYear={comparisonEnabled} />
+                <RevenueChart data={monthlySummary} />
               </Panel>
               <Panel className="xl:col-span-2" title="Executive Snapshot" description={`Key indicators · ${periodDisplay(reportMonth)}`}>
                 <div className="divide-y divide-slate-100">
@@ -951,35 +785,27 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
               </Panel>
             </div>
 
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <Panel title="Payments & Collections" description={`Verified receipts and receivables as of ${periodDisplay(reportMonth)} month-end.`}>
-                <PaymentsSummary
-                  collected={periodCollections}
-                  outstanding={outstandingReceivables}
-                  overdue={overdueReceivables}
-                  rate={collectionRate}
-                />
-              </Panel>
-              <AlertsPanel alerts={executiveAlerts} />
-            </div>
-
-            <ReportsPanel onExport={exportReport} />
+            <Panel title="Payments & Collections" description={`Verified receipts and receivables as of ${periodDisplay(reportMonth)} month-end.`}>
+              <PaymentsSummary
+                collected={periodCollections}
+                outstanding={outstandingReceivables}
+                overdue={overdueReceivables}
+                rate={collectionRate}
+              />
+            </Panel>
           </>
         )}
 
         {view === "revenue" && (
           <>
-            <SectionHeading title="Revenue" description={`Invoice-backed revenue, verified collections, and client contribution · ${periodDisplay(reportMonth)}${comparisonEnabled && comparisonAvailable ? ` vs ${periodDisplay(comparisonMonth)}` : ""}.`} />
+            <SectionHeading title="Revenue" description={`Invoice-backed revenue, verified collections, and client contribution · ${periodDisplay(reportMonth)}.`} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Revenue this period" value={periodAvailable ? compactMoney(periodRevenue) : "—"} detail={`${periodInvoices.length} invoices · ${periodDisplay(reportMonth)}`} comparison={comparisonTextFor(periodRevenue, comparisonRevenue)} icon={DollarSign} color={palette.green} />
+              <MetricCard label="Revenue this period" value={periodAvailable ? compactMoney(periodRevenue) : "—"} detail={`${periodInvoices.length} invoices · ${periodDisplay(reportMonth)}`} icon={DollarSign} color={palette.green} />
               <MetricCard label="Revenue year to date" value={yearAvailable ? compactMoney(yearRevenue) : "—"} detail={`${reportYear} invoiced revenue`} icon={TrendingUp} color={palette.navy} />
               <MetricCard
                 label="Average invoice"
                 value={periodInvoices.length ? compactMoney(periodRevenue / periodInvoices.length) : "—"}
                 detail="Selected reporting period"
-                comparison={periodInvoices.length && comparisonInvoices.length
-                  ? comparisonTextFor(periodRevenue / periodInvoices.length, comparisonRevenue / comparisonInvoices.length)
-                  : undefined}
                 icon={Calculator}
                 color={palette.blue}
               />
@@ -987,7 +813,7 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
             </div>
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
               <Panel className="xl:col-span-3" title="Revenue Trend" description="Actual invoice totals and verified collections.">
-                <RevenueChart data={monthlySummary} comparePreviousYear={comparisonEnabled} />
+                <RevenueChart data={monthlySummary} />
               </Panel>
               <Panel className="xl:col-span-2 xl:self-start" title="Revenue by Client" description={`Selected reporting period · ${periodDisplay(reportMonth)}`}>
                 <ClientRevenueList rows={clientRevenue} emptyMessage={periodAvailable ? undefined : `No records are available for ${periodDisplay(reportMonth)}.`} />
@@ -1000,9 +826,9 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
           <>
             <SectionHeading title="Sales Monitoring" description="Order pipeline and client activity · no operational controls." />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <MetricCard label="Orders submitted" value={periodAvailable ? periodOrders.length : "—"} detail={periodDisplay(reportMonth)} comparison={comparisonTextFor(periodOrders.length, comparisonOrders.length, "count")} icon={ShoppingCart} color={palette.red} />
-              <MetricCard label="Open orders" value={periodAvailable ? activeOrders : "—"} detail="Submitted in period · excluding paid" comparison={comparisonTextFor(activeOrders, comparisonOpenOrders, "count")} icon={TrendingUp} color={palette.blue} />
-              <MetricCard label="Average order value" value={periodOrders.length ? compactMoney(periodAverageOrderValue) : "—"} detail="Based on current order values" comparison={periodOrders.length && comparisonOrders.length ? comparisonTextFor(periodAverageOrderValue, comparisonAverageOrderValue) : undefined} icon={Calculator} color={palette.navy} />
+              <MetricCard label="Orders submitted" value={periodAvailable ? periodOrders.length : "—"} detail={periodDisplay(reportMonth)} icon={ShoppingCart} color={palette.red} />
+              <MetricCard label="Open orders" value={periodAvailable ? activeOrders : "—"} detail="Submitted in period · excluding paid" icon={TrendingUp} color={palette.blue} />
+              <MetricCard label="Average order value" value={periodOrders.length ? compactMoney(periodAverageOrderValue) : "—"} detail="Based on current order values" icon={Calculator} color={palette.navy} />
             </div>
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
               <PipelinePanel data={stagePipeline} />
@@ -1066,8 +892,8 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="Ready for dispatch" value={readyForDispatch} detail="Current status · live" icon={Package} color={palette.amber} />
               <MetricCard label="In transit" value={inTransit} detail="Current status · live" icon={Truck} color={palette.blue} />
-              <MetricCard label="Delivered this period" value={periodAvailable ? deliveredOrders.length : "—"} detail={`${deliveriesWithDates} deliveries with due and delivery dates`} comparison={comparisonTextFor(deliveredOrders.length, comparisonDeliveredOrders.length, "count")} icon={CheckCircle2} color={palette.green} />
-              <MetricCard label="On-time delivery" value={formatPercent(onTimeRate)} detail={`${deliveriesWithDates} deliveries · ${periodDisplay(reportMonth)}`} comparison={onTimeRate !== null && comparisonOnTimeRate !== null ? comparisonTextFor(onTimeRate, comparisonOnTimeRate, "percent") : undefined} icon={Clock3} color={palette.navy} />
+              <MetricCard label="Delivered this period" value={periodAvailable ? deliveredOrders.length : "—"} detail={`${deliveriesWithDates} deliveries with due and delivery dates`} icon={CheckCircle2} color={palette.green} />
+              <MetricCard label="On-time delivery" value={formatPercent(onTimeRate)} detail={`${deliveriesWithDates} deliveries · ${periodDisplay(reportMonth)}`} icon={Clock3} color={palette.navy} />
             </div>
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
               <Panel title="Delivery Status" description="Current distribution across Job Order delivery stages.">
@@ -1090,14 +916,14 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
           <>
             <SectionHeading title="Payments & Collections" description={`Verified collections, open balances, and receivables at ${periodDisplay(reportMonth)} month-end.`} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Collected this period" value={periodAvailable ? compactMoney(periodCollections) : "—"} detail={`Verified receipts · ${periodDisplay(reportMonth)}`} comparison={comparisonTextFor(periodCollections, comparisonCollections)} icon={Calculator} color={palette.green} />
-              <MetricCard label="Outstanding" value={compactMoney(outstandingReceivables)} detail={`Balance at ${periodDisplay(reportMonth)} month-end`} comparison={comparisonTextFor(outstandingReceivables, comparisonOutstandingReceivables)} icon={DollarSign} color={palette.amber} />
-              <MetricCard label="Overdue" value={compactMoney(overdueReceivables)} detail={`Past due at ${periodDisplay(reportMonth)} month-end`} comparison={comparisonTextFor(overdueReceivables, comparisonOverdueReceivables)} icon={Clock3} color={overdueReceivables ? palette.red : palette.green} />
-              <MetricCard label="Collection rate" value={formatPercent(collectionRate)} detail={hasFinancialData ? "Period collections ÷ period invoiced revenue" : "No invoice or payment records for this period"} comparison={collectionRate !== null && comparisonCollectionRate !== null ? comparisonTextFor(collectionRate, comparisonCollectionRate, "percent") : undefined} icon={TrendingUp} color={palette.blue} />
+              <MetricCard label="Collected this period" value={periodAvailable ? compactMoney(periodCollections) : "—"} detail={`Verified receipts · ${periodDisplay(reportMonth)}`} icon={Calculator} color={palette.green} />
+              <MetricCard label="Outstanding" value={compactMoney(outstandingReceivables)} detail={`Balance at ${periodDisplay(reportMonth)} month-end`} icon={DollarSign} color={palette.amber} />
+              <MetricCard label="Overdue" value={compactMoney(overdueReceivables)} detail={`Past due at ${periodDisplay(reportMonth)} month-end`} icon={Clock3} color={overdueReceivables ? palette.red : palette.green} />
+              <MetricCard label="Collection rate" value={formatPercent(collectionRate)} detail={hasFinancialData ? "Period collections ÷ period invoiced revenue" : "No invoice or payment records for this period"} icon={TrendingUp} color={palette.blue} />
             </div>
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
               <Panel title="Revenue vs Collections" description="Monthly invoices and verified payment receipts.">
-                <RevenueChart data={monthlySummary} comparePreviousYear={comparisonEnabled} />
+                <RevenueChart data={monthlySummary} />
               </Panel>
               <Panel title="Receivables Aging" description={`Outstanding balances grouped by days past due as of ${periodDisplay(reportMonth)} month-end.`}>
                 <ReceivablesAgingChart data={receivablesAging} />
@@ -1157,22 +983,12 @@ function SectionHeading({
   );
 }
 
-function HealthBadge({ label, color, background }: { label: string; color: string; background: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-dm" style={{ backgroundColor: background, color, fontSize: 11, fontWeight: 700 }}>
-      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-      {label}
-    </span>
-  );
-}
-
 function MetricCard({
-  label, value, detail, comparison, icon: Icon, color,
+  label, value, detail, icon: Icon, color,
 }: {
   label: string;
   value: string | number;
   detail: string;
-  comparison?: string;
   icon: LucideIcon;
   color: string;
 }) {
@@ -1184,11 +1000,10 @@ function MetricCard({
           <Icon size={15} aria-hidden="true" />
         </span>
       </div>
-      <div className="font-syne mt-2 truncate" title={String(value)} style={{ fontSize: typeof value === "string" && value.length > 16 ? 20 : 28, fontWeight: 700, color: palette.text, lineHeight: 1.15 }}>
+      <div className="font-syne mt-2 truncate" title={String(value)} style={{ fontSize: typeof value === "string" && value.length > 12 ? 20 : 28, fontWeight: 700, color: palette.text, lineHeight: 1.15 }}>
         {value}
       </div>
       <div className="font-dm mt-1 truncate" style={{ fontSize: 11, color: palette.muted }}>{detail}</div>
-      {comparison && <div className="font-dm mt-1 truncate" style={{ fontSize: 10, fontWeight: 600, color: palette.navy }}>{comparison}</div>}
     </article>
   );
 }
@@ -1228,14 +1043,10 @@ function EmptyState({ children }: { children: string }) {
   return <div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{children}</div>;
 }
 
-function RevenueChart({ data, comparePreviousYear = false }: { data: MonthSummary[]; comparePreviousYear?: boolean }) {
-  const showPreviousYearSeries = comparePreviousYear && data.some(
-    (month) => month.previousYearInvoiced !== null || month.previousYearCollected !== null,
-  );
-  if (!data.length || data.every((month) => (
-    !month.invoiced && !month.collected
-    && (!showPreviousYearSeries || (!month.previousYearInvoiced && !month.previousYearCollected))
-  ))) return <EmptyState>No invoice or verified collection data for this period.</EmptyState>;
+function RevenueChart({ data }: { data: MonthSummary[] }) {
+  if (!data.length || data.every((month) => !month.invoiced && !month.collected)) {
+    return <EmptyState>No invoice or verified collection data for this period.</EmptyState>;
+  }
   return (
     <div className="h-[250px] w-full" role="img" aria-label="Monthly invoiced revenue and verified collections">
       <ResponsiveContainer width="100%" height="100%">
@@ -1253,12 +1064,6 @@ function RevenueChart({ data, comparePreviousYear = false }: { data: MonthSummar
           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
           <Area type="monotone" dataKey="invoiced" name="Invoiced" stroke={palette.red} fill="url(#executiveRevenueFill)" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
           <Area type="monotone" dataKey="collected" name="Collected" stroke={palette.navy} fill="transparent" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-          {showPreviousYearSeries && (
-            <>
-              <Area type="monotone" dataKey="previousYearInvoiced" name="Invoiced · Previous Year" stroke="#FCA5A5" fill="transparent" strokeWidth={1.5} strokeDasharray="5 4" connectNulls={false} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              <Area type="monotone" dataKey="previousYearCollected" name="Collected · Previous Year" stroke="#94A3B8" fill="transparent" strokeWidth={1.5} strokeDasharray="5 4" connectNulls={false} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-            </>
-          )}
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -1382,37 +1187,6 @@ function PaymentsSummary({ collected, outstanding, overdue, rate }: { collected:
       <SnapshotRow label="Overdue receivables" value={compactMoney(overdue)} icon={Clock3} alert={overdue > 0} />
       <SnapshotRow label="Collection rate" value={formatPercent(rate)} icon={TrendingUp} />
     </div>
-  );
-}
-
-function AlertsPanel({ alerts }: { alerts: { severity: "critical" | "warning" | "info"; title: string; detail: string }[] }) {
-  const styles = {
-    critical: { foreground: "#B91C1C", background: "#FEF2F2", label: "Critical" },
-    warning: { foreground: "#B45309", background: "#FFFBEB", label: "Watch" },
-    info: { foreground: "#1D4ED8", background: "#EFF6FF", label: "Info" },
-  };
-  return (
-    <Panel title="Business Risks & Alerts" description="Priority items derived from current operating data.">
-      {!alerts.length ? <EmptyState>No priority alerts from current data.</EmptyState> : (
-        <div className="space-y-2.5">
-          {alerts.slice(0, 5).map((alert, index) => {
-            const style = styles[alert.severity];
-            return (
-              <div key={`${alert.severity}-${index}`} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 p-3" style={{ backgroundColor: "#FAFBFC" }}>
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: style.foreground }} />
-                  <div className="min-w-0">
-                    <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: palette.text }}>{alert.title}</div>
-                    <div className="mt-1 font-dm" style={{ fontSize: 10, color: palette.muted }}>{alert.detail}</div>
-                  </div>
-                </div>
-                <span className="shrink-0 rounded-full px-2 py-1 font-dm" style={{ fontSize: 9, fontWeight: 800, color: style.foreground, backgroundColor: style.background }}>{style.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Panel>
   );
 }
 

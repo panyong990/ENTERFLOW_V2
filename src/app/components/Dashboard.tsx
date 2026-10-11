@@ -138,7 +138,7 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
             {meta.subtitle}
           </p>
         </div>
-        {role !== "logistics" && (
+        {role !== "logistics" && role !== "sales" && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />

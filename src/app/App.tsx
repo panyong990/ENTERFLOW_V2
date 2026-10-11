@@ -24,7 +24,7 @@ import { StockRequestsProvider } from "./store/stockRequests";
 import { SessionProvider } from "./store/session";
 
 const landingFor: Record<Role, string> = {
-  owner: "dashboard",
+  owner: "analytics",
   operations: "dashboard",
   sales: "dashboard",
   accounting: "dashboard",
@@ -80,7 +80,7 @@ function Shell() {
     active === "users" ? <UserManagement currentRole={role} /> :
     active === "clients" ? <Clients /> :
     active === "notifications" ? <NotificationsCenter /> :
-    active === "analytics" ? <AnalyticsFullView onBack={() => setActive("dashboard")} /> :
+    active === "analytics" ? <AnalyticsFullView /> :
     active === "settings" ? <Settings /> :
     <Dashboard variant={role} onNavigate={setActive} />;
 

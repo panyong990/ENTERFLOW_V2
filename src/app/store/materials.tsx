@@ -48,6 +48,45 @@ export interface RawMaterial {
   history: AuditEntry[];
 }
 
+export interface RawMaterialStockStatus {
+  label: string;
+  bg: string;
+  fg: string;
+}
+
+export function getRawMaterialStockStatus(material: RawMaterial): RawMaterialStockStatus {
+  if (material.qtyInStock <= 0) return { label: "🔴 OUT OF STOCK", bg: "#FEE2E2", fg: "#991B1B" };
+  if (material.qtyInStock < material.threshold) {
+    const isCritical = material.category === "bonding_adhesive" || material.category === "packaging";
+    return isCritical
+      ? { label: "🔴 CRITICAL", bg: "#FEE2E2", fg: "#991B1B" }
+      : { label: "🟡 LOW", bg: "#FEF3C7", fg: "#B45309" };
+  }
+  return { label: "🟢 OK", bg: "#DCFCE7", fg: "#15803D" };
+}
+
+export interface FinishedGood {
+  id: string;
+  itemCode: string;
+  enterFilPN: string;
+  itemName: string;
+  client: string;
+  qtyInStock: number;
+  bufferMin: number;
+  lastUpdated: string;
+  updatedBy: string;
+  demand: "HIGH DEMAND" | "MONITOR" | "STABLE";
+  specs: { od1?: string; od2?: string; id1?: string; height?: string; media?: string; innerCore?: string };
+  history: { id: string; date: string; user: string; oldQty: number; newQty: number; reason: string }[];
+}
+
+const seedFinishedGoods: FinishedGood[] = [
+  { id: "f1", itemCode: "OILSEP-00001", enterFilPN: "KF-OS.107.65.252", itemName: "Air Filter", client: "B.E. Aerospace", qtyInStock: 12, bufferMin: 30, lastUpdated: "Apr 26, 2026", updatedBy: "F. Santos", specs: { od1: "115", od2: "103", id1: "64.6", height: "500", media: "Microglass Fiber" }, demand: "HIGH DEMAND", history: [] },
+  { id: "f2", itemCode: "OILSEP-00002", enterFilPN: "KF-OS.200/167.108.160", itemName: "Oil Separator Filter", client: "G.U. Engineering", qtyInStock: 18, bufferMin: 15, lastUpdated: "Apr 24, 2026", updatedBy: "F. Santos", specs: { od1: "200", od2: "167", id1: "108", height: "160", media: "Microglass Fiber" }, demand: "STABLE", history: [] },
+  { id: "f3", itemCode: "OILFIL-00181", enterFilPN: "KF-OF.175.20.87", itemName: "Pleated Filter ZS20", client: "Maynilad", qtyInStock: 80, bufferMin: 100, lastUpdated: "Apr 25, 2026", updatedBy: "F. Santos", specs: { od1: "175", id1: "20", height: "87", media: "Pleated ZS20" }, demand: "HIGH DEMAND", history: [] },
+  { id: "f4", itemCode: "OILFIL-00182", enterFilPN: "KF-OF.180.41.115", itemName: "Column Filter", client: "Emerald Vinyl", qtyInStock: 5, bufferMin: 10, lastUpdated: "Apr 22, 2026", updatedBy: "F. Santos", specs: { od1: "180", id1: "41", height: "115", media: "Round Fiberglass H13" }, demand: "MONITOR", history: [] },
+];
+
 export interface BOMLine {
   materialId: string;
   partCategory: PartCategory;
@@ -387,6 +426,7 @@ function deriveLegacy(rm: RawMaterial[]): Material[] {
 
 interface Ctx {
   rawMaterials: RawMaterial[];
+  finishedGoods: FinishedGood[];
   templates: BOMTemplate[];
   /* Legacy compat */
   materials: Material[];
@@ -399,6 +439,7 @@ interface Ctx {
     stockReason: string,
     reference?: string
   ) => void;
+  updateFinishedGood: (id: string, newQty: number, reason: string, by?: string) => void;
   addMaterial: (m: Omit<RawMaterial, "id" | "history">) => void;
   saveBOMTemplate: (t: Omit<BOMTemplate, "id">) => string;
   findBOMTemplate: (filterType: string, size?: string) => BOMTemplate | undefined;
@@ -412,6 +453,7 @@ const MaterialsContext = createContext<Ctx | null>(null);
 
 export function MaterialsProvider({ children }: { children: ReactNode }) {
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(seedMaterials);
+  const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(seedFinishedGoods);
   const rawMaterialsRef = useRef(rawMaterials);
   const generatedJOsDeducted = useRef(new Set<string>());
   const [templates, setTemplates] = useState<BOMTemplate[]>(seedTemplates);
@@ -464,6 +506,29 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
         };
 
         return { ...m, ...updates, history: [entry, ...m.history] };
+      })
+    );
+  };
+
+  const updateFinishedGood: Ctx["updateFinishedGood"] = (id, newQty, reason, by = "F. Santos") => {
+    setFinishedGoods((current) =>
+      current.map((item) => {
+        if (item.id !== id) return item;
+        const date = new Date().toISOString();
+        return {
+          ...item,
+          qtyInStock: newQty,
+          lastUpdated: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          updatedBy: by,
+          history: [{
+            id: `fg-audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            date,
+            user: by,
+            oldQty: item.qtyInStock,
+            newQty,
+            reason,
+          }, ...item.history],
+        };
       })
     );
   };
@@ -640,7 +705,7 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
 
   return (
     <MaterialsContext.Provider
-      value={{ rawMaterials, templates, materials, get, updateStock, updateMaterial, addMaterial, saveBOMTemplate, findBOMTemplate, validateGeneratedJOs, deductForGeneratedJOs, restoreFromJO }}
+      value={{ rawMaterials, finishedGoods, templates, materials, get, updateStock, updateMaterial, updateFinishedGood, addMaterial, saveBOMTemplate, findBOMTemplate, validateGeneratedJOs, deductForGeneratedJOs, restoreFromJO }}
     >
       {children}
     </MaterialsContext.Provider>

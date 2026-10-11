@@ -1,4 +1,4 @@
-import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, Repeat2, ArrowRight, CheckCircle2, Truck } from "lucide-react";
+import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, Repeat2, ArrowRight, CheckCircle2, Truck, Boxes, Clock3, ArrowUpRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -7,6 +7,7 @@ import { KPICard } from "./KPICard";
 import { StatusBadge } from "./StatusBadge";
 import { NotificationBell } from "./NotificationBell";
 import { PRODUCTION_STAGES, stageLabel, useOrders } from "../store/orders";
+import { getRawMaterialStockStatus, useMaterials } from "../store/materials";
 import type { Role } from "./Login";
 
 const weekly = [
@@ -75,11 +76,271 @@ const dashboardTitle: Partial<Record<Role, { title: string; subtitle: string }>>
   sales:      { title: "Sales Dashboard",       subtitle: "Pipeline · Quotations · Top clients" },
   accounting: { title: "Finance Dashboard",     subtitle: "Receivables · Collections · Overdue accounts" },
   production: { title: "Production Dashboard",  subtitle: "Active JOs by client · Stage progress · Rush orders" },
-  warehouse:  { title: "Warehouse Dashboard",   subtitle: "Stock alerts · Materials to reorder" },
+  warehouse:  { title: "Warehouse Dashboard",   subtitle: "Inventory overview · Dispatch preparation" },
   logistics:  { title: "Logistics Dashboard",   subtitle: "Active deliveries · Delivery status · History" },
 };
 
 export function Dashboard({ variant = "operations", onNavigate }: { variant?: Role; onNavigate?: (id: string) => void }) {
+  return variant === "warehouse"
+    ? <WarehouseDashboard onNavigate={onNavigate} />
+    : <RoleDashboard variant={variant} onNavigate={onNavigate} />;
+}
+
+type StockStatus = "Sufficient" | "Low stock" | "Out of stock";
+
+function stockStatus(quantity: number, minimum: number): StockStatus {
+  if (quantity <= 0) return "Out of stock";
+  return quantity < minimum ? "Low stock" : "Sufficient";
+}
+
+function stockStatusStyle(status: StockStatus): { bg: string; fg: string; dot: string } {
+  if (status === "Out of stock") return { bg: "#FEF2F2", fg: "#B91C1C", dot: "#DC2626" };
+  if (status === "Low stock") return { bg: "#FFFBEB", fg: "#B45309", dot: "#D97706" };
+  return { bg: "#F0FDF4", fg: "#15803D", dot: "#16A34A" };
+}
+
+function displayQuantity(quantity: number): string {
+  return quantity.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void }) {
+  const { rawMaterials, finishedGoods } = useMaterials();
+  const { completedJOs } = useOrders();
+  const readyForDispatch = completedJOs.filter(
+    (job) => job.stage === "ready_for_dispatch" && !job.waybillPrintedAt
+  );
+  const totalFinishedGoods = finishedGoods.reduce((total, item) => total + item.qtyInStock, 0);
+  const lowStockItems = rawMaterials
+    .map((item) => ({ item, status: getRawMaterialStockStatus(item) }))
+    .filter(({ status }) => status.label.includes("LOW") || status.label.includes("OUT OF STOCK"))
+    .map(({ item, status }) => ({
+      id: `raw-${item.id}`,
+      name: item.name,
+      current: item.qtyInStock,
+      minimum: item.threshold,
+      unit: item.unit,
+      status,
+    }));
+  const activity = [
+    ...rawMaterials.flatMap((item) =>
+      item.history.map((entry) => ({
+        id: `raw-${entry.id}`,
+        date: entry.date,
+        title: "Raw material stock updated",
+        subject: item.name,
+        description: `${displayQuantity(entry.oldQty)} → ${displayQuantity(entry.newQty)} ${item.unit} · ${entry.reason}`,
+        user: entry.user,
+      }))
+    ),
+    ...finishedGoods.flatMap((item) =>
+      item.history.map((entry) => ({
+        id: `finished-${entry.id}`,
+        date: entry.date,
+        title: "Finished goods stock updated",
+        subject: item.itemName,
+        description: `${displayQuantity(entry.oldQty)} → ${displayQuantity(entry.newQty)} pcs · ${entry.reason}`,
+        user: entry.user,
+      }))
+    ),
+    ...completedJOs.flatMap((job) =>
+      (job.waybillLog ?? []).map((entry, index) => ({
+        id: `waybill-${job.id}-${index}`,
+        date: entry.ts,
+        title: entry.status,
+        subject: `${job.joNumber ?? `JO-${job.code}`} · ${job.clientName}`,
+        description: entry.note ?? "Waybill dispatch activity",
+        user: undefined,
+      }))
+    ),
+    ...completedJOs
+      .filter((job) => Boolean(job.joCompletedAt))
+      .map((job) => ({
+        id: `completion-${job.id}`,
+        date: job.joCompletedAt!,
+        title: "Job order handed over to Warehouse",
+        subject: `${job.joNumber ?? `JO-${job.code}`} · ${job.clientName}`,
+        description: job.products[0]?.filterName ?? job.products[0]?.type ?? "Completed job order",
+        user: job.stageHistory?.[job.stageHistory.length - 1]?.completedBy,
+      })),
+  ]
+    .filter((entry) => !Number.isNaN(new Date(entry.date).getTime()))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 6);
+  const statusBadge = (quantity: number, minimum: number) => {
+    const status = stockStatus(quantity, minimum);
+    const style = stockStatusStyle(status);
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 whitespace-nowrap" style={{ backgroundColor: style.bg, color: style.fg, fontSize: 11, fontWeight: 600 }}>
+        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: style.dot }} />
+        {status}
+      </span>
+    );
+  };
+
+  return (
+    <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
+      <header className="bg-white border-b border-slate-200/70 px-5 py-5 sm:px-8 sticky top-0 z-10">
+        <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Warehouse Dashboard</h1>
+        <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Inventory health · Finished goods · Dispatch preparation</p>
+      </header>
+
+      <main className="px-4 py-5 sm:px-8 sm:py-7 flex flex-col gap-6">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" aria-label="Warehouse summary">
+          {[
+            { label: "Tracked Raw Material Items", value: String(rawMaterials.length), detail: "in inventory", icon: Boxes, color: "#1A2B4A" },
+            { label: "Finished Goods", value: displayQuantity(totalFinishedGoods), detail: `${finishedGoods.length} recorded items · pcs`, icon: Factory, color: "#2563EB" },
+            { label: "Low-Stock Items", value: String(lowStockItems.length), detail: "below minimum stock", icon: AlertTriangle, color: lowStockItems.length ? "#D97706" : "#16A34A" },
+            { label: "Ready for Dispatch", value: String(readyForDispatch.length), detail: "awaiting Warehouse preparation", icon: Truck, color: "#0F766E" },
+          ].map((metric) => {
+            const Icon = metric.icon;
+            const card = (
+              <>
+                <div className="min-w-0">
+                  <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#64748B" }}>{metric.label}</div>
+                  <div className="font-syne mt-3" style={{ fontSize: 30, lineHeight: 1, fontWeight: 800, color: "#0F172A" }}>{metric.value}</div>
+                  <div className="font-dm mt-2" style={{ fontSize: 12, color: "#64748B" }}>{metric.detail}</div>
+                </div>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${metric.color}15`, color: metric.color }}><Icon size={19} /></div>
+              </>
+            );
+            return metric.label === "Tracked Raw Material Items" ? (
+              <button
+                key={metric.label}
+                type="button"
+                onClick={() => onNavigate?.("inventory")}
+                aria-label="Open raw materials in Inventory"
+                className="bg-white rounded-xl border border-slate-200/70 p-5 flex items-start justify-between gap-3 text-left cursor-pointer hover:border-slate-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+                style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}
+              >
+                {card}
+              </button>
+            ) : (
+              <div key={metric.label} className="bg-white rounded-xl border border-slate-200/70 p-5 flex items-start justify-between gap-3" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+                {card}
+              </div>
+            );
+          })}
+        </section>
+
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <Card title="Low-Stock Alerts" className="xl:col-span-5">
+            {lowStockItems.length ? (
+              <div className="max-h-[390px] overflow-auto flex flex-col divide-y divide-slate-100">
+                {lowStockItems.map((item) => (
+                  <div key={item.id} className="py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-dm font-semibold truncate" style={{ fontSize: 13, color: "#0F172A" }}>{item.name}</div>
+                        <div className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>On hand {displayQuantity(item.current)} {item.unit} · Minimum {displayQuantity(item.minimum)} {item.unit}</div>
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 whitespace-nowrap" style={{ backgroundColor: item.status.bg, color: item.status.fg, fontSize: 11, fontWeight: 600 }}>
+                        {item.status.label}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <CheckCircle2 size={24} className="mx-auto" style={{ color: "#16A34A" }} />
+                <p className="font-dm mt-2" style={{ fontSize: 13, fontWeight: 600, color: "#64748B" }}>No low-stock items.</p>
+              </div>
+            )}
+          </Card>
+
+          <Card
+            title="Finished Goods"
+            className="xl:col-span-7"
+            action={<button onClick={() => onNavigate?.("inventory")} className="font-dm inline-flex items-center gap-1 px-3 py-2 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>Open Inventory <ArrowUpRight size={14} /></button>}
+          >
+            {finishedGoods.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[500px]">
+                  <thead><tr className="text-left border-b border-slate-100">
+                    {["Item", "Client", "Available", "Minimum", "Status"].map((heading) => <th key={heading} className="font-dm py-2 px-2 first:pl-0" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>{heading}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {finishedGoods.map((item) => (
+                      <tr key={item.id} className="border-b last:border-0 border-slate-100">
+                        <td className="py-3 px-2 pl-0"><div className="font-dm font-semibold" style={{ fontSize: 12, color: "#0F172A" }}>{item.itemName}</div><div className="font-dm mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{item.itemCode} · {item.enterFilPN}</div></td>
+                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#475569" }}>{item.client}</td>
+                        <td className="font-dm font-semibold py-3 px-2 whitespace-nowrap" style={{ fontSize: 13, color: "#0F172A" }}>{displayQuantity(item.qtyInStock)} pcs</td>
+                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#64748B" }}>{displayQuantity(item.bufferMin)} pcs</td>
+                        <td className="py-3 px-2">{statusBadge(item.qtyInStock, item.bufferMin)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p className="font-dm py-8 text-center" style={{ fontSize: 13, color: "#94A3B8" }}>No finished goods have been recorded.</p>}
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <Card
+            title="Ready for Dispatch"
+            className="xl:col-span-7"
+            action={<button onClick={() => onNavigate?.("waybill")} className="font-dm inline-flex items-center gap-1 px-3 py-2 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>View All <ArrowUpRight size={14} /></button>}
+          >
+            {readyForDispatch.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px]">
+                  <thead><tr className="text-left border-b border-slate-100">
+                    {["JO Number", "Client", "Product", "Qty", "Status"].map((heading) => <th key={heading} className="font-dm py-2 px-2 first:pl-0" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>{heading}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {readyForDispatch.slice(0, 6).map((job) => (
+                      <tr key={job.id} className="border-b last:border-0 border-slate-100">
+                        <td className="font-mono-jb py-3 px-2 pl-0 whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{job.joNumber ?? `JO-${job.code}`}</td>
+                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#0F172A" }}>{job.clientName}</td>
+                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#475569" }}>{job.products[0]?.filterName ?? job.products[0]?.type ?? "—"}</td>
+                        <td className="font-dm py-3 px-2 whitespace-nowrap" style={{ fontSize: 12, color: "#475569" }}>{job.products.reduce((total, product) => total + product.qty, 0)}</td>
+                        <td className="py-3 px-2"><span className="font-dm inline-flex items-center rounded-full px-2 py-1 whitespace-nowrap" style={{ backgroundColor: "#EFF6FF", color: "#1D4ED8", fontSize: 11, fontWeight: 600 }}>Ready for Dispatch</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {readyForDispatch.length > 6 && <p className="font-dm mt-3" style={{ fontSize: 11, color: "#64748B" }}>Showing 6 of {readyForDispatch.length} ready job orders.</p>}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <Truck size={24} className="mx-auto" style={{ color: "#94A3B8" }} />
+                <p className="font-dm mt-2" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>No job orders are awaiting dispatch preparation.</p>
+              </div>
+            )}
+          </Card>
+
+          <Card title="Recent Activity" className="xl:col-span-5">
+            {activity.length ? (
+              <div className="flex flex-col">
+                {activity.map((entry) => (
+                  <div key={entry.id} className="flex gap-3 py-3 first:pt-0 last:pb-0 border-b last:border-0 border-slate-100">
+                    <div className="mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#EFF6FF", color: "#2563EB" }}><Clock3 size={13} /></div>
+                    <div className="min-w-0">
+                      <div className="font-dm font-semibold" style={{ fontSize: 12, color: "#0F172A" }}>{entry.title}</div>
+                      <div className="font-dm mt-0.5 truncate" style={{ fontSize: 11, color: "#475569" }} title={entry.subject}>{entry.subject}</div>
+                      <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{entry.description}</div>
+                      <div className="font-dm mt-1" style={{ fontSize: 10, color: "#94A3B8" }}>
+                        {new Date(entry.date).toLocaleString()} {entry.user ? `· ${entry.user}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <Clock3 size={23} className="mx-auto" style={{ color: "#94A3B8" }} />
+                <p className="font-dm mt-2" style={{ fontSize: 13, color: "#64748B" }}>No inventory or dispatch activity recorded yet.</p>
+              </div>
+            )}
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role; onNavigate?: (id: string) => void }) {
   const role = variant;
   const isAcc = role === "accounting";
   const { inquiries, completedJOs, archivedInquiries } = useOrders();
@@ -210,14 +471,6 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
               <KPICard label="Rush Orders"     value={String(rushOrdersCount)} delta="priority"     trend="up"   icon={AlertTriangle}   accent="#D97706" />
               <KPICard label="On Hold"         value={String(onHoldCount)}    delta="paused"        trend="down" icon={AlertTriangle}   accent="#92400E" />
               <KPICard label="Today's Targets" value={String(todayTargets)}   delta="QC + ready"    trend="up"   icon={ShoppingCart}    accent="#16A34A" />
-            </>
-          )}
-          {role === "warehouse" && (
-            <>
-              <KPICard label="🔴 Critical Materials" value="2" delta="reorder now" trend="down" icon={AlertTriangle} accent="#C8102E" />
-              <KPICard label="Finished Goods" value="115" delta="pcs in stock" trend="up" icon={Factory} accent="#1A2B4A" />
-              <KPICard label="Buffer Below Min" value="3" delta="items" trend="down" icon={AlertTriangle} accent="#D97706" />
-              <KPICard label="Last Updated" value="Today" delta="Apr 26" trend="up" icon={ShoppingCart} accent="#16A34A" />
             </>
           )}
           {role === "logistics" && (
@@ -521,37 +774,8 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
           </div>
         )}
 
-        {/* Warehouse: Simplified large-text low stock */}
-        {role === "warehouse" && (
-          <div className="grid grid-cols-12 gap-6 mb-8">
-            <Card title="Materials to Reorder" className="col-span-12">
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { name: "🔧 Adhesive", qty: 2, threshold: 3, unit: "sets", critical: true, lead: "Next-day local" },
-                  { name: "📦 Box / Packaging", qty: 45, threshold: 50, unit: "pcs", critical: false, lead: "Same-day" },
-                  { name: "🧻 Filter Media (Local)", qty: 12, threshold: 5, unit: "rolls", critical: false, lead: "Next-day" },
-                ].map((m) => (
-                  <div key={m.name} className="rounded-xl p-5" style={{ backgroundColor: m.critical ? "#FEE2E2" : "#FEF3C7", border: `2px solid ${m.critical ? "#C8102E" : "#D97706"}` }}>
-                    <div className="font-syne mb-2" style={{ fontSize: 18, fontWeight: 800, color: m.critical ? "#991B1B" : "#92400E" }}>{m.name}</div>
-                    <div className="font-syne" style={{ fontSize: 56, fontWeight: 800, color: m.critical ? "#C8102E" : "#D97706", lineHeight: 1 }}>
-                      {m.qty}
-                      <span className="font-dm ml-2" style={{ fontSize: 16, fontWeight: 600 }}>{m.unit}</span>
-                    </div>
-                    <div className="font-dm mt-2" style={{ fontSize: 14, color: m.critical ? "#991B1B" : "#92400E" }}>
-                      Threshold: {m.threshold} {m.unit}
-                    </div>
-                    <div className="font-dm mt-1" style={{ fontSize: 13, color: m.critical ? "#991B1B" : "#92400E" }}>
-                      Lead time: {m.lead}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {/* Finished Goods Buffer & Demand Forecast — Owner / Operations / Production / Warehouse */}
-        {(role === "owner" || role === "operations" || role === "production" || role === "warehouse") && (
+        {/* Finished Goods Buffer & Demand Forecast — Owner / Operations / Production */}
+        {(role === "owner" || role === "operations" || role === "production") && (
         <div className="grid grid-cols-12 gap-6 mb-8">
           <Card title="Finished Goods Buffer — Demand Forecast" className="col-span-12"
             action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>Based on last 6 months order history</span>}

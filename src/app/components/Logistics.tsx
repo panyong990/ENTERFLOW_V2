@@ -17,6 +17,7 @@ import { Toaster, toast } from "sonner";
 
 import {
   hasValidSignedDeliveryReceipt,
+  PRODUCTION_STAGES as JO_PRODUCTION_STAGES,
   useOrders,
   type Inquiry,
 } from "../store/orders";
@@ -1301,10 +1302,10 @@ export function LogisticsActiveJobs({
                 const currentStage =
                   inquiry.currentStage === undefined
                     ? stageLabel[inquiry.stage]
-                    : PRODUCTION_STAGES[
+                    : JO_PRODUCTION_STAGES[
                         Math.min(
                           inquiry.currentStage,
-                          PRODUCTION_STAGES.length - 1,
+                          JO_PRODUCTION_STAGES.length - 1,
                         )
                       ];
 

@@ -6,7 +6,7 @@ import { ProductionFloor } from "./components/ProductionFloor";
 import { Inventory } from "./components/Inventory";
 import { WaybillScanner } from "./components/WaybillScanner";
 import { WaybillHistory } from "./components/WaybillHistory";
-import { Logistics } from "./components/Logistics";
+import { Logistics, LogisticsActiveJobs } from "./components/Logistics";
 import { Accounting } from "./components/Accounting";
 import { DeliveryReceipts } from "./components/DeliveryReceipts";
 import { UserManagementView } from "./components/UserManagementView";
@@ -78,6 +78,7 @@ function Shell() {
       ? <Inventory key={active} initialTab={active === "inventory-finished" ? "finished" : "raw"} /> :
     active === "waybill" ? <WaybillScanner /> :
     active === "waybill-history" ? <WaybillHistory /> :
+    active === "logistics-active-jobs" ? <LogisticsActiveJobs onBack={() => setActive("dashboard")} /> :
     active === "logistics" ? <Logistics /> :
     active === "delivery-receipts" ? <DeliveryReceipts /> :
     active === "accounting" ? <Accounting /> :

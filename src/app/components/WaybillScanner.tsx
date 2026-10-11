@@ -47,12 +47,14 @@ export function WaybillScanner() {
   const [isScanning, setIsScanning] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState("");
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [dispatchSearch, setDispatchSearch] = useState("");
   const [dispatchDateFilter, setDispatchDateFilter] = useState("all");
   const [isDispatchFilterOpen, setIsDispatchFilterOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanControlsRef = useRef<IScannerControls | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraRequestPendingRef = useRef(false);
   const scanSessionRef = useRef(0);
   const lastInvalidIdentifierRef = useRef("");
 
@@ -98,7 +100,10 @@ export function WaybillScanner() {
   const releaseCameraStream = () => {
     const stream = cameraStreamRef.current;
     cameraStreamRef.current = null;
-    stream?.getTracks().forEach((track) => track.stop());
+    stream?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
     setCameraStream(null);
   };
 
@@ -193,11 +198,15 @@ export function WaybillScanner() {
   }, []);
 
   const startScanner = async () => {
+    if (cameraRequestPendingRef.current || cameraStreamRef.current || scanControlsRef.current) return;
+
     const scanSession = scanSessionRef.current + 1;
     scanSessionRef.current = scanSession;
     setCameraError("");
     lastInvalidIdentifierRef.current = "";
     setIsScanning(true);
+    setIsCameraStarting(true);
+    cameraRequestPendingRef.current = true;
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         const unsupportedError = new Error("Camera access is not supported by this browser.");
@@ -214,6 +223,17 @@ export function WaybillScanner() {
         return;
       }
       cameraStreamRef.current = stream;
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          if (cameraStreamRef.current !== stream) return;
+          scanSessionRef.current += 1;
+          scanControlsRef.current?.stop();
+          scanControlsRef.current = null;
+          releaseCameraStream();
+          setIsScanning(false);
+          setCameraError("The camera connection ended. Check the camera and select Retry Camera to resume scanning.");
+        };
+      });
       setCameraStream(stream);
     } catch (error) {
       if (scanSessionRef.current !== scanSession) return;
@@ -221,6 +241,9 @@ export function WaybillScanner() {
       setCameraError(message);
       setIsScanning(false);
       toast.error("Unable to start QR scanner", { description: message });
+    } finally {
+      cameraRequestPendingRef.current = false;
+      setIsCameraStarting(false);
     }
   };
 
@@ -322,17 +345,21 @@ export function WaybillScanner() {
               <h2 className="font-syne" style={{ fontSize: 20, fontWeight: 800, color: "#0F172A" }}>QR Code Scanner</h2>
               <p className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>Scan the QR code on the waybill to verify the shipment</p>
               <div className="mt-5 flex flex-wrap items-center gap-3">
-                {isScanning ? (
+                {isCameraStarting ? (
+                  <button onClick={stopScanner} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700 }}>
+                    <Camera size={15} /> Cancel Camera Start
+                  </button>
+                ) : isScanning ? (
                   <button onClick={stopScanner} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700 }}>
                     <Camera size={15} /> Stop Camera
                   </button>
                 ) : (
                   <button onClick={startScanner} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>
-                    <Camera size={15} /> Start QR Scanner
+                    <Camera size={15} /> {cameraError ? "Retry Camera" : "Start QR Scanner"}
                   </button>
                 )}
                 <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>
-                  {isScanning ? "Point the camera at the Waybill QR code." : "Allow camera access to scan the QR code. The QR contains only the Waybill identifier."}
+                  {isCameraStarting ? "Waiting for camera access. You can cancel while the request is pending." : isScanning ? "Point the camera at the Waybill QR code." : "Allow camera access to scan the QR code. The QR contains only the Waybill identifier."}
                 </span>
               </div>
               {cameraError && <p className="font-dm mt-3" role="alert" style={{ fontSize: 12, color: "#B91C1C" }}>{cameraError}</p>}
@@ -352,6 +379,7 @@ export function WaybillScanner() {
                     <video
                       ref={videoRef}
                       className="w-full h-full object-contain"
+                      autoPlay
                       muted
                       playsInline
                       aria-label="QR code camera preview"

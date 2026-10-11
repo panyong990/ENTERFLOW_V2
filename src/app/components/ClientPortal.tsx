@@ -1,18 +1,44 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ClipboardList, MapPin, Truck, CreditCard, Upload, CheckCircle2, Circle,
   Building2, User as UserIcon, Info, Camera, Send, Plus, Trash2, ChevronDown,
-  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw,
+  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw, Printer,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentRecords, paymentState, type Inquiry, type ProductLine, type ReplacementRequest, type PaymentType } from "../store/orders";
+import {
+  hasValidSignedDeliveryReceipt,
+  paymentDaysRemaining,
+  paymentSubmissionAllowance,
+  useOrders,
+  unitPrice,
+  quotationTotal,
+  paymentRecords,
+  paymentState,
+  poNumberForDisplay,
+  type Inquiry,
+  type PaymentStateSummary,
+  type ProductLine,
+  type ReplacementRequest,
+  type PaymentType,
+} from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { useSettings } from "../store/settings";
 import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
+import { readFileAsDataUrl } from "../store/attachments";
 import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../store/filterTemplates";
 
 type Tab = "orders" | "status" | "logistics" | "accounting" | "settings";
@@ -26,6 +52,94 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
 ];
 
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
+
+type ClientOrderStatusId =
+  | "awaitingQuotation"
+  | "awaitingPOVerification"
+  | "poReceived"
+  | "invoiceSent"
+  | "awaitingPaymentVerification"
+  | "fullPaymentVerified"
+  | "downpaymentVerified";
+
+type ClientOrderStatus = {
+  id: ClientOrderStatusId;
+  label: string;
+  bg: string;
+  fg: string;
+  message: string;
+};
+
+const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
+  const payment = paymentState(inquiry);
+  const invoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
+  if (invoiceSent && payment.invoiceTotal > 0 && payment.state === "FULLY_PAID") {
+    return {
+      id: "fullPaymentVerified",
+      label: "FULL PAYMENT VERIFIED",
+      bg: "#DCFCE7",
+      fg: "#15803D",
+      message: "Full payment verified — order is ready to proceed to production.",
+    };
+  }
+  if (invoiceSent && payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE") {
+    return {
+      id: "downpaymentVerified",
+      label: "DOWNPAYMENT VERIFIED",
+      bg: "#DCFCE7",
+      fg: "#166534",
+      message: "Required downpayment verified — order is ready to proceed to production.",
+    };
+  }
+  const submittedPayments = paymentRecords(inquiry);
+  if (invoiceSent && submittedPayments.some((paymentRecord) => paymentRecord.verificationStatus === "pending")) {
+    return {
+      id: "awaitingPaymentVerification",
+      label: "AWAITING PAYMENT VERIFICATION",
+      bg: "#DBEAFE",
+      fg: "#1D4ED8",
+      message: "Payment submitted — awaiting verification.",
+    };
+  }
+  if (invoiceSent) {
+    return {
+      id: "invoiceSent",
+      label: "INVOICE SENT",
+      bg: "#FEF3C7",
+      fg: "#B45309",
+      message: "Invoice sent — awaiting required payment.",
+    };
+  }
+  if (
+    (inquiry.quotationDoc?.quotationNo || inquiry.quotation)
+    && inquiry.stage === "po"
+    && inquiry.poFileName
+  ) {
+    if (inquiry.poReceived) {
+      return {
+        id: "poReceived",
+        label: "PO SUBMITTED",
+        bg: "#FEF3C7",
+        fg: "#B45309",
+        message: "Purchase order received by Sales.",
+      };
+    }
+    return {
+      id: "awaitingPOVerification",
+      label: "AWAITING PO VERIFICATION",
+      bg: "#DBEAFE",
+      fg: "#1D4ED8",
+      message: "Purchase order submitted — awaiting verification.",
+    };
+  }
+  return {
+    id: "awaitingQuotation",
+    label: "AWAITING QUOTATION",
+    bg: "#E2E8F0",
+    fg: "#475569",
+    message: "Quotation is currently being prepared.",
+  };
+};
 
 function Shell({ active, onChange, children, clientName, onLogout }: {
   active: Tab; onChange: (t: Tab) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
@@ -123,13 +237,35 @@ const FILTRATION_RATINGS = [
 function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void }) {
   const { uploadPO, requestCancellation, byClient } = useOrders();
   const { push: pushNotif } = useNotifications();
-  /* Active orders only — Job Orders and Transactions live in their own tabs now */
-  const myOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "inquiry" || i.stage === "quotation" || i.stage === "po"));
-  /* Sent invoices have their own visibility rule and remain available after the order advances. */
-  const myInvoices = byClient(clientName).filter((i) =>
-    !i.archived && !!i.invoiceNo && !!i.invoiceSentAt
+  /* Keep sent invoices available here after their order advances beyond the active stages. */
+  const myOrders = byClient(clientName).filter((i) =>
+    !i.archived
+    && (
+      i.stage === "inquiry"
+      || i.stage === "quotation"
+      || i.stage === "po"
+      || Boolean(i.invoiceNo && i.invoiceSentAt)
+    )
   );
-
+  const [orderSearch, setOrderSearch] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
+  const normalizedOrderSearch = orderSearch.trim().toLowerCase();
+  const visibleOrders = myOrders.filter((inquiry) => {
+    const matchesStatus = orderStatusFilter === "all" || clientOrderStatus(inquiry).id === orderStatusFilter;
+    const searchableValues = [
+      inquiry.code,
+      inquiry.clientName,
+      inquiry.contactPerson,
+      inquiry.paymentTerms,
+      inquiry.poNumber,
+      inquiry.poFileName,
+      inquiry.invoiceNo,
+      inquiry.generalNotes,
+      ...inquiry.products.flatMap((product) => [product.type, product.filterName, product.oem]),
+    ];
+    const matchesSearch = !normalizedOrderSearch || searchableValues.some((value) => value?.toLowerCase().includes(normalizedOrderSearch));
+    return matchesStatus && matchesSearch;
+  });
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showJobs, setShowJobs] = useState(false);
@@ -140,7 +276,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Orders</h2>
-          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Active inquiries, quotations, and POs · click <strong>+ New Order</strong> to start a new inquiry.</p>
+          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Inquiries, quotations, POs, and sent invoices · click <strong>+ New Order</strong> to start a new inquiry.</p>
         </div>
         <button
           onClick={() => setShowWizard(true)}
@@ -165,31 +301,40 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
           No active orders yet — click <strong>+ New Order</strong> to submit your first inquiry.
         </div>
       )}
-      {myInvoices.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <h3 className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>Sent Invoices</h3>
-            <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Invoices remain available as your order moves through production and delivery.</p>
-          </div>
-          {myInvoices.map((invoice) => {
-            const state = paymentState(invoice);
-            return (
-              <div key={invoice.id} className="bg-white rounded-xl border border-emerald-200 p-4 flex items-center gap-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-                <div className="flex-1 min-w-0">
-                  <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>INVOICE SENT</div>
-                  <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{invoice.invoiceNo}</div>
-                  <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{invoice.poNumber ?? invoice.poFileName ?? invoice.code} · {invoice.paymentTerms}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-syne" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{peso(state.invoiceTotal)}</div>
-                  <button onClick={() => onPayInvoice(invoice.id)} className="font-dm mt-1 px-3 py-1.5 rounded-md text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 700 }}>VIEW IN ACCOUNTING</button>
-                </div>
-              </div>
-            );
-          })}
-        </section>
+      {myOrders.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/70 bg-white p-3">
+          <input
+            type="search"
+            value={orderSearch}
+            onChange={(event) => setOrderSearch(event.target.value)}
+            placeholder="Search My Orders..."
+            aria-label="Search My Orders"
+            className="font-dm min-w-[220px] flex-1 rounded-md border border-slate-200 px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#0F172A" }}
+          />
+          <select
+            value={orderStatusFilter}
+            onChange={(event) => setOrderStatusFilter(event.target.value as ClientOrderStatusId | "all")}
+            aria-label="Filter My Orders by status"
+            className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#475569" }}
+          >
+            <option value="all">All Statuses</option>
+            <option value="awaitingQuotation">Awaiting Quotation</option>
+            <option value="poReceived">PO SUBMITTED</option>
+            <option value="invoiceSent">Invoice Sent</option>
+            <option value="awaitingPaymentVerification">Awaiting Payment Verification</option>
+            <option value="fullPaymentVerified">Full Payment Verified</option>
+            <option value="downpaymentVerified">Downpayment Verified</option>
+          </select>
+        </div>
       )}
-      {myOrders.map((inq) => (
+      {myOrders.length > 0 && visibleOrders.length === 0 && (
+        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
+          No orders match your search or status filter.
+        </div>
+      )}
+      {visibleOrders.map((inq) => (
         <ClientOrderCard
           key={inq.id}
           inquiry={inq}
@@ -849,9 +994,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const [showTerms, setShowTerms] = useState(false);
   const total = inquiry.quotationDoc?.total ?? quotationTotal(inquiry);
   const invoicePayment = paymentState(inquiry);
-  const invoiceDownpaymentPercent = inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 0;
   const submittedPayments = paymentRecords(inquiry);
   const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
+  const status = clientOrderStatus(inquiry);
 
   const submitRevision = () => {
     const note = revisionNoteDraft.trim();
@@ -869,13 +1014,6 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
     setRevisionNoteDraft("");
   };
 
-  const badge =
-    inquiry.stage === "inquiry" ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Quotation" } :
-    inquiry.stage === "quotation" ? { bg: "#FEF3C7", fg: "#B45309", label: "Quotation Received" } :
-    hasPORecord(inquiry)
-      ? { bg: "#DCFCE7", fg: "#15803D", label: "PO Submitted ✅" }
-      : { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Client PO" };
-
   return (
     <article className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50">
@@ -886,7 +1024,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
         </div>
         <div className="flex items-center gap-3">
           {inquiry.urgent && <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#FEE2E2", color: "#C8102E", letterSpacing: 0.3 }}>🚨 RUSH</span>}
-          <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: badge.bg, color: badge.fg }}>{badge.label}</span>
+          <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: status.bg, color: status.fg }}>{status.label}</span>
           {total > 0 && <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{peso(total)}</span>}
           {open ? <ChevronUp size={16} style={{ color: "#64748B" }} /> : <ChevronDown size={16} style={{ color: "#64748B" }} />}
         </div>
@@ -894,42 +1032,35 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
 
       {open && (
         <div className="px-5 pb-5 border-t border-slate-200" style={{ backgroundColor: "#FAFBFC" }}>
-          {inquiry.stage === "inquiry" && (
-            <div className="py-4 font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-              We've received your inquiry — our team will send a quotation within 1 business day.
+          <div className="mt-4 rounded-md px-3 py-2.5 font-dm" style={{ backgroundColor: status.bg, color: status.fg, fontSize: 12, fontWeight: 700 }}>
+            {status.message}
+          </div>
+          {latestSubmittedPayment?.verificationStatus === "rejected" && (
+            <div className="mt-2 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12, fontWeight: 700 }}>
+              Payment rejected — please resubmit proof in Accounting.
             </div>
           )}
 
           {inquiry.invoiceNo && inquiry.invoiceSentAt && (
-            <div className="my-4 rounded-lg p-4" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
-              <div className="font-dm mb-3" style={{ fontSize: 12, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>INVOICE</div>
-              <div className="grid grid-cols-2 gap-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>
-                <span>Invoice No.</span><strong>{inquiry.invoiceNo}</strong>
-                <span>PO No.</span><strong>{inquiry.poNumber ?? inquiry.poFileName ?? "—"}</strong>
-                <span>Invoice Total</span><strong>{peso(invoicePayment.invoiceTotal)}</strong>
-                <span>Payment Terms</span><strong>{inquiry.quotationDoc?.termsOfPayment ?? inquiry.paymentTerms}</strong>
-                {invoiceDownpaymentPercent > 0 && <>
-                  <span>DOWNPAYMENT REQUIRED</span><strong>{invoiceDownpaymentPercent}%</strong>
-                  <span>AMOUNT DUE</span><strong>{peso(invoicePayment.requiredDownpaymentAmount)}</strong>
-                  <span>REMAINING BALANCE</span><strong>{peso(invoicePayment.remainingInvoiceBalance)}</strong>
-                </>}
+            <section className="mt-3 rounded-xl border border-emerald-200 bg-white p-4 flex flex-wrap items-center gap-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+              <div className="flex-1 min-w-[220px]">
+                <div className="font-dm" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.6, textTransform: "uppercase" }}>Sent Invoice</div>
+                <div className="font-dm mt-1" style={{ fontSize: 11, fontWeight: 800, color: status.fg, letterSpacing: 0.4 }}>{status.label}</div>
+                <div className="font-mono-jb mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{inquiry.invoiceNo}</div>
+                <div className="font-dm mt-1" style={{ fontSize: 12, color: "#475569" }}>{poNumberForDisplay(inquiry) ?? inquiry.code} · {inquiry.paymentTerms}</div>
               </div>
-              {invoicePayment.state === "FULLY_PAID" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#DCFCE7", color: "#166534", fontSize: 12, fontWeight: 800 }}>✓ PAYMENT VERIFIED · FULLY PAID</div>
-              ) : invoiceDownpaymentPercent > 0 && invoicePayment.downpaymentStatus === "COMPLETE" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#DCFCE7", color: "#166534", fontSize: 12, fontWeight: 800 }}>
-                  ✓ DOWNPAYMENT VERIFIED · {peso(invoicePayment.verifiedDownpaymentAmount)} verified · Remaining balance {peso(invoicePayment.remainingInvoiceBalance)}
-                </div>
-              ) : latestSubmittedPayment?.verificationStatus === "rejected" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12, fontWeight: 800 }}>PAYMENT REJECTED · Please resubmit proof in Accounting</div>
-              ) : latestSubmittedPayment?.verificationStatus === "pending" ? (
-                <div className="mt-3 rounded-md p-2 font-dm" style={{ backgroundColor: "#EFF6FF", color: "#1E40AF", fontSize: 12, fontWeight: 800 }}>PAYMENT SUBMITTED · AWAITING ACCOUNTING VERIFICATION</div>
-              ) : null}
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => setShowInvoice(true)} className="flex-1 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
-                {invoicePayment.currentPaymentType && <button onClick={onPayInvoice} className="flex-1 rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="font-syne mr-1" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{peso(invoicePayment.invoiceTotal)}</div>
+                <button onClick={() => setShowInvoice(true)} className="rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FFFFFF", border: "1px solid #86EFAC", color: "#166534", fontSize: 11, fontWeight: 800 }}>VIEW INVOICE</button>
+                {(status.id === "downpaymentVerified" || status.id === "fullPaymentVerified") && (
+                  <button onClick={onPayInvoice} className="rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>VIEW IN ACCOUNTING</button>
+                )}
+                {invoicePayment.currentPaymentType
+                  && status.id !== "downpaymentVerified"
+                  && status.id !== "fullPaymentVerified"
+                  && <button onClick={onPayInvoice} className="rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
               </div>
-            </div>
+            </section>
           )}
 
           {inquiry.quotation && (
@@ -1056,26 +1187,10 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               )}
               {inquiry.stage === "po" && inquiry.poFileName && (
                 <div className="rounded-md p-3 font-dm" style={{ backgroundColor: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 13, color: "#166534" }}>
-                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span> — {invoicePayment.state === "FULLY_PAID"
-                    ? "payment verified in full; order is ready for Job Order processing."
-                    : invoiceDownpaymentPercent > 0 && invoicePayment.downpaymentStatus === "COMPLETE"
-                    ? `required downpayment verified; remaining balance ${peso(invoicePayment.remainingInvoiceBalance)}.`
-                    : latestSubmittedPayment?.verificationStatus === "pending"
-                    ? "payment submitted; awaiting Accounting verification."
-                    : latestSubmittedPayment?.verificationStatus === "rejected"
-                    ? "payment rejected; please resubmit proof in Accounting."
-                    : inquiry.invoiceSentAt
-                    ? "invoice sent; awaiting required payment."
-                    : "awaiting invoice and required payment; production has not started."}
+                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span>
                 </div>
               )}
 
-              {/* Downpayment confirmed — success badge */}
-              {(inquiry.downpaymentAmount ?? 0) > 0 && inquiry.downpaymentConfirmed && (
-                <div className="rounded-md p-3 font-dm flex items-center gap-2" style={{ fontSize: 13, color: "#166534", backgroundColor: "#DCFCE7", border: "1px solid #86EFAC" }}>
-                  ✅ Downpayment received & confirmed by Accounting — ₱{(inquiry.downpaymentAmount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({inquiry.downpaymentPercent}%). Production is greenlit.
-                </div>
-              )}
             </div>
           )}
 
@@ -1266,7 +1381,23 @@ const DEMO_JO_DATA: JOTemplateData = {
   preparedBy: "Tricia (Management)",
 };
 
+type ClientDeliveryStatus = "PENDING DELIVERY" | "IN TRANSIT" | "DELIVERED";
+
+function hasClientDeliveryHandoff(inquiry: Inquiry): boolean {
+  return Boolean(
+    inquiry.deliveryReceiptNumber
+    && inquiry.deliveryReceiptSentAt
+    && (inquiry.trackingRef?.trim() || inquiry.deliveryTrackingLink?.trim()),
+  );
+}
+
+function clientDeliveryStatus(inquiry: Inquiry): ClientDeliveryStatus {
+  if (hasValidSignedDeliveryReceipt(inquiry)) return "DELIVERED";
+  return hasClientDeliveryHandoff(inquiry) ? "IN TRANSIT" : "PENDING DELIVERY";
+}
+
 interface ActiveOrder {
+  id: string;
   po: string;
   product: string;
   qty: number;
@@ -1276,12 +1407,13 @@ interface ActiveOrder {
   steps: Step[];
 }
 
-/* DERIVED: build the live ActiveOrder timeline from a store inquiry. Each step's `state` (done/current/pending) is computed from the inquiry's stage. */
+/* DERIVED: expose client milestones without internal production or accounting stages. */
 function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
   const downstreamOfJO = ["in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"];
   const payment = paymentState(inq);
   const requiredPaymentVerified = payment.state === "FULLY_PAID"
     || (payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE");
+  const poReference = poNumberForDisplay(inq);
   /* Keep client milestones in business order; drafts remain invisible until sentAt exists. */
   const STAGE_ORDER: { key: string; label: string; matches: (i: Inquiry) => "done" | "current" | "pending"; detailFn: (i: Inquiry) => string }[] = [
     { key: "inquiry",    label: "Inquiry Submitted",     matches: (i) => i.stage === "inquiry" ? "current" : "done",
@@ -1289,7 +1421,7 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
     { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
     { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
-      detailFn: (i) => hasPORecord(i) ? `${i.poNumber ?? i.poFileName} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
+      detailFn: (i) => hasPORecord(i) ? `${poNumberForDisplay(i) ?? "PO document"} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
     { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
       detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.paymentCycleStartedAt && i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
     { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
@@ -1310,7 +1442,8 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
   ];
 
   return {
-    po: inq.poFileName?.replace(/\.\w+$/, "") ?? `INQ-${inq.code.replace("INQ-", "")}`,
+    id: inq.id,
+    po: poReference ? `${poReference} · ${inq.code}` : inq.code,
     product: inq.products.length > 1
       ? `${inq.products.length} filters · ${inq.products.map((p) => p.type).join(", ")}`
       : `${inq.products[0]?.type ?? "Filter"}${inq.products[0]?.height ? ` ${inq.products[0].od1 ?? ""}×${inq.products[0].id1 ?? ""}×${inq.products[0].height}mm` : ""}`,
@@ -1322,7 +1455,7 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
     badge: stageBadgeForClient(inq),
     steps: STAGE_ORDER.map((s) => ({
       label: s.label,
-      date: s.matches(inq) === "done" ? "✓" : s.matches(inq) === "current" ? (inq.paused ? "On hold" : "now") : "—",
+      date: s.matches(inq) === "done" ? "✓" : s.matches(inq) === "current" ? "now" : "—",
       state: s.matches(inq),
       detail: s.detailFn(inq),
     })),
@@ -1330,21 +1463,17 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
 }
 
 function stageBadgeForClient(inq: Inquiry): { label: string; bg: string; fg: string } {
+  const status = clientDeliveryStatus(inq);
+  if (status !== "PENDING DELIVERY") {
+    return status === "DELIVERED"
+      ? { label: status, bg: "#DCFCE7", fg: "#15803D" }
+      : { label: status, bg: "#DBEAFE", fg: "#1D4ED8" };
+  }
   switch (inq.stage) {
     case "inquiry":            return { label: "Awaiting Quotation",  bg: "#E2E8F0", fg: "#475569" };
     case "quotation":          return { label: "Quotation Received",  bg: "#FEF3C7", fg: "#B45309" };
     case "po":                 return { label: "PO Submitted ✓",       bg: "#DCFCE7", fg: "#15803D" };
-    case "jo":                 return { label: "JO Created",          bg: "#FEE2E2", fg: "#991B1B" };
-    case "in_production":      return inq.paused
-      ? { label: "On Hold",                                            bg: "#FEF3C7", fg: "#92400E" }
-      : { label: "In Production",                                      bg: "#DBEAFE", fg: "#1D4ED8" };
-    case "quality_inspection": return { label: "Quality Inspection",   bg: "#EDE9FE", fg: "#6D28D9" };
-    case "ready_for_dispatch": return { label: "Ready for Dispatch",   bg: "#FFEDD5", fg: "#C2410C" };
-    case "dispatched":         return { label: "Out for Delivery",     bg: "#EDE9FE", fg: "#6D28D9" };
-    case "delivered":          return { label: "Delivered",            bg: "#DCFCE7", fg: "#15803D" };
-    case "paid":               return { label: "Paid & Closed",        bg: "#DCFCE7", fg: "#15803D" };
-    case "overdue":             return { label: "⚠️ Overdue",          bg: "#FEE2E2", fg: "#C8102E" };
-    default:                   return { label: inq.stage,              bg: "#E2E8F0", fg: "#475569" };
+    default: return { label: status, bg: "#E2E8F0", fg: "#475569" };
   }
 }
 
@@ -1352,19 +1481,21 @@ function StatusTab({ clientName }: { clientName: string }) {
   const { byClient } = useOrders();
   const [showJO, setShowJO] = useState(false);
   const [searchOrders, setSearchOrders] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "awaitingQuotation" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
+  >("all");
 
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
   const myInquiries = byClient(clientName).filter((i) => !i.archived && i.stage !== "paid");
   const activeOrders = myInquiries.map((inquiry) => ({ inquiry, order: inquiryToActiveOrder(inquiry) }));
-  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.po ?? null);
-  const statusBadgeLabels: Record<string, string> = {
-    po: "PO Submitted ✓",
-    production: "In Production",
-    dispatch: "Ready for Dispatch",
-    delivery: "Out for Delivery",
-    delivered: "Delivered",
-  };
+  const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.id ?? null);
+  const statusStages = {
+    awaitingQuotation: "inquiry",
+    inProduction: "in_production",
+    readyForDispatch: "ready_for_dispatch",
+    outForDelivery: "dispatched",
+    delivered: "delivered",
+  } as const;
   const filteredOrders = activeOrders
     .filter(({ inquiry, order }) => {
       const query = searchOrders.trim().toLowerCase();
@@ -1378,7 +1509,7 @@ function StatusTab({ clientName }: { clientName: string }) {
         order.product,
       ].some((value) => value?.toLowerCase().includes(query));
       const matchesStatus = statusFilter === "all"
-        || order.badge.label === statusBadgeLabels[statusFilter];
+        || inquiry.stage === statusStages[statusFilter];
       return matchesSearch && matchesStatus;
     });
 
@@ -1411,11 +1542,11 @@ function StatusTab({ clientName }: { clientName: string }) {
           className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
           style={{ fontSize: 12, color: "#475569" }}
         >
-          <option value="all">All Orders</option>
-          <option value="po">PO Submitted</option>
-          <option value="production">In Production</option>
-          <option value="dispatch">Ready for Dispatch</option>
-          <option value="delivery">Out for Delivery</option>
+          <option value="all">All Statuses</option>
+          <option value="awaitingQuotation">Awaiting Quotation</option>
+          <option value="inProduction">In Production</option>
+          <option value="readyForDispatch">Ready for Dispatch</option>
+          <option value="outForDelivery">Out for Delivery</option>
           <option value="delivered">Delivered</option>
         </select>
       </div>
@@ -1429,7 +1560,7 @@ function StatusTab({ clientName }: { clientName: string }) {
           No orders match your search or status filter.
         </div>
       ) : filteredOrders.map(({ order, inquiry }) => {
-        const expanded = expandedPO === order.po;
+        const expanded = expandedPO === order.id;
         /* Section F — JO exists only once the inquiry reaches the "jo" stage or later. */
         const hasJO = (["jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"] as const).includes(inquiry.stage as any);
         return (
@@ -1437,7 +1568,7 @@ function StatusTab({ clientName }: { clientName: string }) {
             key={inquiry.id}
             order={order}
             expanded={expanded}
-            onToggle={() => setExpandedPO(expanded ? null : order.po)}
+            onToggle={() => setExpandedPO(expanded ? null : order.id)}
             onViewJO={() => setShowJO(true)}
             hasJO={hasJO}
           />
@@ -1457,7 +1588,7 @@ function StatusTab({ clientName }: { clientName: string }) {
           date: jo.submittedDate,
           itemCode: `${p0?.type ?? "FILTER"}-${jo.code.replace(/[^0-9]/g, "")}`,
           enterFilPN: p0?.oem ?? "—",
-          poRef: jo.poFileName?.replace(/\.[^.]+$/, "") ?? "—",
+          poRef: poNumberForDisplay(jo) ?? "—",
           specs: jo.joSpecs ?? { od1: p0?.od1, id1: p0?.id1, height: p0?.height, media: p0?.media, oem: p0?.oem },
           preparedBy: "Enter-Fil Management",
         };
@@ -1678,89 +1809,249 @@ function TimelineCard({ po, product, qty, client, badge, steps, action }: {
 }
 
 /* ---------- Logistics Tab ---------- */
-type DeliveryMethod = "Company Vehicle" | "Lalamove" | "Client Pick-up";
+type DeliveryMethod = NonNullable<Inquiry["deliveryMethod"]>;
+
 interface LogisticsRow {
   id: string;
-  po: string; item: string; qty: number; method: DeliveryMethod;
-  status: "Pending" | "In Transit" | "Delivered";
+  clientName: string;
+  po: string; joNumber?: string; item: string; qty: number; method?: DeliveryMethod;
+  status: ClientDeliveryStatus;
   statusBg: string; statusFg: string;
-  trackingNumber?: string; hasSignedDR?: boolean; signedDRFileName?: string;
-  signedDRUploadedAt?: string; paymentCycleStartedAt?: string;
-  paymentTerms: Inquiry["paymentTerms"]; invoiceDueDate?: string;
-  driverName?: string; estimatedDate?: string;
+  trackingNumber?: string; trackingLink?: string;
+  deliveryDate?: string;
+  clientHandoffSent: boolean;
+  paymentTerms: Inquiry["paymentTerms"];
+  paymentCycleStartedAt?: string; paymentDueDate?: string;
+  paymentState: PaymentStateSummary;
+  paymentIsFullyPaid: boolean;
+  hasPendingPayment: boolean;
+  deliveryReceiptNumber?: string; deliveryReceiptSentAt?: string;
+  signedDRFileName?: string; signedDRSubmittedBy?: string; signedDRReceivedAt?: string;
+  signedDRNumber?: string; signedDRDataUrl?: string;
+  pendingSignedDRFileName?: string; pendingSignedDRSubmittedBy?: string; pendingSignedDRDataUrl?: string;
   dateISO?: string;
 }
 
-/* DERIVED: build a LogisticsRow from a store inquiry. Status maps cleanly off the inquiry stage. */
 function inquiryToLogisticsRow(inq: Inquiry): LogisticsRow {
-  const method: DeliveryMethod = (inq.deliveryMethod ?? "Company Vehicle") as DeliveryMethod;
-  const isDelivered = inq.stage === "delivered" || inq.stage === "paid" || inq.stage === "overdue";
-  const isInTransit = inq.stage === "ready_for_dispatch" && !!inq.trackingRef;
-  const status = isDelivered ? "Delivered" : isInTransit ? "In Transit" : "Pending";
-  const statusBg = isDelivered ? "#DCFCE7" : isInTransit ? "#DBEAFE" : "#E2E8F0";
-  const statusFg = isDelivered ? "#15803D" : isInTransit ? "#1D4ED8" : "#475569";
-  const firstProduct = inq.products[0];
-  const item = firstProduct?.product ?? "—";
-  const qty = inq.products.reduce((s, p) => s + p.quantity, 0);
-  const dateISO = inq.deliveredDate ?? inq.dueDate ?? inq.submittedDate;
+  const signedDRReceived = hasValidSignedDeliveryReceipt(inq);
+  const orderPaymentState = paymentState(inq);
+  const clientHandoffSent = hasClientDeliveryHandoff(inq);
+  const status = clientDeliveryStatus(inq);
+  const statusColors: Record<ClientDeliveryStatus, { bg: string; fg: string }> = {
+    "PENDING DELIVERY": { bg: "#E2E8F0", fg: "#475569" },
+    "IN TRANSIT": { bg: "#DBEAFE", fg: "#1D4ED8" },
+    DELIVERED: { bg: "#DCFCE7", fg: "#15803D" },
+  };
+  const { bg: statusBg, fg: statusFg } = statusColors[status];
+  const item = inq.products.map((product) => product.filterName || product.type || "Item").join(", ") || "—";
+  const qty = inq.products.reduce((sum, product) => sum + product.qty, 0);
+  const signedDRMatchesOrder = signedDRReceived;
+  const deliveryDate = signedDRReceived ? inq.signedDeliveryReceiptReceivedAt : undefined;
+  const dateISO = deliveryDate ?? (clientHandoffSent ? inq.deliveryReceiptSentAt : inq.submittedDate);
   return {
     id: inq.id,
+    clientName: inq.clientName,
     po: inq.code,
+    joNumber: inq.joNumber,
     item,
     qty,
-    method,
-    status: status as any,
+    method: inq.deliveryMethod,
+    status,
     statusBg,
     statusFg,
-    hasSignedDR: !!inq.clientSignedDRFileName,
-    signedDRFileName: inq.clientSignedDRFileName,
-    signedDRUploadedAt: inq.clientSignedDRUploadedAt,
-    paymentCycleStartedAt: inq.paymentCycleStartedAt,
     paymentTerms: inq.paymentTerms,
-    invoiceDueDate: inq.paymentCycleStartedAt ? inq.invoiceDueDate : undefined,
-    driverName: method === "Company Vehicle" ? "D. Santos" : undefined,
-    estimatedDate: inq.deliveredDate ?? inq.dueDate ?? "—",
-    trackingNumber: inq.trackingRef,
+    paymentCycleStartedAt: signedDRReceived
+      && inq.paymentCycleStartedAt === inq.signedDeliveryReceiptReceivedAt
+      ? inq.paymentCycleStartedAt
+      : undefined,
+    paymentDueDate: signedDRReceived
+      && inq.paymentCycleStartedAt === inq.signedDeliveryReceiptReceivedAt
+      ? inq.invoiceDueDate
+      : undefined,
+    paymentState: orderPaymentState,
+    paymentIsFullyPaid: inq.stage === "paid"
+      || (orderPaymentState.invoiceTotal > 0 && orderPaymentState.state === "FULLY_PAID"),
+    hasPendingPayment: paymentRecords(inq).some((payment) => payment.verificationStatus === "pending"),
+    clientHandoffSent,
+    deliveryDate,
+    deliveryReceiptNumber: clientHandoffSent || signedDRReceived ? inq.deliveryReceiptNumber : undefined,
+    deliveryReceiptSentAt: clientHandoffSent ? inq.deliveryReceiptSentAt : undefined,
+    trackingNumber: clientHandoffSent || signedDRReceived ? inq.trackingRef : undefined,
+    trackingLink: clientHandoffSent || signedDRReceived ? inq.deliveryTrackingLink : undefined,
+    signedDRFileName: signedDRMatchesOrder ? inq.signedDeliveryReceiptFileName : undefined,
+    signedDRSubmittedBy: signedDRMatchesOrder ? inq.signedDeliveryReceiptSubmittedBy : undefined,
+    signedDRReceivedAt: signedDRMatchesOrder ? inq.signedDeliveryReceiptReceivedAt : undefined,
+    signedDRNumber: signedDRMatchesOrder ? inq.signedDeliveryReceiptNumber : undefined,
+    signedDRDataUrl: signedDRMatchesOrder ? inq.signedDeliveryReceiptDataUrl : undefined,
+    pendingSignedDRFileName: inq.pendingSignedDeliveryReceiptFileName,
+    pendingSignedDRSubmittedBy: inq.pendingSignedDeliveryReceiptSubmittedBy,
+    pendingSignedDRDataUrl: inq.pendingSignedDeliveryReceiptDataUrl,
     dateISO,
   };
 }
 
+function trackingHref(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function ClientDeliveryReceiptModal({ row, onClose }: { row: LogisticsRow; onClose: () => void }) {
+  if (!row.deliveryReceiptNumber || (!row.deliveryReceiptSentAt && row.status !== "DELIVERED")) return null;
+  const trackUrl = trackingHref(row.trackingLink);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Delivery Receipt">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #client-delivery-receipt-print, #client-delivery-receipt-print * { visibility: visible !important; }
+          #client-delivery-receipt-print { position: fixed; inset: 0; width: 100%; padding: 32px; background: white; }
+          .client-delivery-receipt-actions { display: none !important; }
+        }
+      `}</style>
+      <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
+        <div id="client-delivery-receipt-print" className="rounded-lg border-2 border-slate-200 p-8">
+          <div className="mb-6 flex items-start justify-between border-b border-slate-200 pb-4">
+            <div>
+              <div className="font-syne text-xl font-extrabold text-slate-900">ENTER-FIL</div>
+              <div className="font-dm text-xs text-slate-500">Industrial Products · Delivery Receipt</div>
+            </div>
+            <div className="text-right">
+              <div className="font-dm text-[11px] font-bold uppercase tracking-wider text-slate-500">Delivery Receipt</div>
+              <div className="font-mono-jb text-lg font-bold text-slate-900">{row.deliveryReceiptNumber}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 font-dm text-sm">
+            <InfoPair label="Job Order" value={row.joNumber ?? "—"} />
+            <InfoPair label="Order Reference" value={row.po} />
+            <InfoPair label="Client" value={row.clientName} />
+            <InfoPair label="Delivery Method" value={row.method ?? "Not specified"} />
+            <InfoPair label="Tracking Reference" value={row.trackingNumber ?? "—"} />
+            <InfoPair label="Item" value={row.item} />
+            <InfoPair label="Quantity" value={`${row.qty}`} />
+            <InfoPair label="Delivery Status" value={row.status} />
+            {row.deliveryReceiptSentAt && <InfoPair label="Receipt Shared" value={new Date(row.deliveryReceiptSentAt).toLocaleString()} />}
+          </div>
+          {trackUrl && (
+            <a href={trackUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1A2B4A] px-4 py-2.5 font-dm text-xs font-bold text-white hover:bg-[#263d62]">
+              <ExternalLink size={14} /> TRACK DELIVERY
+            </a>
+          )}
+        </div>
+        <div className="client-delivery-receipt-actions mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-slate-300 px-4 py-2 font-dm text-sm font-semibold text-slate-700 hover:bg-slate-50">Close</button>
+          <button onClick={() => window.print()} className="flex items-center gap-2 rounded-md bg-[#1A2B4A] px-4 py-2 font-dm text-sm font-bold text-white hover:opacity-90">
+            <Printer size={15} /> DOWNLOAD / PRINT
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LogisticsTab({ clientName }: { clientName: string }) {
-  const { byClient, uploadClientSignedDR } = useOrders();
-  /* Section H — client contact pulled from settings (email only, no phone). */
-  const { settings } = useSettings();
-  const [filter, setFilter] = useState("All");
-  const [expandedPo, setExpandedPo] = useState<string | null>(null);
+  const { byClient, savePendingSignedDeliveryReceipt, submitPendingSignedDeliveryReceipt, discardPendingSignedDeliveryReceipt } = useOrders();
+  const [filter, setFilter] = useState<ClientDeliveryStatus | "All">("All");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [viewReceiptId, setViewReceiptId] = useState<string | null>(null);
+  const [uploadingSignedDRId, setUploadingSignedDRId] = useState<string | null>(null);
+  const [submitSignedDRId, setSubmitSignedDRId] = useState<string | null>(null);
+  const signedDRSubmitInProgress = useRef(false);
+  const [now, setNow] = useState(() => new Date());
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "status">("date-desc");
-  const filters = ["All", "Pending", "In Transit", "Delivered"];
+  const filters: (ClientDeliveryStatus | "All")[] = ["All", "PENDING DELIVERY", "IN TRANSIT", "DELIVERED"];
 
-  /* DERIVED: this client's inquiries that have entered the logistics phase (jo onward) — exclude inquiry/quotation/po stages */
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /* Each JO/delivery remains its own order record and receipt. */
   const myInquiries = byClient(clientName).filter((i) =>
-    !i.archived && ["in_production", "quality_inspection", "ready_for_dispatch", "delivered", "paid", "overdue"].includes(i.stage)
+    !i.archived && ["jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"].includes(i.stage)
   );
   const rows: LogisticsRow[] = myInquiries.map(inquiryToLogisticsRow);
+  const receiptRow = rows.find((row) => row.id === viewReceiptId);
+  const submitInquiry = myInquiries.find((inquiry) => inquiry.id === submitSignedDRId);
+  const stageSignedDR = async (id: string, file: File, drNumber: string) => {
+    if (signedDRSubmitInProgress.current) return;
+    signedDRSubmitInProgress.current = true;
+    setUploadingSignedDRId(id);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await savePendingSignedDeliveryReceipt(id, file.name, dataUrl, "Client");
+      toast.success("Signed Delivery Receipt uploaded", { description: `${drNumber} · pending submission` });
+    } catch (error) {
+      toast.error("Could not upload the pending Signed Delivery Receipt", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      signedDRSubmitInProgress.current = false;
+      setUploadingSignedDRId(null);
+    }
+  };
+  const confirmSignedDRSubmission = async () => {
+    if (!submitInquiry || signedDRSubmitInProgress.current) return;
+    signedDRSubmitInProgress.current = true;
+    setUploadingSignedDRId(submitInquiry.id);
+    try {
+      await submitPendingSignedDeliveryReceipt(submitInquiry.id);
+      toast.success("Signed Delivery Receipt submitted", { description: "The official receipt has been saved and delivery completed." });
+      setSubmitSignedDRId(null);
+    } catch (error) {
+      toast.error("Could not submit the Signed Delivery Receipt", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      signedDRSubmitInProgress.current = false;
+      setUploadingSignedDRId(null);
+    }
+  };
+  const cancelSignedDRSubmission = () => {
+    if (signedDRSubmitInProgress.current) return;
+    const inquiryId = submitInquiry?.id;
+    setSubmitSignedDRId(null);
+    if (!inquiryId) return;
+    signedDRSubmitInProgress.current = true;
+    setUploadingSignedDRId(inquiryId);
+    void discardPendingSignedDeliveryReceipt(inquiryId)
+      .catch((error) => {
+        toast.error("Could not discard the pending Signed Delivery Receipt", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      })
+      .finally(() => {
+        signedDRSubmitInProgress.current = false;
+        setUploadingSignedDRId(null);
+      });
+  };
 
-  const methodIcon = (m: DeliveryMethod) => m === "Company Vehicle" ? Building2 : m === "Lalamove" ? Truck : UserIcon;
-  const methodColor = (m: DeliveryMethod) => m === "Company Vehicle" ? "#1A2B4A" : m === "Lalamove" ? "#7C3AED" : "#0D9488";
+  const methodIcon = (method?: DeliveryMethod) => method === "Company Vehicle" ? Building2 : method === "Client Pick-up" ? UserIcon : Truck;
+  const methodColor = (method?: DeliveryMethod) => method === "Company Vehicle" ? "#1A2B4A" : method === "Lalamove" ? "#7C3AED" : method === "Client Pick-up" ? "#0D9488" : "#2563EB";
 
-  let visible = filter === "All" ? rows : rows.filter((r) => r.status === filter);
+  let visible = filter === "All" ? rows : rows.filter((row) => row.status === filter);
   visible = visible.filter((r) => {
     if (dateFrom && (r.dateISO ?? "") < dateFrom) return false;
     if (dateTo && (r.dateISO ?? "") > dateTo) return false;
     return true;
   });
-  visible = [...visible].sort((a, b) => {
-    if (sortBy === "date-desc") return (b.dateISO ?? "").localeCompare(a.dateISO ?? "");
-    if (sortBy === "date-asc")  return (a.dateISO ?? "").localeCompare(b.dateISO ?? "");
-    return a.status.localeCompare(b.status);
+  visible = [...visible].sort((left, right) => {
+    if (sortBy === "date-desc") return (right.dateISO ?? "").localeCompare(left.dateISO ?? "");
+    if (sortBy === "date-asc") return (left.dateISO ?? "").localeCompare(right.dateISO ?? "");
+    return left.status.localeCompare(right.status);
   });
 
   return (
     <div className="px-8 py-8 flex flex-col gap-6">
       <div>
-        <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>My Deliveries</h1>
+        <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>DELIVERY &amp; TRACKING</h1>
+        <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Delivery method, live tracking, order status, and receipts for each of your orders.</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -1789,25 +2080,31 @@ function LogisticsTab({ clientName }: { clientName: string }) {
 
       <div className="flex flex-col gap-3">
         {visible.map((r) => {
-          const isExpanded = expandedPo === r.po;
+          const isExpanded = expandedId === r.id;
           const Icon = methodIcon(r.method);
+          const receiptIsAvailable = Boolean(r.deliveryReceiptNumber && (r.clientHandoffSent || r.status === "DELIVERED"));
+          const hasSignedDR = Boolean(r.signedDRFileName && r.signedDRNumber === r.deliveryReceiptNumber && r.signedDRReceivedAt);
+          const trackUrl = trackingHref(r.trackingLink);
           return (
-            <div key={r.po} className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <div key={r.id} className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white" style={{ boxShadow: "0 4px 16px rgba(15,23,42,0.04)" }}>
               {/* Row Header */}
               <button
-                onClick={() => setExpandedPo(isExpanded ? null : r.po)}
-                className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 text-left"
+                onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                className="w-full flex items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-slate-50/80"
               >
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#F1F5F9" }}>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: "#F1F5F9" }}>
                   <Icon size={18} style={{ color: methodColor(r.method) }} />
                 </div>
-                <div className="flex-1 grid grid-cols-4 gap-3 items-center">
+                <div className="grid flex-1 grid-cols-1 items-center gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.po}</div>
-                    <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item} · Qty {r.qty}</div>
+                    <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{r.joNumber ?? r.po}</div>
+                    <div className="mt-0.5 line-clamp-1 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item} · Qty {r.qty}</div>
                   </div>
-                  <div className="font-dm" style={{ fontSize: 13, color: methodColor(r.method), fontWeight: 600 }}>{r.method}</div>
-                  <span className="font-dm px-2.5 py-1 rounded-full justify-self-start" style={{ fontSize: 11, fontWeight: 600, backgroundColor: r.statusBg, color: r.statusFg }}>{r.status}</span>
+                  <div className="font-dm" style={{ fontSize: 13, color: methodColor(r.method), fontWeight: 600 }}>{r.method ?? "Delivery method not specified"}</div>
+                  <span className="inline-flex items-center gap-2 justify-self-start rounded-full px-3 py-1.5 font-dm" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.35, backgroundColor: r.statusBg, color: r.statusFg }}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: r.statusFg }} />
+                    {r.status}
+                  </span>
                   <div className="flex justify-end">
                     {isExpanded ? <ChevronUp size={16} style={{ color: "#64748B" }} /> : <ChevronDown size={16} style={{ color: "#64748B" }} />}
                   </div>
@@ -1816,110 +2113,205 @@ function LogisticsTab({ clientName }: { clientName: string }) {
 
               {/* Expanded Detail */}
               {isExpanded && (
-                <div className="px-5 py-5 border-t border-slate-200" style={{ backgroundColor: "#FAFBFC" }}>
-                  <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-                    <div className="font-syne mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Delivery &amp; Payment Status</div>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <InfoPair label="Delivery Status" value={r.status} />
-                      <InfoPair label="Client Receipt" value={r.hasSignedDR ? "Signed DR Uploaded" : "Awaiting Signed DR"} />
-                      <InfoPair label="Payment Status" value={r.paymentCycleStartedAt ? `${r.paymentTerms} Active` : "Not Active"} />
-                      <InfoPair label="Remaining Balance Due" value={r.invoiceDueDate ?? "—"} />
-                    </div>
-                    {r.signedDRUploadedAt && (
-                      <p className="font-dm mb-3" style={{ fontSize: 11, color: "#64748B" }}>
-                        Client signed DR confirmed {new Date(r.signedDRUploadedAt).toLocaleDateString()}
-                        {r.signedDRFileName ? ` · ${r.signedDRFileName}` : ""}
-                      </p>
+                <div className="border-t border-slate-200/80 px-3 py-3 sm:px-4 sm:py-4" style={{ backgroundColor: "#F8FAFC" }}>
+                  <section className="border-b border-slate-200/80 pb-3">
+                      <div className="flex items-start gap-4">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: r.statusBg, color: r.statusFg }}>
+                          {r.status === "DELIVERED" ? <CheckCircle2 size={19} /> : r.status === "IN TRANSIT" ? <Truck size={19} /> : <MapPin size={19} />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-dm text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Delivery status</div>
+                          <h2 className="mt-0.5 font-syne text-lg font-extrabold tracking-tight text-slate-900">{r.status}</h2>
+                          <p className="mt-1 font-dm text-xs leading-5 text-slate-600">
+                            {r.status === "DELIVERED"
+                              ? "Your order has been delivered and the signed receipt is on file."
+                              : r.status === "IN TRANSIT"
+                                ? "Your delivery details are available below."
+                                : "Delivery has not started yet. Tracking will appear here once shared."}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {[
+                          { label: "Job Order", value: r.joNumber ?? "—" },
+                          { label: "Order Reference", value: r.po },
+                          { label: "Delivery Method", value: r.method ?? "Not specified" },
+                          { label: "Item", value: r.item },
+                          { label: "Quantity", value: `${r.qty} pcs` },
+                          ...(r.status === "DELIVERED" && r.deliveryDate
+                            ? [{ label: "Delivery Date", value: new Date(r.deliveryDate).toLocaleString() }]
+                            : []),
+                        ].map((detail) => (
+                          <div key={detail.label} className="min-w-0 border-b border-slate-100 pb-1.5 last:border-b-0">
+                            <div className="font-dm text-[10px] font-semibold uppercase tracking-wide text-slate-500">{detail.label}</div>
+                            <div className="mt-0.5 break-words font-dm text-xs font-semibold text-slate-900">{detail.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    {r.status !== "PENDING DELIVERY" && (r.trackingNumber || trackUrl) && (
+                      <div className="border-t border-slate-100 pt-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#1A2B4A]">
+                              <Truck size={15} />
+                            </div>
+                            <div>
+                              <div className="font-dm text-xs font-bold uppercase tracking-wide text-slate-500">Tracking</div>
+                              {r.trackingNumber && <div className="mt-0.5 font-mono-jb text-xs font-bold text-slate-900">{r.trackingNumber}</div>}
+                              {!r.trackingNumber && <div className="mt-0.5 font-dm text-xs text-slate-600">Tracking link available</div>}
+                            </div>
+                          </div>
+                          {trackUrl && (
+                            <a href={trackUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2 font-dm text-[11px] font-extrabold tracking-wide text-white transition-colors hover:bg-[#263d62]">
+                              <ExternalLink size={13} /> TRACK DELIVERY
+                            </a>
+                          )}
+                        </div>
+                      </div>
                     )}
-                    {!r.hasSignedDR && (
-                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-dm hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
-                        <Upload size={14} />
-                        Upload Signed Delivery Receipt
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          className="hidden"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            uploadClientSignedDR(r.id, file.name);
-                            toast.success("Signed Delivery Receipt uploaded", {
-                              description: r.status === "Delivered"
-                                ? `The ${r.paymentTerms} payment term is now active from today.`
-                                : "The payment cycle will start after delivery is confirmed.",
-                            });
-                            event.currentTarget.value = "";
-                          }}
-                        />
-                      </label>
-                    )}
-                    {r.hasSignedDR && (
-                      <button onClick={() => toast("Opening client signed DR...")} className="font-dm px-3 py-2 rounded-md border border-slate-200 hover:bg-slate-50 flex items-center gap-2" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
-                        📸 View Signed DR
+                  </section>
+
+                  {receiptIsAvailable && (
+                    <section className="mt-3 flex flex-col gap-3 border-b border-slate-200/80 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#1A2B4A]"><FileCheck size={16} /></div>
+                        <div>
+                          <div className="font-syne text-sm font-extrabold text-slate-900">Delivery Receipt</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                            <span className="font-mono-jb text-xs font-bold text-slate-700">{r.deliveryReceiptNumber}</span>
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-dm text-[10px] font-extrabold uppercase tracking-wide text-emerald-700">Available</span>
+                          </div>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setViewReceiptId(r.id)} className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 font-dm text-[11px] font-extrabold tracking-wide text-[#1A2B4A] transition-colors hover:bg-slate-50">
+                        <FileCheck size={13} /> VIEW / DOWNLOAD RECEIPT
                       </button>
-                    )}
-                    {!r.paymentCycleStartedAt && (
-                      <p className="font-dm mt-2" style={{ fontSize: 11, color: "#64748B" }}>
-                        Payment terms start only after both delivery confirmation and this signed receipt are recorded.
-                      </p>
-                    )}
-                  </div>
-                  {r.method === "Company Vehicle" && (
-                    <div className="flex flex-col gap-3">
-                      <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Company Vehicle Delivery</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <InfoPair label="Enter-Fil Contact" value={settings.email} />
-                        <InfoPair label="Driver" value={r.driverName ?? "—"} />
-                        <InfoPair label="Estimated Delivery" value={r.estimatedDate ?? "—"} />
-                      </div>
-                    </div>
+                    </section>
                   )}
 
-                  {r.method === "Lalamove" && (
-                    <div className="flex flex-col gap-3">
-                      <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Lalamove Delivery</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <InfoPair label="Tracking Number" value={r.trackingNumber ?? "—"} />
-                        <InfoPair label="Enter-Fil Contact" value={settings.email} />
-                      </div>
-                      {r.trackingNumber && (
-                        <button
-                          onClick={() => window.open("https://www.lalamove.com", "_blank")}
-                          className="self-start font-dm px-4 py-2 rounded-md text-white flex items-center gap-2 hover:opacity-90"
-                          style={{ backgroundColor: "#7C3AED", fontSize: 12, fontWeight: 700 }}
-                        >
-                          <ExternalLink size={13} /> 🔗 Track on Lalamove
-                        </button>
-                      )}
-                      <div className="rounded-md px-3 py-2 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                        For live tracking, use the Lalamove app with tracking number <span style={{ fontWeight: 700 }}>{r.trackingNumber}</span>.
+                  {(r.clientHandoffSent || hasSignedDR) && <section className="mt-3 border-b border-slate-200/80 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#1A2B4A]"><FileCheck size={16} /></div>
+                      <div>
+                        <div className="font-syne text-sm font-extrabold text-slate-900">Signed Delivery Receipt</div>
+                        <div className="mt-0.5 font-dm text-xs text-slate-500">Receipt confirmation for this order</div>
                       </div>
                     </div>
-                  )}
+                    {hasSignedDR ? (
+                      <div className="mt-3">
+                        <div className="inline-flex items-center gap-2 font-dm text-xs font-extrabold uppercase tracking-wide text-emerald-800"><CheckCircle2 size={14} /> Received</div>
+                        <div className="mt-1 font-dm text-xs text-slate-700">Delivery Date: {r.deliveryDate ? new Date(r.deliveryDate).toLocaleString() : "—"}</div>
+                        <div className="mt-0.5 break-all font-dm text-xs text-slate-600">{r.signedDRFileName}</div>
+                        {r.signedDRDataUrl && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <a href={r.signedDRDataUrl} target="_blank" rel="noreferrer" className="rounded-md border border-emerald-200 bg-white px-3 py-2 font-dm text-[11px] font-bold text-emerald-800 transition-colors hover:bg-emerald-50">VIEW SIGNED DR</a>
+                            <a href={r.signedDRDataUrl} download={r.signedDRFileName} className="rounded-md border border-emerald-200 bg-white px-3 py-2 font-dm text-[11px] font-bold text-emerald-800 transition-colors hover:bg-emerald-50">DOWNLOAD SIGNED DR</a>
+                          </div>
+                        )}
+                      </div>
+                    ) : r.clientHandoffSent ? (
+                      <>
+                        {r.pendingSignedDRFileName && (
+                          <div className="mt-4 rounded-xl bg-amber-50 p-4">
+                            <div className="font-dm text-xs font-extrabold uppercase tracking-wide text-amber-900">Signed DR uploaded — pending submission</div>
+                            <div className="mt-2 font-dm break-all text-xs text-slate-700">{r.pendingSignedDRFileName}</div>
+                            {r.pendingSignedDRDataUrl && (
+                              <a
+                                href={r.pendingSignedDRDataUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2.5 font-dm text-xs font-bold text-amber-900 hover:bg-amber-100"
+                              >
+                                VIEW PENDING SIGNED DR
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSubmitSignedDRId(r.id)}
+                              disabled={uploadingSignedDRId === r.id || !r.pendingSignedDRDataUrl}
+                              className="mt-3 block min-h-11 rounded-lg bg-[#1A2B4A] px-4 py-2.5 font-dm text-xs font-extrabold tracking-wide text-white hover:bg-[#263d62] disabled:cursor-wait disabled:opacity-60"
+                            >
+                              SUBMIT SIGNED DR
+                            </button>
+                          </div>
+                        )}
+                        <label className={`mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg px-4 py-3 font-dm text-xs font-extrabold tracking-wide text-white ${uploadingSignedDRId === r.id ? "cursor-wait bg-slate-500" : "cursor-pointer bg-[#1A2B4A] hover:bg-[#263d62]"}`}>
+                          <Upload size={15} /> {uploadingSignedDRId === r.id ? "UPLOADING SIGNED DELIVERY RECEIPT..." : r.pendingSignedDRFileName ? "UPLOAD A DIFFERENT SIGNED DR" : "UPLOAD SIGNED DELIVERY RECEIPT"}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            className="hidden"
+                            disabled={uploadingSignedDRId === r.id}
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0];
+                              event.currentTarget.value = "";
+                              if (!file || uploadingSignedDRId === r.id) return;
+                              void stageSignedDR(r.id, file, r.deliveryReceiptNumber ?? "—");
+                            }}
+                          />
+                        </label>
+                      </>
+                    ) : (
+                      <p className="mt-2 font-dm text-sm text-slate-600">Upload the signed copy of this order's Delivery Receipt after delivery.</p>
+                    )}
+                  </section>}
 
-                  {r.method === "Client Pick-up" && (
-                    <div className="flex flex-col gap-3">
-                      <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Client Pick-up Instructions</div>
-                      <div className="rounded-lg p-4 flex flex-col gap-2" style={{ backgroundColor: "#F4F6F9", border: "1px solid #E2E8F0" }}>
-                        <div className="font-dm" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>📍 Enter-Fil Industrial Products</div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>123 Industrial Ave., Valenzuela City, Metro Manila 1440</div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>✉️ {settings.email}</div>
-                        <div className="font-dm" style={{ fontSize: 13, color: "#475569" }}>🕐 Mon–Sat, 8:00 AM – 5:00 PM</div>
+                  <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
+                    <div className="font-syne text-base font-extrabold text-slate-900">PAYMENT CYCLE</div>
+                    {!hasSignedDR ? (
+                      <div className="mt-3 rounded-lg bg-slate-100 p-4 font-dm text-sm font-bold text-slate-600">
+                        PAYMENT CYCLE NOT ACTIVE · AWAITING SIGNED DELIVERY RECEIPT
                       </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => window.open("https://www.google.com/maps/search/Enter-Fil+Industrial+Products", "_blank")}
-                          className="font-dm px-4 py-2 rounded-md border border-slate-200 hover:bg-white flex items-center gap-2"
-                          style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
-                        >
-                          🗺 Get Directions
-                        </button>
-                      </div>
-                      <div className="rounded-md px-3 py-2 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                        Please bring valid ID upon pick-up.
-                      </div>
-                    </div>
-                  )}
+                    ) : (
+                      (() => {
+                        const daysRemaining = r.paymentDueDate ? paymentDaysRemaining(r.paymentDueDate, now) : undefined;
+                        const isOverdue = !r.paymentIsFullyPaid
+                          && r.paymentState.remainingInvoiceBalance > 0
+                          && daysRemaining !== undefined
+                          && daysRemaining < 0;
+                        const status = r.paymentIsFullyPaid
+                          ? "FULLY PAID"
+                          : isOverdue
+                            ? "PAYMENT OVERDUE"
+                            : r.paymentCycleStartedAt
+                              ? "PAYMENT CYCLE ACTIVE"
+                              : "PAYMENT CYCLE STARTING";
+                        const statusClass = r.paymentIsFullyPaid
+                          ? "bg-green-100 text-green-800"
+                          : isOverdue
+                            ? "bg-red-100 text-red-800"
+                            : r.paymentCycleStartedAt
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-slate-100 text-slate-700";
+                        const remainingTime = daysRemaining === undefined
+                          ? "Due date unavailable"
+                          : daysRemaining < 0
+                            ? `${Math.abs(daysRemaining)} ${Math.abs(daysRemaining) === 1 ? "day" : "days"} overdue`
+                            : daysRemaining === 0
+                              ? "Due today"
+                              : `${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} remaining`;
+                        return (
+                          <>
+                            <div className="mt-3">
+                              <span className={`rounded-full px-3 py-1.5 font-dm text-xs font-extrabold ${statusClass}`}>{status}</span>
+                            </div>
+                            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                              <InfoPair label="Payment Terms" value={r.paymentTerms} />
+                              <InfoPair label="Payment Cycle Started" value={r.paymentCycleStartedAt ? new Date(r.paymentCycleStartedAt).toLocaleString() : "—"} />
+                              <InfoPair label="Payment Due" value={r.paymentDueDate ?? "—"} />
+                              <InfoPair label="Remaining" value={r.paymentIsFullyPaid
+                                ? "Fully paid"
+                                : `${remainingTime}${isOverdue ? ` · ₱${r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} overdue` : ""}`} />
+                            </div>
+                            {r.hasPendingPayment && !r.paymentIsFullyPaid && (
+                              <p className="mt-3 font-dm text-xs font-semibold text-blue-700">A submitted payment is awaiting Accountant verification.</p>
+                            )}
+                          </>
+                        );
+                      })()
+                    )}
+                  </section>
                 </div>
               )}
             </div>
@@ -1927,12 +2319,51 @@ function LogisticsTab({ clientName }: { clientName: string }) {
         })}
       </div>
 
-      <div className="rounded-lg p-4 flex items-start gap-3" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-        <Info size={16} style={{ color: "#D97706", marginTop: 2 }} />
-        <span className="font-dm" style={{ fontSize: 13, color: "#92400E" }}>
-          For Lalamove deliveries, tracking is done through the Lalamove app. Contact us for the tracking link.
-        </span>
-      </div>
+      {visible.length === 0 && <div className="rounded-xl border border-slate-200 bg-white p-6 font-dm text-sm text-slate-600">No orders match this delivery filter.</div>}
+      {receiptRow && <ClientDeliveryReceiptModal row={receiptRow} onClose={() => setViewReceiptId(null)} />}
+      <AlertDialog open={Boolean(submitSignedDRId)} onOpenChange={(open) => {
+        if (signedDRSubmitInProgress.current) return;
+        if (open) setSubmitSignedDRId(submitSignedDRId);
+        else cancelSignedDRSubmission();
+      }}>
+        <AlertDialogContent onEscapeKeyDown={(event) => {
+          if (signedDRSubmitInProgress.current) event.preventDefault();
+        }}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-syne text-[#1A2B4A]">SUBMIT SIGNED DELIVERY RECEIPT?</AlertDialogTitle>
+            <AlertDialogDescription className="font-dm text-slate-600">
+              Confirming will make this file the official Signed Delivery Receipt and complete delivery for this order.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {submitInquiry?.pendingSignedDeliveryReceiptFileName && (
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="font-dm text-sm text-slate-700"><span className="font-bold">JO:</span> {submitInquiry.joNumber ?? submitInquiry.code}</div>
+              <div className="font-dm text-sm text-slate-700"><span className="font-bold">DR:</span> {submitInquiry.deliveryReceiptNumber}</div>
+              <div className="font-dm break-all text-xs text-slate-600">{submitInquiry.pendingSignedDeliveryReceiptFileName}</div>
+              {submitInquiry.pendingSignedDeliveryReceiptDataUrl?.startsWith("data:image/") ? (
+                <img src={submitInquiry.pendingSignedDeliveryReceiptDataUrl} alt="Pending signed Delivery Receipt preview" className="max-h-64 w-full rounded border border-slate-200 bg-white object-contain" />
+              ) : submitInquiry.pendingSignedDeliveryReceiptDataUrl?.startsWith("data:application/pdf") ? (
+                <iframe src={submitInquiry.pendingSignedDeliveryReceiptDataUrl} title="Pending signed Delivery Receipt preview" className="h-64 w-full rounded border border-slate-200 bg-white" />
+              ) : (
+                <div className="rounded border border-slate-200 bg-white p-4 font-dm text-xs text-slate-600">Preview is unavailable for this file type.</div>
+              )}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(uploadingSignedDRId)} className="font-dm">CANCEL</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={Boolean(uploadingSignedDRId) || !submitInquiry?.pendingSignedDeliveryReceiptFileName || !submitInquiry.pendingSignedDeliveryReceiptDataUrl}
+              className="font-dm bg-[#1A2B4A] text-white hover:bg-[#263d62]"
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmSignedDRSubmission();
+              }}
+            >
+              {uploadingSignedDRId ? "SUBMITTING..." : "CONFIRM / SUBMIT SIGNED DR"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1953,7 +2384,7 @@ function inquiryToClientInvoice(inq: Inquiry) {
   return {
     id: inq.id,
     inv: inq.invoiceNo ?? `SI-${inq.code.replace("PO-", "")}`,
-    po: inq.poNumber ?? inq.poFileName ?? inq.code,
+    po: poNumberForDisplay(inq) ?? inq.code,
     item: inq.products[0]?.filterName || inq.products[0]?.type || "—",
     amount: state.invoiceTotal,
     payment: inq.paymentTerms,
@@ -1962,6 +2393,9 @@ function inquiryToClientInvoice(inq: Inquiry) {
     paidDate: inq.paidAt ?? "",
     payments: paymentRecords(inq),
     paymentState: state,
+    paymentCycleActive: hasValidSignedDeliveryReceipt(inq)
+      && inq.paymentCycleStartedAt === inq.signedDeliveryReceiptReceivedAt,
+    submissionAllowance: paymentSubmissionAllowance(inq),
     downpaymentPercent: inq.quotationDoc?.downpaymentPercent ?? inq.downpaymentPercent ?? 0,
   };
 }
@@ -1974,6 +2408,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const bank = settings.bankDetails;
   const { push: pushNotif } = useNotifications();
   const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; reference: string; note: string; file: string; receiptDataUrl?: string; methodId?: string }>>({});
+  const submittingPayments = useRef(new Set<string>());
   const [view, setView] = useState<"active" | "history">("active");
 
   /* DERIVED: pull this client's invoiced inquiries (delivered / overdue / paid). PO/quotation/in-production aren't yet billable. */
@@ -1989,30 +2424,59 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const [openId, setOpenId] = useState<string | null>(focusInvoiceId ?? activeRows[0]?.id ?? null);
 
   const submitReceipt = (rowId: string, invNo: string) => {
+    if (submittingPayments.current.has(rowId)) return;
+    const currentInquiry = byClient(clientName).find((inquiry) => inquiry.id === rowId);
+    const allowance = currentInquiry ? paymentSubmissionAllowance(currentInquiry) : null;
+    if (!allowance?.paymentType) {
+      const pendingDownpayment = currentInquiry && paymentRecords(currentInquiry).some((payment) =>
+        payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
+      );
+      const waitingForSignedDR = currentInquiry
+        && paymentState(currentInquiry).currentPaymentType === "BALANCE_PAYMENT"
+        && (!hasValidSignedDeliveryReceipt(currentInquiry)
+          || currentInquiry.paymentCycleStartedAt !== currentInquiry.signedDeliveryReceiptReceivedAt);
+      toast.info(pendingDownpayment
+        ? "Your downpayment is awaiting Accountant verification."
+        : waitingForSignedDR
+          ? "Balance payment is available after the signed Delivery Receipt is received."
+          : "This invoice is fully paid or has no payment currently due.");
+      return;
+    }
     const f = receiptForm[rowId];
     if (!f?.file || !f.receiptDataUrl) { toast.error("Please attach a receipt file first"); return; }
     const amt = parseFloat(f.amount);
     if (isNaN(amt) || amt <= 0) { toast.error("Please enter the amount paid"); return; }
+    if (amt > allowance.maxAmount) {
+      toast.error("Payment exceeds the amount currently due", {
+        description: `Maximum submission: ₱${allowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      });
+      return;
+    }
+    submittingPayments.current.add(rowId);
     const selectedMethod = settings.paymentMethods.find((m) => m.id === f.methodId) ?? settings.paymentMethods[0];
-    submitPayment(rowId, {
-      invoiceNo: invNo,
-      submittedAmount: amt,
-      method: selectedMethod?.label ?? bank.bankName,
-      referenceNumber: f.reference || f.note || "—",
-      receiptFile: f.file,
-      receiptDataUrl: f.receiptDataUrl,
-      paymentDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      note: f.note || undefined,
-    });
-    pushNotif({
-      dept: "payments",
-      title: `Receipt uploaded by ${clientName}`,
-      body: `${invNo} · ₱${amt.toLocaleString("en-PH")}${f.note ? ` · ${f.note}` : ""}`,
-      link: "accounting",
-      recipients: ["owner", "operations", "accounting"],
-    });
-    toast.success("Receipt sent to Enter-Fil", { description: "The secretary will verify and update your account." });
-    setReceiptForm((prev) => ({ ...prev, [rowId]: { amount: "", reference: "", note: "", file: "", receiptDataUrl: "", methodId: settings.paymentMethods[0]?.id } }));
+    try {
+      submitPayment(rowId, {
+        invoiceNo: invNo,
+        submittedAmount: amt,
+        method: selectedMethod?.label ?? bank.bankName,
+        referenceNumber: f.reference || f.note || "—",
+        receiptFile: f.file,
+        receiptDataUrl: f.receiptDataUrl,
+        paymentDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        note: f.note || undefined,
+      });
+      pushNotif({
+        dept: "payments",
+        title: `Receipt uploaded by ${clientName}`,
+        body: `${invNo} · ₱${amt.toLocaleString("en-PH")}${f.note ? ` · ${f.note}` : ""}`,
+        link: "accounting",
+        recipients: ["owner", "operations", "accounting"],
+      });
+      toast.success("Receipt sent to Enter-Fil", { description: "The secretary will verify and update your account." });
+      setReceiptForm((prev) => ({ ...prev, [rowId]: { amount: "", reference: "", note: "", file: "", receiptDataUrl: "", methodId: settings.paymentMethods[0]?.id } }));
+    } finally {
+      submittingPayments.current.delete(rowId);
+    }
   };
 
   const pill = (label: string, value: string, color = "#0F172A") => (
@@ -2073,21 +2537,25 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
               const state = r.paymentState;
               const payments = r.payments;
               const pendingPayments = payments.filter((p) => p.verificationStatus === "pending");
-              const rejectedPayments = payments.filter((p) => p.verificationStatus === "rejected");
-              const isPayable = state.currentPaymentType !== null;
-              const isPartial = state.totalVerifiedPayments > 0 && isPayable;
-              const status = pendingPayments.length > 0
-                ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Awaiting Verification" }
-                : state.state === "FULLY_PAID"
+              const pendingDownpayment = payments.some((payment) =>
+                payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
+              );
+              const isPayable = r.submissionAllowance.paymentType !== null;
+              const isPartial = state.totalVerifiedPayments > 0 && state.currentPaymentType !== null;
+              const status = state.state === "FULLY_PAID"
                 ? { bg: "#DCFCE7", fg: "#15803D", label: "Fully Paid" }
+                : pendingPayments.length > 0
+                ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Awaiting Verification" }
+                : state.currentPaymentType === "BALANCE_PAYMENT" && !r.paymentCycleActive
+                ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Signed DR" }
                 : isPartial
                 ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Partial" }
                 : { bg: "#FEF3C7", fg: "#B45309", label: "Payment Required" };
               const rf = receiptForm[r.id] ?? { amount: "", reference: "", note: "", file: "", receiptDataUrl: "", methodId: settings.paymentMethods[0]?.id };
               const selectedMethod = settings.paymentMethods.find((m) => m.id === rf.methodId) ?? settings.paymentMethods[0];
               const paymentTypeLabel: Record<PaymentType, string> = {
-                DOWNPAYMENT: "REQUIRED DOWNPAYMENT",
-                BALANCE_PAYMENT: "REMAINING BALANCE",
+                DOWNPAYMENT: "DOWNPAYMENT",
+                BALANCE_PAYMENT: "BALANCE PAYMENT",
                 FULL_PAYMENT: "FULL PAYMENT",
               };
               const currentRequirement = state.currentPaymentType ? paymentTypeLabel[state.currentPaymentType] : "FULLY PAID";
@@ -2096,50 +2564,50 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                 : state.currentPaymentType === "BALANCE_PAYMENT"
                 ? "SUBMIT BALANCE PAYMENT"
                 : "SUBMIT FULL PAYMENT";
-              const confirmed = payments
-                .filter((p) => p.verificationStatus === "verified")
-                .map((p) => ({ method: p.method ?? "Payment", date: p.paymentDate, ref: p.referenceNumber ?? "—", amount: p.verifiedAmount ?? p.submittedAmount }));
               const totalConfirmed = state.totalVerifiedPayments;
               const remaining = state.remainingInvoiceBalance;
-              const isPending = isPayable;
+              const pendingSubmitted = pendingPayments.reduce((sum, payment) => sum + payment.submittedAmount, 0);
+              const remainingToSubmit = Math.max(0, remaining - pendingSubmitted);
+              const isPending = pendingPayments.length > 0;
               const s = status;
               return (
                 <Fragment key={r.id}>
-                  <tr className="border-t border-slate-200/70 hover:bg-slate-50" style={{ cursor: isPayable ? "pointer" : "default" }} onClick={() => isPayable && setOpenId(isOpen ? null : r.id)}>
+                  <tr className="border-t border-slate-200/70 hover:bg-slate-50" style={{ cursor: "pointer" }} onClick={() => setOpenId(isOpen ? null : r.id)}>
                     <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.inv}<button onClick={(e) => { e.stopPropagation(); setInvoiceId(r.id); }} className="block mt-1 font-dm" style={{ fontSize: 10, color: "#C8102E", fontWeight: 800 }}>VIEW INVOICE</button></td>
                     <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.po}</td>
                     <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>{r.item}</td>
                     <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
                       ₱{r.amount.toLocaleString("en-PH")}
-                      {(isPayable || state.state === "FULLY_PAID") && (
-                        <div className="font-dm" style={{ fontSize: 11, fontWeight: 500, color: "#1D4ED8" }}>
-                          ₱{totalConfirmed.toLocaleString("en-PH")} paid · ₱{remaining.toLocaleString("en-PH")} left
-                        </div>
-                      )}
+                      <div className="font-dm" style={{ fontSize: 11, fontWeight: 500, color: "#1D4ED8" }}>
+                        ₱{totalConfirmed.toLocaleString("en-PH")} verified · ₱{pendingSubmitted.toLocaleString("en-PH")} pending · ₱{remainingToSubmit.toLocaleString("en-PH")} left
+                      </div>
                     </td>
-                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.payment}</td>
+                    <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>
+                      <div className="font-semibold text-slate-800">{currentRequirement}</div>
+                      <div className="mt-0.5 text-[11px]">{r.payment}</div>
+                    </td>
                     <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: isPending ? "#D97706" : "#475569", fontWeight: isPending ? 600 : 400 }}>{view === "history" ? r.paidDate : r.due}</td>
                     <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: status.bg, color: status.fg }}>{status.label}</span></td>
                   </tr>
-                  {isOpen && isPayable && (
+                  {isOpen && (
                     <tr style={{ backgroundColor: "#FAFBFC" }}>
                       <td colSpan={7} className="px-6 py-5">
                         <div className="grid grid-cols-2 gap-6">
-                          {/* Payment instructions + confirmed ledger */}
+                          {/* Shared payment status and history */}
                           <div>
                             <div className="font-syne mb-3" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Payment Status</div>
                             <div className="rounded-lg p-4 mb-3" style={{ backgroundColor: state.currentPaymentType === "DOWNPAYMENT" ? "#EFF6FF" : "#F8FAFC", border: "1.5px solid #BFDBFE" }}>
                               <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#1E3A8A", letterSpacing: 0.5, textTransform: "uppercase" }}>{currentRequirement}</div>
                               {state.currentPaymentType === "DOWNPAYMENT" && (
                                 <div className="font-dm mt-1" style={{ fontSize: 12, color: "#1D4ED8", fontWeight: 700 }}>
-                                  {r.downpaymentPercent}% · ₱{state.requiredDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {r.downpaymentPercent}% · Required ₱{state.requiredDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
                               )}
                               {state.currentPaymentType === "BALANCE_PAYMENT" && (
-                                <div className="font-syne mt-1" style={{ fontSize: 22, fontWeight: 800, color: "#1D4ED8" }}>₱{remaining.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                <div className="font-syne mt-1" style={{ fontSize: 22, fontWeight: 800, color: "#1D4ED8" }}>₱{remainingToSubmit.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                               )}
                               {state.currentPaymentType === "FULL_PAYMENT" && (
-                                <div className="font-syne mt-1" style={{ fontSize: 22, fontWeight: 800, color: "#1D4ED8" }}>₱{state.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                <div className="font-syne mt-1" style={{ fontSize: 22, fontWeight: 800, color: "#1D4ED8" }}>₱{remainingToSubmit.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                               )}
                               {state.currentPaymentType === "DOWNPAYMENT" && (
                                 <div className="font-dm mt-2" style={{ fontSize: 11, color: "#1E3A8A" }}>This required downpayment must be verified before the order can proceed to Job Order processing.</div>
@@ -2154,6 +2622,11 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                 <>
                                   <div className="font-dm mt-2" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", textTransform: "uppercase" }}>✓ DOWNPAYMENT VERIFIED</div>
                                   <div className="font-dm mt-1" style={{ fontSize: 11, color: "#1E3A8A" }}>Downpayment paid: ₱{state.verifiedDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                  {!r.paymentCycleActive && (
+                                    <div className="font-dm mt-2 rounded-md bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+                                      Balance payment becomes available when the signed Delivery Receipt is received.
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -2164,58 +2637,68 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                 <span>PO</span><strong>{r.po}</strong>
                                 <span>Invoice Total</span><strong>₱{state.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                                 <span>Verified / Paid</span><strong>₱{state.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                <span>Remaining</span><strong>₱{state.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                <span>Pending submissions</span><strong>₱{pendingSubmitted.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                <span>Remaining after pending</span><strong>₱{remainingToSubmit.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                               </div>
                             </div>
                             {/* Loan-app style balance card */}
                             <div className="rounded-lg p-4 mb-3 flex flex-col gap-2" style={{ background: "linear-gradient(135deg, #1A2B4A 0%, #2C4170 100%)", color: "white" }}>
                               <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: 0.5, textTransform: "uppercase" }}>Remaining Balance</div>
-                              <div className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: remaining <= 0 ? "#86EFAC" : "white", lineHeight: 1 }}>₱{remaining.toLocaleString("en-PH")}</div>
+                              <div className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: remainingToSubmit <= 0 ? "#86EFAC" : "white", lineHeight: 1 }}>₱{remainingToSubmit.toLocaleString("en-PH")}</div>
                               <div className="h-1.5 rounded-full mt-2 overflow-hidden" style={{ backgroundColor: "rgba(255,255,255,0.15)" }}>
                                 <div className="h-full rounded-full" style={{ width: `${Math.min(100, (totalConfirmed / r.amount) * 100)}%`, backgroundColor: "#16A34A" }} />
                               </div>
                               <div className="flex items-center justify-between font-dm mt-1" style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>
                                 <span>Total: ₱{r.amount.toLocaleString("en-PH")}</span>
-                                <span>Paid: ₱{totalConfirmed.toLocaleString("en-PH")}</span>
+                                <span>Verified: ₱{totalConfirmed.toLocaleString("en-PH")}</span>
                               </div>
+                              {pendingSubmitted > 0 && <div className="font-dm text-[11px] text-white/70">Pending verification: ₱{pendingSubmitted.toLocaleString("en-PH")}</div>}
                             </div>
-                            {/* Confirmed payments ledger — synced from secretary */}
-                            {confirmed.length > 0 && (
-                              <div className="rounded-lg overflow-hidden mb-3" style={{ border: "1px solid #BBF7D0" }}>
-                                <div className="px-3 py-2 flex items-center gap-2" style={{ backgroundColor: "#F0FDF4" }}>
-                                  <CheckCircle2 size={13} style={{ color: "#16A34A" }} />
-                                  <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#15803D", letterSpacing: 0.4, textTransform: "uppercase" }}>Confirmed by Enter-Fil</span>
-                                </div>
-                                <div className="bg-white">
-                                  {confirmed.map((p, i) => (
-                                    <div key={i} className="px-3 py-2 flex items-center justify-between border-t border-slate-100" style={{ borderTopColor: i === 0 ? "#BBF7D0" : "#F1F5F9" }}>
-                                      <div className="flex flex-col">
-                                        <span className="font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>{p.method}</span>
-                                        <span className="font-dm" style={{ fontSize: 10, color: "#64748B" }}>{p.date} · {p.ref}</span>
+                            <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0" }}>
+                              <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 800, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Payment History</div>
+                              {payments.length === 0 ? (
+                                <div className="font-dm text-xs text-slate-500">No payment submissions yet.</div>
+                              ) : (
+                                <div className="divide-y divide-slate-100">
+                                  {payments.map((payment) => {
+                                    const paymentStatus = payment.verificationStatus === "verified"
+                                      ? { label: "VERIFIED", color: "#15803D", bg: "#DCFCE7" }
+                                      : payment.verificationStatus === "rejected"
+                                        ? { label: "REJECTED", color: "#B91C1C", bg: "#FEE2E2" }
+                                        : { label: "AWAITING VERIFICATION", color: "#1D4ED8", bg: "#DBEAFE" };
+                                    const paymentTypeName = payment.paymentType === "DOWNPAYMENT"
+                                      ? "DOWNPAYMENT"
+                                      : payment.paymentType === "BALANCE_PAYMENT"
+                                        ? "BALANCE PAYMENT"
+                                        : "FULL PAYMENT";
+                                    return (
+                                      <div key={payment.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                                        <div className="min-w-0">
+                                          <div className="font-dm text-xs font-bold text-slate-800">{paymentTypeName} · ₱{payment.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                          <div className="font-dm text-[11px] text-slate-500">
+                                            {payment.paymentDate}{payment.method ? ` · ${payment.method}` : ""}{payment.referenceNumber ? ` · Ref ${payment.referenceNumber}` : ""}
+                                            {payment.verificationStatus === "verified" && payment.verifiedAmount !== undefined
+                                              ? ` · Verified ₱${payment.verifiedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                              : ""}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="rounded-full px-2 py-1 font-dm text-[9px] font-extrabold" style={{ color: paymentStatus.color, backgroundColor: paymentStatus.bg }}>{paymentStatus.label}</span>
+                                          {payment.receiptDataUrl && (
+                                            <a href={payment.receiptDataUrl} target="_blank" rel="noreferrer" className="font-dm text-xs font-bold text-blue-700 underline">
+                                              VIEW PROOF{payment.receiptFile ? ` · ${payment.receiptFile}` : ""}
+                                            </a>
+                                          )}
+                                        </div>
                                       </div>
-                                      <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#16A34A" }}>+ ₱{p.amount.toLocaleString("en-PH")}</span>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
-                              </div>
-                            )}
-                            {pendingPayments.length > 0 && (
-                              <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                                <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#1D4ED8", letterSpacing: 0.4, textTransform: "uppercase" }}>PAYMENT SUBMITTED · AWAITING ACCOUNTING VERIFICATION</div>
-                                {pendingPayments.map((p) => (
-                                  <div key={p.id} className="font-dm mt-1" style={{ fontSize: 12, color: "#1E3A8A" }}>₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {p.paymentDate}</div>
-                                ))}
-                              </div>
-                            )}
-                            {rejectedPayments.length > 0 && (
-                              <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>
-                                <div className="font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#C8102E", letterSpacing: 0.4, textTransform: "uppercase" }}>PAYMENT REJECTED</div>
-                                {rejectedPayments.map((p) => (
-                                  <div key={p.id} className="font-dm mt-1" style={{ fontSize: 12, color: "#991B1B" }}>{p.paymentType.replace("_", " ")} · ₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{p.referenceNumber ? ` · Ref ${p.referenceNumber}` : ""} · Please submit a new payment if appropriate.</div>
-                                ))}
-                              </div>
-                            )}
+                              )}
+                            </div>
                             {/* Payment instructions */}
+                            {isPayable && (
+                            <>
                             <div className="rounded-lg p-4 flex flex-col gap-2 mb-3" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0" }}>
                               <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Payment Instructions</div>
                               <select value={rf.methodId ?? selectedMethod?.id ?? ""} onChange={(e) => setReceiptForm(p => ({ ...p, [r.id]: { ...rf, methodId: e.target.value } }))} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
@@ -2238,10 +2721,14 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                               <div className="font-dm" style={{ fontSize: 12, color: "#92400E", fontWeight: 600 }}>Payment terms run from delivery date.</div>
                               <div className="font-dm mt-1" style={{ fontSize: 11, color: "#92400E" }}>Due: {r.due} · Contact us via email for disputes.</div>
                             </div>
+                            </>
+                            )}
                           </div>
 
                           {/* Receipt upload */}
                           <div>
+                            {isPayable ? (
+                            <>
                             <div className="font-syne mb-3" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{submissionLabel}</div>
                             <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0" }}>
                               {/* File pick */}
@@ -2276,11 +2763,12 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                               {/* Amount */}
                               <div>
                                 <label className="font-dm block mb-1" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Amount Paid (₱)</label>
-                                <input type="number" placeholder={`e.g. ${r.amount}`} value={rf.amount}
+                                <input type="number" min="0.01" step="0.01" max={r.submissionAllowance.maxAmount} placeholder={`Max ₱${r.submissionAllowance.maxAmount.toLocaleString("en-PH")}`} value={rf.amount}
                                   onChange={(e) => setReceiptForm(p => ({ ...p, [r.id]: { ...rf, amount: e.target.value } }))}
                                   className="font-dm w-full px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
                                   style={{ fontSize: 13 }}
                                 />
+                                <div className="font-dm mt-1 text-[11px] text-slate-500">Maximum currently available: ₱{r.submissionAllowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                               </div>
                               {/* Reference */}
                               <div>
@@ -2302,8 +2790,9 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                               </div>
                               <button
                                 onClick={() => submitReceipt(r.id, r.inv)}
+                                disabled={Number(rf.amount) > r.submissionAllowance.maxAmount || submittingPayments.current.has(r.id)}
                                 className="flex items-center justify-center gap-2 py-2.5 rounded-md text-white font-dm hover:opacity-90"
-                                style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.3 }}
+                                style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.3, opacity: Number(rf.amount) > r.submissionAllowance.maxAmount ? 0.5 : 1 }}
                               >
                                 <Send size={14} strokeWidth={2.5} /> {submissionLabel}
                               </button>
@@ -2311,6 +2800,20 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                             <div className="font-dm italic mt-2" style={{ fontSize: 11, color: "#64748B" }}>
                               Your account will be cleared after the secretary verifies your receipt.
                             </div>
+                            </>
+                            ) : (
+                              <div className="rounded-lg border border-slate-200 bg-white p-4 font-dm text-sm text-slate-600">
+                                {state.state === "FULLY_PAID"
+                                  ? "FULLY PAID — no further payment submissions are available."
+                                  : pendingDownpayment
+                                    ? "Your downpayment is awaiting Accountant verification. You may submit again if it is rejected."
+                                    : state.currentPaymentType === "BALANCE_PAYMENT" && !r.paymentCycleActive
+                                      ? "Balance payment is unavailable until the signed Delivery Receipt is received."
+                                      : pendingPayments.length > 0
+                                        ? "Your submitted amount is awaiting verification. Any remaining available amount is shown after pending submissions."
+                                        : "No payment is currently available for submission."}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>

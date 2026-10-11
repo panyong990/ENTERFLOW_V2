@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { getAccounts } from "../store/accounts";
 
 export type Role =
   | "owner"
@@ -9,6 +10,7 @@ export type Role =
   | "production"
   | "warehouse"
   | "logistics"
+  | "admin"
   | "client";
 
 export interface RoleMeta {
@@ -27,6 +29,7 @@ export const roleMetas: Record<Role, RoleMeta> = {
   production: { label: "Production Manager",   short: "PM", bg: "#DBEAFE", fg: "#1D4ED8", avatarBg: "#1A2B4A" },
   warehouse:  { label: "Warehouse Staff",      short: "WH", bg: "#E2E8F0", fg: "#475569", avatarBg: "#64748B" },
   logistics:  { label: "Logistics Personnel",  short: "LG", bg: "#FFEDD5", fg: "#9A3412", avatarBg: "#D97706" },
+  admin:      { label: "Admin",                short: "AD", bg: "#EDE9FE", fg: "#5B21B6", avatarBg: "#7C3AED" },
   client:     { label: "Client",               short: "CL", bg: "#EFF6FF", fg: "#1E40AF", avatarBg: "#2563EB" },
 };
 
@@ -38,6 +41,7 @@ export const staffAccounts: { email: string; password: string; role: Role; name:
   { email: "production@enter-fil.com",password: "demo", role: "production", name: "J. Reyes" },
   { email: "warehouse@enter-fil.com", password: "demo", role: "warehouse",  name: "F. Santos" },
   { email: "logistics@enter-fil.com", password: "demo", role: "logistics",  name: "P. Tan" },
+  { email: "admin@enter-fil.com",     password: "demo", role: "admin",      name: "A. Garcia" },
 ];
 
 const clientAccounts: { email: string; password: string; role: Role; name: string }[] = [
@@ -56,13 +60,25 @@ export function Login({ onLogin }: Props) {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const pool = page === "staff" ? staffAccounts : clientAccounts;
-    const match = pool.find((a) => a.email === email && a.password === password);
+    const match = getAccounts().find((account) =>
+      account.type === (page === "staff" ? "employee" : "client")
+      && account.active
+      && account.password === password
+      && (account.email.toLocaleLowerCase() === email.trim().toLocaleLowerCase()
+        || account.username.toLocaleLowerCase() === email.trim().toLocaleLowerCase())
+    );
     if (!match) { setError("Invalid credentials. Try a demo account below."); return; }
     onLogin(match.role, match.name);
   };
 
-  const quickLogin = (acct: typeof staffAccounts[0]) => onLogin(acct.role, acct.name);
+  const quickLogin = (acct: { email: string; password: string; role: Role; name: string }) => {
+    const saved = getAccounts().find((account) =>
+      account.email.toLocaleLowerCase() === acct.email.toLocaleLowerCase()
+      && account.type === (acct.role === "client" ? "client" : "employee")
+    );
+    if (!saved?.active) { setError("This account is deactivated."); return; }
+    onLogin(saved.role, saved.name);
+  };
 
   const switchPage = (p: "staff" | "client") => {
     setPage(p); setEmail(""); setPassword(""); setError("");
@@ -117,6 +133,9 @@ export function Login({ onLogin }: Props) {
               <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>
                 Demo accounts (8 staff roles)
               </div>
+              <p className="font-dm mb-2" style={{ fontSize: 11, color: "#64748B" }}>
+                Admin demo: <span style={{ fontWeight: 600, color: "#334155" }}>admin@enter-fil.com</span> / <span style={{ fontWeight: 600, color: "#334155" }}>demo</span>
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 {staffAccounts.map((a) => {
                   const m = roleMetas[a.role];

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -205,7 +205,7 @@ export function SalesOrders() {
                       onMarkPOReceived={() => {
                         if (!hasPORecord(c)) return;
                         updateInquiry(c.id, { poReceived: true });
-                        toast.success("PO marked received", { description: `${c.code} · ${c.poNumber ?? c.poFileName}` });
+                        toast.success("PO marked received", { description: `${c.code} · ${poNumberForDisplay(c) ?? c.code}` });
                       }}
                       onGenerateJO={() => {
                         const existingJO = completedJOs.find((job) => job.id === c.id || job.parentInquiryId === c.id);
@@ -1287,7 +1287,7 @@ function QuotationDetailModal({ inquiry, onClose }: { inquiry: Inquiry; onClose:
 /* ---- PO Viewer ---- */
 function POViewerModal({ inquiry, onClose }: { inquiry: Inquiry; onClose: () => void }) {
   const poFile = inquiry.poFileName;
-  const poReference = inquiry.poNumber ?? poFile?.replace(/\.[^.]+$/, "") ?? "—";
+  const poReference = poNumberForDisplay(inquiry) ?? inquiry.code;
   const poDataUrl = inquiry.poFileDataUrl;
 
   return (
@@ -1749,7 +1749,7 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
         <div className="font-dm text-white/70 mb-3" style={{ fontSize: 12 }}>JO will be created for:</div>
         <div className="grid grid-cols-2 gap-y-2 gap-x-6 font-dm" style={{ fontSize: 13 }}>
           <Detail label="Client" value={inquiry.clientName} />
-          <Detail label="PO" value={inquiry.poFileName ?? "—"} mono />
+          <Detail label="PO" value={poNumberForDisplay(inquiry) ?? inquiry.code} mono />
           <Detail label="Items" value={summary || `${inquiry.products.length} products`} span2 />
           <Detail label="Total Qty" value={String(totalQty)} />
           <Detail label="Payment" value={inquiry.paymentTerms} />

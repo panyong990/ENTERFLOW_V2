@@ -63,7 +63,8 @@ function Shell() {
   const role = session.role;
   const allowed = allowedFor[role];
   const isLogisticsActiveJobs = role === "logistics" && active === "logistics-active-jobs";
-  const isAllowed = allowed.includes(active) || isLogisticsActiveJobs;
+  const permissionRoute = active === "inventory-finished" ? "inventory" : active;
+  const isAllowed = allowed.includes(permissionRoute) || isLogisticsActiveJobs;
 
   const poCount = inquiries.filter((i) => i.stage === "po").length;
   const inquiryCount = inquiries.filter((i) => i.stage === "inquiry").length;
@@ -73,7 +74,8 @@ function Shell() {
   const screen = !isAllowed ? <Unauthorized /> :
     active === "sales" ? <SalesOrders /> :
     active === "production" ? <ProductionFloor /> :
-    active === "inventory" ? <Inventory /> :
+    active === "inventory" || active === "inventory-finished"
+      ? <Inventory key={active} initialTab={active === "inventory-finished" ? "finished" : "raw"} /> :
     active === "waybill" ? <WaybillScanner /> :
     active === "waybill-history" ? <WaybillHistory /> :
     active === "logistics" ? <Logistics /> :
@@ -89,7 +91,7 @@ function Shell() {
   return (
     <SessionProvider role={role} name={session.name} navigate={setActive}>
       <div className="size-full flex font-dm" style={{ backgroundColor: "#F4F6F9" }}>
-        <Sidebar role={role} active={isLogisticsActiveJobs ? "dashboard" : active} onNavigate={setActive} onLogout={logout} badges={badges} unreadNotif={unreadCount} />
+        <Sidebar role={role} active={active === "inventory-finished" ? "inventory" : isLogisticsActiveJobs ? "dashboard" : active} onNavigate={setActive} onLogout={logout} badges={badges} unreadNotif={unreadCount} />
         {screen}
       </div>
     </SessionProvider>

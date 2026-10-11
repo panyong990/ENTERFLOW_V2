@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, Repeat2, ArrowRight, CheckCircle2, Truck, Boxes, Clock3, ArrowUpRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -86,33 +87,59 @@ export function Dashboard({ variant = "operations", onNavigate }: { variant?: Ro
     : <RoleDashboard variant={variant} onNavigate={onNavigate} />;
 }
 
-type StockStatus = "Sufficient" | "Low stock" | "Out of stock";
-
-function stockStatus(quantity: number, minimum: number): StockStatus {
-  if (quantity <= 0) return "Out of stock";
-  return quantity < minimum ? "Low stock" : "Sufficient";
-}
-
-function stockStatusStyle(status: StockStatus): { bg: string; fg: string; dot: string } {
-  if (status === "Out of stock") return { bg: "#FEF2F2", fg: "#B91C1C", dot: "#DC2626" };
-  if (status === "Low stock") return { bg: "#FFFBEB", fg: "#B45309", dot: "#D97706" };
-  return { bg: "#F0FDF4", fg: "#15803D", dot: "#16A34A" };
-}
-
 function displayQuantity(quantity: number): string {
   return quantity.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void }) {
   const { rawMaterials, finishedGoods } = useMaterials();
-  const { completedJOs } = useOrders();
+  const { inquiries, completedJOs } = useOrders();
   const readyForDispatch = completedJOs.filter(
     (job) => job.stage === "ready_for_dispatch" && !job.waybillPrintedAt
   );
   const totalFinishedGoods = finishedGoods.reduce((total, item) => total + item.qtyInStock, 0);
+  const topClientsByOrders = useMemo(() => {
+    const orderHistory = Array.from(new Map(
+      [...inquiries, ...completedJOs]
+        .filter((order) => !order.archived)
+        .map((order) => [order.id, order])
+    ).values());
+    const clients = new Map<string, { client: string; orderIds: Set<string> }>();
+
+    for (const item of finishedGoods) {
+      const clientKey = item.client.trim().toLocaleLowerCase();
+      const matchingOrderIds = new Set(orderHistory
+        .filter((order) =>
+          order.clientName.trim().toLocaleLowerCase() === clientKey &&
+          order.products.some((product) => {
+            const orderPN = (product.oem ?? "").trim().toLocaleLowerCase();
+            return orderPN
+              ? orderPN === item.enterFilPN.trim().toLocaleLowerCase()
+              : (product.filterName ?? product.type).trim().toLocaleLowerCase() === item.itemName.trim().toLocaleLowerCase();
+          })
+        )
+        .map((order) => order.id));
+      if (matchingOrderIds.size === 0) continue;
+
+      const aggregate = clients.get(clientKey) ?? {
+        client: item.client,
+        orderIds: new Set<string>(),
+      };
+      matchingOrderIds.forEach((orderId) => aggregate.orderIds.add(orderId));
+      clients.set(clientKey, aggregate);
+    }
+
+    return [...clients.values()]
+      .map((aggregate) => ({
+        client: aggregate.client,
+        totalOrders: aggregate.orderIds.size,
+      }))
+      .sort((a, b) => b.totalOrders - a.totalOrders || a.client.localeCompare(b.client))
+      .slice(0, 3);
+  }, [inquiries, completedJOs, finishedGoods]);
   const lowStockItems = rawMaterials
     .map((item) => ({ item, status: getRawMaterialStockStatus(item) }))
-    .filter(({ status }) => status.label.includes("LOW") || status.label.includes("OUT OF STOCK"))
+    .filter(({ status }) => status.key !== "in-stock")
     .map(({ item, status }) => ({
       id: `raw-${item.id}`,
       name: item.name,
@@ -166,17 +193,6 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
     .filter((entry) => !Number.isNaN(new Date(entry.date).getTime()))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
-  const statusBadge = (quantity: number, minimum: number) => {
-    const status = stockStatus(quantity, minimum);
-    const style = stockStatusStyle(status);
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 whitespace-nowrap" style={{ backgroundColor: style.bg, color: style.fg, fontSize: 11, fontWeight: 600 }}>
-        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: style.dot }} />
-        {status}
-      </span>
-    );
-  };
-
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <header className="bg-white border-b border-slate-200/70 px-5 py-5 sm:px-8 sticky top-0 z-10">
@@ -189,7 +205,7 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
           {[
             { label: "Tracked Raw Material Items", value: String(rawMaterials.length), detail: "in inventory", icon: Boxes, color: "#1A2B4A" },
             { label: "Finished Goods", value: displayQuantity(totalFinishedGoods), detail: `${finishedGoods.length} recorded items · pcs`, icon: Factory, color: "#2563EB" },
-            { label: "Low-Stock Items", value: String(lowStockItems.length), detail: "below minimum stock", icon: AlertTriangle, color: lowStockItems.length ? "#D97706" : "#16A34A" },
+            { label: "Low-Stock Items", value: String(lowStockItems.length), detail: "at or below threshold, including out of stock", icon: AlertTriangle, color: lowStockItems.length ? "#C2410C" : "#16A34A" },
             { label: "Ready for Dispatch", value: String(readyForDispatch.length), detail: "awaiting Warehouse preparation", icon: Truck, color: "#0F766E" },
           ].map((metric) => {
             const Icon = metric.icon;
@@ -249,30 +265,25 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
           </Card>
 
           <Card
-            title="Finished Goods"
+            title="Top Clients by Orders"
             className="xl:col-span-7"
-            action={<button onClick={() => onNavigate?.("inventory")} className="font-dm inline-flex items-center gap-1 px-3 py-2 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>Open Inventory <ArrowUpRight size={14} /></button>}
+            action={<button type="button" onClick={() => onNavigate?.("inventory-finished")} className="font-dm inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>View Inventory <ArrowRight size={13} /></button>}
           >
-            {finishedGoods.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[500px]">
-                  <thead><tr className="text-left border-b border-slate-100">
-                    {["Item", "Client", "Available", "Minimum", "Status"].map((heading) => <th key={heading} className="font-dm py-2 px-2 first:pl-0" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>{heading}</th>)}
-                  </tr></thead>
-                  <tbody>
-                    {finishedGoods.map((item) => (
-                      <tr key={item.id} className="border-b last:border-0 border-slate-100">
-                        <td className="py-3 px-2 pl-0"><div className="font-dm font-semibold" style={{ fontSize: 12, color: "#0F172A" }}>{item.itemName}</div><div className="font-dm mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{item.itemCode} · {item.enterFilPN}</div></td>
-                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#475569" }}>{item.client}</td>
-                        <td className="font-dm font-semibold py-3 px-2 whitespace-nowrap" style={{ fontSize: 13, color: "#0F172A" }}>{displayQuantity(item.qtyInStock)} pcs</td>
-                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#64748B" }}>{displayQuantity(item.bufferMin)} pcs</td>
-                        <td className="py-3 px-2">{statusBadge(item.qtyInStock, item.bufferMin)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {topClientsByOrders.length ? (
+              <ol className="divide-y divide-slate-100">
+                {topClientsByOrders.map((client, index) => (
+                  <li key={client.client} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <span className="font-mono-jb w-5 shrink-0 text-center" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{index + 1}</span>
+                    <span className="font-dm min-w-0 flex-1 truncate" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{client.client}</span>
+                    <span className="font-dm shrink-0 text-right" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{client.totalOrders}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <div className="py-5 text-center">
+                <p className="font-dm" style={{ fontSize: 13, color: "#64748B" }}>No recurring finished-goods orders found.</p>
               </div>
-            ) : <p className="font-dm py-8 text-center" style={{ fontSize: 13, color: "#94A3B8" }}>No finished goods have been recorded.</p>}
+            )}
           </Card>
         </div>
 

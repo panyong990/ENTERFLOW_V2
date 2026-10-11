@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { X, History, Pencil, Search, Boxes, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useMaterials, partCategoryMeta, type PartCategory, type RawMaterial, type Unit } from "../store/materials";
+import { getRawMaterialStockStatus, useMaterials, partCategoryMeta, type FinishedGood, type PartCategory, type RawMaterial, type Unit } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { useStockRequests } from "../store/stockRequests";
@@ -19,31 +19,6 @@ const STOCK_REASONS = [
 const UNITS: Unit[] = ["roll", "plate", "sheet", "kg", "gal", "pcs", "set", "m"];
 type EditableMaterialFields = Pick<RawMaterial, "name" | "category" | "unit" | "unitPrice" | "qtyInStock" | "threshold" | "supplier">;
 
-function statusFor(m: RawMaterial): { label: string; bg: string; fg: string } {
-  if (m.qtyInStock <= 0) return { label: "🔴 OUT OF STOCK", bg: "#FEE2E2", fg: "#991B1B" };
-  if (m.qtyInStock < m.threshold) {
-    /* CRITICAL for adhesive, box; otherwise LOW */
-    const isCritical = m.category === "bonding_adhesive" || m.category === "packaging";
-    return isCritical
-      ? { label: "🔴 CRITICAL", bg: "#FEE2E2", fg: "#991B1B" }
-      : { label: "🟡 LOW", bg: "#FEF3C7", fg: "#B45309" };
-  }
-  return { label: "🟢 OK", bg: "#DCFCE7", fg: "#15803D" };
-}
-
-/* ─────────── Finished Goods (kept simple) ─────────── */
-interface FinishedGood {
-  id: string; itemCode: string; enterFilPN: string; itemName: string;
-  client: string; qtyInStock: number; bufferMin: number; lastUpdated: string;
-  updatedBy: string; demand: "HIGH DEMAND" | "MONITOR" | "STABLE";
-  specs: { od1?: string; od2?: string; id1?: string; height?: string; media?: string; innerCore?: string };
-}
-const finishedSeed: FinishedGood[] = [
-  { id: "f1", itemCode: "OILSEP-00001", enterFilPN: "KF-OS.107.65.252",      itemName: "Air Filter",            client: "B.E. Aerospace",   qtyInStock: 12, bufferMin: 30, lastUpdated: "Apr 26, 2026", updatedBy: "F. Santos", specs: { od1: "115", od2: "103", id1: "64.6", height: "500", media: "Microglass Fiber" }, demand: "HIGH DEMAND" },
-  { id: "f2", itemCode: "OILSEP-00002", enterFilPN: "KF-OS.200/167.108.160", itemName: "Oil Separator Filter",  client: "G.U. Engineering", qtyInStock: 18, bufferMin: 15, lastUpdated: "Apr 24, 2026", updatedBy: "F. Santos", specs: { od1: "200", od2: "167", id1: "108", height: "160", media: "Microglass Fiber" }, demand: "STABLE" },
-  { id: "f3", itemCode: "OILFIL-00181", enterFilPN: "KF-OF.175.20.87",       itemName: "Pleated Filter ZS20",   client: "Maynilad",         qtyInStock: 80, bufferMin: 100, lastUpdated: "Apr 25, 2026", updatedBy: "F. Santos", specs: { od1: "175", id1: "20",  height: "87",  media: "Pleated ZS20" }, demand: "HIGH DEMAND" },
-  { id: "f4", itemCode: "OILFIL-00182", enterFilPN: "KF-OF.180.41.115",      itemName: "Column Filter",         client: "Emerald Vinyl",    qtyInStock: 5,  bufferMin: 10,  lastUpdated: "Apr 22, 2026", updatedBy: "F. Santos", specs: { od1: "180", id1: "41",  height: "115", media: "Round Fiberglass H13" }, demand: "MONITOR" },
-];
 const demandStyle = {
   "HIGH DEMAND": { bg: "#FEE2E2", fg: "#991B1B" },
   "MONITOR":     { bg: "#FEF3C7", fg: "#B45309" },
@@ -53,7 +28,7 @@ const demandStyle = {
 /* ─────────── Component ─────────── */
 
 export function Inventory() {
-  const { rawMaterials, updateMaterial, addMaterial } = useMaterials();
+  const { rawMaterials, finishedGoods: fg, updateMaterial, updateFinishedGood, addMaterial } = useMaterials();
   const { requests: stockRequests } = useStockRequests();
   const { push: pushNotif } = useNotifications();
 
@@ -66,7 +41,6 @@ export function Inventory() {
   const [contextMenu, setContextMenu] = useState<{ material: RawMaterial; x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
-  const [fg, setFg] = useState<FinishedGood[]>(finishedSeed);
   const [fgQuery, setFgQuery] = useState("");
   const [fgEditing, setFgEditing] = useState<FinishedGood | null>(null);
   const [showStockRequests, setShowStockRequests] = useState(false);
@@ -293,7 +267,7 @@ export function Inventory() {
                       </thead>
                       <tbody>
                         {items.map((m) => {
-                          const s = statusFor(m);
+                          const s = getRawMaterialStockStatus(m);
                           return (
                             <tr
                               key={m.id}
@@ -402,12 +376,7 @@ export function Inventory() {
           item={fgEditing}
           onClose={() => setFgEditing(null)}
           onSave={(id, newQty, reason) => {
-            setFg((prev) => prev.map((f) => f.id === id ? {
-              ...f,
-              qtyInStock: newQty,
-              lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-              updatedBy: "F. Santos",
-            } : f));
+            updateFinishedGood(id, newQty, reason);
             toast.success(`Stock updated: ${fgEditing.itemName} → ${newQty} pcs · Reason: ${reason}`);
             setFgEditing(null);
           }}

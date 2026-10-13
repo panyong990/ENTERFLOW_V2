@@ -45,23 +45,35 @@ export function RolesPermissions() {
             <h2 className="font-syne text-lg font-bold text-slate-900">Role access matrix</h2>
             <p className="mt-1 font-dm text-xs text-slate-500">Role definitions and module access are read from the existing application permissions.</p>
           </div>
-          <table className="w-full table-fixed">
-            <colgroup>
-              <col className="w-[30%]" />
-              <col className="w-[70%]" />
-            </colgroup>
-            <thead className="bg-slate-50/80"><tr>
-                <th className="px-3 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:px-5">System role</th>
-                <th className="px-3 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:px-5">Authorized modules</th>
+          <div className="overflow-x-auto">
+            <table aria-label="System role module access" className="w-full min-w-[760px] table-fixed">
+              <colgroup>
+                <col className="w-[28%]" />
+                <col className="w-[72%]" />
+              </colgroup>
+              <thead className="bg-slate-50/80"><tr>
+                <th className="whitespace-nowrap px-4 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:px-5">System role</th>
+                <th className="whitespace-nowrap px-4 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:px-5">Authorized modules</th>
               </tr></thead>
-            <tbody>{employeeRoles.map((staffRole) => {
-              const meta = roleMetas[staffRole];
-              return <tr key={staffRole} className="border-t border-slate-100 align-top">
-                  <td className="px-3 py-3 sm:px-5 sm:py-4"><span className="inline-flex max-w-full whitespace-normal break-words rounded-full px-2.5 py-1 font-dm text-xs font-semibold leading-4" style={{ backgroundColor: meta.bg, color: meta.fg }}>{meta.label}</span></td>
-                  <td className="px-3 py-3 sm:px-5 sm:py-4"><div className="flex flex-wrap gap-1.5 sm:gap-2">{allowedFor[staffRole].map((module) => <span key={module} className="max-w-full whitespace-normal break-words rounded-full bg-slate-100 px-2.5 py-1 font-dm text-[11px] leading-4 text-slate-600">{moduleNames[module] || module}</span>)}</div></td>
-                </tr>;
-            })}</tbody>
-          </table>
+              <tbody>{employeeRoles.map((staffRole) => {
+                const meta = roleMetas[staffRole];
+                const modules = allowedFor[staffRole];
+                return <tr key={staffRole} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
+                    <td className="px-4 py-4 align-middle sm:px-5">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <span className="inline-flex max-w-full truncate rounded-full px-2.5 py-1 font-dm text-[11px] font-semibold text-slate-700" style={{ backgroundColor: meta.bg, color: meta.fg }}>{meta.label}</span>
+                        <span className="font-dm text-[11px] text-slate-500">{modules.length} {modules.length === 1 ? "module" : "modules"}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 align-middle sm:px-5">
+                      <div className="flex flex-wrap gap-2">
+                        {modules.map((module) => <span key={module} className="inline-flex items-center whitespace-nowrap rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 font-dm text-[11px] font-semibold leading-4 text-slate-700">{moduleNames[module] || module}</span>)}
+                      </div>
+                    </td>
+                  </tr>;
+              })}</tbody>
+            </table>
+          </div>
         </section>
       </section>
     </main>

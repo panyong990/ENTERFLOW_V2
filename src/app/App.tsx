@@ -13,6 +13,7 @@ import { UserManagementView } from "./components/UserManagementView";
 import { ClientManagement } from "./components/ClientManagement";
 import { EmployeeManagement } from "./components/EmployeeManagement";
 import { RolesPermissions } from "./components/RolesPermissions";
+import { AdminDashboard } from "./components/AdminDashboard";
 import { Clients } from "./components/Clients";
 import { Settings } from "./components/Settings";
 import { NotificationsCenter } from "./components/NotificationsCenter";
@@ -35,7 +36,7 @@ const landingFor: Record<Role, string> = {
   production: "dashboard",
   warehouse: "inventory",
   logistics: "dashboard",
-  admin: "employee-management",
+  admin: "dashboard",
   client: "client",
 };
 
@@ -83,6 +84,7 @@ function Shell() {
     active === "waybill-history" ? <WaybillHistory /> :
     active === "logistics-active-jobs" ? <LogisticsActiveJobs onBack={() => setActive("dashboard")} /> :
     active === "logistics" ? <Logistics /> :
+    active === "dashboard" && role === "admin" ? <AdminDashboard /> :
     active === "delivery-receipts" ? <DeliveryReceipts /> :
     active === "accounting" ? <Accounting /> :
     active === "users" ? <UserManagementView /> :

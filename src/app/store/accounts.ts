@@ -52,6 +52,24 @@ export function isEmployeeRole(role: AccountRole): role is EmployeeDirectoryEntr
 const STORAGE_KEY = "enterflow.user-accounts.v1";
 const APPLICATIONS_STORAGE_KEY = "enterflow.client-applications.v1";
 const CLIENT_APPLICATIONS_UPDATED_EVENT = "enterflow:client-applications-updated";
+const ACCOUNTS_UPDATED_EVENT = "enterflow:accounts-updated";
+
+export function subscribeToAccounts(onChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY || event.key === null) onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(ACCOUNTS_UPDATED_EVENT, onChange);
+  window.addEventListener("focus", onChange);
+
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(ACCOUNTS_UPDATED_EVENT, onChange);
+    window.removeEventListener("focus", onChange);
+  };
+}
 
 export function subscribeToClientApplications(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => {};
@@ -134,6 +152,7 @@ export function getEmployeeDirectory(): EmployeeDirectoryEntry[] {
 
 export function saveAccounts(accounts: Account[]): void {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+  window.dispatchEvent(new Event(ACCOUNTS_UPDATED_EVENT));
 }
 
 export function getClientApplications(): ClientRegistrationApplication[] {

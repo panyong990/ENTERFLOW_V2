@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, Repeat2, ArrowRight, CheckCircle2, Truck, Boxes, Clock3, ArrowUpRight } from "lucide-react";
+import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, ArrowRight, CheckCircle2, Truck, Boxes, Clock3, ArrowUpRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -10,6 +10,7 @@ import { NotificationBell } from "./NotificationBell";
 import { PRODUCTION_STAGES, stageLabel, useOrders } from "../store/orders";
 import { getRawMaterialStockStatus, useMaterials } from "../store/materials";
 import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
+import { FinishedGoodsOrderActivity } from "./FinishedGoodsOrderActivity";
 import type { Role } from "./Login";
 
 const weekly = [
@@ -344,19 +345,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
   const role = variant;
   const isAcc = role === "accounting";
   const { inquiries, completedJOs, archivedInquiries } = useOrders();
-  const { finishedGoods } = useMaterials();
   const pendingInquiries = inquiries.filter(i => i.stage === "inquiry");
-  const recurringOrderRows = useMemo(() => {
-    const orderHistory = buildOrderHistory(inquiries, completedJOs);
-    return finishedGoods
-      .map((item) => ({
-        item,
-        ...getFinishedGoodOrderActivity(item, orderHistory),
-      }))
-      .filter((row) => row.recurringOrders > 0)
-      .sort((a, b) => b.recurringOrders - a.recurringOrders || a.item.itemCode.localeCompare(b.item.itemCode))
-      .slice(0, 5);
-  }, [finishedGoods, inquiries, completedJOs]);
   const meta = dashboardTitle[role] ?? { title: "Dashboard", subtitle: "Real-time overview" };
 
   /* DERIVED KPIs — single source of truth across the entire system */
@@ -646,32 +635,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
               </div>
             </Card>
 
-            <Card title="Frequent / Recurring Orders" className="col-span-7"
-              action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#FEF3C7", color: "#92400E" }}>Plan production in advance</span>}
-            >
-              <div className="grid grid-cols-1 gap-2">
-                {recurringOrderRows.map(({ item, recurringOrders, averageQuantity, lastOrderDate }) => (
-                  <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-slate-200">
-                    <Repeat2 size={14} style={{ color: "#1A2B4A" }} />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-dm truncate" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{item.itemName} · {item.enterFilPN}</div>
-                      <div className="font-dm truncate" style={{ fontSize: 11, color: "#64748B" }}>{item.itemCode} · {item.client} · {recurringOrders} recorded {recurringOrders === 1 ? "order" : "orders"} · last: {lastOrderDate ?? "—"}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Avg / order</div>
-                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{averageQuantity === null ? "—" : `${averageQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })} pcs`}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Buffer</div>
-                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: item.bufferMin > 0 ? "#16A34A" : "#94A3B8" }}>{item.bufferMin > 0 ? `${item.bufferMin.toLocaleString()} pcs` : "—"}</div>
-                    </div>
-                  </div>
-                ))}
-                {recurringOrderRows.length === 0 && (
-                  <div className="font-dm py-4 text-center" style={{ fontSize: 12, color: "#94A3B8" }}>No recurring finished-goods orders found.</div>
-                )}
-              </div>
-            </Card>
+            <FinishedGoodsOrderActivity className="col-span-7" />
           </div>
         )}
 

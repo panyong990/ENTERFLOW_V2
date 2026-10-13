@@ -147,7 +147,7 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                 {doc.shipping && !doc.shipping.includeInUnit && (
                   <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
                     <td colSpan={3} />
-                    <td className="font-dm py-3 px-3" style={{ fontSize: 12, color: "#475569" }}>{doc.shipping.label}</td>
+                    <td className="font-dm py-3 px-3" style={{ fontSize: 12, color: "#475569" }}>{doc.shipping.label && doc.shipping.label !== "Shipping" ? `Shipping — ${doc.shipping.label}` : "Shipping"}</td>
                     <td />
                     <td className="font-mono-jb py-3 px-3" style={{ fontSize: 12, color: "#0F172A", textAlign: "right" }}>₱{doc.shipping.amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   </tr>
@@ -173,6 +173,14 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                   <Term label="Terms of payment" value={doc.termsOfPayment} />
                   <Term label="Time of delivery" value={doc.timeOfDelivery} />
                   <Term label="Place of delivery" value={doc.placeOfDelivery || "—"} />
+                  {doc.shipping?.label && doc.shipping.label !== "Shipping" && (
+                    <Term
+                      label="Delivery method"
+                      value={doc.shipping.includeInUnit
+                        ? `${doc.shipping.label} · ₱${doc.shipping.amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} included in unit price`
+                        : doc.shipping.label}
+                    />
+                  )}
                   <Term label="Validity" value={doc.validUntil} />
                 </div>
               </div>

@@ -55,6 +55,7 @@ const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inqu
 
 type ClientOrderStatusId =
   | "awaitingQuotation"
+  | "quotationSent"
   | "awaitingPOVerification"
   | "poReceived"
   | "invoiceSent"
@@ -108,6 +109,15 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
       bg: "#FEF3C7",
       fg: "#B45309",
       message: "Invoice sent — awaiting required payment.",
+    };
+  }
+  if (inquiry.stage === "quotation") {
+    return {
+      id: "quotationSent",
+      label: "QUOTATION SENT",
+      bg: "#DBEAFE",
+      fg: "#1D4ED8",
+      message: "Quotation sent — awaiting client purchase order.",
     };
   }
   if (
@@ -321,6 +331,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
           >
             <option value="all">All Statuses</option>
             <option value="awaitingQuotation">Awaiting Quotation</option>
+            <option value="quotationSent">Quotation Sent</option>
             <option value="poReceived">PO SUBMITTED</option>
             <option value="invoiceSent">Invoice Sent</option>
             <option value="awaitingPaymentVerification">Awaiting Payment Verification</option>
@@ -1966,6 +1977,12 @@ function LogisticsTab({ clientName }: { clientName: string }) {
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "status">("date-desc");
   const filters: (ClientDeliveryStatus | "All")[] = ["All", "PENDING DELIVERY", "IN TRANSIT", "DELIVERED"];
+  const filterLabels: Record<ClientDeliveryStatus | "All", string> = {
+    All: "All",
+    "PENDING DELIVERY": "Pending Delivery",
+    "IN TRANSIT": "In Transit",
+    DELIVERED: "Delivered",
+  };
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -2050,27 +2067,27 @@ function LogisticsTab({ clientName }: { clientName: string }) {
   return (
     <div className="px-8 py-8 flex flex-col gap-6">
       <div>
-        <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>DELIVERY &amp; TRACKING</h1>
+        <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Delivery &amp; Tracking</h1>
         <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Delivery method, live tracking, order status, and receipts for each of your orders.</p>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           {filters.map((f) => {
             const active = filter === f;
             return (
-              <button key={f} onClick={() => setFilter(f)} className="font-dm px-4 py-2 rounded-full transition-colors" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#0F172A", border: active ? "1px solid #C8102E" : "1px solid #CBD5E1" }}>
-                {f}
+              <button key={f} onClick={() => setFilter(f)} className="font-dm min-h-10 px-4 py-2 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A] focus-visible:ring-offset-2" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#1A2B4A", borderColor: active ? "#C8102E" : "#CBD5E1" }}>
+                {filterLabels[f]}
               </button>
             );
           })}
         </div>
-        <div className="flex items-center gap-2 ml-auto flex-wrap">
-          <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>From</span>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="font-dm px-2 py-1.5 rounded-md border border-slate-200 bg-white outline-none" style={{ fontSize: 12 }} />
-          <span className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>To</span>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="font-dm px-2 py-1.5 rounded-md border border-slate-200 bg-white outline-none" style={{ fontSize: 12 }} />
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm px-3 py-1.5 rounded-md border border-slate-200 bg-white outline-none" style={{ fontSize: 12, color: "#0F172A" }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="logistics-date-from" className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>From</label>
+          <input id="logistics-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="font-dm min-h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }} />
+          <label htmlFor="logistics-date-to" className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>To</label>
+          <input id="logistics-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="font-dm min-h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }} />
+          <select aria-label="Sort deliveries" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm min-h-10 rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }}>
             <option value="date-desc">Newest first</option>
             <option value="date-asc">Oldest first</option>
             <option value="status">By status</option>
@@ -2086,22 +2103,22 @@ function LogisticsTab({ clientName }: { clientName: string }) {
           const hasSignedDR = Boolean(r.signedDRFileName && r.signedDRNumber === r.deliveryReceiptNumber && r.signedDRReceivedAt);
           const trackUrl = trackingHref(r.trackingLink);
           return (
-            <div key={r.id} className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white" style={{ boxShadow: "0 4px 16px rgba(15,23,42,0.04)" }}>
+            <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200/70 bg-white" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
               {/* Row Header */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : r.id)}
-                className="w-full flex items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-slate-50/80"
+                className="w-full flex items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1A2B4A] sm:px-5"
               >
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: "#F1F5F9" }}>
                   <Icon size={18} style={{ color: methodColor(r.method) }} />
                 </div>
-                <div className="grid flex-1 grid-cols-1 items-center gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div>
+                <div className="grid min-w-0 flex-1 grid-cols-1 items-center gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto_auto]">
+                  <div className="min-w-0">
                     <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{r.joNumber ?? r.po}</div>
                     <div className="mt-0.5 line-clamp-1 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item} · Qty {r.qty}</div>
                   </div>
-                  <div className="font-dm" style={{ fontSize: 13, color: methodColor(r.method), fontWeight: 600 }}>{r.method ?? "Delivery method not specified"}</div>
-                  <span className="inline-flex items-center gap-2 justify-self-start rounded-full px-3 py-1.5 font-dm" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.35, backgroundColor: r.statusBg, color: r.statusFg }}>
+                  <div className="min-w-0 break-words font-dm" style={{ fontSize: 13, color: methodColor(r.method), fontWeight: 600 }}>{r.method ?? "Delivery method not specified"}</div>
+                  <span className="inline-flex items-center gap-2 justify-self-start whitespace-nowrap rounded-full px-3 py-1.5 font-dm" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.35, backgroundColor: r.statusBg, color: r.statusFg }}>
                     <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: r.statusFg }} />
                     {r.status}
                   </span>
@@ -2113,7 +2130,7 @@ function LogisticsTab({ clientName }: { clientName: string }) {
 
               {/* Expanded Detail */}
               {isExpanded && (
-                <div className="border-t border-slate-200/80 px-3 py-3 sm:px-4 sm:py-4" style={{ backgroundColor: "#F8FAFC" }}>
+                <div className="border-t border-slate-200/80 bg-slate-50 px-4 py-4 sm:px-5">
                   <section className="border-b border-slate-200/80 pb-3">
                       <div className="flex items-start gap-4">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: r.statusBg, color: r.statusFg }}>

@@ -21,6 +21,14 @@ interface Props {
 }
 
 const DELIVERY_TIMEFRAMES = ["1 week", "1–2 weeks", "2–3 weeks", "3–4 weeks", "4–6 weeks", "6+ weeks"] as const;
+type ShippingMethod = NonNullable<Inquiry["deliveryMethod"]>;
+const SHIPPING_METHODS: { id: ShippingMethod; description: string }[] = [
+  { id: "Company Vehicle", description: "Batangas / Laguna / nearby provinces" },
+  { id: "Lalamove", description: "Local · urgent same-day" },
+  { id: "AP Cargo", description: "Cagayan / Isabela / northern provinces" },
+  { id: "Fast Cargo", description: "Davao / Mindanao / southern provinces" },
+  { id: "Client Pick-up", description: "Pick up from Enter-Fil warehouse" },
+];
 
 export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onSendToClient }: Props) {
   const { rawMaterials } = useMaterials();
@@ -58,8 +66,10 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   const [packagingInUnit, setPackagingInUnit] = useState(inquiry.quotationDoc?.packaging?.includeInUnit ?? true);
 
   /* Shipping */
+  const savedShippingLabel = inquiry.quotationDoc?.shipping?.label ?? "";
+  const savedShippingMethod = SHIPPING_METHODS.find((method) => method.id === savedShippingLabel)?.id ?? "";
   const [shippingOpen, setShippingOpen] = useState(!!inquiry.quotationDoc?.shipping);
-  const [shippingLabel, setShippingLabel] = useState(inquiry.quotationDoc?.shipping?.label ?? "");
+  const [shippingMethod, setShippingMethod] = useState<ShippingMethod | "">(savedShippingMethod);
   const [shippingAmount, setShippingAmount] = useState(inquiry.quotationDoc?.shipping?.amount ?? 0);
   const [shippingInUnit, setShippingInUnit] = useState(inquiry.quotationDoc?.shipping?.includeInUnit ?? false);
 
@@ -182,7 +192,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
       ? { materialId: selectedPackaging.id, materialName: selectedPackaging.name, qty: packagingQty, unitPrice: selectedPackaging.unitPrice, includeInUnit: packagingInUnit }
       : undefined,
     shipping: shippingOpen
-      ? { label: shippingLabel || "Shipping", amount: shippingAmount, includeInUnit: shippingInUnit }
+      ? { label: shippingMethod || savedShippingLabel || "Shipping", amount: shippingAmount, includeInUnit: shippingInUnit }
       : undefined,
     termsOfPayment,
     timeOfDelivery,
@@ -209,6 +219,10 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
     if (lineItems.length === 0) { toast.error("At least one line item is required"); return false; }
     if (lineItems.some((li) => !li.description.trim() || li.qty <= 0 || li.unitPrice < 0)) {
       toast.error("Each line item needs a description, qty > 0, and a non-negative unit price");
+      return false;
+    }
+    if (shippingOpen && !shippingMethod && (!savedShippingLabel || savedShippingLabel === "Shipping")) {
+      toast.error("Select a delivery method");
       return false;
     }
     if (!placeOfDelivery.trim()) { toast.error("Place of delivery is required"); return false; }
@@ -336,8 +350,22 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
             color="#7C3AED"
           >
             <div className="grid grid-cols-3 gap-3 items-end">
-              <Field label="Label" full>
-                <input value={shippingLabel} onChange={(e) => setShippingLabel(e.target.value)} placeholder="e.g. Lalamove — Batangas" className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
+              <Field label="Delivery Method" full>
+                <select
+                  value={shippingMethod}
+                  onChange={(e) => setShippingMethod(e.target.value as ShippingMethod)}
+                  className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400"
+                  style={{ fontSize: 12 }}
+                >
+                  <option value="" disabled>
+                    {savedShippingLabel && !savedShippingMethod
+                      ? `Previously saved: ${savedShippingLabel}`
+                      : "Select a delivery method"}
+                  </option>
+                  {SHIPPING_METHODS.map((method) => (
+                    <option key={method.id} value={method.id}>{method.id} — {method.description}</option>
+                  ))}
+                </select>
               </Field>
               <Field label="Amount (₱)">
                 <input type="number" step="0.01" value={shippingAmount} onChange={(e) => setShippingAmount(Number(e.target.value))} className="font-mono-jb w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />

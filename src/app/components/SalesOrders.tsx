@@ -12,6 +12,7 @@ import { useStockRequests } from "../store/stockRequests";
 import type { QuotationDoc } from "../store/orders";
 import { FILTER_TYPES as FILTER_TYPES_CATALOG, DIMENSION_LABELS as DIMENSION_LABELS_CATALOG, GROUP_TEMPLATES, groupForType } from "../store/filterTemplates";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
+import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { useSession } from "../store/session";
 import { loadProductSketchAttachment, type ProductSketchAttachment } from "../store/attachments";
 
@@ -418,7 +419,17 @@ function OperationsProductSketch({ inquiryId, product }: { inquiryId: string; pr
 
 function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: Inquiry; onClose: () => void; completedJOs: Inquiry[] }) {
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
+  const [showQuotation, setShowQuotation] = useState(false);
   const joRecord = completedJOs.find((job) => job.parentInquiryId === inquiry.id || job.id === inquiry.id || (inquiry.joNumber && job.joNumber === inquiry.joNumber)) ?? null;
+  const quotationDoc = inquiry.quotationDoc;
+  const quotationUnavailable = Boolean(quotationDoc) && (
+    !quotationDoc?.quotationNo
+    || !Array.isArray(quotationDoc.lineItems)
+    || quotationDoc.lineItems.length === 0
+  );
+  const quotationTotalForPreview = quotationDoc?.total
+    ?? quotationDoc?.lineItems.reduce((sum, line) => sum + line.unitPrice * line.qty, 0)
+    ?? 0;
 
   const toggleProduct = (productId: string) => {
     setExpandedProducts((prev) => ({ ...prev, [productId]: !prev[productId] }));
@@ -461,6 +472,48 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-slate-200 overflow-hidden bg-white">
+            <div className="px-5 py-3 border-b border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
+              <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Generated Quotation</div>
+            </div>
+            <div className="flex items-center justify-between gap-4 p-4">
+              {quotationDoc && !quotationUnavailable ? (
+                <>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <FileText size={24} aria-hidden style={{ color: "#C8102E", flexShrink: 0 }} />
+                    <div className="min-w-0">
+                      <div className="font-dm truncate" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>
+                        Quotation {quotationDoc.quotationNo}
+                      </div>
+                      <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>
+                        {quotationDoc.date ? `Generated ${quotationDoc.date}` : "Generation date unavailable"}
+                      </div>
+                      <div className="font-dm mt-1" style={{ fontSize: 10, color: "#64748B" }}>
+                        Saved quotation document · no separate PDF filename is recorded
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuotation(true)}
+                    className="shrink-0 rounded-md px-4 py-2.5 font-dm text-white"
+                    style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}
+                  >
+                    View Quotation
+                  </button>
+                </>
+              ) : (
+                <div className="font-dm" role={quotationUnavailable ? "alert" : undefined} style={{ fontSize: 12, color: quotationUnavailable ? "#B91C1C" : "#64748B" }}>
+                  {quotationUnavailable
+                    ? "Quotation record exists, but its document content is unavailable."
+                    : inquiry.quotation
+                      ? "Quotation has not been generated as a client-facing document yet."
+                      : "No quotation has been generated for this inquiry yet."}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-5 rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
@@ -560,6 +613,16 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
           )}
         </div>
       </div>
+      {showQuotation && quotationDoc && !quotationUnavailable && (
+        <QuotationPreviewModal
+          inquiry={inquiry}
+          doc={quotationDoc}
+          vatLabel="VAT EXCLUSIVE"
+          total={quotationTotalForPreview}
+          preparedBy={quotationDoc.preparedBy || "Enter-Fil"}
+          onClose={() => setShowQuotation(false)}
+        />
+      )}
     </div>
   );
 }

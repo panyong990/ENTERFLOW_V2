@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BOMLine, CostConfig } from "./materials";
-import { discardPendingSignedDeliveryReceiptAttachment, loadInquiryAttachments, promotePendingSignedDeliveryReceipt, saveInquiryAttachments } from "./attachments";
+import { discardPendingSignedDeliveryReceiptAttachment, loadInquiryAttachments, promotePendingSignedDeliveryReceipt, readFileAsDataUrl, saveInquiryAttachments, saveProductSketchAttachments } from "./attachments";
 
 /* Quotation document — what the client sees */
 export interface QuotationLineItem {
@@ -788,6 +788,10 @@ interface Ctx {
   completedJOs: Inquiry[];
   clearedPOs: string[];
   addInquiry: (i: Omit<Inquiry, "id" | "code" | "stage" | "submittedDate" | "archived" | "archiveReason" | "archiveDate">) => string;
+  addInquiryWithProductSketches: (
+    inquiry: Omit<Inquiry, "id" | "code" | "stage" | "submittedDate" | "archived" | "archiveReason" | "archiveDate">,
+    sketches: Record<string, File>,
+  ) => Promise<string>;
   sendQuotation: (id: string, q: Quotation) => void;
   uploadPO: (id: string, fileName: string, fileDataUrl: string, poNumber: string) => void;
   finalizeJO: (id: string, data: FinalizeJOData) => void;
@@ -1066,6 +1070,33 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     const id = `inq-${Date.now()}`;
     const num = String(allInquiries.length + 4).padStart(3, "0");
     const code = `INQ-${num}`;
+    setAllInquiries((prev) => [
+      ...prev,
+      {
+        ...data,
+        id, code, stage: "inquiry",
+        submittedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      },
+    ]);
+    return code;
+  };
+
+  const addInquiryWithProductSketches: Ctx["addInquiryWithProductSketches"] = async (data, sketchFiles) => {
+    const id = `inq-${Date.now()}`;
+    const num = String(allInquiries.length + 4).padStart(3, "0");
+    const code = `INQ-${num}`;
+    const productIds = new Set(data.products.map((product) => product.id));
+    const sketches = Object.fromEntries(
+      await Promise.all(
+        Object.entries(sketchFiles)
+          .filter(([productId]) => productIds.has(productId))
+          .map(async ([productId, file]) => [
+            productId,
+            { fileName: file.name, dataUrl: await readFileAsDataUrl(file) },
+          ] as const),
+      ),
+    );
+    await saveProductSketchAttachments(id, sketches);
     setAllInquiries((prev) => [
       ...prev,
       {
@@ -1791,7 +1822,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   return (
     <OrdersContext.Provider value={{
       inquiries, archivedInquiries, completedJOs, clearedPOs,
-      addInquiry, sendQuotation, uploadPO, finalizeJO,
+      addInquiry, addInquiryWithProductSketches, sendQuotation, uploadPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
       requestCancellation, approveCancellation, declineCancellation,
       confirmClientPayment, submitPayment, verifyPayment, rejectPayment,

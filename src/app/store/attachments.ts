@@ -28,8 +28,59 @@ function openAttachmentsDb(): Promise<IDBDatabase> {
   });
 }
 
-function attachmentKey(inquiryId: string, kind: "po" | "payment" | "signed-dr" | "pending-signed-dr", childId?: string) {
+function attachmentKey(inquiryId: string, kind: "po" | "payment" | "signed-dr" | "pending-signed-dr" | "product-sketch", childId?: string) {
   return childId ? `${inquiryId}:${kind}:${childId}` : `${inquiryId}:${kind}`;
+}
+
+export interface ProductSketchAttachment {
+  fileName: string;
+  dataUrl: string;
+}
+
+export async function saveProductSketchAttachments(
+  inquiryId: string,
+  sketches: Record<string, ProductSketchAttachment>,
+): Promise<void> {
+  const db = await openAttachmentsDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(ATTACHMENTS_STORE_NAME, "readwrite");
+      const store = transaction.objectStore(ATTACHMENTS_STORE_NAME);
+      Object.entries(sketches).forEach(([productId, sketch]) => {
+        store.put({
+          key: attachmentKey(inquiryId, "product-sketch", productId),
+          ...sketch,
+        });
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("Could not save product sketches"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("Product sketch transaction was aborted"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function loadProductSketchAttachment(
+  inquiryId: string,
+  productId: string,
+): Promise<ProductSketchAttachment | null> {
+  const db = await openAttachmentsDb();
+  try {
+    return await new Promise<ProductSketchAttachment | null>((resolve, reject) => {
+      const request = db
+        .transaction(ATTACHMENTS_STORE_NAME, "readonly")
+        .objectStore(ATTACHMENTS_STORE_NAME)
+        .get(attachmentKey(inquiryId, "product-sketch", productId));
+      request.onsuccess = () => {
+        const record = request.result as ProductSketchAttachment | undefined;
+        resolve(record ? { fileName: record.fileName, dataUrl: record.dataUrl } : null);
+      };
+      request.onerror = () => reject(request.error ?? new Error("Could not load the product sketch"));
+    });
+  } finally {
+    db.close();
+  }
 }
 
 export async function saveInquiryAttachments(

@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -13,6 +13,7 @@ import type { QuotationDoc } from "../store/orders";
 import { FILTER_TYPES as FILTER_TYPES_CATALOG, DIMENSION_LABELS as DIMENSION_LABELS_CATALOG, GROUP_TEMPLATES, groupForType } from "../store/filterTemplates";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
 import { useSession } from "../store/session";
+import { loadProductSketchAttachment, type ProductSketchAttachment } from "../store/attachments";
 
 const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -22,6 +23,560 @@ const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[]
 
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
+const isReadyForJobOrder = (inquiry: Inquiry) => {
+  if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
+  const state = paymentState(inquiry);
+  if (state.invoiceTotal <= 0) return false;
+  return state.requiredDownpaymentAmount > 0
+    ? state.downpaymentStatus === "COMPLETE"
+    : state.state === "FULLY_PAID";
+};
+
+function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inquiry[]; completedJOs: Inquiry[] }) {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<Stage | "all">("all");
+  const [clientFilter, setClientFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "client" | "amount">("newest");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const isReadyForJobOrder = (inquiry: Inquiry) => {
+    if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
+    const state = paymentState(inquiry);
+    if (state.invoiceTotal <= 0) return false;
+    return state.requiredDownpaymentAmount > 0
+      ? state.downpaymentStatus === "COMPLETE"
+      : state.state === "FULLY_PAID";
+  };
+
+  const toDateValue = (value?: string) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const visibleInquiries = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return [...inquiries]
+      .filter((inquiry) => {
+        const matchesQuery = !needle || [
+          inquiry.code,
+          inquiry.clientName,
+          inquiry.contactPerson,
+          inquiry.poNumber,
+          inquiry.poFileName,
+          inquiry.quotationDoc?.quotationNo,
+          ...inquiry.products.map((product) => [product.filterName, product.type, product.oem, product.media, product.notes].filter(Boolean).join(" ")),
+        ].some((value) => value?.toLowerCase().includes(needle));
+
+        const matchesStatus = statusFilter === "all" || inquiry.stage === statusFilter;
+        const matchesClient = clientFilter === "all" || inquiry.clientName === clientFilter;
+
+        const inquiryDate = inquiry.submittedDate || inquiry.quotationDoc?.date || inquiry.poUploadedAt || "";
+        const dateValue = toDateValue(inquiryDate);
+        const matchesFrom = !fromDate || !dateValue || dateValue >= new Date(`${fromDate}T00:00:00`);
+        const matchesTo = !toDate || !dateValue || dateValue <= new Date(`${toDate}T23:59:59`);
+
+        return matchesQuery && matchesStatus && matchesClient && matchesFrom && matchesTo;
+      })
+      .sort((a, b) => {
+        if (sortBy === "client") return a.clientName.localeCompare(b.clientName) || a.code.localeCompare(b.code);
+        if (sortBy === "amount") {
+          const aTotal = a.quotationDoc?.total ?? a.quotedTotal ?? 0;
+          const bTotal = b.quotationDoc?.total ?? b.quotedTotal ?? 0;
+          return bTotal - aTotal || a.code.localeCompare(b.code);
+        }
+        const aDate = new Date(a.submittedDate || a.quotationDoc?.date || a.poUploadedAt || 0).getTime();
+        const bDate = new Date(b.submittedDate || b.quotationDoc?.date || b.poUploadedAt || 0).getTime();
+        return sortBy === "oldest" ? aDate - bDate : bDate - aDate;
+      });
+  }, [clientFilter, fromDate, inquiries, query, sortBy, statusFilter, toDate]);
+
+  const clients = useMemo(() => [...new Set(inquiries.map((inquiry) => inquiry.clientName).filter(Boolean))].sort(), [inquiries]);
+  const selectedInquiry = useMemo(() => {
+    if (!selectedId) return null;
+    const normalized = selectedId.trim();
+    return (
+      inquiries.find((inquiry) => inquiry.id === normalized)
+      ?? inquiries.find((inquiry) => inquiry.code.toLowerCase() === normalized.toLowerCase())
+      ?? visibleInquiries.find((inquiry) => inquiry.id === normalized)
+      ?? visibleInquiries.find((inquiry) => inquiry.code.toLowerCase() === normalized.toLowerCase())
+      ?? null
+    );
+  }, [inquiries, selectedId, visibleInquiries]);
+
+  const summary = useMemo(() => {
+    const activeInquiries = visibleInquiries.filter((inquiry) => !inquiry.archived);
+    const awaitingQuotation = visibleInquiries.filter((inquiry) => inquiry.stage === "inquiry");
+    const quotationSent = visibleInquiries.filter((inquiry) => inquiry.stage === "quotation" || (inquiry.stage === "po" && !isReadyForJobOrder(inquiry)));
+    const readyForJobOrder = visibleInquiries.filter((inquiry) => isReadyForJobOrder(inquiry));
+    return { activeInquiries: activeInquiries.length, awaitingQuotation: awaitingQuotation.length, quotationSent: quotationSent.length, readyForJobOrder: readyForJobOrder.length };
+  }, [visibleInquiries]);
+
+  const cardsForColumn = (columnId: "inquiry" | "quotation" | "readyForJobOrder") => {
+    if (columnId === "readyForJobOrder") return visibleInquiries.filter((inquiry) => isReadyForJobOrder(inquiry));
+    if (columnId === "quotation") return visibleInquiries.filter((inquiry) => inquiry.stage === "quotation" || (inquiry.stage === "po" && !isReadyForJobOrder(inquiry)));
+    return visibleInquiries.filter((inquiry) => inquiry.stage === "inquiry");
+  };
+
+  const quoteAmountFor = (inquiry: Inquiry) => {
+    if (!inquiry.quotationDoc && !inquiry.quotation) return null;
+    const total = inquiry.quotationDoc?.total ?? inquiry.quotedTotal ?? 0;
+    return total > 0 ? peso(total) : null;
+  };
+
+  return (
+    <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
+      <header className="bg-white border-b border-slate-200/70 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+        <div>
+          <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+            Sales &amp; Orders
+          </h1>
+          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
+            Monitor customer inquiries, quotations, and order progress.
+          </p>
+        </div>
+      </header>
+
+      <div className="px-8 py-6">
+        <div className="grid grid-cols-4 gap-4">
+          <SummaryCard label="Total Active Inquiries" value={summary.activeInquiries} accent="#1A2B4A" />
+          <SummaryCard label="Awaiting Quotation" value={summary.awaitingQuotation} accent="#D97706" />
+          <SummaryCard label="Quotation Sent" value={summary.quotationSent} accent="#2563EB" />
+          <SummaryCard label="Ready for Job Order" value={summary.readyForJobOrder} accent="#059669" />
+        </div>
+
+        <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 flex items-start gap-2">
+          <Info size={16} className="mt-0.5" style={{ color: "#0F4C81" }} />
+          <p className="font-dm" style={{ fontSize: 12, color: "#1D4ED8" }}>
+            Monitoring-only view: current pipeline status is shown for review and follow-up without changing sales workflows or record status.
+          </p>
+        </div>
+      </div>
+
+      <div className="px-8 pb-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="relative min-w-[240px] flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search inquiry code, client, or product"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2.5 font-dm" style={{ fontSize: 13 }}
+              />
+            </label>
+
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as Stage | "all")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+              <option value="all">All statuses</option>
+              {Object.entries(stageLabel).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+
+            <select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+              <option value="all">All clients</option>
+              {clients.map((client) => (
+                <option key={client} value={client}>{client}</option>
+              ))}
+            </select>
+
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+              <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="bg-transparent font-dm" style={{ fontSize: 12, color: "#0F172A" }} />
+              <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>to</span>
+              <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="bg-transparent font-dm" style={{ fontSize: 12, color: "#0F172A" }} />
+            </div>
+
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="client">Client</option>
+              <option value="amount">Amount</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-8 pb-8">
+        <div className="grid grid-cols-3 gap-6">
+          {[
+            { id: "inquiry", title: "New Inquiry", tint: "#64748B" },
+            { id: "quotation", title: "Quotation Sent", tint: "#D97706" },
+            { id: "readyForJobOrder", title: "Ready for Job Order", tint: "#C9A84C" },
+          ].map((column) => {
+            const records = cardsForColumn(column.id as "inquiry" | "quotation" | "readyForJobOrder");
+            return (
+              <div key={column.id} className="rounded-xl border border-slate-200 bg-white shadow-sm" style={{ minHeight: 560 }}>
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4 rounded-t-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: column.tint }} />
+                    <h3 className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", letterSpacing: 0.6 }}>{column.title}</h3>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>{records.length}</span>
+                </div>
+
+                <div className="flex flex-col gap-3 p-4">
+                  {records.length === 0 ? (
+                    <div className="flex min-h-[180px] items-center justify-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No items</div>
+                  ) : (
+                    records.map((inquiry) => {
+                      const selected = selectedId === inquiry.id;
+                      const productTotal = inquiry.products.reduce((sum, product) => sum + product.qty, 0);
+                      const stageLabelValue = stageLabel[inquiry.stage] ?? "Open";
+                      return (
+                        <div
+                          key={inquiry.id}
+                          onClick={() => setSelectedId(inquiry.id)}
+                          onKeyDown={(event) => {
+                            if ((event.key === "Enter" || event.key === " ") && !event.repeat) {
+                              event.preventDefault();
+                              setSelectedId(inquiry.id);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          className="w-full cursor-pointer rounded-xl border p-3 text-left transition hover:border-slate-300"
+                          style={{
+                            backgroundColor: selected ? "#F8FAFC" : "#FFFFFF",
+                            borderColor: selected ? "#C8102E" : "#E2E8F0",
+                            boxShadow: selected ? "inset 0 0 0 1px rgba(200,16,46,.15)" : "none",
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{inquiry.code}</div>
+                              <div className="mt-1 font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{inquiry.clientName}</div>
+                            </div>
+                            {selected && (
+                              <span className="rounded-full bg-red-50 px-2 py-0.5 font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#C8102E" }}>Selected</span>
+                            )}
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-xs font-dm">
+                            <span style={{ color: "#64748B" }}>Contact</span>
+                            <span style={{ color: "#0F172A", fontWeight: 600 }}>{inquiry.contactPerson || "—"}</span>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-xs font-dm">
+                            <span style={{ color: "#64748B" }}>Products</span>
+                            <span style={{ color: "#0F172A", fontWeight: 600 }}>{productTotal} pcs</span>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-xs font-dm">
+                            <span style={{ color: "#64748B" }}>Date</span>
+                            <span style={{ color: "#0F172A", fontWeight: 600 }}>{inquiry.submittedDate || inquiry.quotationDoc?.date || "—"}</span>
+                          </div>
+
+                          {inquiry.quotationDoc?.total && (
+                            <div className="mt-2 flex items-center justify-between text-xs font-dm">
+                              <span style={{ color: "#64748B" }}>Quotation</span>
+                              <span style={{ color: "#0F172A", fontWeight: 700 }}>{peso(inquiry.quotationDoc.total)}</span>
+                            </div>
+                          )}
+
+                          {inquiry.urgent && (
+                            <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#991B1B" }}>
+                              <AlertTriangle size={11} /> Rush
+                            </div>
+                          )}
+
+                          {poNumberForDisplay(inquiry) && (
+                            <div className="mt-2 flex items-center justify-between text-xs font-dm">
+                              <span style={{ color: "#64748B" }}>PO</span>
+                              <span style={{ color: "#0F172A", fontWeight: 600 }}>{poNumberForDisplay(inquiry)}</span>
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                            <span className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>{stageLabelValue}</span>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedId(inquiry.id);
+                              }}
+                              className="font-dm rounded-md px-2 py-1 text-white"
+                              style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700 }}
+                            >
+                              View Details
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedInquiry && (
+        <OperationsDetailDrawer inquiry={selectedInquiry} onClose={() => setSelectedId(null)} completedJOs={completedJOs} />
+      )}
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#64748B" }}>{label}</div>
+        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: accent }} />
+      </div>
+      <div className="mt-3 font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A" }}>{value}</div>
+    </div>
+  );
+}
+
+function openProductSketch(sketch: ProductSketchAttachment) {
+  try {
+    const [metadata, encodedData] = sketch.dataUrl.split(",", 2);
+    const mimeType = /^data:([^;]+)/i.exec(metadata)?.[1] ?? "application/octet-stream";
+    const binary = atob(encodedData);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch (cause) {
+    console.error("[EnterFlow] Could not open the client-uploaded product sketch.", cause);
+    toast.error("Could not open the attachment", {
+      description: cause instanceof Error ? cause.message : "The saved file is invalid.",
+    });
+  }
+}
+
+function OperationsProductSketch({ inquiryId, product }: { inquiryId: string; product: ProductLine }) {
+  const [sketch, setSketch] = useState<ProductSketchAttachment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    void loadProductSketchAttachment(inquiryId, product.id)
+      .then((attachment) => {
+        if (!active) return;
+        setSketch(attachment);
+        setLoading(false);
+      })
+      .catch((cause: unknown) => {
+        console.error(`[EnterFlow] Could not load sketch for product ${product.id} in inquiry ${inquiryId}.`, cause);
+        if (!active) return;
+        setError(cause instanceof Error ? cause.message : "Unknown attachment error");
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [inquiryId, product.id]);
+
+  const isImage = sketch?.dataUrl.startsWith("data:image/") ?? false;
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>Engineer Sketch / Drawing</div>
+      {loading ? (
+        <div className="mt-2 font-dm" style={{ fontSize: 12, color: "#64748B" }}>Loading sketch…</div>
+      ) : error ? (
+        <div role="alert" className="mt-2 font-dm" style={{ fontSize: 12, color: "#B91C1C" }}>Sketch could not be loaded: {error}</div>
+      ) : sketch ? (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {isImage ? (
+            <img
+              src={sketch.dataUrl}
+              alt={`${product.type} client sketch`}
+              className="mx-auto max-h-56 w-full rounded-md object-contain"
+            />
+          ) : (
+            <div className="flex items-center gap-3 rounded-md border border-dashed border-slate-300 bg-white px-3 py-4">
+              <div style={{ width: 42, height: 52, backgroundColor: "#F8FAFC", border: "1.5px solid #CBD5E1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📄</div>
+              <div className="font-mono-jb break-all" style={{ fontSize: 11, color: "#0F172A" }}>{sketch.fileName}</div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => openProductSketch(sketch)}
+            className="mt-3 rounded-md px-3 py-2 font-dm"
+            style={{ backgroundColor: "#C8102E", color: "#FFFFFF", fontSize: 11, fontWeight: 700 }}
+          >
+            View Attachment
+          </button>
+        </div>
+      ) : product.sketchFileName ? (
+        <div role="alert" className="mt-2 font-dm" style={{ fontSize: 12, color: "#B91C1C" }}>
+          Sketch file unavailable: {product.sketchFileName}
+        </div>
+      ) : (
+        <div className="mt-2 font-dm" style={{ fontSize: 12, color: "#64748B" }}>No sketch attached</div>
+      )}
+    </div>
+  );
+}
+
+function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: Inquiry; onClose: () => void; completedJOs: Inquiry[] }) {
+  const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
+  const joRecord = completedJOs.find((job) => job.parentInquiryId === inquiry.id || job.id === inquiry.id || (inquiry.joNumber && job.joNumber === inquiry.joNumber)) ?? null;
+
+  const toggleProduct = (productId: string) => {
+    setExpandedProducts((prev) => ({ ...prev, [productId]: !prev[productId] }));
+  };
+
+  const totalQty = inquiry.products.reduce((sum, product) => sum + product.qty, 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/25 backdrop-blur-[1px]" aria-modal="true" role="dialog">
+      <div className="flex h-full w-[540px] flex-col border-l border-slate-200 bg-white shadow-2xl" style={{ maxWidth: "92vw" }}>
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+          <div>
+            <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: "#64748B", textTransform: "uppercase" }}>Operations Monitor</div>
+            <h3 className="font-syne mt-1" style={{ fontSize: 20, fontWeight: 800, color: "#0F172A" }}>
+              {inquiry.stage === "inquiry" ? "Inquiry Details" : inquiry.stage === "quotation" || inquiry.quotationDoc ? "Quotation Details" : "Job Order Details"}
+            </h3>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close details" className="rounded-full border border-slate-200 bg-slate-50 p-2" style={{ color: "#475569" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto bg-slate-50 p-5">
+          <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
+            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
+              <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>📋 Client Submission</div>
+              <span className="font-mono-jb" style={{ fontSize: 11, color: "#64748B" }}>{inquiry.code} · submitted {inquiry.submittedDate}</span>
+            </div>
+            <div className="grid grid-cols-4 gap-4 p-5">
+              <DetailField label="Company">{inquiry.clientName}</DetailField>
+              <DetailField label="Contact Person">{inquiry.contactPerson}</DetailField>
+              <DetailField label="Payment Terms">{inquiry.paymentTerms}</DetailField>
+              <DetailField label="Total Qty">{totalQty} pcs across {inquiry.products.length} product{inquiry.products.length === 1 ? "" : "s"}</DetailField>
+            </div>
+            {inquiry.generalNotes && (
+              <div className="px-5 pb-5">
+                <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>General Notes from Client</div>
+                <div className="rounded-md p-3 font-dm" style={{ fontSize: 13, color: "#0F172A", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", lineHeight: 1.5 }}>
+                  {inquiry.generalNotes}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
+            <div className="px-5 py-3 border-b border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
+              <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Product Specifications · {inquiry.products.length} item{inquiry.products.length === 1 ? "" : "s"}</div>
+            </div>
+            <div className="divide-y divide-slate-200">
+              {inquiry.products.map((product, index) => {
+                const expanded = !!expandedProducts[product.id];
+                return (
+                  <div key={product.id} className="bg-white">
+                    <button
+                      type="button"
+                      onClick={() => toggleProduct(product.id)}
+                      className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+                      style={{ backgroundColor: expanded ? "#F8FAFC" : "#FFFFFF" }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>#{index + 1} · {product.type}</span>
+                        <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>Qty {product.qty}</span>
+                      </div>
+                      <span className="inline-flex items-center gap-2 text-slate-500">
+                        {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                      </span>
+                    </button>
+                    {expanded && (
+                      <div className="border-t border-slate-200 bg-slate-50 p-4">
+                        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          <table className="w-full">
+                            <thead style={{ backgroundColor: "#F4F6F9" }}>
+                              <tr>
+                                {['#', 'Type', 'OD1/OD2', 'ID1/ID2', 'H', 'Media', 'Inner / Outer', 'O-Ring / Gasket', 'OEM', 'Qty', 'Line Notes'].map((header) => (
+                                  <th key={header} className="font-dm text-left px-3 py-2" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{header}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-t border-slate-200 align-top">
+                                <td className="px-3 py-2.5 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>#{index + 1}</td>
+                                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{product.type}</td>
+                                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{product.od1 || "—"} / {product.od2 || "—"}</td>
+                                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{product.id1 || "—"} / {product.id2 || "—"}</td>
+                                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{product.height || "—"}</td>
+                                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{product.media || "—"}</td>
+                                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{product.innerCore || "—"} / {product.outerCore || "—"}</td>
+                                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{product.oring || "—"} / {product.gasket || "—"}</td>
+                                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{product.oem || "—"}</td>
+                                <td className="px-3 py-2.5 font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{product.qty}</td>
+                                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{product.notes || "—"}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <OperationsProductSketch key={`${inquiry.id}:${product.id}`} inquiryId={inquiry.id} product={product} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {inquiry.stage !== "inquiry" && inquiry.stage !== "quotation" && (
+            <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>Job Order Status</h4>
+              {!joRecord ? (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>Awaiting JO Creation</div>
+                  <div className="mt-1 font-dm" style={{ fontSize: 12, color: "#92400E" }}>This order is ready for Job Order creation, but no Job Order has been generated yet.</div>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <FieldRow label="JO Number" value={joRecord.joNumber || "—"} />
+                  <FieldRow label="Created" value={joRecord.joCompletedAt || joRecord.submittedDate || "—"} />
+                  <FieldRow label="Current Status" value={stageLabel[joRecord.stage] || "Open"} />
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>Generated Job Order document</div>
+                    {!joRecord.joSketch && !joRecord.signedQuotationFile ? (
+                      <div className="mt-2 font-dm" style={{ fontSize: 12, color: "#64748B" }}>The Job Order record exists, but the generated document is unavailable.</div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (joRecord.joSketch) window.open(joRecord.joSketch, "_blank", "noopener,noreferrer");
+                        }}
+                        className="mt-2 rounded-md px-3 py-2 font-dm"
+                        style={{ backgroundColor: "#C8102E", color: "#FFFFFF", fontSize: 12, fontWeight: 700 }}
+                      >
+                        View Full Job Order
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FieldRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{label}</div>
+      <div className="mt-1 font-dm" style={{ fontSize: 12, color: "#0F172A", fontWeight: 600 }}>{value || "—"}</div>
+    </div>
+  );
+}
+
+function productDetails(product: ProductLine) {
+  const parts = [product.filterName || product.type, product.media, product.oem, product.od1 && `OD ${product.od1}`, product.id1 && `ID ${product.id1}`, product.height && `H ${product.height}`].filter(Boolean);
+  return parts.join(" · ") || "Standard specification";
+}
 
 export function SalesOrders() {
   const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
@@ -29,6 +584,10 @@ export function SalesOrders() {
   const { requests: stockRequests } = useStockRequests();
   const { push: pushNotif } = useNotifications();
   const session = useSession();
+  if (session.role === "operations") {
+    return <OperationsSalesMonitoring inquiries={inquiries} completedJOs={completedJOs} />;
+  }
+
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [viewQuoteId, setViewQuoteId] = useState<string | null>(null);
@@ -68,15 +627,6 @@ export function SalesOrders() {
     pushNotif({ dept: "payments", title: `INVOICE RECEIVED: ${invoice.invoiceNo}`, body: `${invoice.clientName} · ${peso(invoice.invoiceAmount ?? 0)}${downpaymentPercent > 0 ? ` · DOWNPAYMENT REQUIRED ${peso(invoicePayment.requiredDownpaymentAmount)}` : ""}`, link: "accounting", clientName: invoice.clientName, recipients: ["owner", "accounting", "operations", "client"] });
     toast.success("Invoice sent to client", { description: `${invoice.invoiceNo} · client portal updated` });
     closePreview();
-  };
-
-  const isReadyForJobOrder = (inquiry: Inquiry) => {
-    if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
-    const state = paymentState(inquiry);
-    if (state.invoiceTotal <= 0) return false;
-    return state.requiredDownpaymentAmount > 0
-      ? state.downpaymentStatus === "COMPLETE"
-      : state.state === "FULLY_PAID";
   };
 
   return (

@@ -526,7 +526,7 @@ function TransactionsTab({ clientName }: { clientName: string }) {
 
 /* ─────────── NewOrderWizardModal — multi-product wizard with dynamic dimensions ─────────── */
 function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName: string; onClose: () => void; onSubmitted: () => void }) {
-  const { addInquiry } = useOrders();
+  const { addInquiry, addInquiryWithProductSketches } = useOrders();
   const { push: pushNotif } = useNotifications();
 
   const [step, setStep] = useState(1);
@@ -567,7 +567,7 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
     return true;
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!contactPerson.trim()) { toast.error("Contact person required"); return; }
     if (products.some((p) => p.qty < 10)) { toast.error("Each product must have qty ≥ 10"); return; }
     if (isRush && !rushDate.trim()) { toast.error("Please specify your required delivery date for rush orders"); return; }
@@ -583,14 +583,29 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
       };
     });
 
-    const code = addInquiry({
+    const inquiryData = {
       clientName, contactPerson, paymentTerms, generalNotes,
       products: finalProducts,
       urgent: isRush,
       dueDate: isRush ? rushDate : undefined,
       /* Legacy single-sketch field — show comma-joined list for multi-product */
       inquirySketch: finalProducts.map((p) => p.sketchFileName).filter(Boolean).join(", ") || undefined,
+    };
+    const productSketches: Record<string, File> = {};
+    Object.entries(sketchFiles).forEach(([productId, file]) => {
+      if (file) productSketches[productId] = file;
     });
+    let code: string;
+    try {
+      code = Object.keys(productSketches).length
+        ? await addInquiryWithProductSketches(inquiryData, productSketches)
+        : addInquiry(inquiryData);
+    } catch (error) {
+      toast.error("Could not submit the inquiry attachments", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      return;
+    }
     pushNotif({
       dept: "sales",
       title: `New inquiry from ${clientName}${isRush ? " 🚨 RUSH" : ""}`,

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, ArrowRight, CheckCircle2, Truck, Boxes, Clock3, ArrowUpRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -7,8 +7,8 @@ import {
 import { KPICard } from "./KPICard";
 import { StatusBadge } from "./StatusBadge";
 import { NotificationBell } from "./NotificationBell";
-import { PRODUCTION_STAGES, stageLabel, useOrders } from "../store/orders";
-import { getRawMaterialStockStatus, useMaterials } from "../store/materials";
+import { PRODUCTION_STAGES, stageLabel, useOrders, type Inquiry } from "../store/orders";
+import { getRawMaterialStockStatus, useMaterials, type FinishedGood, type RawMaterial } from "../store/materials";
 import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
 import { FinishedGoodsOrderActivity } from "./FinishedGoodsOrderActivity";
 import type { Role } from "./Login";
@@ -82,6 +82,323 @@ const dashboardTitle: Partial<Record<Role, { title: string; subtitle: string }>>
   warehouse:  { title: "Warehouse Dashboard",   subtitle: "Inventory overview · Dispatch preparation" },
   logistics:  { title: "Logistics Dashboard",   subtitle: "Active deliveries · Delivery status · History" },
 };
+
+interface OperationalIssue {
+  id: string;
+  description: string;
+  record: string;
+  department: "Sales" | "Production" | "Inventory" | "Waybill" | "Logistics";
+  status?: string;
+  route: string;
+  occurredAt?: string;
+}
+
+const operationalProductionStages = new Set(["jo", "in_production", "quality_inspection"]);
+const operationalActiveOrderStages = new Set([
+  "inquiry", "quotation", "po", "jo", "in_production", "quality_inspection", "ready_for_dispatch", "dispatched",
+]);
+const resolvedDeliveryStages = new Set(["delivered", "paid", "overdue"]);
+const dayMilliseconds = 24 * 60 * 60 * 1000;
+
+function parseOperationalDate(value?: string): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function isRecentResolution(value: string | undefined, now: number): boolean {
+  const date = parseOperationalDate(value);
+  return Boolean(date && date.getTime() <= now && date.getTime() >= now - 7 * dayMilliseconds);
+}
+
+function orderReference(order: Inquiry): string {
+  return order.joNumber ?? order.poNumber ?? order.code;
+}
+
+function buildOperationsIssues(
+  orders: Inquiry[],
+  rawMaterials: RawMaterial[],
+  finishedGoods: FinishedGood[],
+  now = Date.now(),
+): { open: OperationalIssue[]; resolved: OperationalIssue[] } {
+  const open: OperationalIssue[] = [];
+  const resolved: OperationalIssue[] = [];
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const lastProductionStage = PRODUCTION_STAGES.length - 1;
+
+  for (const material of rawMaterials) {
+    const stockStatus = getRawMaterialStockStatus(material);
+    if (stockStatus.key !== "in-stock") {
+      open.push({
+        id: `raw-${material.id}`,
+        description: `${stockStatus.label.replace(/^[^ ]+ /, "")}: ${material.name} has ${displayQuantity(material.qtyInStock)} ${material.unit} in stock (threshold ${displayQuantity(material.threshold)} ${material.unit}).`,
+        record: material.id,
+        department: "Inventory",
+        status: stockStatus.label.replace(/^[^ ]+ /, ""),
+        route: "inventory",
+      });
+    }
+
+    for (const entry of material.history) {
+      if (stockStatus.key !== "in-stock") break;
+      if (entry.oldQty > material.threshold || entry.newQty <= material.threshold || !isRecentResolution(entry.date, now)) continue;
+      resolved.push({
+        id: `raw-resolved-${material.id}-${entry.id}`,
+        description: `${material.name} stock was replenished above its low-stock threshold.`,
+        record: material.id,
+        department: "Inventory",
+        status: "Resolved",
+        route: "inventory",
+        occurredAt: entry.date,
+      });
+    }
+  }
+
+  for (const item of finishedGoods) {
+    const status = item.qtyInStock <= 0 ? "Out of Stock" : item.qtyInStock <= item.bufferMin ? "Low Stock" : undefined;
+    if (status) {
+      open.push({
+        id: `finished-${item.id}`,
+        description: `${status}: ${item.itemName} has ${displayQuantity(item.qtyInStock)} pcs in stock (buffer minimum ${displayQuantity(item.bufferMin)} pcs).`,
+        record: `${item.itemCode} · ${item.client}`,
+        department: "Inventory",
+        status,
+        route: "inventory-finished",
+      });
+    }
+
+    for (const entry of item.history) {
+      if (status) break;
+      if (entry.oldQty > item.bufferMin || entry.newQty <= item.bufferMin || !isRecentResolution(entry.date, now)) continue;
+      resolved.push({
+        id: `finished-resolved-${item.id}-${entry.id}`,
+        description: `${item.itemName} stock was replenished above its buffer minimum.`,
+        record: `${item.itemCode} · ${item.client}`,
+        department: "Inventory",
+        status: "Resolved",
+        route: "inventory-finished",
+        occurredAt: entry.date,
+      });
+    }
+  }
+
+  for (const order of orders) {
+    const reference = `${orderReference(order)} · ${order.clientName}`;
+    const isProductionActive = operationalProductionStages.has(order.stage);
+    const dueDate = parseOperationalDate(order.dueDate);
+    const isOverdue = isProductionActive && Boolean(dueDate && dueDate.getTime() < today.getTime());
+
+    if (isOverdue || (isProductionActive && order.paused)) {
+      const stage = stageLabel[order.stage];
+      open.push({
+        id: `production-${order.id}`,
+        description: isOverdue
+          ? `Production job is past its required-by date${order.paused ? ` and on hold${order.pauseReason ? `: ${order.pauseReason}` : ""}` : ""}.`
+          : `Production job is on hold${order.pauseReason ? `: ${order.pauseReason}` : ""}.`,
+        record: reference,
+        department: "Production",
+        status: order.paused ? `On Hold · ${stage}` : `Overdue · ${stage}`,
+        route: "production",
+      });
+    }
+
+    if (order.stage === "ready_for_dispatch" && !order.waybillPrintedAt) {
+      open.push({
+        id: `waybill-${order.id}`,
+        description: "Job is ready for dispatch but has no recorded waybill print timestamp.",
+        record: reference,
+        department: "Waybill",
+        status: stageLabel[order.stage],
+        route: "waybill",
+      });
+    }
+
+    if (order.pendingCancellation) {
+      open.push({
+        id: `sales-cancellation-${order.id}`,
+        description: `Cancellation request is awaiting review: ${order.pendingCancellation.reason}`,
+        record: reference,
+        department: "Sales",
+        status: "Awaiting review",
+        route: "sales",
+      });
+    }
+
+    for (const request of order.replacementRequests ?? []) {
+      if (request.status === "resolved") {
+        if (request.resolvedAt && isRecentResolution(request.resolvedAt, now)) {
+          resolved.push({
+            id: `sales-replacement-resolved-${request.id}`,
+            description: `Replacement request resolved: ${request.defectDescription || request.reason}`,
+            record: `${reference}${request.joNumber ? ` · ${request.joNumber}` : ""}`,
+            department: "Sales",
+            status: "Resolved",
+            route: "sales",
+            occurredAt: request.resolvedAt,
+          });
+        }
+        continue;
+      }
+
+      open.push({
+        id: `sales-replacement-${request.id}`,
+        description: `Replacement request ${request.status}: ${request.defectDescription || request.reason}`,
+        record: `${reference}${request.joNumber ? ` · ${request.joNumber}` : ""}`,
+        department: "Sales",
+        status: request.status === "processing" ? "Processing" : "Awaiting review",
+        route: "sales",
+      });
+    }
+
+    const completedProductionStage = (order.stageHistory ?? [])
+      .filter((entry) => entry.stage === lastProductionStage && entry.status === "done")
+      .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt))[0];
+    if (
+      !isProductionActive
+      && dueDate
+      && dueDate.getTime() < today.getTime()
+      && completedProductionStage
+      && isRecentResolution(completedProductionStage.completedAt, now)
+    ) {
+      resolved.push({
+        id: `production-resolved-${order.id}`,
+        description: "Overdue production job completed its final recorded production stage.",
+        record: reference,
+        department: "Production",
+        status: "Resolved",
+        route: "production",
+        occurredAt: completedProductionStage.completedAt,
+      });
+    }
+
+    if (order.waybillPrintedAt && order.stage !== "ready_for_dispatch" && isRecentResolution(order.waybillPrintedAt, now)) {
+      resolved.push({
+        id: `waybill-resolved-${order.id}`,
+        description: "Waybill was printed for this dispatch.",
+        record: reference,
+        department: "Waybill",
+        status: "Resolved",
+        route: "waybill",
+        occurredAt: order.waybillPrintedAt,
+      });
+    }
+
+    if (resolvedDeliveryStages.has(order.stage)) {
+      const deliveredLog = [...(order.waybillLog ?? [])]
+        .reverse()
+        .find((entry) => entry.status.trim().toLocaleLowerCase() === "delivered" && isRecentResolution(entry.ts, now));
+      const deliveryResolvedAt = deliveredLog?.ts ?? order.deliveredDate;
+      if (deliveryResolvedAt && isRecentResolution(deliveryResolvedAt, now)) {
+        resolved.push({
+          id: `logistics-resolved-${order.id}`,
+          description: "Delivery was recorded as completed.",
+          record: reference,
+          department: "Logistics",
+          status: "Resolved",
+          route: "logistics",
+          occurredAt: deliveryResolvedAt,
+        });
+      }
+    }
+  }
+
+  return {
+    open: open.sort((a, b) => a.department.localeCompare(b.department) || a.record.localeCompare(b.record)),
+    resolved: resolved.sort((a, b) => Date.parse(b.occurredAt ?? "") - Date.parse(a.occurredAt ?? "")),
+  };
+}
+
+function OperationsBottlenecks({ openIssues, resolvedIssues, onNavigate }: {
+  openIssues: OperationalIssue[];
+  resolvedIssues: OperationalIssue[];
+  onNavigate?: (id: string) => void;
+}) {
+  const [view, setView] = useState<"open" | "resolved">("open");
+  const issues = view === "open" ? openIssues : resolvedIssues;
+
+  return (
+    <Card
+      title="Operational Bottlenecks"
+      action={
+        <div className="flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Operational issue views">
+          {([
+            { id: "open", label: "Open Issues" },
+            { id: "resolved", label: "Recently Resolved" },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={view === tab.id}
+              onClick={() => setView(tab.id)}
+              className="rounded-md px-3 py-2 font-dm transition-colors"
+              style={{
+                backgroundColor: view === tab.id ? "#FFFFFF" : "transparent",
+                color: view === tab.id ? "#1A2B4A" : "#64748B",
+                fontSize: 12,
+                fontWeight: 600,
+                boxShadow: view === tab.id ? "0 1px 2px rgba(15,23,42,0.08)" : undefined,
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {issues.length ? (
+        <div className="divide-y divide-slate-100">
+          {issues.map((issue) => (
+            <article key={issue.id} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="font-dm rounded-full px-2 py-1"
+                    style={{
+                      backgroundColor: issue.department === "Inventory" ? "#FFEDD5" : issue.department === "Production" ? "#FEE2E2" : "#DBEAFE",
+                      color: issue.department === "Inventory" ? "#C2410C" : issue.department === "Production" ? "#991B1B" : "#1D4ED8",
+                      fontSize: 10,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {issue.department}
+                  </span>
+                  {issue.status && (
+                    <span className="font-dm rounded-full bg-slate-100 px-2 py-1" style={{ color: "#475569", fontSize: 10, fontWeight: 600 }}>
+                      {issue.status}
+                    </span>
+                  )}
+                  {issue.occurredAt && (
+                    <time className="font-dm" dateTime={issue.occurredAt} style={{ color: "#94A3B8", fontSize: 11 }}>
+                      {new Date(issue.occurredAt).toLocaleString()}
+                    </time>
+                  )}
+                </div>
+                <p className="font-dm mt-2" style={{ color: "#0F172A", fontSize: 13, lineHeight: 1.5 }}>{issue.description}</p>
+                <p className="font-mono-jb mt-1 truncate" title={issue.record} style={{ color: "#64748B", fontSize: 11 }}>
+                  {issue.record}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate?.(issue.route)}
+                className="font-dm inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                style={{ color: "#1A2B4A", fontSize: 12, fontWeight: 600 }}
+              >
+                View Details <ArrowUpRight size={14} />
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="font-dm py-8 text-center" style={{ color: "#64748B", fontSize: 13 }}>
+          {view === "open" ? "No open operational issues found in current system data." : "No issues have a recorded resolution in the last 7 days."}
+        </p>
+      )}
+    </Card>
+  );
+}
 
 export function Dashboard({ variant = "operations", onNavigate }: { variant?: Role; onNavigate?: (id: string) => void }) {
   return variant === "warehouse"
@@ -344,13 +661,32 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
 function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role; onNavigate?: (id: string) => void }) {
   const role = variant;
   const isAcc = role === "accounting";
-  const { inquiries, completedJOs, archivedInquiries } = useOrders();
+  const { inquiries, completedJOs } = useOrders();
+  const { rawMaterials, finishedGoods } = useMaterials();
   const pendingInquiries = inquiries.filter(i => i.stage === "inquiry");
   const meta = dashboardTitle[role] ?? { title: "Dashboard", subtitle: "Real-time overview" };
 
   /* DERIVED KPIs — single source of truth across the entire system */
   const allActive = [...inquiries, ...completedJOs];
   const activeOrdersCount = allActive.length;
+  const operationsOrders = useMemo(
+    () => [...new Map([...inquiries, ...completedJOs].map((order) => [order.id, order])).values()],
+    [inquiries, completedJOs],
+  );
+  const operationsActiveOrders = operationsOrders.filter((order) => operationalActiveOrderStages.has(order.stage));
+  const operationsProductionJobs = operationsOrders.filter((order) => operationalProductionStages.has(order.stage));
+  const operationsDeliveries = operationsOrders.filter(
+    (order) => order.stage === "dispatched" || (order.stage === "ready_for_dispatch" && Boolean(order.waybillPrintedAt)),
+  );
+  const inventoryAlertCount = rawMaterials.filter(
+    (material) => getRawMaterialStockStatus(material).key !== "in-stock",
+  ).length + finishedGoods.filter(
+    (item) => item.qtyInStock <= item.bufferMin,
+  ).length;
+  const operationsIssues = useMemo(
+    () => buildOperationsIssues(operationsOrders, rawMaterials, finishedGoods),
+    [operationsOrders, rawMaterials, finishedGoods],
+  );
   const jobsInProgress = completedJOs.filter(i => i.stage === "in_production" || i.stage === "quality_inspection").length;
   const activeProductionJobs = completedJOs.filter(
     (job) => job.stage === "jo" || job.stage === "in_production" || job.stage === "quality_inspection"
@@ -459,13 +795,21 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           </div>
         )}
         {/* KPI Row — role-specific */}
-        <div className={role === "production" ? "grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6" : "grid grid-cols-4 gap-6 mb-8"}>
-          {(role === "owner" || role === "operations") && (
+        <div className={role === "production" ? "grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6" : role === "operations" ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-8" : "grid grid-cols-4 gap-6 mb-8"}>
+          {role === "owner" && (
             <>
               <KPICard label="Active Orders"     value={String(activeOrdersCount)} delta="live count"  trend="up"   icon={ShoppingCart}    accent="#C8102E" />
               <KPICard label="Jobs In Progress"  value={String(jobsInProgress)}    delta="on the floor" trend="up"  icon={Factory}         accent="#1A2B4A" />
               <KPICard label="Low Stock Alerts"  value="3"                          delta="see Inventory" trend="down" icon={AlertTriangle} accent="#D97706" />
               <KPICard label="Revenue"           value={formatPeso(revenueTotal)}  delta={`${paidInquiries.length} paid orders`} trend="up" icon={DollarSign}  accent="#16A34A" />
+            </>
+          )}
+          {role === "operations" && (
+            <>
+              <KPICard label="Active Orders" value={String(operationsActiveOrders.length)} delta="open operational pipeline" showTrend={false} icon={ShoppingCart} accent="#C8102E" />
+              <KPICard label="Active Production Jobs" value={String(operationsProductionJobs.length)} delta="Job order, production, or inspection" showTrend={false} icon={Factory} accent="#1A2B4A" />
+              <KPICard label="Inventory Alerts" value={String(inventoryAlertCount)} delta="Low-stock and out-of-stock items" showTrend={false} icon={AlertTriangle} accent="#D97706" />
+              <KPICard label="Active Deliveries" value={String(operationsDeliveries.length)} delta="Ready with waybill or dispatched" showTrend={false} icon={Truck} accent="#16A34A" />
             </>
           )}
           {role === "sales" && (
@@ -501,6 +845,16 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             </>
           )}
         </div>
+
+        {role === "operations" && (
+          <div className="mb-8">
+            <OperationsBottlenecks
+              openIssues={operationsIssues.open}
+              resolvedIssues={operationsIssues.resolved}
+              onNavigate={onNavigate}
+            />
+          </div>
+        )}
 
         {role === "production" && (
           <div className="mb-6">
@@ -550,8 +904,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           </div>
         )}
 
-        {/* Charts row — Owner / Operations / Sales only */}
-        {(role === "owner" || role === "operations" || role === "sales") && (
+        {/* Charts row — Owner / Sales only */}
+        {(role === "owner" || role === "sales") && (
         <div className="grid grid-cols-12 gap-6 mb-8">
           <Card title="Weekly Orders" className="col-span-5">
             <ResponsiveContainer width="100%" height={240}>
@@ -595,8 +949,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         </div>
         )}
 
-        {/* Pending Inquiries + Frequent Orders (Owner / Operations / Sales) */}
-        {(role === "owner" || role === "operations" || role === "sales") && (
+        {/* Pending Inquiries + Frequent Orders (Owner / Sales) */}
+        {(role === "owner" || role === "sales") && (
           <div className="grid grid-cols-12 gap-6 mb-8">
             <Card title="Pending Client Inquiries" className="col-span-5"
               action={
@@ -639,8 +993,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           </div>
         )}
 
-        {/* Forward production plan (Owner / Operations) — recurring orders mapped to upcoming weeks */}
-        {(role === "owner" || role === "operations") && (
+        {/* Owner production plan — recurring orders mapped to upcoming weeks */}
+        {role === "owner" && (
           <div className="grid grid-cols-12 gap-6 mb-8">
             <Card title="Production Schedule · Next 4 Weeks" className="col-span-12"
               action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DCFCE7", color: "#166534" }}>Plan ahead based on recurring orders</span>}
@@ -813,8 +1167,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           </div>
         )}
 
-        {/* Finished Goods Buffer & Demand Forecast — Owner / Operations */}
-        {(role === "owner" || role === "operations") && (
+        {/* Finished Goods Buffer & Demand Forecast — Owner */}
+        {role === "owner" && (
         <div className="grid grid-cols-12 gap-6 mb-8">
           <Card title="Finished Goods Buffer — Demand Forecast" className="col-span-12"
             action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>Based on last 6 months order history</span>}
@@ -860,7 +1214,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         )}
 
         {/* Active Jobs remain informational for Logistics. */}
-        {role !== "sales" && role !== "accounting" && role !== "production" && (
+        {role !== "operations" && role !== "sales" && role !== "accounting" && role !== "production" && (
         <div className="grid grid-cols-12 gap-6">
           <Card
             title="Active Jobs"

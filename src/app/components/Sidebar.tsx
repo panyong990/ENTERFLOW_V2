@@ -56,7 +56,7 @@ interface SidebarProps {
 
 export function Sidebar({ active = "dashboard", onNavigate, onLogout, role, badges = {}, unreadNotif = 0 }: SidebarProps) {
   const allowed = allowedFor[role];
-  const visible = navItems.filter((n) => allowed.includes(n.id));
+  const visible = navItems.filter((n) => allowed.includes(n.id) && !(role === "accounting" && n.id === "sales"));
   const meta = roleMetas[role];
   const sb = roleSidebar[role];
   const initials = sb.user.split(" ").map(s => s[0]).slice(0, 2).join("");

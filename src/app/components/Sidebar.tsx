@@ -1,4 +1,4 @@
-import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, Users, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt, UserRoundCog, ShieldCheck, Users } from "lucide-react";
 import type { Role } from "./Login";
 import { roleMetas } from "./Login";
 
@@ -14,11 +14,13 @@ const navItems = [
   { id: "accounting", label: "Payments Ledger",   icon: Calculator },
   { id: "analytics",  label: "Analytics",         icon: BarChart3 },
   { id: "clients",    label: "Client Management", icon: Building2 },
-  { id: "users",      label: "User Management",   icon: Users },
+  { id: "employee-management", label: "Employee Management", icon: UserRoundCog },
+  { id: "roles",      label: "Roles & Permissions", icon: ShieldCheck },
+  { id: "users",      label: "Employee Directory", icon: Users },
 ];
 
 export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
-  /* Owner sees ONLY high-level: dashboard (all analytics + drill-down), client management, user management */
+  /* Owner sees high-level dashboards, client management, and a read-only workforce directory. */
   owner:      ["analytics", "clients", "users", "notifications", "settings"],
   /* Operations Manager: full operational access — analytics and user management are owner-only */
   operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "accounting", "clients", "notifications", "settings"],
@@ -29,7 +31,7 @@ export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   warehouse:  ["dashboard", "inventory", "waybill", "waybill-history", "notifications"],
   /* Logistics: dispatch tracking only; Waybill scanning is Warehouse-only */
   logistics:  ["dashboard", "logistics", "notifications"],
-  admin:      ["users"],
+  admin:      ["clients", "employee-management", "roles"],
 };
 
 export const roleSidebar: Record<Exclude<Role, "client">, { user: string; title: string }> = {

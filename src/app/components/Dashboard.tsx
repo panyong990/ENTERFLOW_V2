@@ -9,6 +9,7 @@ import { StatusBadge } from "./StatusBadge";
 import { NotificationBell } from "./NotificationBell";
 import { PRODUCTION_STAGES, stageLabel, useOrders } from "../store/orders";
 import { getRawMaterialStockStatus, useMaterials } from "../store/materials";
+import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
 import type { Role } from "./Login";
 
 const weekly = [
@@ -99,26 +100,14 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
   );
   const totalFinishedGoods = finishedGoods.reduce((total, item) => total + item.qtyInStock, 0);
   const topClientsByOrders = useMemo(() => {
-    const orderHistory = Array.from(new Map(
-      [...inquiries, ...completedJOs]
-        .filter((order) => !order.archived)
-        .map((order) => [order.id, order])
-    ).values());
+    const orderHistory = buildOrderHistory(inquiries, completedJOs);
     const clients = new Map<string, { client: string; orderIds: Set<string> }>();
 
     for (const item of finishedGoods) {
       const clientKey = item.client.trim().toLocaleLowerCase();
-      const matchingOrderIds = new Set(orderHistory
-        .filter((order) =>
-          order.clientName.trim().toLocaleLowerCase() === clientKey &&
-          order.products.some((product) => {
-            const orderPN = (product.oem ?? "").trim().toLocaleLowerCase();
-            return orderPN
-              ? orderPN === item.enterFilPN.trim().toLocaleLowerCase()
-              : (product.filterName ?? product.type).trim().toLocaleLowerCase() === item.itemName.trim().toLocaleLowerCase();
-          })
-        )
-        .map((order) => order.id));
+      const matchingOrderIds = new Set(
+        getFinishedGoodOrderActivity(item, orderHistory).matchingOrders.map((order) => order.id)
+      );
       if (matchingOrderIds.size === 0) continue;
 
       const aggregate = clients.get(clientKey) ?? {
@@ -355,16 +344,46 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
   const role = variant;
   const isAcc = role === "accounting";
   const { inquiries, completedJOs, archivedInquiries } = useOrders();
+  const { finishedGoods } = useMaterials();
   const pendingInquiries = inquiries.filter(i => i.stage === "inquiry");
+  const recurringOrderRows = useMemo(() => {
+    const orderHistory = buildOrderHistory(inquiries, completedJOs);
+    return finishedGoods
+      .map((item) => ({
+        item,
+        ...getFinishedGoodOrderActivity(item, orderHistory),
+      }))
+      .filter((row) => row.recurringOrders > 0)
+      .sort((a, b) => b.recurringOrders - a.recurringOrders || a.item.itemCode.localeCompare(b.item.itemCode))
+      .slice(0, 5);
+  }, [finishedGoods, inquiries, completedJOs]);
   const meta = dashboardTitle[role] ?? { title: "Dashboard", subtitle: "Real-time overview" };
 
   /* DERIVED KPIs — single source of truth across the entire system */
   const allActive = [...inquiries, ...completedJOs];
   const activeOrdersCount = allActive.length;
   const jobsInProgress = completedJOs.filter(i => i.stage === "in_production" || i.stage === "quality_inspection").length;
-  const rushOrdersCount = allActive.filter(i => i.urgent).length;
-  const onHoldCount = completedJOs.filter(i => i.paused).length;
-  const todayTargets = completedJOs.filter(i => (i.currentStage ?? 0) >= 8).length; /* QC + Completed */
+  const activeProductionJobs = completedJOs.filter(
+    (job) => job.stage === "jo" || job.stage === "in_production" || job.stage === "quality_inspection"
+  );
+  const inProgressProductionJobs = activeProductionJobs.filter(
+    (job) => job.stage === "in_production" || job.stage === "quality_inspection"
+  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overdueProductionJobs = activeProductionJobs.filter((job) => {
+    if (!job.dueDate) return false;
+    const dueDate = new Date(job.dueDate);
+    return !Number.isNaN(dueDate.getTime()) && dueDate.getTime() < today.getTime();
+  });
+  const reportingPeriodStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const completedProductionJobs = completedJOs.filter((job) => {
+    if (!job.joCompletedAt) return false;
+    const completedAt = new Date(job.joCompletedAt);
+    return !Number.isNaN(completedAt.getTime())
+      && completedAt >= reportingPeriodStart
+      && completedAt <= new Date();
+  });
   const quotationsSent = inquiries.filter(i => i.stage === "quotation").length;
   const posReceived = inquiries.filter(i => i.stage === "po").length;
   const paidInquiries = completedJOs.filter(i => i.stage === "paid");
@@ -399,9 +418,9 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
   const formatPeso = (n: number) => n >= 1000000 ? `₱${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `₱${(n / 1000).toFixed(0)}K` : `₱${n.toFixed(0)}`;
 
   return (
-    <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
+    <div className={role === "production" ? "flex-1 min-w-0 h-full overflow-auto" : "flex-1 h-full overflow-auto"} style={{ backgroundColor: "#F4F6F9" }}>
       {/* Topbar */}
-      <header className="bg-white border-b border-slate-200/70 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+      <header className={`bg-white border-b border-slate-200/70 ${role === "production" ? "px-4 sm:px-8" : "px-8"} py-5 flex items-center justify-between sticky top-0 z-10`}>
         <div>
           <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
             {meta.title}
@@ -410,7 +429,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             {meta.subtitle}
           </p>
         </div>
-        {role !== "logistics" && role !== "sales" && (
+        {role !== "logistics" && role !== "sales" && role !== "production" && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
@@ -425,7 +444,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         )}
       </header>
 
-      <div className="px-8 py-8" style={{ paddingLeft: 32, paddingRight: 32 }}>
+      <div className={role === "production" ? "px-4 sm:px-8 py-5 sm:py-8" : "px-8 py-8"} style={role === "production" ? undefined : { paddingLeft: 32, paddingRight: 32 }}>
         {isAcc && (
           <div
             className="rounded-xl p-4 mb-6 flex items-start gap-3"
@@ -451,7 +470,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           </div>
         )}
         {/* KPI Row — role-specific */}
-        <div className="grid grid-cols-4 gap-6 mb-8">
+        <div className={role === "production" ? "grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6" : "grid grid-cols-4 gap-6 mb-8"}>
           {(role === "owner" || role === "operations") && (
             <>
               <KPICard label="Active Orders"     value={String(activeOrdersCount)} delta="live count"  trend="up"   icon={ShoppingCart}    accent="#C8102E" />
@@ -478,10 +497,10 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           )}
           {role === "production" && (
             <>
-              <KPICard label="Active JOs"      value={String(jobsInProgress)} delta="on the floor"  trend="up"   icon={Factory}         accent="#C8102E" />
-              <KPICard label="Rush Orders"     value={String(rushOrdersCount)} delta="priority"     trend="up"   icon={AlertTriangle}   accent="#D97706" />
-              <KPICard label="On Hold"         value={String(onHoldCount)}    delta="paused"        trend="down" icon={AlertTriangle}   accent="#92400E" />
-              <KPICard label="Today's Targets" value={String(todayTargets)}   delta="QC + ready"    trend="up"   icon={ShoppingCart}    accent="#16A34A" />
+              <KPICard label="Active Job Orders" value={String(activeProductionJobs.length)} delta="Currently in the production pipeline" showTrend={false} icon={Factory} accent="#C8102E" />
+              <KPICard label="In Progress" value={String(inProgressProductionJobs.length)} delta="In production or quality inspection" showTrend={false} icon={Clock3} accent="#1A2B4A" />
+              <KPICard label="Overdue Jobs" value={String(overdueProductionJobs.length)} delta="Active jobs past their required-by date" showTrend={false} icon={AlertTriangle} accent="#D97706" />
+              <KPICard label="Completed Jobs" value={String(completedProductionJobs.length)} delta="Completed this month" showTrend={false} icon={CheckCircle2} accent="#16A34A" />
             </>
           )}
           {role === "logistics" && (
@@ -493,6 +512,54 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             </>
           )}
         </div>
+
+        {role === "production" && (
+          <div className="mb-6">
+            <Card
+              title="Production Overview"
+              action={
+                <button
+                  onClick={() => onNavigate?.("production")}
+                  className="font-dm px-3 py-1.5 rounded-md hover:bg-slate-50"
+                  style={{ fontSize: 12, fontWeight: 600, color: "#C8102E" }}
+                >
+                  View all →
+                </button>
+              }
+            >
+              <div className="flex flex-col">
+                {activeProductionJobs.map((job) => {
+                  const stageIndex = job.currentStage ?? (
+                    job.stage === "quality_inspection" ? 8 : job.stage === "in_production" ? 1 : 0
+                  );
+                  const stage = PRODUCTION_STAGES[Math.min(stageIndex, PRODUCTION_STAGES.length - 1)];
+                  const item = job.products[0]?.filterName ?? job.products[0]?.type ?? "—";
+                  return (
+                    <div key={job.id} className="grid grid-cols-1 md:grid-cols-[112px_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0 border-b last:border-0 border-slate-100">
+                      <span className="font-mono-jb shrink-0" style={{ minWidth: 112, fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
+                        {job.joNumber ?? `JO-${job.code}`}
+                      </span>
+                      <span className="font-dm min-w-0 truncate" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }} title={job.clientName}>
+                        {job.clientName}
+                      </span>
+                      <span className="font-dm min-w-0 truncate" style={{ fontSize: 12, color: "#475569" }} title={item}>
+                        {item}
+                      </span>
+                      <StatusBadge variant={job.paused ? "delayed" : job.stage === "jo" ? "pending" : "in-progress"}>
+                        {job.paused ? `On Hold · ${stage}` : stage}
+                      </StatusBadge>
+                    </div>
+                  );
+                })}
+                {activeProductionJobs.length === 0 && (
+                  <p className="font-dm py-5 text-center" style={{ fontSize: 13, color: "#64748B" }}>
+                    No active job orders.
+                  </p>
+                )}
+              </div>
+            </Card>
+          </div>
+        )}
 
         {/* Charts row — Owner / Operations / Sales only */}
         {(role === "owner" || role === "operations" || role === "sales") && (
@@ -583,29 +650,26 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
               action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#FEF3C7", color: "#92400E" }}>Plan production in advance</span>}
             >
               <div className="grid grid-cols-1 gap-2">
-                {[
-                  { item: "Air Filter KF-OS.107.65.252", client: "B.E. Aerospace", freq: "Monthly", lastOrdered: "Apr 10, 2026", avgQty: 30, recommendedBuffer: 30 },
-                  { item: "Pleated Filter ZS20", client: "Maynilad", freq: "Bi-monthly", lastOrdered: "Mar 31, 2026", avgQty: 200, recommendedBuffer: 100 },
-                  { item: "Oil Separator KF-OS.200/167", client: "G.U. Engineering", freq: "Quarterly", lastOrdered: "Apr 12, 2026", avgQty: 30, recommendedBuffer: 15 },
-                  { item: "Column Filter KF-OF.180", client: "Emerald Vinyl", freq: "Quarterly", lastOrdered: "Feb 14, 2026", avgQty: 20, recommendedBuffer: 10 },
-                  { item: "Air Oil Separator MNC-AOS-3.0", client: "Monaco", freq: "Annually", lastOrdered: "Apr 22, 2026", avgQty: 50, recommendedBuffer: 0 },
-                ].map((r, i) => (
-                  <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-slate-200">
+                {recurringOrderRows.map(({ item, recurringOrders, averageQuantity, lastOrderDate }) => (
+                  <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-slate-200">
                     <Repeat2 size={14} style={{ color: "#1A2B4A" }} />
                     <div className="flex-1 min-w-0">
-                      <div className="font-dm truncate" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{r.item}</div>
-                      <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{r.client} · {r.freq} · last: {r.lastOrdered}</div>
+                      <div className="font-dm truncate" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{item.itemName} · {item.enterFilPN}</div>
+                      <div className="font-dm truncate" style={{ fontSize: 11, color: "#64748B" }}>{item.itemCode} · {item.client} · {recurringOrders} recorded {recurringOrders === 1 ? "order" : "orders"} · last: {lastOrderDate ?? "—"}</div>
                     </div>
                     <div className="text-right">
                       <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Avg / order</div>
-                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{r.avgQty} pcs</div>
+                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{averageQuantity === null ? "—" : `${averageQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })} pcs`}</div>
                     </div>
                     <div className="text-right">
                       <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Buffer</div>
-                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: r.recommendedBuffer > 0 ? "#16A34A" : "#94A3B8" }}>{r.recommendedBuffer > 0 ? `${r.recommendedBuffer} pcs` : "—"}</div>
+                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: item.bufferMin > 0 ? "#16A34A" : "#94A3B8" }}>{item.bufferMin > 0 ? `${item.bufferMin.toLocaleString()} pcs` : "—"}</div>
                     </div>
                   </div>
                 ))}
+                {recurringOrderRows.length === 0 && (
+                  <div className="font-dm py-4 text-center" style={{ fontSize: 12, color: "#94A3B8" }}>No recurring finished-goods orders found.</div>
+                )}
               </div>
             </Card>
           </div>
@@ -785,8 +849,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           </div>
         )}
 
-        {/* Finished Goods Buffer & Demand Forecast — Owner / Operations / Production */}
-        {(role === "owner" || role === "operations" || role === "production") && (
+        {/* Finished Goods Buffer & Demand Forecast — Owner / Operations */}
+        {(role === "owner" || role === "operations") && (
         <div className="grid grid-cols-12 gap-6 mb-8">
           <Card title="Finished Goods Buffer — Demand Forecast" className="col-span-12"
             action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>Based on last 6 months order history</span>}
@@ -832,7 +896,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         )}
 
         {/* Active Jobs remain informational for Logistics. */}
-        {role !== "sales" && role !== "accounting" && (
+        {role !== "sales" && role !== "accounting" && role !== "production" && (
         <div className="grid grid-cols-12 gap-6">
           <Card
             title="Active Jobs"
@@ -878,7 +942,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             </div>
           </Card>
 
-          {role !== "logistics" && <div className="col-span-4 bg-white rounded-xl border border-slate-200/60 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+          {role !== "logistics" && role !== "production" && <div className="col-span-4 bg-white rounded-xl border border-slate-200/60 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
             <div className="px-5 py-4 flex items-center justify-between" style={{ backgroundColor: "#C8102E" }}>
               <div className="flex items-center gap-2 text-white">
                 <AlertTriangle size={16} />

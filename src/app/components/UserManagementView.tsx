@@ -1,7 +1,10 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { AlertCircle, Building2, Check, KeyRound, Pencil, Plus, Power, Search, ShieldCheck, UserRound, UserRoundCog, Users, X } from "lucide-react";
+import { AlertCircle, Building2, Check, KeyRound, Pencil, Plus, Power, Search, ShieldCheck, SlidersHorizontal, UserRound, UserRoundCog, Users, X } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { getAccounts, saveAccounts, type Account, type AccountRole } from "../store/accounts";
+import { getAccounts, getEmployeeDirectory, saveAccounts, type Account, type AccountRole, type EmployeeDirectoryEntry } from "../store/accounts";
+import { useSession } from "../store/session";
+import { Unauthorized } from "./Unauthorized";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type AccountType = Account["type"];
 type StaffRole = Exclude<AccountRole, "client">;
@@ -29,7 +32,7 @@ const roleLabels: Record<StaffRole, string> = {
 
 const accessLevels: { id: AccountRole; label: string; description: string; bg: string; fg: string }[] = [
   { id: "admin", label: "Admin", description: "Manage employee and client accounts", bg: "#EDE9FE", fg: "#5B21B6" },
-  { id: "owner", label: "Owner / CEO", description: "Executive dashboard, analytics, and account management", bg: "#FEF3C7", fg: "#92400E" },
+  { id: "owner", label: "Owner / CEO", description: "Executive dashboard, analytics, and read-only employee directory", bg: "#FEF3C7", fg: "#92400E" },
   { id: "operations", label: "Operations Manager", description: "Full operational access across ERP modules", bg: "#FEE2E2", fg: "#991B1B" },
   { id: "sales", label: "Sales Manager", description: "Sales pipeline, quotations, and client management", bg: "#FFE4E6", fg: "#9F1239" },
   { id: "accounting", label: "Accounting Secretary", description: "Payments ledger, receipts, and overdue tracking", bg: "#DCFCE7", fg: "#166534" },
@@ -59,13 +62,273 @@ function formattedRole(role: AccountRole): string {
   return role === "client" ? "Client" : roleLabels[role];
 }
 
+const workforceTitleByRole: Record<StaffRole, string> = {
+  admin: "Admin",
+  owner: "Owner / CEO",
+  operations: "Operations Manager",
+  sales: "Sales Manager",
+  accounting: "Accounting Secretary",
+  production: "Production Manager",
+  warehouse: "Warehouse Staff",
+  logistics: "Logistics Personnel",
+};
+
+const workforcePageSize = 10;
+
+function EmployeeDirectory() {
+  const [employees] = useState<EmployeeDirectoryEntry[]>(getEmployeeDirectory);
+  const [query, setQuery] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState<EmployeeDirectoryEntry["role"] | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [draftDepartmentFilter, setDraftDepartmentFilter] = useState<EmployeeDirectoryEntry["role"] | "all">("all");
+  const [draftStatusFilter, setDraftStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const activeEmployees = employees.filter((employee) => employee.active);
+  const departmentOptions = Array.from(new Set(employees.map((employee) => employee.role)));
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filteredEmployees = employees.filter((employee) => {
+    if (departmentFilter !== "all" && employee.role !== departmentFilter) return false;
+    if (statusFilter === "active" && !employee.active) return false;
+    if (statusFilter === "inactive" && employee.active) return false;
+    return !normalizedQuery || [
+      employee.id,
+      employee.name,
+      workforceTitleByRole[employee.role],
+    ].some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+  });
+  const pageCount = Math.max(1, Math.ceil(filteredEmployees.length / workforcePageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleEmployees = filteredEmployees.slice(
+    (currentPage - 1) * workforcePageSize,
+    currentPage * workforcePageSize,
+  );
+  const updateQuery = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+  const openFilters = (open: boolean) => {
+    if (open) {
+      setDraftDepartmentFilter(departmentFilter);
+      setDraftStatusFilter(statusFilter);
+    }
+    setFiltersOpen(open);
+  };
+  const applyFilters = () => {
+    setDepartmentFilter(draftDepartmentFilter);
+    setStatusFilter(draftStatusFilter);
+    setPage(1);
+    setFiltersOpen(false);
+  };
+  const resetFilters = () => {
+    setQuery("");
+    setDepartmentFilter("all");
+    setStatusFilter("all");
+    setDraftDepartmentFilter("all");
+    setDraftStatusFilter("all");
+    setPage(1);
+    setFiltersOpen(false);
+  };
+  const activeFilterCount = Number(departmentFilter !== "all") + Number(statusFilter !== "all");
+
+  return (
+    <main className="flex-1 min-w-0 h-full overflow-auto" style={{ backgroundColor: "#F5F7FB" }}>
+      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/95 px-5 py-5 backdrop-blur sm:px-8">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-end">
+          <div aria-live="polite" className="font-dm text-sm font-semibold text-slate-600">{filteredEmployees.length} employees</div>
+        </div>
+      </header>
+
+      <section className="mx-auto flex max-w-[1600px] flex-col gap-6 px-5 py-6 sm:px-8 sm:py-8">
+        <section aria-label="Workforce summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {[
+            { label: "Total Employees", count: employees.length, icon: Users, color: "text-blue-700", background: "bg-blue-50" },
+            { label: "Active Employees", count: activeEmployees.length, icon: UserRound, color: "text-emerald-700", background: "bg-emerald-50" },
+          ].map(({ label, count, icon: Icon, color, background }) => (
+            <article key={label} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between">
+                <span className="font-dm text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${background} ${color}`}><Icon size={18} /></span>
+              </div>
+              <div className="mt-3 font-syne text-3xl font-bold text-slate-900">{count}</div>
+              <p className="mt-2 font-dm text-xs text-slate-500">{label === "Total Employees" ? "Employee accounts in the directory" : "Employees with active system access"}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="flex flex-col justify-between gap-4 border-b border-slate-200/80 px-4 py-4 sm:px-5 md:flex-row md:items-center">
+            <div className="flex w-full min-w-0 items-center gap-2 md:max-w-3xl md:ml-auto">
+              <label className="relative min-w-0 flex-1">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={query}
+                  onChange={(event) => updateQuery(event.target.value)}
+                  placeholder="Search employee name, ID, or position..."
+                  aria-label="Search employees"
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 font-dm text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                />
+              </label>
+              <Popover open={filtersOpen} onOpenChange={openFilters}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={activeFilterCount ? `Filter, ${activeFilterCount} active filters` : "Filter"}
+                    aria-haspopup="dialog"
+                    aria-expanded={filtersOpen}
+                    aria-pressed={activeFilterCount > 0}
+                    className={`relative inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border px-3 font-dm text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 ${
+                      activeFilterCount
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <SlidersHorizontal size={16} aria-hidden="true" />
+                    Filter
+                    {activeFilterCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-red-600" aria-hidden="true" />}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent aria-label="Employee filters" align="end" sideOffset={6} className="data-[state=closed]:hidden w-[min(19rem,calc(100vw-2rem))] rounded-xl border-slate-200 bg-white p-4 shadow-lg">
+                  <div className="space-y-3">
+                    <label className="block font-dm text-xs font-semibold text-slate-600">
+                      Department
+                      <select
+                        value={draftDepartmentFilter}
+                        onChange={(event) => setDraftDepartmentFilter(event.target.value as EmployeeDirectoryEntry["role"] | "all")}
+                        aria-label="Filter by department"
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                      >
+                        <option value="all">All Departments</option>
+                        {departmentOptions.map((role) => (
+                          <option key={role} value={role}>{workforceTitleByRole[role]}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block font-dm text-xs font-semibold text-slate-600">
+                      Employment Status
+                      <select
+                        value={draftStatusFilter}
+                        onChange={(event) => setDraftStatusFilter(event.target.value as "all" | "active" | "inactive")}
+                        aria-label="Filter by employment status"
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </label>
+                    <div className="flex justify-between gap-2 border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="rounded-lg border border-slate-200 px-3 py-2 font-dm text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={applyFilters}
+                        className="rounded-lg bg-red-700 px-3 py-2 font-dm text-xs font-semibold text-white transition-colors hover:bg-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                      >
+                        Apply Filters
+                      </button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead className="bg-slate-50/80">
+                <tr>
+                  {["Employee ID", "Employee Name", "Assigned Position", "Account Status"].map((heading) => (
+                    <th key={heading} className="px-5 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500">{heading}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleEmployees.map((employee) => {
+                  const initials = employee.name.trim().split(/\s+/).map((part) => part[0]?.toUpperCase() ?? "").slice(0, 2).join("");
+                  return (
+                    <tr key={employee.id} className="border-t border-slate-100 transition-colors hover:bg-slate-50/70">
+                      <td className="px-5 py-3.5 font-dm text-xs text-slate-600">{employee.id}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 font-syne text-xs font-bold text-blue-700">{initials}</span>
+                          <span className="font-dm text-sm font-semibold text-slate-800">{employee.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 font-dm text-[11px] font-semibold text-slate-700">{workforceTitleByRole[employee.role]}</span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-dm text-[11px] font-semibold ${employee.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${employee.active ? "bg-emerald-500" : "bg-slate-400"}`} />{employee.active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {visibleEmployees.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-14 text-center font-dm text-sm text-slate-500">
+                      {employees.length === 0 ? "No employee records available." : "No employees match the current search and filters."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <p aria-live="polite" className="font-dm text-xs text-slate-500">
+              {filteredEmployees.length === 0
+                ? "Showing 0 employees"
+                : `Showing ${(currentPage - 1) * workforcePageSize + 1}–${Math.min(currentPage * workforcePageSize, filteredEmployees.length)} of ${filteredEmployees.length} employees`}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={currentPage <= 1}
+                className="rounded-lg border border-slate-200 px-3 py-2 font-dm text-xs font-semibold text-slate-700 enabled:hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="min-w-20 text-center font-dm text-xs text-slate-500">Page {currentPage} of {pageCount}</span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                disabled={currentPage >= pageCount}
+                className="rounded-lg border border-slate-200 px-3 py-2 font-dm text-xs font-semibold text-slate-700 enabled:hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  );
+}
+
 export function UserManagementView() {
+  const { role } = useSession();
+  if (role === "owner") return <EmployeeDirectory />;
+  if (role === "admin") return <AdminUserManagementView />;
+  return <Unauthorized />;
+}
+
+function AdminUserManagementView() {
   const [accounts, setAccounts] = useState<Account[]>(getAccounts);
   const [activeTab, setActiveTab] = useState<AccountType>("employee");
   const [activeView, setActiveView] = useState<"employee" | "client" | "roles">("employee");
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<AccountRole | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [draftStatusFilter, setDraftStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [statusFiltersOpen, setStatusFiltersOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<Omit<Account, "id" | "joined" | "active">>(newDraft("employee"));
@@ -76,6 +339,20 @@ export function UserManagementView() {
   const registeredClients = accounts.filter((account) => account.type === "client");
   const inactiveAccounts = accounts.filter((account) => !account.active);
   const activeRoleCount = new Set(accessLevels.map((level) => level.id)).size;
+
+  const updateStatusFiltersOpen = (open: boolean) => {
+    if (open) setDraftStatusFilter(statusFilter);
+    setStatusFiltersOpen(open);
+  };
+  const applyStatusFilter = () => {
+    setStatusFilter(draftStatusFilter);
+    setStatusFiltersOpen(false);
+  };
+  const resetStatusFilter = () => {
+    setStatusFilter("all");
+    setDraftStatusFilter("all");
+    setStatusFiltersOpen(false);
+  };
 
   const visibleAccounts = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -324,8 +601,11 @@ export function UserManagementView() {
                     <p className="mt-1 font-dm text-xs text-slate-500">{visibleAccounts.length} result{visibleAccounts.length === 1 ? "" : "s"} · {activeTab === "employee" ? "Manage staff roles and access" : "Manage client portal credentials"}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_220px_180px]">
-                  <label className="relative">
+                <div className={activeTab === "employee"
+                  ? "flex w-full min-w-0 items-center gap-2"
+                  : "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_220px_180px]"
+                }>
+                  <label className={activeTab === "employee" ? "relative min-w-0 flex-1" : "relative"}>
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       value={query}
@@ -335,15 +615,79 @@ export function UserManagementView() {
                       className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 font-dm text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-red-300 focus:ring-4 focus:ring-red-50"
                     />
                   </label>
-                  <select aria-label="Filter by role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as AccountRole | "all")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50">
-                    <option value="all">All roles</option>
-                    {(activeTab === "employee" ? accessLevels.filter((level) => level.id !== "client") : accessLevels.filter((level) => level.id === "client")).map((level) => <option key={level.id} value={level.id}>{level.label}</option>)}
-                  </select>
-                  <select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | "active" | "inactive")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50">
-                    <option value="all">All statuses</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Deactivated</option>
-                  </select>
+                  {activeTab === "employee" ? (
+                    <>
+                      <Popover open={statusFiltersOpen} onOpenChange={updateStatusFiltersOpen}>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label={statusFilter !== "all" ? "Filter, account status applied" : "Filter"}
+                            aria-haspopup="dialog"
+                            aria-expanded={statusFiltersOpen}
+                            aria-pressed={statusFilter !== "all"}
+                            className={`relative inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border px-3 font-dm text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 ${
+                              statusFilter !== "all"
+                                ? "border-red-200 bg-red-50 text-red-700"
+                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            <SlidersHorizontal size={16} aria-hidden="true" />
+                            Filter
+                            {statusFilter !== "all" && <span className="h-1.5 w-1.5 rounded-full bg-red-600" aria-hidden="true" />}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent aria-label="Account status filters" align="end" sideOffset={6} className="data-[state=closed]:hidden w-[min(18rem,calc(100vw-2rem))] rounded-xl border-slate-200 bg-white p-4 shadow-lg">
+                          <div className="space-y-3">
+                            <label className="block font-dm text-xs font-semibold text-slate-600">
+                              Account Status
+                              <select
+                                aria-label="Filter by status"
+                                value={draftStatusFilter}
+                                onChange={(event) => setDraftStatusFilter(event.target.value as "all" | "active" | "inactive")}
+                                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                              >
+                                <option value="all">All statuses</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Deactivated</option>
+                              </select>
+                            </label>
+                            <div className="flex justify-between gap-2 border-t border-slate-100 pt-3">
+                              <button
+                                type="button"
+                                onClick={resetStatusFilter}
+                                className="rounded-lg border border-slate-200 px-3 py-2 font-dm text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                              >
+                                Reset
+                              </button>
+                              <button
+                                type="button"
+                                onClick={applyStatusFilter}
+                                className="rounded-lg bg-red-700 px-3 py-2 font-dm text-xs font-semibold text-white transition-colors hover:bg-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                              >
+                                Apply Filters
+                              </button>
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <select aria-label="Filter by role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as AccountRole | "all")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50">
+                        <option value="all">All roles</option>
+                        {accessLevels.filter((level) => level.id !== "client").map((level) => <option key={level.id} value={level.id}>{level.label}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <select aria-label="Filter by role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as AccountRole | "all")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50">
+                        <option value="all">All roles</option>
+                        {accessLevels.filter((level) => level.id === "client").map((level) => <option key={level.id} value={level.id}>{level.label}</option>)}
+                      </select>
+                      <select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | "active" | "inactive")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50">
+                        <option value="all">All statuses</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Deactivated</option>
+                      </select>
+                    </>
+                  )}
                 </div>
               </div>
 

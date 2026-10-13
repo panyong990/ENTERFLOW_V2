@@ -17,13 +17,74 @@ export interface Account {
   username: string;
   phone: string;
   role: AccountRole;
-  password: string;
+  password?: string;
+  passwordHash?: string;
   joined: string;
   active: boolean;
   emailAlerts?: boolean;
+  employeeId?: string;
+  department?: string;
+  jobTitle?: string;
+  contactPerson?: string;
+}
+
+export interface EmployeeDirectoryEntry {
+  id: string;
+  employeeId: string;
+  name: string;
+  role: Exclude<AccountRole, "client">;
+  active: boolean;
+  department?: string;
+  jobTitle?: string;
+}
+
+export function isEmployeeRole(role: AccountRole): role is EmployeeDirectoryEntry["role"] {
+  return role === "admin"
+    || role === "owner"
+    || role === "operations"
+    || role === "sales"
+    || role === "accounting"
+    || role === "production"
+    || role === "warehouse"
+    || role === "logistics";
 }
 
 const STORAGE_KEY = "enterflow.user-accounts.v1";
+const APPLICATIONS_STORAGE_KEY = "enterflow.client-applications.v1";
+const CLIENT_APPLICATIONS_UPDATED_EVENT = "enterflow:client-applications-updated";
+
+export function subscribeToClientApplications(onChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === APPLICATIONS_STORAGE_KEY || event.key === null) onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(CLIENT_APPLICATIONS_UPDATED_EVENT, onChange);
+  window.addEventListener("focus", onChange);
+
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(CLIENT_APPLICATIONS_UPDATED_EVENT, onChange);
+    window.removeEventListener("focus", onChange);
+  };
+}
+
+export type RegistrationStatus = "pending" | "approved" | "rejected";
+
+export interface ClientRegistrationApplication {
+  id: string;
+  companyName: string;
+  contactPerson: string;
+  email: string;
+  username: string;
+  phone: string;
+  passwordHash: string;
+  submittedAt: string;
+  status: RegistrationStatus;
+  decisionAt?: string;
+  rejectionReason?: string;
+}
 
 const seedAccounts: Account[] = [
   { id: "employee-admin", type: "employee", name: "A. Garcia", email: "admin@enter-fil.com", username: "admin", phone: "—", role: "admin", password: "demo", joined: "Oct 6, 2026", active: true, emailAlerts: true },
@@ -51,7 +112,8 @@ export function getAccounts(): Account[] {
     && typeof account.username === "string"
     && typeof account.phone === "string"
     && typeof account.role === "string"
-    && typeof account.password === "string"
+    && (account.password === undefined || typeof account.password === "string")
+    && (account.passwordHash === undefined || typeof account.passwordHash === "string")
     && typeof account.joined === "string"
     && typeof account.active === "boolean"
   )) {
@@ -60,6 +122,77 @@ export function getAccounts(): Account[] {
   return parsed as Account[];
 }
 
+export function getEmployeeDirectory(): EmployeeDirectoryEntry[] {
+  return getAccounts().flatMap(({ id, employeeId, type, name, role, active, department, jobTitle }) => {
+    if (type !== "employee") return [];
+    if (!isEmployeeRole(role)) {
+      throw new Error(`Saved employee account "${id}" has an invalid staff role.`);
+    }
+    return [{ id, employeeId: employeeId || id, name, role, active, department, jobTitle }];
+  });
+}
+
 export function saveAccounts(accounts: Account[]): void {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+}
+
+export function getClientApplications(): ClientRegistrationApplication[] {
+  if (typeof window === "undefined") return [];
+  const stored = window.localStorage.getItem(APPLICATIONS_STORAGE_KEY);
+  if (!stored) return [];
+  const parsed: unknown = JSON.parse(stored);
+  if (!Array.isArray(parsed) || !parsed.every((application) =>
+    application && typeof application === "object"
+    && typeof application.id === "string"
+    && typeof application.companyName === "string"
+    && typeof application.contactPerson === "string"
+    && typeof application.email === "string"
+    && typeof application.username === "string"
+    && typeof application.phone === "string"
+    && typeof application.passwordHash === "string"
+    && typeof application.submittedAt === "string"
+    && ["pending", "approved", "rejected"].includes(application.status)
+  )) {
+    throw new Error("Saved client registration data is invalid. Clear the enterflow.client-applications.v1 local storage entry to remove it.");
+  }
+  return parsed as ClientRegistrationApplication[];
+}
+
+export function saveClientApplications(applications: ClientRegistrationApplication[]): void {
+  window.localStorage.setItem(APPLICATIONS_STORAGE_KEY, JSON.stringify(applications));
+  window.dispatchEvent(new Event(CLIENT_APPLICATIONS_UPDATED_EVENT));
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("Secure password hashing is unavailable in this browser.");
+  }
+  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const key = await globalThis.crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await globalThis.crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 310_000, hash: "SHA-256" },
+    key,
+    256,
+  );
+  const encode = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${encode(salt)}:${encode(new Uint8Array(bits))}`;
+}
+
+export async function verifyPassword(account: Account, password: string): Promise<boolean> {
+  if (account.passwordHash) {
+    const [saltHex, expectedHex] = account.passwordHash.split(":");
+    if (!saltHex || !expectedHex || !globalThis.crypto?.subtle) {
+      throw new Error("Saved password data is invalid or secure password verification is unavailable.");
+    }
+    const salt = new Uint8Array(saltHex.match(/.{2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? []);
+    const key = await globalThis.crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+    const bits = await globalThis.crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations: 310_000, hash: "SHA-256" },
+      key,
+      256,
+    );
+    const actualHex = Array.from(new Uint8Array(bits), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return actualHex === expectedHex;
+  }
+  return account.password !== undefined && account.password === password;
 }

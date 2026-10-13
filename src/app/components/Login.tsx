@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { getAccounts } from "../store/accounts";
+import { getAccounts, getClientApplications, hashPassword, saveClientApplications, verifyPassword } from "../store/accounts";
 
 export type Role =
   | "owner"
@@ -57,17 +57,78 @@ export function Login({ onLogin }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [registration, setRegistration] = useState({ companyName: "", contactPerson: "", phone: "", username: "" });
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const normalizedEmail = email.trim().toLocaleLowerCase();
+    if (page === "client" && isRegistering) {
+      const companyName = registration.companyName.trim();
+      const contactPerson = registration.contactPerson.trim();
+      const username = registration.username.trim();
+      const phone = registration.phone.trim();
+      if (!companyName || !contactPerson || !username || !email.trim() || !password) {
+        setError("Company, contact person, email, username, and password are required.");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        setError("Enter a valid email address.");
+        return;
+      }
+      const accounts = getAccounts();
+      const applications = getClientApplications();
+      if (accounts.some((account) =>
+        account.email.toLocaleLowerCase() === normalizedEmail
+        || account.username.toLocaleLowerCase() === username.toLocaleLowerCase()
+        || (account.type === "client" && account.name.trim().toLocaleLowerCase() === companyName.toLocaleLowerCase())
+      ) || applications.some((application) =>
+        application.status === "pending" && (
+          application.email.toLocaleLowerCase() === normalizedEmail
+          || application.username.toLocaleLowerCase() === username.toLocaleLowerCase()
+          || application.companyName.trim().toLocaleLowerCase() === companyName.toLocaleLowerCase()
+        )
+      )) {
+        setError("An account or pending application already uses this company, email address, or username.");
+        return;
+      }
+      try {
+        const passwordHash = await hashPassword(password);
+        saveClientApplications([...applications, {
+          id: crypto.randomUUID(),
+          companyName,
+          contactPerson,
+          email: normalizedEmail,
+          username,
+          phone,
+          passwordHash,
+          submittedAt: new Date().toISOString(),
+          status: "pending",
+        }]);
+        setIsRegistering(false);
+        setEmail("");
+        setPassword("");
+        setRegistration({ companyName: "", contactPerson: "", phone: "", username: "" });
+        setError("Application submitted. Enter-Fil staff will review your registration.");
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Unable to submit your application.");
+      }
+      return;
+    }
     const match = getAccounts().find((account) =>
       account.type === (page === "staff" ? "employee" : "client")
       && account.active
-      && account.password === password
-      && (account.email.toLocaleLowerCase() === email.trim().toLocaleLowerCase()
+      && (account.email.toLocaleLowerCase() === normalizedEmail
         || account.username.toLocaleLowerCase() === email.trim().toLocaleLowerCase())
     );
-    if (!match) { setError("Invalid credentials. Try a demo account below."); return; }
+    let validCredentials = false;
+    try {
+      validCredentials = match ? await verifyPassword(match, password) : false;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to verify credentials.");
+      return;
+    }
+    if (!match || !validCredentials) { setError("Invalid credentials. Try a demo account below."); return; }
     onLogin(match.role, match.name);
   };
 
@@ -81,7 +142,7 @@ export function Login({ onLogin }: Props) {
   };
 
   const switchPage = (p: "staff" | "client") => {
-    setPage(p); setEmail(""); setPassword(""); setError("");
+    setPage(p); setEmail(""); setPassword(""); setError(""); setIsRegistering(false);
   };
 
   /* ─── STAFF LOGIN ─── */
@@ -179,33 +240,57 @@ export function Login({ onLogin }: Props) {
             </div>
           </div>
           <div className="font-syne" style={{ fontSize: 22, fontWeight: 700, color: "#0F172A", lineHeight: 1.1 }}>Access Portal</div>
-          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Track your orders, status, and invoices.</p>
+          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>{isRegistering ? "Submit your company details for account review." : "Track your orders, status, and invoices."}</p>
         </div>
 
         <div className="px-8 py-6">
           <form onSubmit={submit} className="flex flex-col gap-4">
+            {isRegistering && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Company name</label>
+                  <input required value={registration.companyName} onChange={(e) => setRegistration({ ...registration, companyName: e.target.value })}
+                    className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Contact person</label>
+                  <input required value={registration.contactPerson} onChange={(e) => setRegistration({ ...registration, contactPerson: e.target.value })}
+                    className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Contact number (optional)</label>
+                  <input type="tel" value={registration.phone} onChange={(e) => setRegistration({ ...registration, phone: e.target.value })}
+                    className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Username</label>
+                  <input required value={registration.username} onChange={(e) => setRegistration({ ...registration, username: e.target.value })}
+                    className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+                </div>
+              </>
+            )}
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com"
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com"
                 className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{isRegistering ? "Set password" : "Password"}</label>
+              <input type="password" required minLength={isRegistering ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)}
                 className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
             </div>
 
             {error && (
-              <div className="font-dm rounded-md px-3 py-2" style={{ fontSize: 12, color: "#991B1B", backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>{error}</div>
+              <div role="status" className="font-dm rounded-md px-3 py-2" style={{ fontSize: 12, color: error.startsWith("Application submitted") ? "#166534" : "#991B1B", backgroundColor: error.startsWith("Application submitted") ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${error.startsWith("Application submitted") ? "#BBF7D0" : "#FECACA"}` }}>{error}</div>
             )}
 
             <button type="submit" className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 mt-1"
               style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-              Access Portal <ArrowRight size={15} strokeWidth={2.5} />
+              {isRegistering ? "Submit registration" : "Access Portal"} <ArrowRight size={15} strokeWidth={2.5} />
             </button>
           </form>
 
-          <div className="mt-5 pt-5 border-t border-slate-200">
+          {!isRegistering && <div className="mt-5 pt-5 border-t border-slate-200">
             <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Demo account</div>
             <div className="flex flex-col gap-2">
               {clientAccounts.map((a) => (
@@ -217,7 +302,14 @@ export function Login({ onLogin }: Props) {
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
+
+            <div className="mt-4 text-center">
+              <button type="button" onClick={() => { setIsRegistering((value) => !value); setEmail(""); setPassword(""); setError(""); }}
+                className="font-dm hover:underline" style={{ fontSize: 12, color: "#C8102E" }}>
+                {isRegistering ? "Already have an account? Sign in" : "New client? Apply for portal access"}
+              </button>
+            </div>
 
           <div className="mt-4 pt-4 border-t border-slate-200 text-center">
             <button onClick={() => switchPage("staff")} className="font-dm hover:underline" style={{ fontSize: 12, color: "#64748B" }}>

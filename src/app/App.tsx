@@ -10,6 +10,9 @@ import { Logistics, LogisticsActiveJobs } from "./components/Logistics";
 import { Accounting } from "./components/Accounting";
 import { DeliveryReceipts } from "./components/DeliveryReceipts";
 import { UserManagementView } from "./components/UserManagementView";
+import { ClientManagement } from "./components/ClientManagement";
+import { EmployeeManagement } from "./components/EmployeeManagement";
+import { RolesPermissions } from "./components/RolesPermissions";
 import { Clients } from "./components/Clients";
 import { Settings } from "./components/Settings";
 import { NotificationsCenter } from "./components/NotificationsCenter";
@@ -32,7 +35,7 @@ const landingFor: Record<Role, string> = {
   production: "dashboard",
   warehouse: "inventory",
   logistics: "dashboard",
-  admin: "users",
+  admin: "employee-management",
   client: "client",
 };
 
@@ -83,7 +86,9 @@ function Shell() {
     active === "delivery-receipts" ? <DeliveryReceipts /> :
     active === "accounting" ? <Accounting /> :
     active === "users" ? <UserManagementView /> :
-    active === "clients" ? <Clients /> :
+    active === "employee-management" ? <EmployeeManagement /> :
+    active === "roles" ? <RolesPermissions /> :
+    active === "clients" ? role === "admin" ? <ClientManagement /> : <Clients /> :
     active === "notifications" ? <NotificationsCenter /> :
     active === "analytics" ? <AnalyticsFullView /> :
     active === "settings" ? <Settings /> :
@@ -92,7 +97,7 @@ function Shell() {
   return (
     <SessionProvider role={role} name={session.name} navigate={setActive}>
       <div className="size-full flex font-dm" style={{ backgroundColor: "#F4F6F9" }}>
-        <Sidebar role={role} active={active === "inventory-finished" ? "inventory" : isLogisticsActiveJobs ? "dashboard" : active} onNavigate={setActive} onLogout={logout} badges={badges} unreadNotif={unreadCount} />
+        <Sidebar role={role} active={active === "inventory-finished" ? "inventory" : isLogisticsActiveJobs ? "dashboard" : active} onNavigate={setActive} onLogout={logout} badges={badges} unreadNotif={role === "production" && active === "dashboard" ? 0 : unreadCount} />
         {screen}
       </div>
     </SessionProvider>

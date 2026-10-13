@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { X, History, Pencil, Search, SlidersHorizontal, Boxes, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { getRawMaterialStockStatus, useMaterials, partCategoryMeta, type FinishedGood, type PartCategory, type RawMaterial, type Unit } from "../store/materials";
-import { useOrders, type ProductLine } from "../store/orders";
+import { getRawMaterialStockStatus, useMaterials, partCategoryMeta, type PartCategory, type RawMaterial, type Unit } from "../store/materials";
+import { useOrders } from "../store/orders";
+import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
 import { FILTER_TYPES, GROUP_DISPLAY, labelForType } from "../store/filterTemplates";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -48,13 +49,6 @@ function filterTypeCode(type: string): string {
   const byCode = Object.values(FILTER_TYPES).find((filterType) => normalizedText(filterType.code) === normalizedType);
   if (byCode) return byCode.code;
   return Object.values(FILTER_TYPES).find((filterType) => normalizedText(filterType.label) === normalizedType)?.code ?? "";
-}
-
-function productMatchesFinishedGood(item: FinishedGood, product: ProductLine): boolean {
-  const productNumber = normalizedText(item.enterFilPN);
-  const orderProductNumber = normalizedText(product.oem);
-  if (orderProductNumber) return orderProductNumber === productNumber;
-  return normalizedText(product.filterName ?? product.type) === normalizedText(item.itemName);
 }
 
 /* ─────────── Component ─────────── */
@@ -165,14 +159,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
     setEditing(null);
   };
 
-  const orderHistory = useMemo(
-    () => Array.from(new Map(
-      [...inquiries, ...completedJOs]
-        .filter((order) => !order.archived)
-        .map((order) => [order.id, order])
-    ).values()),
-    [inquiries, completedJOs]
-  );
+  const orderHistory = useMemo(() => buildOrderHistory(inquiries, completedJOs), [inquiries, completedJOs]);
   const normalizedFGQuery = fgQuery.trim().toLocaleLowerCase();
   const finishedGoodsFilterOptions = useMemo(() => GROUP_DISPLAY.map(({ group, label }) => ({
     label,
@@ -189,25 +176,20 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
     const hasOrderFilters = Boolean(fgFilterType || fgMonthFilter || fgYearFilter);
     const activity = fg
       .map((item) => {
-        const client = normalizedText(item.client);
-        const matchingOrders = orderHistory.filter((order) => {
+        const orderActivity = getFinishedGoodOrderActivity(item, orderHistory, (product) =>
+          !fgFilterType || filterTypeCode(product.type) === fgFilterType
+        );
+        const matchingOrderIndexes = orderActivity.matchingOrders.flatMap((order, index) => {
           const calendar = orderCalendarParts(order.submittedDate);
-          return normalizedText(order.clientName) === client
-            && (!fgMonthFilter || calendar?.month.slice(-2) === fgMonthFilter)
+          return (!fgMonthFilter || calendar?.month.slice(-2) === fgMonthFilter)
             && (!fgYearFilter || calendar?.year === fgYearFilter)
-            && order.products.some((product) =>
-              productMatchesFinishedGood(item, product) &&
-              (!fgFilterType || filterTypeCode(product.type) === fgFilterType)
-            );
+            ? [index]
+            : [];
         });
-        const orderTypes = Array.from(new Set(matchingOrders.flatMap((order) =>
-          order.products
-            .filter((product) =>
-              productMatchesFinishedGood(item, product) &&
-              (!fgFilterType || filterTypeCode(product.type) === fgFilterType)
-            )
-            .map((product) => filterTypeCode(product.type) || product.type)
-        )));
+        const matchingOrders = matchingOrderIndexes.map((index) => orderActivity.matchingOrders[index]);
+        const matchingProducts = matchingOrderIndexes.flatMap((index) => orderActivity.matchingProductsByOrder[index]);
+        const orderTypes = Array.from(new Set(matchingProducts
+          .map((product) => filterTypeCode(product.type) || product.type)));
         const filterTypeLabel = orderTypes
           .map((type) => labelForType(type))
           .sort((a, b) => a.localeCompare(b))[0] ?? "";

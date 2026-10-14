@@ -4,6 +4,7 @@ import { useMaterials } from "../store/materials";
 import { useOrders } from "../store/orders";
 import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
 import { FILTER_TYPES, GROUP_DISPLAY, labelForType } from "../store/filterTemplates";
+import type { FinishedGood } from "../store/materials";
 
 type FinishedGoodsSort = "orders-desc" | "orders-asc" | "company-asc" | "type-asc";
 
@@ -36,7 +37,10 @@ function filterTypeCode(type: string): string {
   return Object.values(FILTER_TYPES).find((filterType) => normalizedText(filterType.label) === normalizedType)?.code ?? "";
 }
 
-export function FinishedGoodsOrderActivity({ className = "" }: { className?: string }) {
+export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
+  className?: string;
+  onItemClick?: (item: FinishedGood) => void;
+}) {
   const { finishedGoods } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
   const [query, setQuery] = useState("");
@@ -272,8 +276,17 @@ export function FinishedGoodsOrderActivity({ className = "" }: { className?: str
                 return (
                   <tr
                     key={item.id}
+                    onClick={() => onItemClick?.(item)}
+                    onKeyDown={(event) => {
+                      if (onItemClick && (event.key === "Enter" || event.key === " ")) {
+                        event.preventDefault();
+                        onItemClick(item);
+                      }
+                    }}
+                    role={onItemClick ? "button" : undefined}
+                    tabIndex={onItemClick ? 0 : undefined}
                     className="border-t border-slate-200/70 transition-colors hover:bg-slate-50"
-                    style={{ backgroundColor: highlighted ? "#FFF1F2" : "#FFFFFF" }}
+                    style={{ backgroundColor: highlighted ? "#FFF1F2" : "#FFFFFF", cursor: onItemClick ? "pointer" : undefined }}
                   >
                     <td className="px-4 py-3">
                       <span

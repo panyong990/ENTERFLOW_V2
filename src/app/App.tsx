@@ -3,10 +3,12 @@ import { Sidebar, allowedFor } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { SalesOrders } from "./components/SalesOrders";
 import { ProductionFloor } from "./components/ProductionFloor";
+import { OperationsProductionFloor } from "./components/OperationsProductionFloor";
 import { Inventory } from "./components/Inventory";
 import { WaybillScanner } from "./components/WaybillScanner";
 import { WaybillHistory } from "./components/WaybillHistory";
-import { Logistics, LogisticsActiveJobs } from "./components/Logistics";
+import { WaybillMonitoring } from "./components/WaybillMonitoring";
+import { Logistics, LogisticsActiveJobs, OperationsLogistics } from "./components/Logistics";
 import { Accounting } from "./components/Accounting";
 import { DeliveryReceipts } from "./components/DeliveryReceipts";
 import { UserManagementView } from "./components/UserManagementView";
@@ -77,12 +79,15 @@ function Shell() {
 
   const screen = !isAllowed ? <Unauthorized /> :
     active === "sales" ? <SalesOrders /> :
+    active === "production" && role === "operations" ? <OperationsProductionFloor /> :
     active === "production" ? <ProductionFloor /> :
     active === "inventory" || active === "inventory-finished"
       ? <Inventory key={active} initialTab={active === "inventory-finished" ? "finished" : "raw"} /> :
+    active === "waybill" && role === "operations" ? <WaybillMonitoring /> :
     active === "waybill" ? <WaybillScanner /> :
     active === "waybill-history" ? <WaybillHistory /> :
     active === "logistics-active-jobs" ? <LogisticsActiveJobs onBack={() => setActive("dashboard")} /> :
+    active === "logistics" && role === "operations" ? <OperationsLogistics /> :
     active === "logistics" ? <Logistics /> :
     active === "dashboard" && role === "admin" ? <AdminDashboard /> :
     active === "delivery-receipts" ? <DeliveryReceipts /> :

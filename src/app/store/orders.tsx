@@ -723,9 +723,6 @@ const seed: Inquiry[] = [
     deliveryMethod: "Lalamove",
     drFileName: "DR-2026-9560-signed.jpg",
   },
-  /* ── DEMO: delivered B.E. Aerospace order WITH a replacement request already filed.
-        Pair with i9 (the replacement JO in production) to demo the full replacement flow
-        without having to walk through inquiry → quotation → PO → JO → delivery. ── */
   {
     id: "i8", code: "INQ-005", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
     paymentTerms: "30-Day Terms", submittedDate: "Apr 2, 2026", stage: "delivered",
@@ -750,21 +747,8 @@ const seed: Inquiry[] = [
     invoiceDueDate: "May 28, 2026",
     deliveryMethod: "Lalamove",
     drFileName: "DR-2026-9551-signed.jpg",
-    /* Client filed a replacement request 5 days after delivery — within 30-Day window */
-    replacementRequests: [
-      {
-        id: "rr-seed-1",
-        requestedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        reason: "Defective seals on 5 units — air leaks during pressure test",
-        defectDescription: "Endcap adhesive failure causing perimeter leak on 5/40 units. Photos attached.",
-        qty: 5,
-        proofFileName: "BE-defect-photo-Apr30.jpg",
-        status: "processing",
-        joNumber: "JO-2026-005R",
-      },
-    ],
   },
-  /* ── DEMO: the replacement JO created from i8's request — already in production, stage 4 ── */
+  /* ── DEMO: B.E. Aerospace production job already in progress ── */
   {
     id: "i9", code: "INQ-005R", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
     paymentTerms: "30-Day Terms",

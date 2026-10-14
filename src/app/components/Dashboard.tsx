@@ -8,7 +8,7 @@ import { KPICard } from "./KPICard";
 import { StatusBadge } from "./StatusBadge";
 import { NotificationBell } from "./NotificationBell";
 import { PRODUCTION_STAGES, stageLabel, useOrders, type Inquiry } from "../store/orders";
-import { getRawMaterialStockStatus, useMaterials, type FinishedGood, type RawMaterial } from "../store/materials";
+import { getFinishedGoodStockStatus, getRawMaterialStockStatus, useMaterials, type FinishedGood, type RawMaterial } from "../store/materials";
 import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
 import { FinishedGoodsOrderActivity } from "./FinishedGoodsOrderActivity";
 import type { Role } from "./Login";
@@ -156,7 +156,8 @@ function buildOperationsIssues(
   }
 
   for (const item of finishedGoods) {
-    const status = item.qtyInStock <= 0 ? "Out of Stock" : item.qtyInStock <= item.bufferMin ? "Low Stock" : undefined;
+    const stockStatus = getFinishedGoodStockStatus(item);
+    const status = stockStatus.key === "in-stock" ? undefined : stockStatus.label.replace(/^[^ ]+ /, "");
     if (status) {
       open.push({
         id: `finished-${item.id}`,
@@ -221,32 +222,6 @@ function buildOperationsIssues(
         record: reference,
         department: "Sales",
         status: "Awaiting review",
-        route: "sales",
-      });
-    }
-
-    for (const request of order.replacementRequests ?? []) {
-      if (request.status === "resolved") {
-        if (request.resolvedAt && isRecentResolution(request.resolvedAt, now)) {
-          resolved.push({
-            id: `sales-replacement-resolved-${request.id}`,
-            description: `Replacement request resolved: ${request.defectDescription || request.reason}`,
-            record: `${reference}${request.joNumber ? ` · ${request.joNumber}` : ""}`,
-            department: "Sales",
-            status: "Resolved",
-            route: "sales",
-            occurredAt: request.resolvedAt,
-          });
-        }
-        continue;
-      }
-
-      open.push({
-        id: `sales-replacement-${request.id}`,
-        description: `Replacement request ${request.status}: ${request.defectDescription || request.reason}`,
-        record: `${reference}${request.joNumber ? ` · ${request.joNumber}` : ""}`,
-        department: "Sales",
-        status: request.status === "processing" ? "Processing" : "Awaiting review",
         route: "sales",
       });
     }

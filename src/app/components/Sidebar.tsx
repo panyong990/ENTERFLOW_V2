@@ -23,7 +23,7 @@ export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
   /* Owner sees high-level dashboards, client management, and a read-only workforce directory. */
   owner:      ["analytics", "clients", "users", "notifications", "settings"],
   /* Operations Manager: full operational access — analytics and user management are owner-only */
-  operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "accounting", "clients", "notifications", "settings"],
+  operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "clients", "notifications", "settings"],
   sales:      ["dashboard", "sales", "clients", "notifications"],
   accounting: ["dashboard", "sales", "delivery-receipts", "accounting", "notifications"],
   production: ["dashboard", "production", "notifications"],
@@ -98,7 +98,7 @@ export function Sidebar({ active = "dashboard", onNavigate, onLogout, role, badg
               }}
             >
               <Icon size={18} aria-hidden />
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1">{role === "operations" && item.id === "waybill" ? "Waybill Monitoring" : item.label}</span>
               {badge > 0 && (
                 <span
                   className="font-syne min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center"

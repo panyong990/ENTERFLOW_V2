@@ -10,6 +10,7 @@ import {
   Printer,
   Search,
   Send,
+  SlidersHorizontal,
   Truck,
   X,
 } from "lucide-react";
@@ -1975,6 +1976,546 @@ export function Logistics() {
           onSendToClient={handleSendToClient}
           onTrackingRefChange={handleTrackingRefChange}
           onTrackingLinkChange={handleTrackingLinkChange}
+        />
+      )}
+    </main>
+  );
+}
+
+function OperationsDeliveryDetails({
+  inquiry,
+  onClose,
+}: {
+  inquiry: Inquiry;
+  onClose: () => void;
+}) {
+  const [signedReceiptOpen, setSignedReceiptOpen] = useState(false);
+  const signedReceiptAvailable = hasValidSignedDeliveryReceipt(inquiry);
+  const waybillReference =
+    inquiry.waybillNumber ??
+    inquiry.waybillIdentifier ??
+    inquiry.trackingRef;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Delivery details"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl bg-[#F4F6F9] shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
+          <div>
+            <div className="font-dm text-[10px] font-bold uppercase tracking-[0.16em] text-[#65748B]">
+              Delivery monitoring
+            </div>
+            <h2 className="font-syne mt-1 text-xl font-extrabold text-[#1A2B4A]">
+              Delivery Details
+            </h2>
+            <p className="font-dm mt-1 text-xs text-slate-500">
+              {inquiry.clientName} · {orderReference(inquiry)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close delivery details"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="grid gap-4 p-5 sm:grid-cols-2">
+          <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:col-span-2">
+            <h3 className="font-syne mb-4 text-sm font-bold text-slate-900">
+              Shipment
+            </h3>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+              <ReceiptField label="JO Number" value={orderReference(inquiry)} />
+              <ReceiptField label="Waybill Number" value={waybillReference ?? "—"} />
+              <ReceiptField label="Tracking Reference" value={inquiry.trackingRef ?? "—"} />
+              <ReceiptField label="PO Number" value={poReference(inquiry)} />
+              {inquiry.invoiceNo && (
+                <ReceiptField label="Invoice Number" value={inquiry.invoiceNo} />
+              )}
+              <ReceiptField label="Client" value={inquiry.clientName} />
+              <ReceiptField
+                label="Delivery Method"
+                value={inquiry.deliveryMethod ?? "Delivery method not specified"}
+              />
+              <ReceiptField
+                label="Current Status"
+                value={stageLabel[inquiry.stage] ?? inquiry.stage}
+              />
+              <ReceiptField
+                label="Delivery Date"
+                value={formatDate(deliveryDate(inquiry))}
+              />
+              <ReceiptField
+                label="Waybill Printed"
+                value={formatDate(inquiry.waybillPrintedAt, true)}
+              />
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+            <h3 className="font-syne mb-3 text-sm font-bold text-slate-900">
+              Items
+            </h3>
+            <div className="divide-y divide-slate-100">
+              {inquiry.products.map((product, index) => (
+                <div
+                  key={`${product.filterName ?? product.type}-${index}`}
+                  className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+                >
+                  <span className="font-dm text-sm text-slate-700">
+                    {productName(product)}
+                  </span>
+                  <span className="font-dm shrink-0 text-sm font-semibold text-slate-900">
+                    {product.qty} pcs
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="font-dm mt-4 border-t border-slate-100 pt-3 text-sm font-bold text-[#1A2B4A]">
+              Total quantity: {quantity(inquiry)} pcs
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+            <h3 className="font-syne mb-3 text-sm font-bold text-slate-900">
+              Signed Delivery Receipt
+            </h3>
+            {signedReceiptAvailable ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                <div className="font-dm text-sm font-bold text-green-800">
+                  {inquiry.signedDeliveryReceiptFileName}
+                </div>
+                <p className="font-dm mt-1 text-xs text-green-900">
+                  Received {formatDate(inquiry.signedDeliveryReceiptReceivedAt, true)}
+                </p>
+                {inquiry.signedDeliveryReceiptDataUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setSignedReceiptOpen(true)}
+                    className="font-dm mt-3 inline-flex items-center gap-2 rounded-md border border-green-300 bg-white px-3 py-2 text-xs font-bold text-green-900 hover:bg-green-100"
+                  >
+                    <FileCheck2 size={14} />
+                    View signed receipt
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="font-dm rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+                No signed delivery receipt is on file.
+              </p>
+            )}
+          </section>
+        </div>
+      </section>
+
+      {signedReceiptOpen && inquiry.signedDeliveryReceiptDataUrl && (
+        <SignedReceiptViewer
+          dataUrl={inquiry.signedDeliveryReceiptDataUrl}
+          fileName={inquiry.signedDeliveryReceiptFileName}
+          onClose={() => setSignedReceiptOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function OperationsMetric({
+  label,
+  value,
+  icon: Icon,
+  accent,
+}: {
+  label: string;
+  value: number;
+  icon: typeof Truck;
+  accent: string;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-dm text-xs font-semibold text-slate-500">{label}</p>
+          <p className="font-syne mt-2 text-2xl font-extrabold text-[#1A2B4A]">
+            {value}
+          </p>
+        </div>
+        <span
+          className="flex h-10 w-10 items-center justify-center rounded-lg"
+          style={{ backgroundColor: `${accent}14`, color: accent }}
+        >
+          <Icon size={19} />
+        </span>
+      </div>
+    </section>
+  );
+}
+
+export function OperationsLogistics() {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<LogisticsView>("active");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [draftDateFilter, setDraftDateFilter] = useState<DateFilter>("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const { inquiriesByStage } = useOrders();
+
+  const deliveryInquiries = useMemo(
+    () =>
+      inquiriesByStage([...deliveryStages])
+        .filter(hasReachedLogistics)
+        .sort((a, b) => {
+          const aDate = Date.parse(deliveryDate(a));
+          const bDate = Date.parse(deliveryDate(b));
+          return (Number.isFinite(bDate) ? bDate : 0) - (Number.isFinite(aDate) ? aDate : 0);
+        }),
+    [inquiriesByStage],
+  );
+
+  const activeInquiries = useMemo(
+    () =>
+      deliveryInquiries.filter(
+        (inquiry) =>
+          inquiry.stage === "ready_for_dispatch" ||
+          inquiry.stage === "dispatched",
+      ),
+    [deliveryInquiries],
+  );
+  const historyInquiries = useMemo(
+    () => deliveryInquiries.filter((inquiry) => inquiry.stage === "delivered"),
+    [deliveryInquiries],
+  );
+
+  const visibleInquiries = useMemo(() => {
+    const source = view === "active" ? activeInquiries : historyInquiries;
+    const searchTerm = query.trim().toLocaleLowerCase();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const cutoff = new Date(today);
+
+    if (dateFilter === "7days") cutoff.setDate(cutoff.getDate() - 6);
+    if (dateFilter === "30days") cutoff.setDate(cutoff.getDate() - 29);
+
+    return source.filter((inquiry) => {
+      const searchableValues = [
+        inquiry.joNumber ?? "",
+        inquiry.poNumber ?? "",
+        inquiry.poFileName ?? "",
+        inquiry.invoiceNo ?? "",
+        inquiry.deliveryReceiptNumber ?? "",
+        inquiry.clientName,
+        inquiry.deliveryMethod ?? "",
+        inquiry.waybillNumber ?? "",
+        inquiry.waybillIdentifier ?? "",
+        inquiry.trackingRef ?? "",
+        ...inquiry.products.flatMap((product) => [
+          product.type,
+          product.filterName ?? "",
+        ]),
+      ];
+      const matchesSearch =
+        !searchTerm ||
+        searchableValues.some((value) =>
+          value.toLocaleLowerCase().includes(searchTerm),
+        );
+      const recordDate = new Date(deliveryDate(inquiry));
+      const matchesDate =
+        dateFilter === "all" ||
+        (!Number.isNaN(recordDate.getTime()) &&
+          recordDate >= cutoff &&
+          recordDate < tomorrow);
+      return matchesSearch && matchesDate;
+    });
+  }, [activeInquiries, dateFilter, historyInquiries, query, view]);
+
+  const selectedInquiry = deliveryInquiries.find((inquiry) => inquiry.id === openId);
+
+  const applyFilters = () => {
+    setDateFilter(draftDateFilter);
+    setFilterOpen(false);
+  };
+
+  const resetFilters = () => {
+    setDraftDateFilter("all");
+    setDateFilter("all");
+    setFilterOpen(false);
+  };
+
+  return (
+    <main className="flex h-full min-w-0 flex-1 flex-col overflow-auto bg-[#F4F6F9]">
+      <header className="flex items-start justify-between gap-4 border-b border-slate-200/70 bg-white px-5 py-5 sm:px-8">
+        <div>
+          <div className="font-dm flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#65748B]">
+            <Truck size={14} />
+            Delivery monitoring
+          </div>
+          <h1 className="font-syne mt-2 text-[26px] font-extrabold leading-tight text-[#1A2B4A]">
+            Logistics
+          </h1>
+          <p className="font-dm mt-1 text-[13px] text-slate-600">
+            Monitor active deliveries, shipment progress, and delivery completion.
+          </p>
+        </div>
+      </header>
+
+      <div className="flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-8">
+        <section
+          className="grid grid-cols-1 gap-4 sm:grid-cols-3"
+          aria-label="Logistics summary"
+        >
+          <OperationsMetric
+            label="Active Deliveries"
+            value={activeInquiries.length}
+            icon={Truck}
+            accent="#1A2B4A"
+          />
+          <OperationsMetric
+            label="Pending Delivery"
+            value={
+              activeInquiries.filter(
+                (inquiry) => inquiry.stage === "ready_for_dispatch",
+              ).length
+            }
+            icon={Clock3}
+            accent="#C8102E"
+          />
+          <OperationsMetric
+            label="Delivered"
+            value={historyInquiries.length}
+            icon={CheckCircle2}
+            accent="#15803D"
+          />
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Delivery views">
+              {([
+                ["active", "Active Deliveries", activeInquiries.length],
+                ["history", "Delivered History", historyInquiries.length],
+              ] as const).map(([tab, label, count]) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === tab}
+                  onClick={() => setView(tab)}
+                  className={`font-dm rounded-lg px-3 py-2 text-xs font-bold transition ${
+                    view === tab
+                      ? "bg-[#1A2B4A] text-white"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {label}
+                  <span
+                    className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${
+                      view === tab ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <span className="font-dm text-xs text-slate-500">
+              Read-only monitoring
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 px-4 py-4 sm:px-5">
+            <label className="relative min-w-[240px] max-w-lg flex-1">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search JO, PO, invoice, customer, item..."
+                aria-label="Search delivery records"
+                className="font-dm w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-[13px] outline-none focus:border-[#1A2B4A] focus:ring-2 focus:ring-[#1A2B4A]/10"
+              />
+            </label>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setFilterOpen((open) => !open)}
+                aria-label="Filter delivery records"
+                aria-expanded={filterOpen}
+                className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              >
+                <SlidersHorizontal size={16} />
+                {dateFilter !== "all" && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#C8102E] px-1 text-[9px] font-bold text-white">
+                    1
+                  </span>
+                )}
+              </button>
+              {filterOpen && (
+                <div className="absolute right-0 top-12 z-30 w-72 rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                  <h2 className="font-syne mb-3 text-sm font-bold text-slate-900">
+                    Filter deliveries
+                  </h2>
+                  <label className="font-dm flex flex-col gap-1.5 text-[11px] font-bold text-slate-600">
+                    Date range
+                    <select
+                      value={draftDateFilter}
+                      onChange={(event) =>
+                        setDraftDateFilter(event.target.value as DateFilter)
+                      }
+                      className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold outline-none focus:border-slate-400"
+                    >
+                      <option value="today">Today</option>
+                      <option value="7days">Last 7 days</option>
+                      <option value="30days">Last 30 days</option>
+                      <option value="all">All dates</option>
+                    </select>
+                  </label>
+                  <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={applyFilters}
+                      className="font-dm rounded-md bg-[#1A2B4A] px-3 py-2 text-xs font-bold text-white hover:bg-[#263d62]"
+                    >
+                      Apply Filters
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-y border-slate-100 bg-[#F8FAFC] px-4 py-3 sm:px-5">
+            <div>
+              <h2 className="font-syne text-sm font-bold text-slate-900">
+                {view === "active" ? "Active Deliveries" : "Delivered History"}
+              </h2>
+              <p className="font-dm mt-1 text-xs text-slate-500">
+                {view === "active"
+                  ? "Shipments handed over from Warehouse that are awaiting dispatch or in transit."
+                  : "Records whose current workflow status is Delivered."}
+              </p>
+            </div>
+            <span className="font-dm rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600">
+              {visibleInquiries.length}
+            </span>
+          </div>
+
+          {visibleInquiries.length === 0 ? (
+            <div className="flex flex-col items-center px-6 py-14 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                {view === "active" ? <Truck size={20} /> : <History size={20} />}
+              </div>
+              <div className="font-syne mt-4 text-sm font-bold text-slate-800">
+                {query || dateFilter !== "all"
+                  ? "No deliveries match these filters."
+                  : view === "active"
+                    ? "No active deliveries have been handed over from Warehouse."
+                    : "No delivered records yet."}
+              </div>
+              <p className="font-dm mt-1 max-w-md text-xs text-slate-500">
+                Warehouse handovers enter Logistics after the Waybill is printed and the Delivery Receipt is sent to Logistics.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[880px]">
+                <thead className="bg-white">
+                  <tr>
+                    {["JO / Waybill", "Client", "Item", "Qty", "Delivery Method", "Current Status", ""].map(
+                      (heading) => (
+                        <th
+                          key={heading}
+                          className="font-dm px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-wider text-slate-500"
+                        >
+                          {heading}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleInquiries.map((inquiry) => (
+                    <tr
+                      key={inquiry.id}
+                      className="border-t border-slate-100 transition hover:bg-slate-50"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-mono-jb text-xs font-bold text-[#1A2B4A]">
+                          {orderReference(inquiry)}
+                        </div>
+                        <div className="font-mono-jb mt-1 text-[11px] text-slate-500">
+                          {inquiry.waybillNumber ?? inquiry.waybillIdentifier ?? "No waybill reference"}
+                        </div>
+                      </td>
+                      <td className="font-dm px-4 py-3 text-xs font-semibold text-slate-900">
+                        {inquiry.clientName}
+                      </td>
+                      <td className="font-dm max-w-[240px] px-4 py-3 text-xs text-slate-600">
+                        {inquiry.products.map(productName).join(", ") || "—"}
+                      </td>
+                      <td className="font-dm px-4 py-3 text-xs text-slate-600">
+                        {quantity(inquiry)} pcs
+                      </td>
+                      <td className="font-dm px-4 py-3 text-xs text-slate-600">
+                        {inquiry.deliveryMethod ?? "Not specified"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className="font-dm whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold"
+                          style={{
+                            backgroundColor: stageColor[inquiry.stage]?.bg ?? "#F1F5F9",
+                            color: stageColor[inquiry.stage]?.fg ?? "#475569",
+                          }}
+                        >
+                          {stageLabel[inquiry.stage] ?? inquiry.stage}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setOpenId(inquiry.id)}
+                          className="font-dm inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold text-[#1A2B4A] hover:border-[#1A2B4A] hover:bg-slate-50"
+                        >
+                          VIEW DETAILS
+                          <ExternalLink size={12} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+
+      {selectedInquiry && (
+        <OperationsDeliveryDetails
+          inquiry={selectedInquiry}
+          onClose={() => setOpenId(null)}
         />
       )}
     </main>

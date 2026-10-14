@@ -80,6 +80,16 @@ export interface FinishedGood {
   history: { id: string; date: string; user: string; oldQty: number; newQty: number; reason: string }[];
 }
 
+export function getFinishedGoodStockStatus(item: FinishedGood): RawMaterialStockStatus {
+  if (item.qtyInStock <= 0) {
+    return { key: "out-of-stock", label: "🔴 Out of Stock", bg: "#FEE2E2", fg: "#991B1B" };
+  }
+  if (item.qtyInStock <= item.bufferMin) {
+    return { key: "low-stock", label: "🟠 Low Stock", bg: "#FFEDD5", fg: "#C2410C" };
+  }
+  return { key: "in-stock", label: "🟢 In Stock", bg: "#DCFCE7", fg: "#15803D" };
+}
+
 const seedFinishedGoods: FinishedGood[] = [
   { id: "f1", itemCode: "OILSEP-00001", enterFilPN: "KF-OS.107.65.252", itemName: "Air Filter", client: "B.E. Aerospace", qtyInStock: 12, bufferMin: 30, lastUpdated: "Apr 26, 2026", updatedBy: "F. Santos", specs: { od1: "115", od2: "103", id1: "64.6", height: "500", media: "Microglass Fiber" }, demand: "HIGH DEMAND", history: [] },
   { id: "f2", itemCode: "OILSEP-00002", enterFilPN: "KF-OS.200/167.108.160", itemName: "Oil Separator Filter", client: "G.U. Engineering", qtyInStock: 18, bufferMin: 15, lastUpdated: "Apr 24, 2026", updatedBy: "F. Santos", specs: { od1: "200", od2: "167", id1: "108", height: "160", media: "Microglass Fiber" }, demand: "STABLE", history: [] },

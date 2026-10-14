@@ -301,8 +301,6 @@ export function WaybillScanner() {
     const existingPrintEntry = log.find((entry) => entry.status === "Waybill Printed");
     const printedAt = inquiry.waybillPrintedAt ?? existingPrintEntry?.ts ?? new Date().toISOString();
     updateInquiry(inquiry.id, {
-      stage: "dispatched",
-      dispatchedAt: inquiry.dispatchedAt ?? printedAt,
       waybillPrintedAt: printedAt,
       waybillNumber: inquiry.waybillNumber?.trim() || waybillPreview.shipment.waybillIdentifier,
       waybillIdentifier: inquiry.waybillIdentifier?.trim() || waybillPreview.shipment.waybillIdentifier,
@@ -312,7 +310,7 @@ export function WaybillScanner() {
     });
 
     toast.success("Waybill sent to printer", {
-      description: "This shipment is now ready for Logistics delivery processing.",
+      description: "Waybill printed successfully.",
     });
     setSelectedId(null);
     setWaybillPreview(null);

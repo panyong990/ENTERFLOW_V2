@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, FileText, Search, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
+import { ArrowRight, FileText, Search, SlidersHorizontal, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
@@ -15,6 +15,7 @@ import { InvoicePreviewModal } from "./InvoicePreviewModal";
 import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { useSession } from "../store/session";
 import { loadProductSketchAttachment, type ProductSketchAttachment } from "../store/attachments";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -32,34 +33,56 @@ const isReadyForJobOrder = (inquiry: Inquiry) => {
     ? state.downpaymentStatus === "COMPLETE"
     : state.state === "FULLY_PAID";
 };
+const hasCreatedJobOrder = (inquiry: Inquiry, completedJOs: Inquiry[]) =>
+  Boolean(inquiry.joNumber)
+  || completedJOs.some((job) => job.id === inquiry.id || job.parentInquiryId === inquiry.id);
 
 function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inquiry[]; completedJOs: Inquiry[] }) {
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<Stage | "all">("all");
-  const [clientFilter, setClientFilter] = useState("all");
+  const [dateRange, setDateRange] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "client" | "amount">("newest");
+  const [followUpStatus, setFollowUpStatus] = useState("all");
+  const [draftDateRange, setDraftDateRange] = useState("all");
+  const [draftFromDate, setDraftFromDate] = useState("");
+  const [draftToDate, setDraftToDate] = useState("");
+  const [draftFollowUpStatus, setDraftFollowUpStatus] = useState("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const isReadyForJobOrder = (inquiry: Inquiry) => {
-    if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
-    const state = paymentState(inquiry);
-    if (state.invoiceTotal <= 0) return false;
-    return state.requiredDownpaymentAmount > 0
-      ? state.downpaymentStatus === "COMPLETE"
-      : state.state === "FULLY_PAID";
-  };
+  const monitoringRecords = useMemo(() => [...inquiries, ...completedJOs], [completedJOs, inquiries]);
+  const inquiryIds = useMemo(() => new Set(inquiries.map((inquiry) => inquiry.id)), [inquiries]);
+  const completedJOIds = useMemo(() => new Set(completedJOs.map((job) => job.id)), [completedJOs]);
 
   const toDateValue = (value?: string) => {
     if (!value) return null;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
   };
 
   const visibleInquiries = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return [...inquiries]
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let rangeStart: Date | null = null;
+    let rangeEnd: Date | null = null;
+
+    if (dateRange === "today") {
+      rangeStart = today;
+      rangeEnd = new Date(today);
+      rangeEnd.setHours(23, 59, 59, 999);
+    } else if (dateRange === "last7Days" || dateRange === "last30Days") {
+      rangeStart = new Date(today);
+      rangeStart.setDate(rangeStart.getDate() - (dateRange === "last7Days" ? 6 : 29));
+      rangeEnd = new Date(today);
+      rangeEnd.setHours(23, 59, 59, 999);
+    } else if (dateRange === "custom") {
+      rangeStart = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
+      rangeEnd = toDate ? new Date(`${toDate}T23:59:59.999`) : null;
+    }
+
+    return [...monitoringRecords]
       .filter((inquiry) => {
         const matchesQuery = !needle || [
           inquiry.code,
@@ -67,63 +90,89 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
           inquiry.contactPerson,
           inquiry.poNumber,
           inquiry.poFileName,
+          inquiry.joNumber,
+          inquiry.joSketch,
+          inquiry.signedQuotationFile,
+          inquiry.joSpecs?.oem,
+          ...Object.values(inquiry.joSpecs ?? {}).filter((value): value is string => typeof value === "string"),
           inquiry.quotationDoc?.quotationNo,
-          ...inquiry.products.map((product) => [product.filterName, product.type, product.oem, product.media, product.notes].filter(Boolean).join(" ")),
+          ...(inquiry.quotationDoc?.lineItems.flatMap((line) => [line.description, line.subDescription].filter((value): value is string => Boolean(value))) ?? []),
+          ...inquiry.products.flatMap((product) =>
+            Object.values(product)
+              .filter((value): value is string | number => typeof value === "string" || typeof value === "number")
+              .map(String)
+          ),
         ].some((value) => value?.toLowerCase().includes(needle));
 
-        const matchesStatus = statusFilter === "all" || inquiry.stage === statusFilter;
-        const matchesClient = clientFilter === "all" || inquiry.clientName === clientFilter;
+        const inquiryDate = toDateValue(inquiry.submittedDate);
+        const matchesDate = dateRange === "all" || Boolean(
+          inquiryDate
+          && (!rangeStart || inquiryDate >= rangeStart)
+          && (!rangeEnd || inquiryDate <= rangeEnd)
+        );
+        const matchesFollowUpStatus = followUpStatus === "all"
+          || (followUpStatus === "awaitingQuotation" && inquiry.stage === "inquiry")
+          || (followUpStatus === "poReceived" && inquiry.stage === "po");
 
-        const inquiryDate = inquiry.submittedDate || inquiry.quotationDoc?.date || inquiry.poUploadedAt || "";
-        const dateValue = toDateValue(inquiryDate);
-        const matchesFrom = !fromDate || !dateValue || dateValue >= new Date(`${fromDate}T00:00:00`);
-        const matchesTo = !toDate || !dateValue || dateValue <= new Date(`${toDate}T23:59:59`);
-
-        return matchesQuery && matchesStatus && matchesClient && matchesFrom && matchesTo;
+        return matchesQuery && matchesDate && matchesFollowUpStatus;
       })
       .sort((a, b) => {
-        if (sortBy === "client") return a.clientName.localeCompare(b.clientName) || a.code.localeCompare(b.code);
-        if (sortBy === "amount") {
-          const aTotal = a.quotationDoc?.total ?? a.quotedTotal ?? 0;
-          const bTotal = b.quotationDoc?.total ?? b.quotedTotal ?? 0;
-          return bTotal - aTotal || a.code.localeCompare(b.code);
-        }
         const aDate = new Date(a.submittedDate || a.quotationDoc?.date || a.poUploadedAt || 0).getTime();
         const bDate = new Date(b.submittedDate || b.quotationDoc?.date || b.poUploadedAt || 0).getTime();
-        return sortBy === "oldest" ? aDate - bDate : bDate - aDate;
+        return bDate - aDate;
       });
-  }, [clientFilter, fromDate, inquiries, query, sortBy, statusFilter, toDate]);
+  }, [dateRange, followUpStatus, fromDate, monitoringRecords, query, toDate]);
 
-  const clients = useMemo(() => [...new Set(inquiries.map((inquiry) => inquiry.clientName).filter(Boolean))].sort(), [inquiries]);
+  const applyFilters = () => {
+    setDateRange(draftDateRange);
+    setFromDate(draftFromDate);
+    setToDate(draftToDate);
+    setFollowUpStatus(draftFollowUpStatus);
+    setFiltersOpen(false);
+  };
+  const resetFilters = () => {
+    setDateRange("all");
+    setFromDate("");
+    setToDate("");
+    setFollowUpStatus("all");
+    setDraftDateRange("all");
+    setDraftFromDate("");
+    setDraftToDate("");
+    setDraftFollowUpStatus("all");
+  };
+  const activeFilterCount = Number(dateRange !== "all") + Number(followUpStatus !== "all");
   const selectedInquiry = useMemo(() => {
     if (!selectedId) return null;
     const normalized = selectedId.trim();
     return (
-      inquiries.find((inquiry) => inquiry.id === normalized)
-      ?? inquiries.find((inquiry) => inquiry.code.toLowerCase() === normalized.toLowerCase())
+      monitoringRecords.find((inquiry) => inquiry.id === normalized)
+      ?? monitoringRecords.find((inquiry) => inquiry.code.toLowerCase() === normalized.toLowerCase())
       ?? visibleInquiries.find((inquiry) => inquiry.id === normalized)
       ?? visibleInquiries.find((inquiry) => inquiry.code.toLowerCase() === normalized.toLowerCase())
       ?? null
     );
-  }, [inquiries, selectedId, visibleInquiries]);
+  }, [monitoringRecords, selectedId, visibleInquiries]);
 
   const summary = useMemo(() => {
-    const activeInquiries = visibleInquiries.filter((inquiry) => !inquiry.archived);
+    const activeInquiries = visibleInquiries.filter((inquiry) => inquiryIds.has(inquiry.id));
     const awaitingQuotation = visibleInquiries.filter((inquiry) => inquiry.stage === "inquiry");
-    const quotationSent = visibleInquiries.filter((inquiry) => inquiry.stage === "quotation" || (inquiry.stage === "po" && !isReadyForJobOrder(inquiry)));
-    const readyForJobOrder = visibleInquiries.filter((inquiry) => isReadyForJobOrder(inquiry));
-    return { activeInquiries: activeInquiries.length, awaitingQuotation: awaitingQuotation.length, quotationSent: quotationSent.length, readyForJobOrder: readyForJobOrder.length };
-  }, [visibleInquiries]);
+    const quotationSent = visibleInquiries.filter((inquiry) => !hasCreatedJobOrder(inquiry, completedJOs) && (inquiry.stage === "quotation" || (inquiry.stage === "po" && !isReadyForJobOrder(inquiry))));
+    const readyForJobOrder = visibleInquiries.filter((inquiry) => !hasCreatedJobOrder(inquiry, completedJOs) && isReadyForJobOrder(inquiry));
+    const jobOrders = visibleInquiries.filter((inquiry) => completedJOIds.has(inquiry.id));
+    return { activeInquiries: activeInquiries.length, awaitingQuotation: awaitingQuotation.length, quotationSent: quotationSent.length, readyForJobOrder: readyForJobOrder.length, jobOrders: jobOrders.length };
+  }, [completedJOIds, completedJOs, inquiryIds, visibleInquiries]);
 
   const cardsForColumn = (columnId: "inquiry" | "quotation" | "readyForJobOrder") => {
-    if (columnId === "readyForJobOrder") return visibleInquiries.filter((inquiry) => isReadyForJobOrder(inquiry));
-    if (columnId === "quotation") return visibleInquiries.filter((inquiry) => inquiry.stage === "quotation" || (inquiry.stage === "po" && !isReadyForJobOrder(inquiry)));
-    return visibleInquiries.filter((inquiry) => inquiry.stage === "inquiry");
+    const withoutJobOrders = visibleInquiries.filter((inquiry) => !hasCreatedJobOrder(inquiry, completedJOs));
+    if (columnId === "readyForJobOrder") return withoutJobOrders.filter((inquiry) => isReadyForJobOrder(inquiry));
+    if (columnId === "quotation") return withoutJobOrders.filter((inquiry) => inquiry.stage === "quotation" || (inquiry.stage === "po" && !isReadyForJobOrder(inquiry)));
+    return withoutJobOrders.filter((inquiry) => inquiry.stage === "inquiry");
   };
 
   const quoteAmountFor = (inquiry: Inquiry) => {
     if (!inquiry.quotationDoc && !inquiry.quotation) return null;
-    const total = inquiry.quotationDoc?.total ?? inquiry.quotedTotal ?? 0;
+    const documentTotal = inquiry.quotationDoc?.lineItems.reduce((sum, line) => sum + line.unitPrice * line.qty, 0);
+    const total = inquiry.quotationDoc?.total ?? documentTotal ?? quotationTotal(inquiry);
     return total > 0 ? peso(total) : null;
   };
 
@@ -141,11 +190,12 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
       </header>
 
       <div className="px-8 py-6">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <SummaryCard label="Total Active Inquiries" value={summary.activeInquiries} accent="#1A2B4A" />
           <SummaryCard label="Awaiting Quotation" value={summary.awaitingQuotation} accent="#D97706" />
           <SummaryCard label="Quotation Sent" value={summary.quotationSent} accent="#2563EB" />
           <SummaryCard label="Ready for Job Order" value={summary.readyForJobOrder} accent="#059669" />
+          <SummaryCard label="Job Orders" value={summary.jobOrders} accent="#7C3AED" />
         </div>
 
         <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 flex items-start gap-2">
@@ -159,54 +209,127 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
       <div className="px-8 pb-6">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="relative min-w-[240px] flex-1">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search inquiry code, client, or product"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2.5 font-dm" style={{ fontSize: 13 }}
-              />
-            </label>
-
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as Stage | "all")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-              <option value="all">All statuses</option>
-              {Object.entries(stageLabel).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-
-            <select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-              <option value="all">All clients</option>
-              {clients.map((client) => (
-                <option key={client} value={client}>{client}</option>
-              ))}
-            </select>
-
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
-              <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="bg-transparent font-dm" style={{ fontSize: 12, color: "#0F172A" }} />
-              <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>to</span>
-              <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="bg-transparent font-dm" style={{ fontSize: 12, color: "#0F172A" }} />
+            <div className="flex min-w-[240px] flex-1 items-center gap-2">
+              <label className="relative min-w-0 flex-1">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search inquiry, PO, JO, client, or product"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 py-2.5 font-dm" style={{ fontSize: 13 }}
+                />
+              </label>
+              <Popover
+                open={filtersOpen}
+                onOpenChange={(open) => {
+                  if (open) {
+                    setDraftDateRange(dateRange);
+                    setDraftFromDate(fromDate);
+                    setDraftToDate(toDate);
+                    setDraftFollowUpStatus(followUpStatus);
+                  }
+                  setFiltersOpen(open);
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={activeFilterCount ? `Open filters, ${activeFilterCount} active` : "Open filters"}
+                    aria-haspopup="dialog"
+                    aria-expanded={filtersOpen}
+                    aria-pressed={activeFilterCount > 0}
+                    className={`relative inline-flex h-10 shrink-0 items-center justify-center rounded-lg border px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 ${
+                      activeFilterCount
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <SlidersHorizontal size={16} aria-hidden="true" />
+                    {activeFilterCount > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-600" aria-hidden="true" />}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent aria-label="Sales order filters" align="end" sideOffset={6} className="data-[state=closed]:hidden w-[min(20rem,calc(100vw-2rem))] rounded-xl border-slate-200 bg-white p-4 shadow-lg">
+                  <div className="space-y-3">
+                    <label className="block font-dm text-xs font-semibold text-slate-600">
+                      Inquiry Date Range
+                      <select
+                        value={draftDateRange}
+                        onChange={(event) => setDraftDateRange(event.target.value)}
+                        aria-label="Inquiry Date Range"
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                      >
+                        <option value="all">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="last7Days">Last 7 Days</option>
+                        <option value="last30Days">Last 30 Days</option>
+                        <option value="custom">Custom Date Range</option>
+                      </select>
+                    </label>
+                    {draftDateRange === "custom" && <div>
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                        <input
+                          type="date"
+                          value={draftFromDate}
+                          onChange={(event) => setDraftFromDate(event.target.value)}
+                          aria-label="Filter from date"
+                          className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 font-dm text-xs text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                        />
+                        <span className="font-dm text-xs text-slate-500">to</span>
+                        <input
+                          type="date"
+                          value={draftToDate}
+                          onChange={(event) => setDraftToDate(event.target.value)}
+                          aria-label="Filter to date"
+                          className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 font-dm text-xs text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                        />
+                      </div>
+                    </div>}
+                    <label className="block font-dm text-xs font-semibold text-slate-600">
+                      Follow-up Status
+                      <select
+                        value={draftFollowUpStatus}
+                        onChange={(event) => setDraftFollowUpStatus(event.target.value)}
+                        aria-label="Follow-up Status"
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                      >
+                        <option value="all">All Pipeline Records</option>
+                        <option value="awaitingQuotation">Awaiting Quotation</option>
+                        <option value="poReceived">PO Received</option>
+                      </select>
+                    </label>
+                    <div className="flex justify-between gap-2 border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="rounded-lg border border-slate-200 px-3 py-2 font-dm text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={applyFilters}
+                        className="rounded-lg bg-red-700 px-3 py-2 font-dm text-xs font-semibold text-white transition-colors hover:bg-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                      >
+                        Apply Filters
+                      </button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="client">Client</option>
-              <option value="amount">Amount</option>
-            </select>
           </div>
         </div>
       </div>
 
       <div className="px-8 pb-8">
         <div className="grid grid-cols-3 gap-6">
-          {[
+          {([
             { id: "inquiry", title: "New Inquiry", tint: "#64748B" },
             { id: "quotation", title: "Quotation Sent", tint: "#D97706" },
             { id: "readyForJobOrder", title: "Ready for Job Order", tint: "#C9A84C" },
-          ].map((column) => {
-            const records = cardsForColumn(column.id as "inquiry" | "quotation" | "readyForJobOrder");
+          ] as const).map((column) => {
+            const records = cardsForColumn(column.id);
             return (
               <div key={column.id} className="rounded-xl border border-slate-200 bg-white shadow-sm" style={{ minHeight: 560 }}>
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4 rounded-t-xl">
@@ -225,6 +348,7 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
                       const selected = selectedId === inquiry.id;
                       const productTotal = inquiry.products.reduce((sum, product) => sum + product.qty, 0);
                       const stageLabelValue = stageLabel[inquiry.stage] ?? "Open";
+                      const quotationAmount = quoteAmountFor(inquiry);
                       return (
                         <div
                           key={inquiry.id}
@@ -269,10 +393,10 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
                             <span style={{ color: "#0F172A", fontWeight: 600 }}>{inquiry.submittedDate || inquiry.quotationDoc?.date || "—"}</span>
                           </div>
 
-                          {inquiry.quotationDoc?.total && (
+                          {quotationAmount && (
                             <div className="mt-2 flex items-center justify-between text-xs font-dm">
                               <span style={{ color: "#64748B" }}>Quotation</span>
-                              <span style={{ color: "#0F172A", fontWeight: 700 }}>{peso(inquiry.quotationDoc.total)}</span>
+                              <span style={{ color: "#0F172A", fontWeight: 700 }}>{quotationAmount}</span>
                             </div>
                           )}
 
@@ -350,7 +474,7 @@ function openProductSketch(sketch: ProductSketchAttachment) {
   }
 }
 
-function OperationsProductSketch({ inquiryId, product }: { inquiryId: string; product: ProductLine }) {
+function OperationsProductSketch({ inquiryId, productId, product }: { inquiryId: string; productId: string; product: ProductLine }) {
   const [sketch, setSketch] = useState<ProductSketchAttachment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -359,20 +483,20 @@ function OperationsProductSketch({ inquiryId, product }: { inquiryId: string; pr
     let active = true;
     setLoading(true);
     setError(null);
-    void loadProductSketchAttachment(inquiryId, product.id)
+    void loadProductSketchAttachment(inquiryId, productId)
       .then((attachment) => {
         if (!active) return;
         setSketch(attachment);
         setLoading(false);
       })
       .catch((cause: unknown) => {
-        console.error(`[EnterFlow] Could not load sketch for product ${product.id} in inquiry ${inquiryId}.`, cause);
+        console.error(`[EnterFlow] Could not load sketch for product ${productId} in inquiry ${inquiryId}.`, cause);
         if (!active) return;
         setError(cause instanceof Error ? cause.message : "Unknown attachment error");
         setLoading(false);
       });
     return () => { active = false; };
-  }, [inquiryId, product.id]);
+  }, [inquiryId, productId]);
 
   const isImage = sketch?.dataUrl.startsWith("data:image/") ?? false;
 
@@ -420,7 +544,9 @@ function OperationsProductSketch({ inquiryId, product }: { inquiryId: string; pr
 function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: Inquiry; onClose: () => void; completedJOs: Inquiry[] }) {
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
   const [showQuotation, setShowQuotation] = useState(false);
+  const [showPO, setShowPO] = useState(false);
   const joRecord = completedJOs.find((job) => job.parentInquiryId === inquiry.id || job.id === inquiry.id || (inquiry.joNumber && job.joNumber === inquiry.joNumber)) ?? null;
+  const isJobOrderRecord = completedJOs.some((job) => job.id === inquiry.id);
   const quotationDoc = inquiry.quotationDoc;
   const quotationUnavailable = Boolean(quotationDoc) && (
     !quotationDoc?.quotationNo
@@ -444,7 +570,15 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
           <div>
             <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: "#64748B", textTransform: "uppercase" }}>Operations Monitor</div>
             <h3 className="font-syne mt-1" style={{ fontSize: 20, fontWeight: 800, color: "#0F172A" }}>
-              {inquiry.stage === "inquiry" ? "Inquiry Details" : inquiry.stage === "quotation" || inquiry.quotationDoc ? "Quotation Details" : "Job Order Details"}
+              {inquiry.stage === "inquiry"
+                ? "Inquiry Details"
+                : isReadyForJobOrder(inquiry)
+                  ? "Ready for Job Order Details"
+                  : isJobOrderRecord
+                    ? "Job Order Details"
+                    : inquiry.stage === "quotation" || inquiry.quotationDoc
+                    ? "Quotation Details"
+                    : "Job Order Details"}
             </h3>
           </div>
           <button type="button" onClick={onClose} aria-label="Close details" className="rounded-full border border-slate-200 bg-slate-50 p-2" style={{ color: "#475569" }}>
@@ -464,6 +598,22 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
               <DetailField label="Payment Terms">{inquiry.paymentTerms}</DetailField>
               <DetailField label="Total Qty">{totalQty} pcs across {inquiry.products.length} product{inquiry.products.length === 1 ? "" : "s"}</DetailField>
             </div>
+            {hasPORecord(inquiry) && (
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
+                <div>
+                  <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Client Purchase Order</div>
+                  <div className="mt-1 font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>{poNumberForDisplay(inquiry) ?? inquiry.code}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPO(true)}
+                  className="shrink-0 rounded-md border border-green-200 px-3 py-2 font-dm"
+                  style={{ fontSize: 11, color: "#15803D", fontWeight: 700 }}
+                >
+                  View PO
+                </button>
+              </div>
+            )}
             {inquiry.generalNotes && (
               <div className="px-5 pb-5">
                 <div className="font-dm mb-1" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>General Notes from Client</div>
@@ -523,6 +673,31 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
             <div className="divide-y divide-slate-200">
               {inquiry.products.map((product, index) => {
                 const expanded = !!expandedProducts[product.id];
+                const sketchInquiryId = inquiry.parentInquiryId
+                  ?? inquiry.reorderSourceInquiryId
+                  ?? inquiry.replacementParentId
+                  ?? inquiry.id;
+                const sketchProductId = inquiry.replacementParentId && product.id.endsWith("-r")
+                  ? product.id.slice(0, -2)
+                  : product.id;
+                const additionalSpecs: [string, string | undefined][] = [
+                  ["Filter Name", product.filterName],
+                  ["Overall Height", product.overallHeight],
+                  ["Length", product.length],
+                  ["Width", product.width],
+                  ["Thickness", product.thickness],
+                  ["Depth", product.depth],
+                  ["Pocket Count", product.pocketCount],
+                  ["Diameter", product.diameter],
+                  ["Cloth Cutting Width", product.clothCuttingWidth],
+                  ["Cloth Cutting Length", product.clothCuttingLength],
+                  ["Spring Plate Center to Center", product.springPlateCenterToCenter],
+                  ["Spring Plate Width", product.springPlateWidth],
+                  ["Spring Plate Length", product.springPlateLength],
+                  ["Pad OD", product.padOd],
+                  ["Pad ID", product.padId],
+                  ["Filtration Rating", product.filtrationRating],
+                ];
                 return (
                   <div key={product.id} className="bg-white">
                     <button
@@ -532,7 +707,7 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
                       style={{ backgroundColor: expanded ? "#F8FAFC" : "#FFFFFF" }}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>#{index + 1} · {product.type}</span>
+                        <span className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>#{index + 1} · {product.filterName || product.type}</span>
                         <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>Qty {product.qty}</span>
                       </div>
                       <span className="inline-flex items-center gap-2 text-slate-500">
@@ -568,7 +743,26 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
                           </table>
                         </div>
 
-                        <OperationsProductSketch key={`${inquiry.id}:${product.id}`} inquiryId={inquiry.id} product={product} />
+                        {additionalSpecs.some(([, value]) => value) && (
+                          <div className="mt-3 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-3">
+                            {additionalSpecs.filter(([, value]) => value).map(([label, value]) => (
+                              <DetailField key={label} label={label}>{value}</DetailField>
+                            ))}
+                          </div>
+                        )}
+
+                        {inquiry.joSpecs && Object.entries(inquiry.joSpecs).some(([, value]) => value) && (
+                          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                            <div className="mb-3 font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>Job Order Specifications</div>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                              {Object.entries(inquiry.joSpecs).filter(([, value]) => value).map(([key, value]) => (
+                                <DetailField key={key} label={key.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}>{value}</DetailField>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <OperationsProductSketch key={`${inquiry.id}:${product.id}`} inquiryId={sketchInquiryId} productId={sketchProductId} product={product} />
                       </div>
                     )}
                   </div>
@@ -577,7 +771,9 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
             </div>
           </div>
 
-          {inquiry.stage !== "inquiry" && inquiry.stage !== "quotation" && (
+          {inquiry.stage !== "inquiry"
+            && inquiry.stage !== "quotation"
+            && (isReadyForJobOrder(inquiry) || isJobOrderRecord) && (
             <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
               <h4 className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>Job Order Status</h4>
               {!joRecord ? (
@@ -623,6 +819,7 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
           onClose={() => setShowQuotation(false)}
         />
       )}
+      {showPO && <POViewerModal inquiry={inquiry} onClose={() => setShowPO(false)} />}
     </div>
   );
 }

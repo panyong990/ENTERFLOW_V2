@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, SlidersHorizontal, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, isValidProductionDueDate, resolveProductBOM, poNumberForDisplay, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -12,7 +12,7 @@ import { useStockRequests } from "../store/stockRequests";
 import type { QuotationDoc } from "../store/orders";
 import { FILTER_TYPES as FILTER_TYPES_CATALOG, DIMENSION_LABELS as DIMENSION_LABELS_CATALOG, GROUP_TEMPLATES, groupForType } from "../store/filterTemplates";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
-import { QuotationPreviewModal } from "./QuotationPreviewModal";
+import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
 import { useSession } from "../store/session";
 import { loadProductSketchAttachment, type ProductSketchAttachment } from "../store/attachments";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -187,6 +187,7 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
             Monitor customer inquiries, quotations, and order progress.
           </p>
         </div>
+
       </header>
 
       <div className="px-8 py-6">
@@ -813,7 +814,7 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
         <QuotationPreviewModal
           inquiry={inquiry}
           doc={quotationDoc}
-          vatLabel="VAT EXCLUSIVE"
+          vatLabel={quotationVatLabel(inquiry)}
           total={quotationTotalForPreview}
           preparedBy={quotationDoc.preparedBy || "Enter-Fil"}
           onClose={() => setShowQuotation(false)}
@@ -1127,8 +1128,15 @@ export function SalesOrders() {
         />
       )}
 
-      {viewing && viewing.quotation && (
-        <QuotationDetailModal inquiry={viewing} onClose={() => setViewQuoteId(null)} />
+      {viewing?.quotationDoc && (
+        <QuotationPreviewModal
+          inquiry={viewing}
+          doc={viewing.quotationDoc}
+          vatLabel={quotationVatLabel(viewing)}
+          total={viewing.quotationDoc.total ?? viewing.quotationDoc.lineItems.reduce((sum, line) => sum + line.unitPrice * line.qty, 0)}
+          preparedBy={viewing.quotationDoc.preparedBy || "Enter-Fil"}
+          onClose={() => setViewQuoteId(null)}
+        />
       )}
 
       {poViewing && (
@@ -1363,12 +1371,12 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           {inquiry.products.length} {inquiry.products.length === 1 ? "product" : "products"}
           {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
-        {((inquiry.stage === "quotation" || inquiry.stage === "po") && inquiry.quotation)
+        {((inquiry.stage === "quotation" || inquiry.stage === "po") && (inquiry.quotationDoc || inquiry.quotation))
           || (inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName) ? (
           <div className="flex flex-wrap items-center gap-2">
-            {(inquiry.stage === "quotation" || inquiry.stage === "po") && inquiry.quotation && (
+            {(inquiry.stage === "quotation" || inquiry.stage === "po") && inquiry.quotationDoc && (
               <button onClick={onViewQuote} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md hover:bg-red-50" style={{ fontSize: 11, fontWeight: 600, color: "#C8102E", border: "1px solid #FECACA" }}>
-                <Calculator size={12} /> View Quotation
+                <FileText size={12} /> View Quotation
               </button>
             )}
             {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && (
@@ -2054,7 +2062,7 @@ function QuotationDetailModal({ inquiry, onClose }: { inquiry: Inquiry; onClose:
   const q = inquiry.quotation!;
   const total = quotationTotal(inquiry);
   return (
-    <ModalShell title={`Quotation · ${inquiry.code}`} subtitle={`${inquiry.clientName} · Sent ${q.sentDate} · ${q.leadTimeDays} day lead time`} onClose={onClose} size="lg">
+    <ModalShell title={`Internal Cost Breakdown · ${inquiry.code}`} subtitle={`${inquiry.clientName} · Sent ${q.sentDate} · ${q.leadTimeDays} day lead time`} onClose={onClose} size="lg">
       <div className="rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
@@ -2148,6 +2156,8 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   const [otherDocs, setOtherDocs] = useState<UploadedDoc[]>([]);
   const [otherLabel, setOtherLabel] = useState("");
   const [checks, setChecks] = useState({ verified: false, matches: false, terms: false, dpConfirmed: false });
+  const [productionDueDate, setProductionDueDate] = useState("");
+  const [productionDueDateError, setProductionDueDateError] = useState("");
   const [poFullscreen, setPoFullscreen] = useState(false);
   const [showSpecs, setShowSpecs] = useState(true);
   /* Active product tab for multi-product JO editing */
@@ -2229,9 +2239,34 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   const buildFinalizePayload = (): FinalizeJOData[] =>
     inquiry.products.map((_, idx) => ({
       joNumber: joNumbers[idx] ?? `${joNumbers[0]}-${idx + 1}`,
+      productionDueDate,
       joSpecs: { ...productSpecs[idx], oem: enterFilPNs[idx] || productSpecs[idx]?.oem },
       joSketch: productSketches[idx]?.[0]?.name,
     }));
+
+  const handleConfirm = () => {
+    if (!isValidProductionDueDate(productionDueDate)) {
+      const message = productionDueDate ? "Enter a valid production due date." : "Production due date is required.";
+      setProductionDueDateError(message);
+      toast.error(message);
+      return;
+    }
+    setProductionDueDateError("");
+    onConfirm(buildFinalizePayload());
+  };
+
+  const paymentVerificationDates = (inquiry.payments ?? [])
+    .filter((payment) => payment.verificationStatus === "verified")
+    .map((payment) => payment.verifiedAt)
+    .filter((verifiedAt): verifiedAt is string => !!verifiedAt && !Number.isNaN(Date.parse(verifiedAt)))
+    .sort((a, b) => Date.parse(b) - Date.parse(a));
+  const latestPaymentVerifiedAt = paymentVerificationDates[0];
+  const latestPaymentVerifiedDisplay = latestPaymentVerifiedAt
+    ? new Date(latestPaymentVerifiedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })
+    : "Not recorded";
+  const clientDeliveryDate = inquiry.dueDate || "Not provided";
+  const quotedDeliveryTerm = inquiry.quotationDoc?.timeOfDelivery || "Not recorded";
+  const quotedLeadTime = inquiry.quotation?.leadTimeDays;
 
   const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
   const summary = inquiry.products.map((p) => `${p.type}${p.od1 ? ` ${p.od1}×${p.id1}×${p.height}mm` : ""} · Qty ${p.qty}`).join(" · ");
@@ -2480,6 +2515,50 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
         </label>
       </div>
 
+      <div className="rounded-lg border border-slate-200 p-5 mb-5" style={{ backgroundColor: "#FAFBFC" }}>
+        <div className="font-syne mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Production Deadline</div>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+            <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", textTransform: "uppercase" }}>Client requested delivery date</div>
+            <div className="font-dm mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#78350F" }}>{clientDeliveryDate}</div>
+          </div>
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+            <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase" }}>Latest payment verified at</div>
+            <div className="font-dm mt-1" style={{ fontSize: 13, fontWeight: 700, color: "#1E3A8A" }}>{latestPaymentVerifiedDisplay}</div>
+          </div>
+        </div>
+        <div className="font-dm mb-3" style={{ fontSize: 12, color: "#64748B" }}>
+          Quotation delivery term: {quotedDeliveryTerm}
+          {quotedLeadTime ? ` · Quoted lead time: ${quotedLeadTime} days` : ""}
+          . Choose the production completion deadline manually; no automatic calendar calculation is configured.
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="production-due-date" className="font-dm flex items-center gap-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
+            Production Due Date
+            <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 8, fontWeight: 800, backgroundColor: "#C8102E", color: "white" }}>REQUIRED</span>
+          </label>
+          <input
+            id="production-due-date"
+            type="date"
+            required
+            value={productionDueDate}
+            onChange={(event) => {
+              setProductionDueDate(event.target.value);
+              setProductionDueDateError("");
+            }}
+            onBlur={() => {
+              if (!productionDueDate) setProductionDueDateError("Production due date is required.");
+            }}
+            aria-invalid={Boolean(productionDueDateError)}
+            aria-describedby={productionDueDateError ? "production-due-date-error" : undefined}
+            className="form-input max-w-xs"
+          />
+          {productionDueDateError && (
+            <p id="production-due-date-error" role="alert" className="font-dm" style={{ fontSize: 12, color: "#B91C1C" }}>{productionDueDateError}</p>
+          )}
+        </div>
+      </div>
+
       {/* ── Other Documents (optional) ── */}
       <div className="rounded-lg border border-slate-200 p-5 mb-5" style={{ backgroundColor: "#FAFBFC" }}>
         <div className="font-syne mb-1" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Other Documents <span style={{ fontWeight: 400, color: "#94A3B8" }}>(optional)</span></div>
@@ -2574,7 +2653,7 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           Cancel
         </button>
         <button
-          onClick={() => onConfirm(buildFinalizePayload())}
+          onClick={handleConfirm}
           disabled={!allChecked}
           className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
           style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}

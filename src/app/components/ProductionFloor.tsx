@@ -46,6 +46,7 @@ interface Job {
   product: string;
   qty: number;
   due: string;
+  clientDeliveryDate?: string;
   badge: BadgeKind;
   stageIndex: number;
   joCompleted: boolean;
@@ -65,6 +66,16 @@ const badgeForStage = (idx: number, paused: boolean): BadgeKind => {
   if (idx >= 1) return "spotting";
   return "molding";
 };
+
+function formatProductionDueDate(value?: string): string {
+  if (!value) return "—";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  if (date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return value;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 /* Build the visible Job shape from an Inquiry — single source of truth.
    Only inquiries whose stage is in the production pipeline appear on the floor. */
@@ -106,7 +117,8 @@ function inquiryToJob(inq: Inquiry): Job {
     client: inq.clientName.toUpperCase(),
     product: (product?.type ?? "FILTER").toUpperCase(),
     qty: inq.products.reduce((s, p) => s + p.qty, 0),
-    due: inq.dueDate ?? "—",
+    clientDeliveryDate: inq.dueDate,
+    due: formatProductionDueDate(inq.productionDueDate),
     badge: badgeForStage(stageIdx, paused),
     stageIndex: stageIdx,
     joCompleted: Boolean(inq.joCompletedAt) || ["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"].includes(inq.stage),
@@ -185,7 +197,8 @@ function getJOTemplateData(job: Job): JOTemplateData {
     },
     preparedBy: "Tricia (Management)",
     sketch: job.sketch,
-    dueDate: job.due,
+    dueDate: job.clientDeliveryDate,
+    productionDueDate: job.due === "—" ? undefined : job.due,
   };
 }
 
@@ -201,9 +214,6 @@ export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
   const [stageMonitorId, setStageMonitorId] = useState<string | null>(null);
   const [completeJoJob, setCompleteJoJob] = useState<Job | null>(null);
   const [joFileJob, setJoFileJob] = useState<Job | null>(null);
-  const [editingDueId, setEditingDueId] = useState<string | null>(null);
-  const [editingDueValue, setEditingDueValue] = useState("");
-  const [editingDueReason, setEditingDueReason] = useState("");
   const { push: pushNotif } = useNotifications();
   const { completedJOs, updateInquiry } = useOrders();
   const hasActiveFilters = joStatusFilter !== "active" || stageFilter !== "all" || dateFilter !== "all";
@@ -225,23 +235,6 @@ export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
 
   /* Find the inquiry behind a job — id is the inquiry id, so this is a direct lookup */
   const inqOf = (jobId: string) => productionInquiries.find((i) => i.id === jobId);
-
-  const saveDue = (id: string, due: string) => {
-    if (readOnly) return;
-    if (!due.trim()) { toast.error("Enter a valid date"); return; }
-    const inq = inqOf(id);
-    if (!inq) return;
-    updateInquiry(id, { dueDate: due });
-    pushNotif({
-      dept: "production",
-      title: `Due date updated: ${inq.joNumber ?? inq.code}`,
-      body: `${inq.clientName} · ${inq.products[0]?.type ?? ""} · new due ${due}${editingDueReason ? ` · Reason: ${editingDueReason}` : " · For details, contact via email."}`,
-      link: "production",
-      recipients: ["owner", "operations", "production", "client"],
-    });
-    setEditingDueId(null); setEditingDueReason("");
-    toast.success("Due date updated · client & team notified");
-  };
 
   const sortedJobs = useMemo(
     () => [...jobs].sort((a, b) => b.stageIndex - a.stageIndex),
@@ -593,42 +586,7 @@ export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                       <Clock size={14} />
-                      {editingDueId === job.id ? (
-                        <div className="flex flex-col gap-1.5 p-2 rounded-md" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                          <div className="flex items-center gap-1">
-                            <input
-                              value={editingDueValue}
-                              onChange={(e) => setEditingDueValue(e.target.value)}
-                              placeholder="e.g. May 5, 2026"
-                              autoFocus
-                              className="font-dm px-2 py-1 rounded border border-amber-200 outline-none focus:border-amber-400 bg-white"
-                              style={{ fontSize: 11, width: 120 }}
-                            />
-                            <input
-                              value={editingDueReason}
-                              onChange={(e) => setEditingDueReason(e.target.value)}
-                              placeholder="Reason (optional, e.g. delayed material)"
-                              className="font-dm px-2 py-1 rounded border border-amber-200 outline-none focus:border-amber-400 bg-white flex-1"
-                              style={{ fontSize: 11 }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-dm" style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>For details, contact via email</span>
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => saveDue(job.id, editingDueValue)} className="font-dm px-2 py-0.5 rounded text-white flex items-center gap-1" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#16A34A" }}>Save & Notify</button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <span>Due: {job.due}</span>
-                          {!readOnly && (
-                            <button onClick={() => { setEditingDueId(job.id); setEditingDueValue(job.due); }} className="hover:bg-slate-100 px-1.5 py-0.5 rounded" title="Edit due date">
-                              <Pencil size={10} style={{ color: "#94A3B8" }} />
-                            </button>
-                          )}
-                        </>
-                      )}
+                      <span>Production due: {job.due}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       {job.paused && (
@@ -734,7 +692,7 @@ export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
               </div>
               <div className="p-6 flex flex-col gap-6">
                 <div className="grid grid-cols-4 gap-3">
-                  <DetailStat icon={Calendar} label="Due Date" value={j.due} />
+                  <DetailStat icon={Calendar} label="Production Due" value={j.due} />
                   <DetailStat icon={ClipboardList} label="PO" value={j.po} />
                   <DetailStat icon={Wrench} label={completed ? "JO Status" : "Current Stage"} value={completed ? "Completed" : allStagesCompleted ? "Stages Complete" : STAGES[Math.min(j.stageIndex, STAGES.length - 1)]} />
                   <DetailStat icon={Package} label="Progress" value={`${pct}%`} />
@@ -821,7 +779,6 @@ export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
                 : undefined,
               paused: updatedJob.paused,
               urgent: updatedJob.urgent,
-              dueDate: updatedJob.due,
             });
           }}
         />
@@ -928,7 +885,7 @@ function StageMonitoringPage({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-dm" style={{ fontSize: 13, color: "#64748B" }}>{job.product} · Qty {job.qty} · Due {job.due}</span>
+          <span className="font-dm" style={{ fontSize: 13, color: "#64748B" }}>{job.product} · Qty {job.qty} · Production due {job.due}</span>
           {job.paused && (
             <span className="font-dm flex items-center gap-1 px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#991B1B" }}>
               <Pause size={11} /> PAUSED

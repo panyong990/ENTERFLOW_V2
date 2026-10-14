@@ -262,6 +262,7 @@ export interface Inquiry {
   poReceived?: boolean;
   urgent?: boolean;
   dueDate?: string;
+  productionDueDate?: string;
   /* — sketch optionally uploaded at inquiry stage — */
   inquirySketch?: string;
   archived?: boolean;
@@ -426,10 +427,17 @@ export function poNumberForDisplay(inquiry: Pick<Inquiry, "poNumber" | "poFileNa
 
 export interface FinalizeJOData {
   joNumber: string;
+  productionDueDate: string;
   joSpecs?: JOSpecs;
   joSketch?: string;
   dpReceiptFile?: string;
   signedQuotationFile?: string;
+}
+
+export function isValidProductionDueDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 export const unitPrice = (l: QuotationLine) => Math.round((l.materialCost + l.labor) * (1 + l.markupPct / 100));
@@ -1330,6 +1338,15 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const finalizeProductJOs: Ctx["finalizeProductJOs"] = (id, data) => {
     const src = allInquiries.find((i) => i.id === id);
+    const productionDueDate = data[0]?.productionDueDate;
+    if (
+      !productionDueDate
+      || !isValidProductionDueDate(productionDueDate)
+      || data.some((job) => job.productionDueDate !== productionDueDate)
+    ) {
+      console.error("Cannot generate Job Order: a valid shared production due date is required.");
+      return [];
+    }
     if (!src || src.stage !== "po" || src.joNumber || allInquiries.some((i) => i.parentInquiryId === id && i.stage === "jo")) return [];
     const parentInquiryId = src.parentInquiryId ?? src.id;
     const childIds: string[] = [];
@@ -1349,6 +1366,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           parentInquiryId,
           stage: "jo" as Stage,
           joNumber: jo.joNumber,
+          productionDueDate: jo.productionDueDate,
           joSpecs: jo.joSpecs,
           joSketch: jo.joSketch,
           dpReceiptFile: jo.dpReceiptFile,
@@ -1481,7 +1499,12 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   const updateInquiry: Ctx["updateInquiry"] = (id, patch) => {
-    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    const safePatch = { ...patch };
+    if (Object.prototype.hasOwnProperty.call(safePatch, "productionDueDate")) {
+      delete safePatch.productionDueDate;
+      console.error("Production due dates are read-only after Job Order creation.");
+    }
+    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, ...safePatch } : x)));
   };
 
   const inquiriesByStage: Ctx["inquiriesByStage"] = (stages) => {

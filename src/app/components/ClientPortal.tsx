@@ -27,7 +27,7 @@ import { getClientCompanySettings, saveClientCompanySettings } from "../store/cl
 import { readFileAsDataUrl } from "../store/attachments";
 import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
-import { QuotationPreviewModal } from "./QuotationPreviewModal";
+import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
 import {
   AlertDialog,
@@ -1300,7 +1300,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
         <QuotationPreviewModal
           inquiry={inquiry}
           doc={inquiry.quotationDoc}
-          vatLabel={inquiry.quotationDoc.termsOfPayment === "15-Day Terms" ? "VAT EXCLUSIVE" : "VAT EXCLUSIVE"}
+          vatLabel={quotationVatLabel(inquiry)}
           total={inquiry.quotationDoc.total ?? inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
           preparedBy={inquiry.quotationDoc.preparedBy ?? "Enter-Fil"}
           onClose={() => setShowQuotationDoc(false)}

@@ -20,11 +20,20 @@ interface Props {
  */
 export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedBy, onClose }: Props) {
   const handlePrint = () => window.print();
+  const downpaymentPercent = doc.downpaymentPercent ?? inquiry.downpaymentPercent;
+  const downpaymentAmount = doc.downpaymentAmount ?? inquiry.downpaymentAmount;
+  const hasDownpayment = (downpaymentPercent ?? 0) > 0 || (downpaymentAmount ?? 0) > 0;
+  const savedLeadTimeDays = inquiry.quotation?.leadTimeDays;
+  const timeOfDelivery = doc.timeOfDelivery || (
+    typeof savedLeadTimeDays === "number" && Number.isFinite(savedLeadTimeDays) && savedLeadTimeDays > 0
+      ? `${savedLeadTimeDays} ${savedLeadTimeDays === 1 ? "day" : "days"}`
+      : "—"
+  );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.7)" }} onClick={onClose}>
+    <div className="quotation-preview-print-root fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.7)" }} onClick={onClose}>
       {/* Modal chrome (hidden in print) */}
-      <div className="bg-white rounded-xl w-full max-w-4xl flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.35)", maxHeight: "95vh" }} onClick={(e) => e.stopPropagation()}>
+      <div className="quotation-preview-dialog bg-white rounded-xl w-full max-w-4xl flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.35)", maxHeight: "95vh" }} onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-3 border-b border-slate-200 flex items-center justify-between shrink-0 print:hidden">
           <div>
             <h3 className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Quotation Preview</h3>
@@ -42,8 +51,8 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
         </div>
 
         {/* Document */}
-        <div className="overflow-auto p-8 print:p-0" style={{ backgroundColor: "#F4F6F9" }}>
-          <div className="bg-white mx-auto print:shadow-none" style={{ maxWidth: 820, padding: 40, boxShadow: "0 4px 16px rgba(15,23,42,0.08)", border: "1px solid #E2E8F0" }}>
+        <div className="quotation-preview-document overflow-auto p-8 print:p-0" style={{ backgroundColor: "#F4F6F9" }}>
+          <div className="quotation-preview-paper bg-white mx-auto print:shadow-none" style={{ maxWidth: 820, padding: 40, boxShadow: "0 4px 16px rgba(15,23,42,0.08)", border: "1px solid #E2E8F0" }}>
             {/* ── Letterhead ── */}
             <div className="flex items-start justify-between pb-5 border-b-2" style={{ borderColor: "#0F172A" }}>
               <div className="flex items-start gap-4">
@@ -74,11 +83,11 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                   </div>
                   <div className="flex justify-end gap-2 mt-0.5">
                     <span style={{ color: "#64748B" }}>Date</span>
-                    <span style={{ color: "#0F172A", fontWeight: 600 }}>{doc.date}</span>
+                    <span style={{ color: "#0F172A", fontWeight: 600 }}>{doc.date || "—"}</span>
                   </div>
                   <div className="flex justify-end gap-2 mt-0.5">
                     <span style={{ color: "#64748B" }}>Valid Until</span>
-                    <span style={{ color: "#0F172A", fontWeight: 600 }}>{doc.validUntil}</span>
+                    <span style={{ color: "#0F172A", fontWeight: 600 }}>{doc.validUntil || "—"}</span>
                   </div>
                 </div>
               </div>
@@ -88,7 +97,7 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
             <div className="grid grid-cols-2 gap-6 py-5 border-b border-slate-200">
               <div>
                 <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Attention</div>
-                <div className="font-dm mt-0.5" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{inquiry.contactPerson}</div>
+                <div className="font-dm mt-0.5" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{inquiry.contactPerson || "—"}</div>
               </div>
               <div>
                 <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Company</div>
@@ -156,7 +165,7 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
             </table>
 
             {/* ── Yellow note row ── */}
-            {doc.note.trim() && (
+            {doc.note?.trim() && (
               <div className="mt-4 px-4 py-2.5 font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A", backgroundColor: doc.noteHighlighted ? "#FEF08A" : "transparent", border: doc.noteHighlighted ? "1px solid #FACC15" : "1px dashed #CBD5E1", borderRadius: 4 }}>
                 NOTE : <span style={{ fontWeight: 600 }}>{doc.note}</span>
               </div>
@@ -170,8 +179,8 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                   Terms and Conditions
                 </div>
                 <div className="flex flex-col gap-1 font-dm" style={{ fontSize: 12 }}>
-                  <Term label="Terms of payment" value={doc.termsOfPayment} />
-                  <Term label="Time of delivery" value={doc.timeOfDelivery} />
+                  <Term label="Terms of payment" value={doc.termsOfPayment || "—"} />
+                  <Term label="Time of delivery" value={timeOfDelivery} />
                   <Term label="Place of delivery" value={doc.placeOfDelivery || "—"} />
                   {doc.shipping?.label && doc.shipping.label !== "Shipping" && (
                     <Term
@@ -181,7 +190,7 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                         : doc.shipping.label}
                     />
                   )}
-                  <Term label="Validity" value={doc.validUntil} />
+                  <Term label="Validity" value={doc.validUntil || "—"} />
                 </div>
               </div>
               {/* Totals */}
@@ -202,20 +211,24 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                 <div className="font-syne w-full px-3 py-1.5 rounded text-right" style={{ fontSize: 12, fontWeight: 800, color: "#C8102E", backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", letterSpacing: 0.6 }}>
                   {vatLabel}
                 </div>
-                {doc.downpaymentPercent && doc.downpaymentAmount ? (
+                {hasDownpayment ? (
                   <div className="rounded w-full font-dm" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE", padding: "12px 14px" }}>
                     <div style={{ fontSize: 10, fontWeight: 800, color: "#1E40AF", letterSpacing: 0.5, textTransform: "uppercase" }}>
-                      Downpayment Required — {doc.downpaymentPercent}%
+                      Downpayment Required — {downpaymentPercent ?? "—"}%
                     </div>
                     <div className="font-mono-jb mt-2" style={{ fontSize: 18, fontWeight: 800, color: "#1D4ED8", textAlign: "right" }}>
-                      ₱ {doc.downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {downpaymentAmount === undefined
+                        ? "—"
+                        : `₱ ${downpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     </div>
                     <div style={{ fontSize: 10, color: "#3B82F6", marginTop: 4 }}>
                       due before production begins
                     </div>
-                    <div style={{ fontSize: 10, color: "#60A5FA", marginTop: 6, paddingTop: 6, borderTop: "1px solid #BFDBFE" }}>
-                      Balance: ₱{(total - doc.downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} upon delivery
-                    </div>
+                    {downpaymentAmount !== undefined && (
+                      <div style={{ fontSize: 10, color: "#60A5FA", marginTop: 6, paddingTop: 6, borderTop: "1px solid #BFDBFE" }}>
+                        Balance: ₱{(total - downpaymentAmount).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} upon delivery
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -248,6 +261,31 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
       <style>{`
         @media print {
           body { background: white !important; }
+          body * { visibility: hidden !important; }
+          .quotation-preview-print-root,
+          .quotation-preview-print-root * { visibility: visible !important; }
+          .quotation-preview-print-root {
+            position: fixed !important;
+            inset: 0 !important;
+            display: block !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+          .quotation-preview-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+          }
+          .quotation-preview-document { overflow: visible !important; background: white !important; padding: 0 !important; }
+          .quotation-preview-paper {
+            width: 100% !important;
+            max-width: none !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+          }
           .print\\:hidden { display: none !important; }
           .print\\:p-0 { padding: 0 !important; }
           .print\\:shadow-none { box-shadow: none !important; }
@@ -255,6 +293,15 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
       `}</style>
     </div>
   );
+}
+
+export function quotationVatLabel(inquiry: Inquiry): string {
+  const vatType = inquiry.productsCostConfig?.find((config) => config?.vatType)?.vatType
+    ?? inquiry.costConfig?.vatType;
+  if (vatType === "Exclusive") return "VAT EXCLUSIVE";
+  if (vatType === "Inclusive") return "VAT INCLUSIVE";
+  if (vatType === "Zero-Rated") return "ZERO-RATED";
+  return "VAT INFORMATION UNAVAILABLE";
 }
 
 function Term({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {

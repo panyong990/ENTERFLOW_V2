@@ -37,6 +37,7 @@ export interface JOTemplateData {
   sketch?: string;
   urgent?: boolean;
   dueDate?: string;
+  productionDueDate?: string;
 }
 
 interface Props {
@@ -127,7 +128,7 @@ export function JOTemplateModal({ data, onClose }: Props) {
               </span>
               {data.dueDate && (
                 <span style={{ ...D, fontSize: 12, color: "#991B1B", fontWeight: 600 }}>
-                  Required by: {data.dueDate}
+                  Client delivery date: {data.dueDate}
                 </span>
               )}
             </div>
@@ -151,6 +152,7 @@ export function JOTemplateModal({ data, onClose }: Props) {
                 {data.poRef && <HeaderRow label="PO REFERENCE" value={data.poRef} />}
                 <HeaderRow label="COMPANY NAME" value={data.client.toUpperCase()} bold />
                 <HeaderRow label="QUANTITY" value={String(data.qty)} />
+                {data.productionDueDate && <HeaderRow label="PRODUCTION DUE" value={data.productionDueDate} bold />}
               </div>
             </div>
 

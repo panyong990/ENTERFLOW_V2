@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import { FileText, ClipboardList, Search, Plus, CheckCircle2, X, Send, AlertTriangle, ChevronDown, ChevronUp, PlusCircle, Receipt, Eye, History, Pencil, Download } from "lucide-react";
 import { hasValidSignedDeliveryReceipt, useOrders, paymentDaysRemaining, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
@@ -39,6 +39,36 @@ interface Invoice {
   signedDeliveryReceiptSubmittedBy?: string;
   signedDeliveryReceiptReceivedAt?: string;
   signedDeliveryReceiptDataUrl?: string;
+}
+
+type ReminderCategory = "dueSoon" | "overdue" | "remainingBalance";
+type ReminderFilter = "all" | "remainingBalance" | "dueSoon" | "overdue";
+const DUE_SOON_WINDOW_DAYS = 7;
+
+function isEligibleReminder(invoice: Invoice): boolean {
+  const balance = invoice.paymentState.remainingInvoiceBalance;
+  return Boolean(
+    invoice.id
+    && invoice.inv
+    && invoice.client
+    && invoice.status === "pending"
+    && Number.isFinite(balance)
+    && balance > 0.005
+    && (!invoice.dueDate || paymentDaysRemaining(invoice.dueDate) !== undefined)
+  );
+}
+
+function reminderCategory(invoice: Invoice, now: Date): ReminderCategory {
+  const daysRemaining = invoice.dueDate ? paymentDaysRemaining(invoice.dueDate, now) : undefined;
+  if (daysRemaining !== undefined && daysRemaining < 0) return "overdue";
+  if (daysRemaining !== undefined && daysRemaining <= DUE_SOON_WINDOW_DAYS) return "dueSoon";
+  return "remainingBalance";
+}
+
+function filterReminderRows(rows: Invoice[], filter: ReminderFilter, now: Date): Invoice[] {
+  return rows.filter((invoice) => (
+    filter === "all" || reminderCategory(invoice, now) === filter
+  ));
 }
 
 /* Derive an Invoice row from an Inquiry. Anything in delivered/paid/overdue stage is invoiced. */
@@ -152,6 +182,11 @@ export function Accounting() {
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [showOverdueModal, setShowOverdueModal] = useState(false);
+  const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
+  const [sendingReminderIds, setSendingReminderIds] = useState<Set<string>>(() => new Set());
+  const [sendingAllReminders, setSendingAllReminders] = useState(false);
+  const sendingReminderIdsRef = useRef(new Set<string>());
+  const sendingAllRemindersRef = useRef(false);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -401,10 +436,82 @@ export function Accounting() {
     toast.info("Payment rejected", { description: `${invoice.inv} · client notified to resubmit` });
   };
 
-  const overdueRows = rows.filter(r => r.status === "pending");
-  const overdueDueDates: Record<string, { due: string; daysOverdue: number }> = {
-    "i4": { due: "Apr 29, 2026", daysOverdue: 0 },
-    "i5": { due: "May 10, 2026", daysOverdue: 0 },
+  const eligibleReminderRows = rows.filter(isEligibleReminder);
+  const dueSoonReminderCount = eligibleReminderRows.filter((r) => reminderCategory(r, now) === "dueSoon").length;
+  const overdueReminderCount = eligibleReminderRows.filter((r) => reminderCategory(r, now) === "overdue").length;
+  const filteredReminderRows = filterReminderRows(eligibleReminderRows, reminderFilter, now);
+
+  const createReminderNotification = (invoice: Invoice) => {
+    if (!isEligibleReminder(invoice)) {
+      throw new Error("This invoice no longer has an eligible outstanding balance.");
+    }
+    const category = reminderCategory(invoice, now);
+    const paymentType = invoice.paymentState.currentPaymentType?.replace(/_/g, " ") ?? "PAYMENT";
+    pushNotif({
+      dept: "payments",
+      title: `Payment reminder: ${invoice.inv}`,
+      body: `${invoice.client} · ${paymentType} · outstanding balance ₱${invoice.paymentState.remainingInvoiceBalance.toLocaleString("en-PH")} · ${category === "overdue" ? "overdue" : category === "dueSoon" ? "due soon" : "remaining balance"}`,
+      link: "accounting",
+      clientName: invoice.client,
+      recipients: ["client"],
+    });
+  };
+
+  const sendInvoiceReminder = (invoice: Invoice) => {
+    if (sendingAllRemindersRef.current || sendingReminderIdsRef.current.has(invoice.id)) return;
+    sendingReminderIdsRef.current.add(invoice.id);
+    setSendingReminderIds(new Set(sendingReminderIdsRef.current));
+    try {
+      createReminderNotification(invoice);
+    } catch (error) {
+      console.error("[EnterFlow] Could not create invoice reminder notification.", error);
+      toast.error("Reminder could not be sent", { description: `${invoice.inv} · Please try again.` });
+      sendingReminderIdsRef.current.delete(invoice.id);
+      setSendingReminderIds(new Set(sendingReminderIdsRef.current));
+      return;
+    }
+    sendingReminderIdsRef.current.delete(invoice.id);
+    setSendingReminderIds(new Set(sendingReminderIdsRef.current));
+    toast.success("Reminder notification created", {
+      description: `${invoice.client} · Invoice ${invoice.inv}. This is a prototype notification, not a delivered email.`,
+    });
+  };
+
+  const sendFilteredReminders = () => {
+    if (sendingAllRemindersRef.current || filteredReminderRows.length === 0) return;
+    sendingAllRemindersRef.current = true;
+    const invoicesToSend = [...filteredReminderRows];
+    invoicesToSend.forEach((invoice) => sendingReminderIdsRef.current.add(invoice.id));
+    setSendingAllReminders(true);
+    setSendingReminderIds(new Set(sendingReminderIdsRef.current));
+    let sentCount = 0;
+    const failedInvoices: string[] = [];
+    try {
+      invoicesToSend.forEach((invoice) => {
+        try {
+          createReminderNotification(invoice);
+          sentCount += 1;
+        } catch (error) {
+          console.error(`[EnterFlow] Could not create invoice reminder notification for ${invoice.inv}.`, error);
+          failedInvoices.push(invoice.inv);
+        }
+      });
+      if (sentCount > 0) {
+        toast.success(`${sentCount} reminder notification${sentCount === 1 ? "" : "s"} created`, {
+          description: "Prototype notifications were added for the invoices in the selected filter.",
+        });
+      }
+      if (failedInvoices.length > 0) {
+        toast.error(`${failedInvoices.length} reminder${failedInvoices.length === 1 ? "" : "s"} could not be sent`, {
+          description: failedInvoices.join(", "),
+        });
+      }
+    } finally {
+      invoicesToSend.forEach((invoice) => sendingReminderIdsRef.current.delete(invoice.id));
+      sendingAllRemindersRef.current = false;
+      setSendingAllReminders(false);
+      setSendingReminderIds(new Set(sendingReminderIdsRef.current));
+    }
   };
 
   return (
@@ -450,7 +557,7 @@ export function Accounting() {
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 bg-white font-dm hover:bg-slate-50"
                 style={{ borderColor: "#C8102E", color: "#C8102E", fontSize: 12, fontWeight: 700 }}
               >
-                <AlertTriangle size={14} /> Send Overdue Reminders
+                <AlertTriangle size={14} /> Send Payment Reminders
               </button>
             </>
           )}
@@ -675,7 +782,6 @@ export function Accounting() {
                       const pf = newPmt[r.id] ?? { amount: "", method: "", ref: "", datePaid: "" };
                       const clientInquiries = byClient(r.client);
                       const clientReceipts = clientInquiries.flatMap(i => i.clientPaymentReceipts ?? []);
-                      const dd = overdueDueDates[r.id];
                       const signedDRReceived = Boolean(r.signedDeliveryReceiptReceivedAt);
                       const cycleDaysRemaining = r.dueDate ? paymentDaysRemaining(r.dueDate, now) : undefined;
                       const paymentCycleOverdue = signedDRReceived
@@ -697,8 +803,8 @@ export function Accounting() {
                               <div>
                                 <div className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>{r.client} — {r.inv}</div>
                                 <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>
-                                  {r.payment} · Delivered: {r.deliveredDate ?? r.date} · Due: <span style={{ fontWeight: 600, color: dd?.daysOverdue > 0 ? "#C8102E" : "#0F172A" }}>{r.dueDate ?? "—"}</span>
-                                  {dd?.daysOverdue > 0 && <span className="ml-2 font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>⚠️ {dd.daysOverdue} DAYS OVERDUE</span>}
+                                  {r.payment} · Delivered: {r.deliveredDate ?? r.date} · Due: <span style={{ fontWeight: 600, color: paymentCycleOverdue ? "#C8102E" : "#0F172A" }}>{r.dueDate ?? "—"}</span>
+                                  {paymentCycleOverdue && <span className="ml-2 font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>⚠️ {Math.abs(cycleDaysRemaining ?? 0)} DAYS OVERDUE</span>}
                                 </div>
                               </div>
                               <div className="flex gap-6 text-right">
@@ -1049,43 +1155,73 @@ export function Accounting() {
             </div>
             <div className="p-6 overflow-auto flex flex-col gap-3">
               <p className="font-dm" style={{ fontSize: 13, color: "#475569" }}>
-                Review pending invoices below. Click "Send Reminder" to notify the client via email.
+                Review eligible outstanding invoices and create a client reminder notification for each selected invoice.
               </p>
-              {overdueRows.length === 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <label htmlFor="reminder-filter" className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Filter reminders</label>
+                <select
+                  id="reminder-filter"
+                  value={reminderFilter}
+                  onChange={(event) => setReminderFilter(event.target.value as ReminderFilter)}
+                  disabled={sendingAllReminders}
+                  className="font-dm rounded-md border border-slate-300 bg-white px-3 py-2 outline-none focus:border-slate-500 disabled:opacity-60"
+                  style={{ fontSize: 12, color: "#0F172A" }}
+                >
+                  <option value="all">All Reminders</option>
+                  <option value="remainingBalance">Remaining Balance</option>
+                  <option value="dueSoon">Due Soon</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+                <span className="font-dm w-full" style={{ fontSize: 11, color: "#64748B" }}>
+                  {filteredReminderRows.length} eligible · {dueSoonReminderCount} due soon · {overdueReminderCount} overdue
+                </span>
+                <span className="font-dm w-full" style={{ fontSize: 10, color: "#94A3B8" }}>
+                  Due soon means due within 7 days; Remaining Balance includes later or undated invoices.
+                </span>
+              </div>
+              {filteredReminderRows.length === 0 ? (
                 <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 13, color: "#16A34A", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
-                  ✅ No pending invoices — all accounts are cleared!
+                  {eligibleReminderRows.length === 0
+                    ? "✅ No eligible reminders — all invoices are cleared or have no outstanding balance."
+                    : "No eligible invoices match this reminder filter."}
                 </div>
-              ) : overdueRows.map(r => {
-                const dd = overdueDueDates[r.id];
-                const isOverdue = dd && dd.daysOverdue > 0;
+              ) : filteredReminderRows.map(r => {
+                const category = reminderCategory(r, now);
+                const isOverdue = category === "overdue";
+                const isDueSoon = category === "dueSoon";
                 return (
-                  <div key={r.id} className="rounded-lg p-4 border" style={{ backgroundColor: isOverdue ? "#FEF2F2" : "#FFFBEB", borderColor: isOverdue ? "#FECACA" : "#FDE68A" }}>
+                  <div key={r.id} className="rounded-lg p-4 border" style={{ backgroundColor: isOverdue ? "#FEF2F2" : isDueSoon ? "#FFFBEB" : "#F8FAFC", borderColor: isOverdue ? "#FECACA" : isDueSoon ? "#FDE68A" : "#CBD5E1" }}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{r.inv}</span>
-                          {isOverdue ? (
-                            <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>⚠️ {dd.daysOverdue} DAYS OVERDUE</span>
-                          ) : (
-                            <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEF3C7", color: "#B45309" }}>DUE SOON</span>
-                          )}
+                          <span
+                            className="font-dm px-2 py-0.5 rounded-full"
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              backgroundColor: isOverdue ? "#FEE2E2" : isDueSoon ? "#FEF3C7" : "#E2E8F0",
+                              color: isOverdue ? "#C8102E" : isDueSoon ? "#B45309" : "#475569",
+                            }}
+                          >
+                            {isOverdue ? "OVERDUE" : isDueSoon ? "DUE SOON" : "REMAINING BALANCE"}
+                          </span>
                         </div>
                         <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</div>
                         <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item}</div>
                         <div className="flex items-center gap-4 mt-1">
-                          <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>₱{r.amount.toLocaleString("en-PH")}</span>
-                          <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Due: {dd?.due ?? "—"}</span>
+                          <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Balance: ₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH")}</span>
+                          <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Due: {r.dueDate ?? "—"}</span>
                           <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.payment}</span>
                         </div>
                       </div>
                       <button
-                        onClick={() => {
-                          toast.success(`Reminder sent to ${r.client}`, { description: `Invoice ${r.inv} · ₱${r.amount.toLocaleString("en-PH")}` });
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-md text-white font-dm hover:opacity-90 shrink-0"
+                        onClick={() => sendInvoiceReminder(r)}
+                        disabled={sendingAllReminders || sendingReminderIds.has(r.id)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-md text-white font-dm hover:opacity-90 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                         style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}
                       >
-                        <Send size={12} /> Send Reminder
+                        <Send size={12} /> {sendingReminderIds.has(r.id) ? "Sending..." : "Send Reminder"}
                       </button>
                     </div>
                   </div>
@@ -1093,18 +1229,16 @@ export function Accounting() {
               })}
             </div>
             <div className="px-6 py-4 border-t border-slate-200 flex justify-between items-center">
-              <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{overdueRows.length} pending · {overdueRows.filter(r => overdueDueDates[r.id]?.daysOverdue > 0).length} overdue</span>
+              <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{filteredReminderRows.length} eligible reminder{filteredReminderRows.length === 1 ? "" : "s"}</span>
               <div className="flex gap-2">
                 <button onClick={() => setShowOverdueModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Close</button>
                 <button
-                  onClick={() => {
-                    overdueRows.forEach(r => toast.success(`Reminder sent to ${r.client}`));
-                    setShowOverdueModal(false);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-md text-white font-dm hover:opacity-90"
+                  onClick={sendFilteredReminders}
+                  disabled={filteredReminderRows.length === 0 || sendingAllReminders}
+                  className="flex items-center gap-2 px-4 py-2 rounded-md text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}
                 >
-                  <Send size={14} /> Send All Reminders
+                  <Send size={14} /> {sendingAllReminders ? "Sending..." : "Send All Payment Reminders"}
                 </button>
               </div>
             </div>

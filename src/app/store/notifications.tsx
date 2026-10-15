@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { Role } from "../components/Login";
 
@@ -94,6 +94,7 @@ function loadPersistedNotifications(): Notification[] {
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [list, setList] = useState<Notification[]>(loadPersistedNotifications);
+  const nextNotificationId = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -108,7 +109,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     list.filter((n) => n.recipients.includes(role) && (role !== "client" || !n.clientName || n.clientName === clientName));
 
   const push: Ctx["push"] = (n) => {
-    const id = `n-${Date.now()}`;
+    const id = `n-${Date.now()}-${nextNotificationId.current++}`;
     setList((prev) => [
       { ...n, id, time: "just now", read: false },
       ...prev,
@@ -118,7 +119,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     if (channels.length > 0) {
       setTimeout(() => {
         toast(
-          `📨 ${channels.join(" + ")} dispatched`,
+          `📨 ${channels.join(" + ")} notification simulated`,
           {
             description: `${n.title} → ${n.recipients.join(", ")}`,
             duration: 2200,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, SlidersHorizontal, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, isValidProductionDueDate, resolveProductBOM, poNumberForDisplay, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
@@ -923,13 +923,15 @@ export function SalesOrders() {
             <span className="font-dm text-white/75" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>Stock Requests</span>
             <span className="font-syne text-white px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 800 }}>{salesStockRequestCount}</span>
           </button>
-          <button
-            onClick={() => setShowNewInquiry(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
-            style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
-          >
-            <ArrowRight size={15} strokeWidth={2.5} /> New Inquiry
-          </button>
+          {session.role !== "sales" && (
+            <button
+              onClick={() => setShowNewInquiry(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
+              style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
+            >
+              <ArrowRight size={15} strokeWidth={2.5} /> New Inquiry
+            </button>
+          )}
           <NotificationBell />
         </div>
       </header>
@@ -1734,7 +1736,7 @@ function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry
 
 function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNew: boolean; onStart: () => void }) {
   const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
-  const sketch = inquiry.inquirySketch;
+  const [expandedSketches, setExpandedSketches] = useState<Record<string, boolean>>({});
 
   return (
     <div className="flex flex-col gap-4">
@@ -1781,52 +1783,6 @@ function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNe
         )}
       </div>
 
-      {/* Sketch viewer */}
-      <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
-        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#EFF6FF" }}>
-          <div className="font-syne flex items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: "#1E40AF" }}>
-            <Paperclip size={13} /> Engineer Sketch / Drawing
-            {sketch ? (
-              <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>ATTACHED</span>
-            ) : (
-              <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#64748B" }}>NOT ATTACHED</span>
-            )}
-          </div>
-          {sketch && (
-            <button onClick={() => toast.info(`Opening: ${sketch}`, { description: "In production, this opens the actual file" })} className="font-dm flex items-center gap-1 px-2.5 py-1 rounded-md hover:bg-blue-100" style={{ fontSize: 11, fontWeight: 700, color: "#1A2B4A", border: "1px solid #BFDBFE" }}>
-              <Eye size={11} /> Open Drawing
-            </button>
-          )}
-        </div>
-        <div className="p-5">
-          {sketch ? (
-            <div className="rounded-lg flex flex-col items-center justify-center py-8 gap-3" style={{ backgroundColor: "#F8FAFC", border: "1.5px dashed #93C5FD", minHeight: 200 }}>
-              {sketch.match(/\.(png|jpe?g|gif|webp|svg)$/i) ? (
-                <img src={sketch} alt="Client sketch" style={{ maxWidth: "100%", maxHeight: 320, objectFit: "contain" }} />
-              ) : (
-                <>
-                  <div style={{ width: 64, height: 80, backgroundColor: "white", border: "2px solid #1A2B4A", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                    <span style={{ fontSize: 22 }}>📄</span>
-                    <span className="font-dm" style={{ fontSize: 8, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.5 }}>
-                      {sketch.match(/\.([a-z]+)$/i)?.[1].toUpperCase() ?? "FILE"}
-                    </span>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A", wordBreak: "break-all", maxWidth: 360 }}>{sketch}</div>
-                    <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Client-uploaded drawing — review before pricing</div>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8", backgroundColor: "#F8FAFC", border: "1px dashed #CBD5E1" }}>
-              No sketch attached. The client described their requirements via the inquiry form fields above and notes below.
-              <br /><span style={{ fontSize: 11 }}>If a drawing is needed, request one via email before quoting.</span>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Product specs table */}
       <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
         <div className="px-5 py-3 border-b border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
@@ -1841,21 +1797,70 @@ function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNe
             </tr>
           </thead>
           <tbody>
-            {inquiry.products.map((p, i) => (
-              <tr key={p.id} className="border-t border-slate-200 align-top">
-                <td className="px-3 py-2.5 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>#{i + 1}</td>
-                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{p.type}</td>
-                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.od1 || "—"} / {p.od2 || "—"}</td>
-                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.id1 || "—"} / {p.id2 || "—"}</td>
-                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.height || "—"}</td>
-                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.media || "—"}</td>
-                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.innerCore || "—"} / {p.outerCore || "—"}</td>
-                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.oring || "—"} / {p.gasket || "—"}</td>
-                <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.oem || "—"}</td>
-                <td className="px-3 py-2.5 font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{p.qty}</td>
-                <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.notes || "—"}</td>
-              </tr>
-            ))}
+            {inquiry.products.map((p, i) => {
+              const isExpanded = Boolean(expandedSketches[p.id]);
+              const sketchRegionId = `quotation-product-sketch-${i}`;
+
+              return (
+                <Fragment key={p.id}>
+                  <tr className="group border-t border-slate-200 align-top transition-colors hover:bg-slate-50">
+                    <td className="px-3 py-2.5">
+                      <button
+                        type="button"
+                        aria-label={`Toggle sketch for product ${i + 1}: ${p.filterName || p.type}`}
+                        aria-expanded={isExpanded}
+                        aria-controls={isExpanded ? sketchRegionId : undefined}
+                        onClick={() => setExpandedSketches((current) => ({
+                          ...current,
+                          [p.id]: !current[p.id],
+                        }))}
+                        className="flex items-center gap-1.5 rounded text-left font-syne text-slate-700 transition-colors hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                        style={{ fontSize: 13, fontWeight: 700 }}
+                      >
+                        <span>#{i + 1}</span>
+                        <ChevronDown
+                          size={14}
+                          aria-hidden="true"
+                          className="shrink-0 text-slate-400 transition-transform duration-200 group-hover:text-blue-700"
+                          style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}
+                        />
+                      </button>
+                    </td>
+                    <td className="px-3 py-2.5 font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{p.type}</td>
+                    <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.od1 || "—"} / {p.od2 || "—"}</td>
+                    <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.id1 || "—"} / {p.id2 || "—"}</td>
+                    <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.height || "—"}</td>
+                    <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.media || "—"}</td>
+                    <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.innerCore || "—"} / {p.outerCore || "—"}</td>
+                    <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.oring || "—"} / {p.gasket || "—"}</td>
+                    <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>{p.oem || "—"}</td>
+                    <td className="px-3 py-2.5 font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{p.qty}</td>
+                    <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.notes || "—"}</td>
+                  </tr>
+                  {isExpanded && (
+                    <tr className="border-t border-slate-200 bg-slate-50">
+                      <td colSpan={11} className="px-4 py-3">
+                        <div
+                          id={sketchRegionId}
+                          role="region"
+                          aria-label={`Engineer sketch for product ${i + 1}: ${p.filterName || p.type}`}
+                        >
+                          <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>
+                            Product ID: {p.id} · Filter type: {p.type}
+                          </div>
+                          <OperationsProductSketch
+                            key={`${inquiry.id}:${p.id}`}
+                            inquiryId={inquiry.id}
+                            productId={p.id}
+                            product={p}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

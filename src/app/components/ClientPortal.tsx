@@ -24,7 +24,7 @@ import {
 import { useNotifications } from "../store/notifications";
 import { useSettings } from "../store/settings";
 import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
-import { readFileAsDataUrl } from "../store/attachments";
+import { loadProductSketchAttachment, readFileAsDataUrl } from "../store/attachments";
 import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
@@ -235,6 +235,11 @@ const FILTER_TYPE_ICON: Record<string, string> = {
 /* All 16 filter types ordered by group, used by the Step-1 picker grid. The user picks one type — the group is derived internally. */
 const FILTER_TYPE_LIST = Object.values(FILTER_TYPE_CATALOG);
 
+const reorderFilterTypeCode = (type: string) => FILTER_TYPE_LIST.find((filterType) =>
+  filterType.code.toLowerCase() === type.toLowerCase()
+  || filterType.label.toLowerCase() === type.toLowerCase()
+)?.code ?? type;
+
 const FILTRATION_RATINGS = [
   { value: "1-micron",   label: "1 micron",   desc: "Ultra-fine · pharmaceutical grade" },
   { value: "5-micron",   label: "5 micron",   desc: "Fine · standard industrial" },
@@ -245,7 +250,7 @@ const FILTRATION_RATINGS = [
 ];
 
 function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void }) {
-  const { uploadPO, requestCancellation, byClient } = useOrders();
+  const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches } = useOrders();
   const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
   const myOrders = byClient(clientName).filter((i) =>
@@ -280,6 +285,77 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   const [showWizard, setShowWizard] = useState(false);
   const [showJobs, setShowJobs] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
+
+  const createReorderInquiry = async (source: Inquiry, quantities: Record<string, number>): Promise<boolean> => {
+    try {
+      const productsWithSketches = await Promise.all(source.products.map(async (product, index) => {
+        const sketch = await loadProductSketchAttachment(source.id, product.id);
+        let sketchFile: File | undefined;
+        if (sketch) {
+          const response = await fetch(sketch.dataUrl);
+          if (!response.ok) throw new Error(`Could not read sketch ${sketch.fileName}`);
+          const blob = await response.blob();
+          sketchFile = new File([blob], sketch.fileName, { type: blob.type });
+        }
+        const type = reorderFilterTypeCode(product.type);
+        return {
+          product: {
+            ...product,
+            id: `p${index + 1}`,
+            type,
+            filterName: product.filterName?.trim() || labelForType(type),
+            qty: quantities[product.id],
+            sketchFileName: sketchFile?.name,
+          },
+          sketchFile,
+          hadSketchName: Boolean(product.sketchFileName),
+          previousSketchName: product.sketchFileName,
+        };
+      }));
+      const unavailableSketches = productsWithSketches
+        .filter(({ sketchFile, hadSketchName }) => hadSketchName && !sketchFile)
+        .map(({ previousSketchName }) => previousSketchName ?? "Sketch");
+      const products = productsWithSketches.map(({ product }) => product);
+      const productSketches: Record<string, File> = {};
+      productsWithSketches.forEach(({ product, sketchFile }) => {
+        if (sketchFile) productSketches[product.id] = sketchFile;
+      });
+      const inquiryData = {
+        clientName: source.clientName,
+        contactPerson: source.contactPerson,
+        paymentTerms: source.paymentTerms,
+        generalNotes: `Reorder of ${source.joNumber ?? source.code}`,
+        products,
+        inquirySketch: products.map((product) => product.sketchFileName).filter(Boolean).join(", ") || undefined,
+      };
+      const code = Object.keys(productSketches).length
+        ? await addInquiryWithProductSketches(inquiryData, productSketches)
+        : addInquiry(inquiryData);
+      pushNotif({
+        dept: "sales",
+        title: `🔁 Reorder from ${clientName}`,
+        body: `${code} · based on ${source.joNumber ?? source.code} · ${products.reduce((total, product) => total + product.qty, 0)} pcs total · awaiting validation`,
+        link: "sales",
+        recipients: ["owner", "operations", "sales"],
+      });
+      toast.success("Reorder inquiry created", {
+        description: `${code} · Sent to Sales for normal review.`,
+      });
+      if (unavailableSketches.length) {
+        toast.warning("Some previous sketches could not be reused", {
+          description: `${unavailableSketches.join(", ")} were unavailable and were not attached.`,
+        });
+      }
+      onSubmitted();
+      return true;
+    } catch (error) {
+      console.error("[EnterFlow] Could not create reorder inquiry.", error);
+      toast.error("Could not create the reorder inquiry", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      return false;
+    }
+  };
 
   return (
     <div className="px-8 py-8 flex flex-col gap-4">
@@ -381,7 +457,14 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
       )}
       {showJobs && (
         <ClientTableModal title="Job Orders" onClose={() => setShowJobs(false)}>
-          <JobOrdersTab clientName={clientName} />
+          <JobOrdersTab
+            clientName={clientName}
+            onContinueReorder={async (inquiry, quantities) => {
+              const created = await createReorderInquiry(inquiry, quantities);
+              if (created) setShowJobs(false);
+              return created;
+            }}
+          />
         </ClientTableModal>
       )}
       {showTransactions && (
@@ -408,35 +491,47 @@ function ClientTableModal({ title, onClose, children }: { title: string; onClose
   );
 }
 
-function JobOrdersTab({ clientName }: { clientName: string }) {
-  const { byClient, addInquiry } = useOrders();
-  const { push: pushNotif } = useNotifications();
+function JobOrdersTab({ clientName, onContinueReorder }: {
+  clientName: string;
+  onContinueReorder: (inquiry: Inquiry, quantities: Record<string, number>) => Promise<boolean>;
+}) {
+  const { byClient } = useOrders();
   /* Derived: this client's JOs that have reached production (jo or beyond). */
   const jobOrders = byClient(clientName).filter((i) => !i.archived && (i.stage === "jo" || i.stage === "in_production" || i.stage === "quality_inspection" || i.stage === "ready_for_dispatch" || i.stage === "dispatched" || i.stage === "delivered" || i.stage === "paid"));
+  const [reorderInquiry, setReorderInquiry] = useState<Inquiry | null>(null);
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [isSubmittingReorder, setIsSubmittingReorder] = useState(false);
 
-  const reorder = (inq: Inquiry) => {
-    const code = addInquiry({
-      clientName,
-      contactPerson: inq.contactPerson,
-      paymentTerms: inq.paymentTerms,
-      generalNotes: `Reorder of ${inq.joNumber ?? inq.code}`,
-      products: inq.products.map((p, i) => ({ ...p, id: `p${i + 1}` })),
+  const openReorder = (inquiry: Inquiry) => {
+    setReorderInquiry(inquiry);
+    setQuantities(Object.fromEntries(inquiry.products.map((product) => [product.id, String(product.qty)])));
+  };
+  const quantitiesAreValid = reorderInquiry !== null
+    && reorderInquiry.products.every((product) => {
+      const quantity = Number(quantities[product.id]);
+      return Number.isInteger(quantity) && quantity >= 10;
     });
-    pushNotif({
-      dept: "sales",
-      title: `🔁 Reorder from ${clientName}`,
-      body: `${code} · based on ${inq.joNumber ?? inq.code} · ${inq.products.reduce((s, p) => s + p.qty, 0)} pcs total · awaiting validation`,
-      link: "sales",
-      recipients: ["owner", "operations", "sales"],
-    });
-    toast.success(`Reorder submitted as ${code}`, { description: "Sent to Sales for validation." });
+  const continueReorder = async () => {
+    if (!reorderInquiry || !quantitiesAreValid || isSubmittingReorder) {
+      toast.error("Enter a whole-number quantity of at least 10 for each product");
+      return;
+    }
+    setIsSubmittingReorder(true);
+    try {
+      const created = await onContinueReorder(reorderInquiry, Object.fromEntries(
+        reorderInquiry.products.map((product) => [product.id, Number(quantities[product.id])]),
+      ));
+      if (created) setReorderInquiry(null);
+    } finally {
+      setIsSubmittingReorder(false);
+    }
   };
 
   return (
     <div className="px-8 py-8 flex flex-col gap-4">
       <div>
         <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Job Orders</h1>
-        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Click <strong>Reorder</strong> on any past production order to duplicate its specs.</p>
+        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Click <strong>Reorder</strong> on any past production order to review its specs and quantities.</p>
       </div>
       <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
         <table className="w-full">
@@ -462,7 +557,7 @@ function JobOrdersTab({ clientName }: { clientName: string }) {
                   <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{qty} pcs</td>
                   <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D" }}>{inq.stage}</span></td>
                   <td className="px-4 py-3">
-                    <button onClick={() => reorder(inq)} className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm text-white hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E", letterSpacing: 0.3 }}>
+                    <button onClick={() => openReorder(inq)} className="flex items-center gap-1 px-3 py-1.5 rounded-md font-dm text-white hover:opacity-90" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E", letterSpacing: 0.3 }}>
                       <RotateCcw size={12} /> Reorder
                     </button>
                   </td>
@@ -472,6 +567,68 @@ function JobOrdersTab({ clientName }: { clientName: string }) {
           </tbody>
         </table>
       </div>
+      {reorderInquiry && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => { if (!isSubmittingReorder) setReorderInquiry(null); }}>
+          <div className="bg-white rounded-xl w-full max-w-2xl overflow-hidden" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(event) => event.stopPropagation()}>
+            <div className="px-6 py-5 flex items-start justify-between" style={{ backgroundColor: "#1A2B4A" }}>
+              <div>
+                <h2 className="font-syne text-white" style={{ fontSize: 18, fontWeight: 700 }}>Confirm Reorder Quantities</h2>
+                <p className="font-dm text-white/70 mt-1" style={{ fontSize: 12 }}>Job Order {reorderInquiry.joNumber ?? reorderInquiry.code}</p>
+              </div>
+              <button onClick={() => setReorderInquiry(null)} disabled={isSubmittingReorder} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center text-white disabled:opacity-50" aria-label="Close"><X size={16} /></button>
+            </div>
+            <div className="p-6 overflow-auto flex flex-col gap-4" style={{ maxHeight: "calc(90vh - 150px)" }}>
+              {reorderInquiry.products.map((product, index) => {
+                const dimensions = GROUP_TEMPLATES[groupForType(product.type)].dimensions
+                  .map((dimension) => `${DIMENSION_LABELS[dimension]}: ${product[dimension] || "—"}`)
+                  .join(" · ");
+                const optionalComponents = [
+                  product.media && `Media: ${product.media}`,
+                  product.innerCore && `Inner core: ${product.innerCore}`,
+                  product.outerCore && `Outer core: ${product.outerCore}`,
+                  product.oring && `O-ring: ${product.oring}`,
+                  product.gasket && `Gasket: ${product.gasket}`,
+                  product.oem && `OEM: ${product.oem}`,
+                  product.filtrationRating && `Filtration: ${product.filtrationRating}`,
+                  product.notes,
+                ].filter(Boolean).join(" · ");
+                return (
+                  <div key={product.id} className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                    <div>
+                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#1A2B4A" }}>
+                        {product.filterName || labelForType(product.type)}{reorderInquiry.products.length > 1 ? ` · Filter #${index + 1}` : ""}
+                      </div>
+                      <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{labelForType(product.type)} · {dimensions}</div>
+                      {optionalComponents && <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{optionalComponents}</div>}
+                    </div>
+                    <label className="font-dm flex items-center gap-3" style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
+                      <span className="min-w-32">Quantity (original: {product.qty})</span>
+                      <input
+                        type="number"
+                        min={10}
+                        step={1}
+                        value={quantities[product.id] ?? ""}
+                        onChange={(event) => setQuantities((previous) => ({ ...previous, [product.id]: event.target.value }))}
+                        className="w-36 font-syne px-3 py-2 rounded-md border border-slate-300 outline-none focus:border-slate-500 bg-white"
+                        style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}
+                        aria-label={`Quantity for ${product.filterName || labelForType(product.type)}`}
+                      />
+                      <span style={{ fontWeight: 400, color: "#64748B" }}>pcs · minimum 10</span>
+                    </label>
+                    {quantities[product.id] !== undefined
+                      && (!Number.isInteger(Number(quantities[product.id])) || Number(quantities[product.id]) < 10)
+                      && <div className="font-dm" style={{ fontSize: 11, color: "#C8102E" }}>Enter a whole number of at least 10 pcs.</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+              <button onClick={() => setReorderInquiry(null)} disabled={isSubmittingReorder} className="font-dm px-4 py-2.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-50" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+              <button onClick={continueReorder} disabled={!quantitiesAreValid || isSubmittingReorder} className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>{isSubmittingReorder ? "Creating Inquiry..." : "Confirm Reorder"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -525,21 +682,77 @@ function TransactionsTab({ clientName }: { clientName: string }) {
 }
 
 /* ─────────── NewOrderWizardModal — multi-product wizard with dynamic dimensions ─────────── */
-function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName: string; onClose: () => void; onSubmitted: () => void }) {
+function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onClose, onSubmitted }: {
+  clientName: string;
+  reorderSource?: Inquiry;
+  reorderQuantities?: Record<string, number>;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
   const { addInquiry, addInquiryWithProductSketches } = useOrders();
   const { push: pushNotif } = useNotifications();
 
   const [step, setStep] = useState(1);
-  const [contactPerson, setContactPerson] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">("30-Day Terms");
-  const [generalNotes, setGeneralNotes] = useState("");
+  const [contactPerson, setContactPerson] = useState(reorderSource?.contactPerson ?? "");
+  const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(reorderSource?.paymentTerms ?? "30-Day Terms");
+  const [generalNotes, setGeneralNotes] = useState(reorderSource ? `Reorder of ${reorderSource.joNumber ?? reorderSource.code}` : "");
   /* Multi-product state — clients can add multiple filters per inquiry. */
-  const [products, setProducts] = useState<ProductLine[]>([{ ...blankProduct("p1"), filtrationRating: "10-micron" }]);
+  const [products, setProducts] = useState<ProductLine[]>(reorderSource
+    ? reorderSource.products.map((product, index) => {
+      const type = reorderFilterTypeCode(product.type);
+      return {
+        ...product,
+        id: `p${index + 1}`,
+        type,
+        filterName: product.filterName?.trim() || labelForType(type),
+        qty: reorderQuantities?.[product.id] ?? product.qty,
+      };
+    })
+    : [{ ...blankProduct("p1"), filtrationRating: "10-micron" }]);
   const [activeIdx, setActiveIdx] = useState(0);
   /* Per-product sketch files — keyed by product id (File objects can't live in the store) */
   const [sketchFiles, setSketchFiles] = useState<Record<string, File | null>>({});
-  const [isRush, setIsRush] = useState(false);
-  const [rushDate, setRushDate] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionStarted = useRef(false);
+
+  useEffect(() => {
+    if (!reorderSource) return;
+    let cancelled = false;
+    const loadSketches = async () => {
+      const loaded = await Promise.all(reorderSource.products.map(async (product, index) => {
+        const sketch = await loadProductSketchAttachment(reorderSource.id, product.id);
+        if (!sketch) return { productId: `p${index + 1}`, file: null, hadSketchName: Boolean(product.sketchFileName) };
+        const blob = await fetch(sketch.dataUrl).then((response) => {
+          if (!response.ok) throw new Error(`Could not read sketch ${sketch.fileName}`);
+          return response.blob();
+        });
+        return { productId: `p${index + 1}`, file: new File([blob], sketch.fileName, { type: blob.type }), hadSketchName: false };
+      }));
+      if (cancelled) return;
+      const sketchFilesForReorder: Record<string, File | null> = {};
+      const unavailableSketches: string[] = [];
+      loaded.forEach(({ productId, file, hadSketchName }, index) => {
+        sketchFilesForReorder[productId] = file;
+        if (hadSketchName && !file) unavailableSketches.push(reorderSource.products[index].sketchFileName ?? "Sketch");
+      });
+      setSketchFiles((previous) => ({ ...previous, ...sketchFilesForReorder }));
+      if (unavailableSketches.length) {
+        setProducts((previous) => previous.map((product) => sketchFilesForReorder[product.id] === null
+          ? { ...product, sketchFileName: undefined }
+          : product));
+        toast.warning("Some previous sketches could not be reused", { description: `${unavailableSketches.join(", ")} — please attach them again if needed.` });
+      }
+    };
+    void loadSketches().catch((error) => {
+      if (!cancelled) {
+        console.error("[EnterFlow] Could not load sketches for reorder.", error);
+        toast.error("Could not load the previous order sketches", {
+          description: error instanceof Error ? error.message : "Please attach the sketches again.",
+        });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [reorderSource]);
 
   const active = products[activeIdx];
   const updateActive = (patch: Partial<ProductLine>) => {
@@ -563,14 +776,14 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
       return ((active as any)[required] ?? "").toString().trim().length > 0 && (active.media ?? "").trim().length > 0;
     }
     if (step === 3) return !!(active.filtrationRating ?? "10-micron");
-    if (step === 4) return active.qty >= 10;
+    if (step === 4) return Number.isInteger(active.qty) && active.qty >= 10;
     return true;
   };
 
   const submit = async () => {
+    if (submissionStarted.current) return;
     if (!contactPerson.trim()) { toast.error("Contact person required"); return; }
-    if (products.some((p) => p.qty < 10)) { toast.error("Each product must have qty ≥ 10"); return; }
-    if (isRush && !rushDate.trim()) { toast.error("Please specify your required delivery date for rush orders"); return; }
+    if (products.some((p) => !Number.isInteger(p.qty) || p.qty < 10)) { toast.error("Each product must have a whole-number quantity of at least 10"); return; }
 
     /* Stamp per-product filtrationRating and sketchFileName, then build the finalProducts array. */
     const finalProducts: ProductLine[] = products.map((p) => {
@@ -586,8 +799,6 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
     const inquiryData = {
       clientName, contactPerson, paymentTerms, generalNotes,
       products: finalProducts,
-      urgent: isRush,
-      dueDate: isRush ? rushDate : undefined,
       /* Legacy single-sketch field — show comma-joined list for multi-product */
       inquirySketch: finalProducts.map((p) => p.sketchFileName).filter(Boolean).join(", ") || undefined,
     };
@@ -596,11 +807,15 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
       if (file) productSketches[productId] = file;
     });
     let code: string;
+    submissionStarted.current = true;
+    setIsSubmitting(true);
     try {
       code = Object.keys(productSketches).length
         ? await addInquiryWithProductSketches(inquiryData, productSketches)
         : addInquiry(inquiryData);
     } catch (error) {
+      submissionStarted.current = false;
+      setIsSubmitting(false);
       toast.error("Could not submit the inquiry attachments", {
         description: error instanceof Error ? error.message : "Please try again.",
       });
@@ -608,12 +823,12 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
     }
     pushNotif({
       dept: "sales",
-      title: `New inquiry from ${clientName}${isRush ? " 🚨 RUSH" : ""}`,
-      body: `${code} · ${finalProducts.length} product${finalProducts.length > 1 ? "s" : ""} · ${finalProducts.reduce((s, p) => s + p.qty, 0)} pcs total · ${isRush ? `Required by ${rushDate}` : "Standard"}`,
+      title: reorderSource ? `🔁 Reorder from ${clientName}` : `New inquiry from ${clientName}`,
+      body: `${code} · ${finalProducts.length} product${finalProducts.length > 1 ? "s" : ""} · ${finalProducts.reduce((s, p) => s + p.qty, 0)} pcs total · ${reorderSource ? `based on ${reorderSource.joNumber ?? reorderSource.code} · awaiting validation` : "Standard"}`,
       link: "sales",
       recipients: ["owner", "operations", "sales"],
     });
-    toast.success(isRush ? "🚨 Rush inquiry submitted" : "Inquiry submitted", { description: `${code} sent — we'll respond within 1 business day` });
+    toast.success(reorderSource ? `Reorder submitted as ${code}` : "Inquiry submitted", { description: "Sent to Sales for validation." });
     onSubmitted();
   };
 
@@ -750,13 +965,13 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
             </div>
           )}
 
-          {/* STEP 4 — Add-ons (qty + optional + sketch + rush) */}
+          {/* STEP 4 — Add-ons (qty + optional + sketch) */}
           {step === 4 && (
             <div className="flex flex-col gap-4">
               <div>
                 <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Quantity *</div>
-                <input type="number" min={10} value={active.qty} onChange={(e) => updateActive({ qty: Number(e.target.value) })} className="w-full font-syne px-4 py-3 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A" }} />
-                <div className="font-dm mt-1" style={{ fontSize: 11, color: active.qty < 10 ? "#C8102E" : "#94A3B8" }}>{active.qty < 10 ? "⚠️ Minimum order quantity is 10 pcs" : "Minimum 10 pcs"}</div>
+                <input type="number" min={10} step={1} value={active.qty} onChange={(e) => updateActive({ qty: Number(e.target.value) })} className="w-full font-syne px-4 py-3 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A" }} />
+                <div className="font-dm mt-1" style={{ fontSize: 11, color: !Number.isInteger(active.qty) || active.qty < 10 ? "#C8102E" : "#94A3B8" }}>{!Number.isInteger(active.qty) || active.qty < 10 ? "⚠️ Enter a whole number of at least 10 pcs" : "Minimum 10 pcs"}</div>
               </div>
               <div>
                 <div className="font-dm mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Optional components</div>
@@ -798,24 +1013,6 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
                   );
                 })()}
               </div>
-              <div className="rounded-lg p-3" style={{ backgroundColor: isRush ? "#FEF2F2" : "#F8FAFC", border: isRush ? "1.5px solid #FECACA" : "1px solid #E2E8F0" }}>
-                <label className="flex items-center gap-3 cursor-pointer" onClick={() => setIsRush((r) => !r)}>
-                  <div className="w-10 h-6 rounded-full transition-colors flex items-center px-1" style={{ backgroundColor: isRush ? "#C8102E" : "#CBD5E1" }}>
-                    <div className="w-4 h-4 bg-white rounded-full shadow transition-transform" style={{ transform: isRush ? "translateX(16px)" : "translateX(0)" }} />
-                  </div>
-                  <div>
-                    <div className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: isRush ? "#C8102E" : "#0F172A" }}>🚨 Rush / Urgent Order</div>
-                    <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>Specify your required delivery date</div>
-                  </div>
-                </label>
-                {isRush && (
-                  <div className="mt-2 flex flex-col gap-1.5">
-                    <input type="text" placeholder="e.g. May 5, 2026" value={rushDate} onChange={(e) => setRushDate(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-red-200 outline-none focus:border-red-400 bg-white" style={{ fontSize: 13 }} />
-                    {/* Email gateway not implemented */}
-                    <p className="font-dm" style={{ fontSize: 11, color: "#C8102E" }}>Confirmation within 4 hours via email.</p>
-                  </div>
-                )}
-              </div>
             </div>
           )}
 
@@ -839,7 +1036,6 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
               ))}
               <div className="rounded-lg p-4 grid grid-cols-2 gap-y-2 gap-x-4" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A" }}>
                 <ReviewLine label="Payment Terms" value={paymentTerms} />
-                {isRush && <ReviewLine label="🚨 Rush Date" value={rushDate} accent="#C8102E" />}
               </div>
               {/* Per-product filtration + sketch summary */}
               {products.map((p, i) => (
@@ -871,8 +1067,8 @@ function NewOrderWizardModal({ clientName, onClose, onSubmitted }: { clientName:
                 Next: {STEPS[step].label} →
               </button>
             ) : (
-              <button onClick={submit} className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: isRush ? "#991B1B" : "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-                <ClipboardList size={15} strokeWidth={2.5} /> {isRush ? "🚨 Submit Rush Inquiry" : "Submit Inquiry"}
+              <button onClick={submit} disabled={isSubmitting} className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+                <ClipboardList size={15} strokeWidth={2.5} /> {isSubmitting ? "Submitting..." : "Submit Inquiry"}
               </button>
             )}
           </div>

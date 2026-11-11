@@ -17,6 +17,8 @@ import {
   invoiceTotal,
   poNumberForDisplay,
   stageLabel,
+  fromMoneyCents,
+  toMoneyCents,
   type Inquiry,
   type PaymentStateSummary,
   type ProductLine,
@@ -673,7 +675,7 @@ function TransactionsTab({ clientName }: { clientName: string }) {
               const inquiryPaymentState = paymentState(inq);
               const fullyPaid = inq.stage === "paid" || inquiryPaymentState.state === "FULLY_PAID";
               const eligibleForReceipt = inquiryPaymentState.state === "FULLY_PAID"
-                && inquiryPaymentState.remainingInvoiceBalance <= 0.005
+                && inquiryPaymentState.remainingInvoiceBalance === 0
                 && !paymentRecords(inq).some((payment) => payment.verificationStatus === "pending");
               const actualInvoiceNumber = inq.invoiceNo?.trim();
               const issuedReceipt = inq.officialReceipt?.status === "issued"
@@ -2724,14 +2726,16 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
     }
     const f = receiptForm[rowId];
     if (!f?.file || !f.receiptDataUrl) { toast.error("Please attach a receipt file first"); return; }
-    const amt = parseFloat(f.amount);
-    if (isNaN(amt) || amt <= 0) { toast.error("Please enter the amount paid"); return; }
-    if (amt > allowance.maxAmount) {
+    const enteredAmount = Number(f.amount);
+    const amountCents = toMoneyCents(enteredAmount);
+    if (!Number.isFinite(enteredAmount) || amountCents <= 0) { toast.error("Please enter the amount paid"); return; }
+    if (amountCents > toMoneyCents(allowance.maxAmount)) {
       toast.error("Payment exceeds the amount currently due", {
         description: `Maximum submission: ₱${allowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       });
       return;
     }
+    const amt = fromMoneyCents(amountCents);
     submittingPayments.current.add(rowId);
     const selectedMethod = settings.paymentMethods.find((m) => m.id === f.methodId) ?? settings.paymentMethods[0];
     try {

@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import { FileText, ClipboardList, Search, Plus, CheckCircle2, X, Send, AlertTriangle, ChevronDown, ChevronUp, PlusCircle, Receipt, Eye, History, Pencil, Download } from "lucide-react";
-import { hasValidSignedDeliveryReceipt, useOrders, paymentDaysRemaining, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
+import { formatMoney, fromMoneyCents, hasValidSignedDeliveryReceipt, paymentSubmissionAllowance, paymentDaysRemaining, paymentRecords, paymentState, poNumberForDisplay, toMoneyCents, useOrders, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
 import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
@@ -55,7 +55,7 @@ function isEligibleReminder(invoice: Invoice): boolean {
     && invoice.client
     && invoice.status === "pending"
     && Number.isFinite(balance)
-    && balance > 0.005
+    && balance > 0
     && (!invoice.dueDate || paymentDaysRemaining(invoice.dueDate) !== undefined)
   );
 }
@@ -330,6 +330,48 @@ export function Accounting() {
   };
 
   const editReceipt = (invId: string, oldEntry: PaymentEntry, next: { amount: number; method: string; ref: string; date: string }) => {
+    const inquiry = rows.find((row) => row.id === invId);
+    const source = inquiry ? byClient(inquiry.client).find((item) => item.id === invId) : undefined;
+    if (!source) {
+      toast.error("Payment record could not be found.");
+      return;
+    }
+    const record = paymentRecords(source).find((payment) => payment.id === oldEntry.id);
+    const nextAmountCents = toMoneyCents(next.amount);
+    if (!Number.isFinite(next.amount) || nextAmountCents <= 0) {
+      toast.error("Invalid amount");
+      return;
+    }
+    if (record) {
+      const currentAmountCents = toMoneyCents(record.verifiedAmount ?? record.submittedAmount);
+      const maximumAmountCents = toMoneyCents(paymentState(source).remainingInvoiceBalance) + currentAmountCents;
+      const maximumDownpaymentCents = record.paymentType === "DOWNPAYMENT"
+        ? toMoneyCents(paymentState(source).remainingDownpayment) + currentAmountCents
+        : maximumAmountCents;
+      if (nextAmountCents > Math.min(maximumAmountCents, maximumDownpaymentCents)) {
+        toast.error("Payment exceeds the amount currently due.");
+        return;
+      }
+      updateInquiry(invId, {
+        payments: (source.payments ?? []).map((payment) => payment.id === record.id
+          ? {
+              ...payment,
+              submittedAmount: fromMoneyCents(nextAmountCents),
+              verifiedAmount: payment.verificationStatus === "verified" ? fromMoneyCents(nextAmountCents) : payment.verifiedAmount,
+              method: next.method,
+              referenceNumber: next.ref,
+              paymentDate: next.date,
+            }
+          : payment),
+        confirmedPayments: (source.confirmedPayments ?? []).map((payment) => payment.id === record.id
+          ? { ...payment, amount: fromMoneyCents(nextAmountCents), method: next.method, ref: next.ref, date: next.date }
+          : payment),
+        ...(record.id === `legacy-paid-${source.id}` ? { amountPaid: fromMoneyCents(nextAmountCents), paidAt: next.date } : {}),
+      });
+    } else {
+      toast.error("Payment record could not be matched to the invoice.");
+      return;
+    }
     setPayments(prev => ({
       ...prev,
       [invId]: (prev[invId] ?? []).map(p => p.id === oldEntry.id ? { ...p, ...next } : p),
@@ -345,34 +387,43 @@ export function Accounting() {
     }
     const f = newPmt[id];
     if (!f?.amount || !f?.method) { toast.error("Amount and method required"); return; }
-    const amt = parseFloat(f.amount);
-    if (isNaN(amt) || amt <= 0) { toast.error("Invalid amount"); return; }
+    const enteredAmount = Number(f.amount);
+    const amountCents = toMoneyCents(enteredAmount);
+    if (!Number.isFinite(enteredAmount) || amountCents <= 0) { toast.error("Invalid amount"); return; }
+    const target = byClient(invoice.client).find((inquiry) => inquiry.id === invoice.id);
+    const allowance = target ? paymentSubmissionAllowance(target) : null;
+    if (!allowance?.paymentType || amountCents > toMoneyCents(allowance.maxAmount)) {
+      toast.error("Payment exceeds the amount currently due", {
+        description: allowance?.maxAmount
+          ? `Maximum payment: ₱${formatMoney(allowance.maxAmount)}`
+          : "No payment is currently due for this invoice.",
+      });
+      return;
+    }
+    const amt = fromMoneyCents(amountCents);
     const entryDate = f.datePaid?.trim()
       ? f.datePaid
       : new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const reference = f.ref || "—";
+    const paymentId = confirmClientPayment(target.id, { date: entryDate, amount: amt, method: f.method, ref: reference });
+    if (!paymentId) {
+      toast.error("Payment could not be recorded. Review the current balance and try again.");
+      return;
+    }
     const entry: PaymentEntry = {
-      id: `pe-${Date.now()}`, date: entryDate,
-      amount: amt, method: f.method, ref: f.ref || "—",
+      id: paymentId, date: entryDate,
+      amount: amt, method: f.method, ref: reference,
     };
     setPayments((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), entry] }));
     setNewPmt((prev) => ({ ...prev, [id]: { amount: "", method: "", ref: "", datePaid: "" } }));
-    /* Sync to client portal — find matching inquiry by client name */
-    const inv = invoice;
-    if (inv) {
-      const clientInqs = byClient(inv.client);
-      const target = clientInqs.find((inquiry) => inquiry.id === inv.id);
-      if (target) {
-        confirmClientPayment(target.id, { date: entryDate, amount: amt, method: f.method, ref: f.ref || "—" });
-        pushNotif({
-          dept: "payments",
-          title: `Payment confirmed for ${inv.client}`,
-          body: `₱${amt.toLocaleString("en-PH")} · ${inv.inv} · synced to client portal`,
-          link: "accounting",
-          recipients: ["client"],
-        });
-      }
-    }
-    toast.success("Payment recorded", { description: `₱${amt.toLocaleString("en-PH")} via ${f.method} · synced to client portal` });
+    pushNotif({
+      dept: "payments",
+      title: `Payment confirmed for ${invoice.client}`,
+      body: `₱${amt.toLocaleString("en-PH")} · ${invoice.inv} · synced to client portal`,
+      link: "accounting",
+      recipients: ["client"],
+    });
+    toast.success("Payment recorded", { description: `₱${formatMoney(amt)} via ${f.method} · synced to client portal` });
   };
 
   const clearAccount = (id: string) => {
@@ -398,13 +449,14 @@ export function Accounting() {
 
   const handleVerifyClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
     if (payment.verificationStatus !== "pending" || payment.submittedAmount <= 0 || !payment.receiptDataUrl) return;
-    const remaining = Math.max(0, invoice.paymentState.remainingInvoiceBalance - payment.submittedAmount);
-    const verifiedDownpayment = invoice.paymentState.verifiedDownpaymentAmount
-      + (payment.paymentType === "DOWNPAYMENT" ? payment.submittedAmount : 0);
-    const requiredDownpayment = invoice.paymentState.requiredDownpaymentAmount;
-    const requirementMet = requiredDownpayment > 0
-      ? (payment.paymentType === "FULL_PAYMENT" ? remaining <= 0.005 : verifiedDownpayment + 0.005 >= requiredDownpayment)
-      : remaining <= 0.005;
+    const remainingCents = Math.max(0, toMoneyCents(invoice.paymentState.remainingInvoiceBalance) - toMoneyCents(payment.submittedAmount));
+    const verifiedDownpaymentCents = toMoneyCents(invoice.paymentState.verifiedDownpaymentAmount)
+      + (payment.paymentType === "DOWNPAYMENT" ? toMoneyCents(payment.submittedAmount) : 0);
+    const requiredDownpaymentCents = toMoneyCents(invoice.paymentState.requiredDownpaymentAmount);
+    const requirementMet = requiredDownpaymentCents > 0
+      ? (payment.paymentType === "FULL_PAYMENT" ? remainingCents === 0 : verifiedDownpaymentCents >= requiredDownpaymentCents)
+      : remainingCents === 0;
+    const remaining = fromMoneyCents(remainingCents);
     const typeLabel = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
       : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
 
@@ -528,7 +580,7 @@ export function Accounting() {
     const currentInquiry = byClient(current.client).find((inquiry) => inquiry.id === current.id);
     const currentState = currentInquiry ? paymentState(currentInquiry) : current.paymentState;
     const hasUnverifiedPayment = currentInquiry ? paymentRecords(currentInquiry).some((payment) => payment.verificationStatus === "pending") : true;
-    if (currentState.state !== "FULLY_PAID" || currentState.remainingInvoiceBalance > 0.005 || hasUnverifiedPayment) {
+    if (currentState.state !== "FULLY_PAID" || currentState.remainingInvoiceBalance > 0 || hasUnverifiedPayment) {
       toast.error("Official Receipt issuance is unavailable until all payments are verified and the balance is zero.");
       return;
     }
@@ -609,9 +661,9 @@ export function Accounting() {
       <div className="px-8 py-8 flex flex-col gap-6">
         <div className="grid grid-cols-4 gap-6">
           <KPI label="Total Invoices" value={String(rows.length)} />
-          <KPI label="Total Billed" value={`₱${rows.reduce((s, r) => s + r.amount, 0).toLocaleString("en-PH")}`} accent="#1A2B4A" />
-          <KPI label="Pending Collection" value={`₱${rows.filter(r => r.status === "pending").reduce((s, r) => s + r.amount, 0).toLocaleString("en-PH")}`} accent="#D97706" />
-          <KPI label="Paid & Closed" value={`₱${rows.filter(r => r.status === "paid").reduce((s, r) => s + r.amount, 0).toLocaleString("en-PH")}`} accent="#16A34A" />
+          <KPI label="Total Billed" value={`₱${formatMoney(fromMoneyCents(rows.reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#1A2B4A" />
+          <KPI label="Pending Collection" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "pending").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#D97706" />
+          <KPI label="Paid & Closed" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#16A34A" />
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
@@ -799,7 +851,7 @@ export function Accounting() {
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.po}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{formatMoney(r.amount)}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                         <div style={{ fontWeight: 700, color: "#1A2B4A" }}>{r.paymentType}</div>
                         <div style={{ fontSize: 11, color: "#64748B" }}>{r.payment}</div>
@@ -829,7 +881,7 @@ export function Accounting() {
                     {isOpen && (() => {
                       const pmts = payments[r.id] ?? [];
                       const clientPayments = r.paymentRecords;
-                      const localPaid = pmts.reduce((s, p) => s + p.amount, 0);
+                      const localPaidCents = pmts.reduce((sum, payment) => sum + toMoneyCents(payment.amount), 0);
                       const verifiedClientPayments = clientPayments.filter((payment) => payment.verificationStatus === "verified");
                       const unlistedVerifiedPayments = verifiedClientPayments.filter((payment) => !pmts.some((entry) =>
                         entry.id === payment.id
@@ -838,8 +890,8 @@ export function Accounting() {
                           && entry.method === payment.method
                           && entry.ref === (payment.referenceNumber ?? "—"))
                       ));
-                      const totalPaid = Math.max(localPaid, r.paymentState.totalVerifiedPayments);
-                      const remaining = Math.max(0, r.amount - totalPaid);
+                      const totalPaid = r.paymentState.totalVerifiedPayments;
+                      const remaining = r.paymentState.remainingInvoiceBalance;
                       const pf = newPmt[r.id] ?? { amount: "", method: "", ref: "", datePaid: "" };
                       const clientInquiries = byClient(r.client);
                       const clientReceipts = clientInquiries.flatMap(i => i.clientPaymentReceipts ?? []);
@@ -871,15 +923,15 @@ export function Accounting() {
                               <div className="flex gap-6 text-right">
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Invoice Total</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>₱{r.amount.toLocaleString("en-PH")}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>₱{formatMoney(r.amount)}</div>
                                 </div>
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Paid</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#16A34A" }}>₱{totalPaid.toLocaleString("en-PH")}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#16A34A" }}>₱{formatMoney(totalPaid)}</div>
                                 </div>
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Balance Due</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: remaining > 0 ? "#C8102E" : "#16A34A" }}>₱{remaining.toLocaleString("en-PH")}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: remaining > 0 ? "#C8102E" : "#16A34A" }}>₱{formatMoney(remaining)}</div>
                                 </div>
                               </div>
                             </div>
@@ -965,7 +1017,13 @@ export function Accounting() {
                                   const statusColor = p.verificationStatus === "pending" ? "#B45309"
                                     : p.verificationStatus === "verified" ? "#15803D" : "#C8102E";
                                   const dpPercent = r.downpaymentPercent;
-                                  const remainingAfter = Math.max(0, r.paymentState.remainingInvoiceBalance - p.submittedAmount);
+                                  const paymentBalanceCents = p.paymentType === "DOWNPAYMENT"
+                                    ? toMoneyCents(r.paymentState.remainingDownpayment)
+                                    : toMoneyCents(r.paymentState.remainingInvoiceBalance);
+                                  const remainingAfterCents = p.verificationStatus === "pending"
+                                    ? Math.max(0, paymentBalanceCents - toMoneyCents(p.submittedAmount))
+                                    : paymentBalanceCents;
+                                  const remainingAfter = fromMoneyCents(remainingAfterCents);
                                   return (
                                   <div key={p.id} className="rounded-lg p-3 mb-2 last:mb-0 bg-white border border-blue-200 shadow-sm">
                                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -977,18 +1035,18 @@ export function Accounting() {
                                       <span>Invoice</span><strong>{p.invoiceNo ?? r.inv}</strong>
                                       <span>PO</span><strong>{r.po}</strong>
                                       <span>PAYMENT TYPE</span><strong>{paymentType}</strong>
-                                      <span>Invoice Total</span><strong>₱{r.paymentState.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                      <span>Invoice Total</span><strong>₱{formatMoney(r.paymentState.invoiceTotal)}</strong>
                                       {p.paymentType === "DOWNPAYMENT" ? <>
                                         <span>DOWNPAYMENT REQUIRED</span><strong>{dpPercent}%</strong>
-                                        <span>Required Amount</span><strong>₱{r.paymentState.requiredDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                        <span>Required Amount</span><strong>₱{formatMoney(r.paymentState.requiredDownpaymentAmount)}</strong>
                                       </> : p.paymentType === "BALANCE_PAYMENT" ? <>
-                                        <span>Previously Verified</span><strong>₱{r.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                        <span>Balance Due</span><strong>₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                        <span>Previously Verified</span><strong>₱{formatMoney(r.paymentState.totalVerifiedPayments)}</strong>
+                                        <span>Balance Due</span><strong>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</strong>
                                       </> : <>
-                                        <span>FULL PAYMENT REQUIRED</span><strong>₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                        <span>FULL PAYMENT REQUIRED</span><strong>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</strong>
                                       </>}
-                                      <span>Submitted Amount</span><strong>₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      <span>Remaining Balance</span><strong>₱{remainingAfter.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                      <span>Submitted Amount</span><strong>₱{formatMoney(p.submittedAmount)}</strong>
+                                      <span>Remaining Balance</span><strong>₱{formatMoney(remainingAfter)}</strong>
                                       <span>Date Submitted</span><strong>{p.paymentDate}</strong>
                                       <span>Payment Method</span><strong>{p.method ?? "Not specified"}</strong>
                                       <span>Reference Number</span><strong>{p.referenceNumber ?? "—"}</strong>
@@ -1024,13 +1082,13 @@ export function Accounting() {
                                       <tr className="bg-white border-b border-slate-100">
                                         <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
                                         <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#1A2B4A", fontWeight: 600 }}>{r.inv} · Invoice Raised</td>
-                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#C8102E", fontWeight: 600 }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#C8102E", fontWeight: 600 }}>₱{formatMoney(r.amount)}</td>
                                         <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                        <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#C8102E" }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                                        <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#C8102E" }}>₱{formatMoney(r.amount)}</td>
                                       </tr>
                                       {pmts.reduce((acc, p) => {
-                                        const prevBal = acc.balance;
-                                        const newBal = prevBal - p.amount;
+                                        const newBalanceCents = Math.max(0, acc.balanceCents - toMoneyCents(p.amount));
+                                        const newBal = fromMoneyCents(newBalanceCents);
                                         acc.rows.push(
                                           <tr key={p.id} className="bg-white border-b border-slate-100 hover:bg-slate-50 group">
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.date}</td>
@@ -1047,16 +1105,17 @@ export function Accounting() {
                                               </div>
                                             </td>
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{p.amount.toLocaleString("en-PH")}</td>
-                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: newBal > 0 ? "#C8102E" : "#16A34A" }}>₱{newBal.toLocaleString("en-PH")}</td>
+                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{formatMoney(p.amount)}</td>
+                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: newBal > 0 ? "#C8102E" : "#16A34A" }}>₱{formatMoney(newBal)}</td>
                                           </tr>
                                         );
-                                        acc.balance = newBal;
+                                        acc.balanceCents = newBalanceCents;
                                         return acc;
-                                      }, { balance: r.amount, rows: [] as React.ReactNode[] }).rows}
+                                      }, { balanceCents: toMoneyCents(r.amount), rows: [] as React.ReactNode[] }).rows}
                                       {unlistedVerifiedPayments.reduce((acc, payment) => {
-                                        const amount = payment.verifiedAmount ?? payment.submittedAmount;
-                                        const balance = Math.max(0, acc.balance - amount);
+                                        const amount = fromMoneyCents(toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount));
+                                        const balanceCents = Math.max(0, acc.balanceCents - toMoneyCents(amount));
+                                        const balance = fromMoneyCents(balanceCents);
                                         const type = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
                                           : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
                                         acc.rows.push(
@@ -1064,13 +1123,13 @@ export function Accounting() {
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{payment.paymentDate}</td>
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 11, color: "#0F172A" }}>{type} · {payment.method ?? "Payment"}{payment.referenceNumber ? ` · ${payment.referenceNumber}` : ""}</td>
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{amount.toLocaleString("en-PH")}</td>
-                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#C8102E" : "#16A34A" }}>₱{balance.toLocaleString("en-PH")}</td>
+                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{formatMoney(amount)}</td>
+                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#C8102E" : "#16A34A" }}>₱{formatMoney(balance)}</td>
                                           </tr>
                                         );
-                                        acc.balance = balance;
+                                        acc.balanceCents = balanceCents;
                                         return acc;
-                                      }, { balance: Math.max(0, r.amount - localPaid), rows: [] as React.ReactNode[] }).rows}
+                                      }, { balanceCents: Math.max(0, toMoneyCents(r.amount) - localPaidCents), rows: [] as React.ReactNode[] }).rows}
                                     </tbody>
                                   </table>
                                 </div>
@@ -1084,7 +1143,7 @@ export function Accounting() {
                                   <div className="flex flex-col gap-1">
                                     <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Amount (₱)</label>
                                     <input
-                                      type="number" min={0} placeholder="e.g. 23400"
+                                      type="number" min={0} step="0.01" placeholder="e.g. 23400.00"
                                       value={pf.amount}
                                       onChange={(e) => setNewPmt(p => ({ ...p, [r.id]: { ...pf, amount: e.target.value } }))}
                                       className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
@@ -1145,7 +1204,7 @@ export function Accounting() {
                                     style={{ backgroundColor: "#16A34A", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}
                                   >
                                     <CheckCircle2 size={12} strokeWidth={2.5} />
-                                    {remaining > 0 ? `₱${remaining.toLocaleString("en-PH")} remaining` : "Mark Cleared ✓"}
+                                    {remaining > 0 ? `₱${formatMoney(remaining)} remaining` : "Mark Cleared ✓"}
                                   </button>
                                 </div>
                               </div>
@@ -1271,7 +1330,7 @@ export function Accounting() {
                         <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</div>
                         <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item}</div>
                         <div className="flex items-center gap-4 mt-1">
-                          <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Balance: ₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH")}</span>
+                          <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Balance: ₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</span>
                           <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Due: {r.dueDate ?? "—"}</span>
                           <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.payment}</span>
                         </div>
@@ -1334,8 +1393,8 @@ function EditReceiptModal({ receipt, onClose, onSave }: {
   const [replaceFile, setReplaceFile] = useState<string | null>(null);
 
   const submit = () => {
-    const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) { toast.error("Invalid amount"); return; }
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || toMoneyCents(amt) <= 0) { toast.error("Invalid amount"); return; }
     if (!method.trim()) { toast.error("Method required"); return; }
     onSave({ amount: amt, method, ref: ref.trim() || "—", date });
   };
@@ -1350,7 +1409,7 @@ function EditReceiptModal({ receipt, onClose, onSave }: {
         <div className="p-5 flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Amount Paid (₱)</label>
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
           </div>
           <div className="flex flex-col gap-1">
             <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Method</label>

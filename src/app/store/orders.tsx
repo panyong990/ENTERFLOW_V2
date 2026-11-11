@@ -462,14 +462,20 @@ export const quotationTotal = (inq: Inquiry) =>
     return sum + (p ? lineSubtotal(l, p.qty) : 0);
   }, 0);
 
-const paymentEpsilon = 0.005;
+export const toMoneyCents = (amount: number): number => Math.round(amount * 100);
+export const fromMoneyCents = (cents: number): number => cents / 100;
+export const formatMoney = (amount: number): string =>
+  fromMoneyCents(toMoneyCents(amount)).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 export const invoiceTotal = (inq: Inquiry): number =>
-  inq.invoiceAmount ?? inq.quotedTotal ?? quotationTotal(inq);
+  fromMoneyCents(toMoneyCents(inq.invoiceAmount ?? inq.quotedTotal ?? quotationTotal(inq)));
 
 export const requiredDownpaymentAmount = (inq: Inquiry): number => {
   const percent = inq.quotationDoc?.downpaymentPercent ?? inq.downpaymentPercent ?? 0;
-  return invoiceTotal(inq) * (percent / 100);
+  return fromMoneyCents(Math.round(toMoneyCents(invoiceTotal(inq)) * percent / 100));
 };
 
 const legacyPaymentRecords = (inq: Inquiry): PaymentRecord[] => {
@@ -507,10 +513,11 @@ const legacyPaymentRecords = (inq: Inquiry): PaymentRecord[] => {
 export const paymentRecords = (inq: Inquiry): PaymentRecord[] => {
   const canonical = inq.payments ?? [];
   const canonicalIds = new Set(canonical.map((payment) => payment.id));
-  return [
+  const records = [
     ...legacyPaymentRecords(inq).filter((payment) => !canonicalIds.has(payment.id)),
     ...canonical,
   ];
+  return Array.from(new Map(records.map((payment) => [payment.id, payment])).values());
 };
 
 export const verifiedPayments = (inq: Inquiry): PaymentRecord[] =>
@@ -519,41 +526,45 @@ export const verifiedPayments = (inq: Inquiry): PaymentRecord[] =>
 export const paymentState = (inq: Inquiry): PaymentStateSummary => {
   const total = invoiceTotal(inq);
   const requiredDp = requiredDownpaymentAmount(inq);
+  const totalCents = toMoneyCents(total);
+  const requiredDpCents = toMoneyCents(requiredDp);
   const verified = verifiedPayments(inq);
-  const verifiedDp = verified
+  const verifiedDpCents = verified
     .filter((payment) => payment.paymentType === "DOWNPAYMENT")
-    .reduce((sum, payment) => sum + (payment.verifiedAmount ?? payment.submittedAmount), 0);
-  const totalVerified = verified.reduce(
-    (sum, payment) => sum + (payment.verifiedAmount ?? payment.submittedAmount),
+    .reduce((sum, payment) => sum + toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount), 0);
+  const totalVerifiedCents = verified.reduce(
+    (sum, payment) => sum + toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount),
     0,
   );
-  const remainingDp = Math.max(0, requiredDp - verifiedDp);
-  const remainingBalance = Math.max(0, total - totalVerified);
+  const verifiedDp = fromMoneyCents(verifiedDpCents);
+  const totalVerified = fromMoneyCents(totalVerifiedCents);
+  const remainingDp = fromMoneyCents(Math.max(0, requiredDpCents - verifiedDpCents));
+  const remainingBalance = fromMoneyCents(Math.max(0, totalCents - totalVerifiedCents));
 
-  if (remainingBalance <= paymentEpsilon) {
+  if (remainingBalance === 0) {
     return {
       invoiceTotal: total,
       requiredDownpaymentAmount: requiredDp,
       verifiedDownpaymentAmount: verifiedDp,
       remainingDownpayment: remainingDp,
-      downpaymentStatus: requiredDp > paymentEpsilon ? "COMPLETE" : "NOT_REQUIRED",
+      downpaymentStatus: requiredDpCents > 0 ? "COMPLETE" : "NOT_REQUIRED",
       totalVerifiedPayments: totalVerified,
       remainingInvoiceBalance: 0,
       currentPaymentType: null,
       state: "FULLY_PAID",
     };
   }
-  if (requiredDp > paymentEpsilon && verifiedDp + paymentEpsilon < requiredDp) {
+  if (requiredDpCents > 0 && verifiedDpCents < requiredDpCents) {
     return {
       invoiceTotal: total,
       requiredDownpaymentAmount: requiredDp,
       verifiedDownpaymentAmount: verifiedDp,
       remainingDownpayment: remainingDp,
-      downpaymentStatus: verifiedDp > paymentEpsilon ? "PARTIAL" : "REQUIRED",
+      downpaymentStatus: verifiedDpCents > 0 ? "PARTIAL" : "REQUIRED",
       totalVerifiedPayments: totalVerified,
       remainingInvoiceBalance: remainingBalance,
       currentPaymentType: "DOWNPAYMENT",
-      state: verifiedDp > paymentEpsilon ? "DOWNPAYMENT_PARTIAL" : "DOWNPAYMENT_REQUIRED",
+      state: verifiedDpCents > 0 ? "DOWNPAYMENT_PARTIAL" : "DOWNPAYMENT_REQUIRED",
     };
   }
   return {
@@ -561,11 +572,11 @@ export const paymentState = (inq: Inquiry): PaymentStateSummary => {
     requiredDownpaymentAmount: requiredDp,
     verifiedDownpaymentAmount: verifiedDp,
     remainingDownpayment: 0,
-    downpaymentStatus: requiredDp > paymentEpsilon ? "COMPLETE" : "NOT_REQUIRED",
+    downpaymentStatus: requiredDpCents > 0 ? "COMPLETE" : "NOT_REQUIRED",
     totalVerifiedPayments: totalVerified,
     remainingInvoiceBalance: remainingBalance,
-    currentPaymentType: requiredDp > paymentEpsilon ? "BALANCE_PAYMENT" : "FULL_PAYMENT",
-    state: requiredDp > paymentEpsilon ? "BALANCE_PAYMENT_REQUIRED" : "FULL_PAYMENT_REQUIRED",
+    currentPaymentType: requiredDpCents > 0 ? "BALANCE_PAYMENT" : "FULL_PAYMENT",
+    state: requiredDpCents > 0 ? "BALANCE_PAYMENT_REQUIRED" : "FULL_PAYMENT_REQUIRED",
   };
 };
 
@@ -585,16 +596,16 @@ export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: Payment
       || inq.paymentCycleStartedAt !== inq.signedDeliveryReceiptReceivedAt)
   ) return { paymentType: null, maxAmount: 0 };
 
-  const pendingAmount = records
+  const pendingAmountCents = records
     .filter((payment) => payment.verificationStatus === "pending")
-    .reduce((sum, payment) => sum + payment.submittedAmount, 0);
-  const availableBalance = Math.max(0, state.remainingInvoiceBalance - pendingAmount);
-  const typeBalance = paymentType === "DOWNPAYMENT"
-    ? state.remainingDownpayment
-    : state.remainingInvoiceBalance;
-  const maxAmount = Math.min(availableBalance, typeBalance);
+    .reduce((sum, payment) => sum + toMoneyCents(payment.submittedAmount), 0);
+  const availableBalanceCents = Math.max(0, toMoneyCents(state.remainingInvoiceBalance) - pendingAmountCents);
+  const typeBalanceCents = paymentType === "DOWNPAYMENT"
+    ? toMoneyCents(state.remainingDownpayment)
+    : toMoneyCents(state.remainingInvoiceBalance);
+  const maxAmount = fromMoneyCents(Math.min(availableBalanceCents, typeBalanceCents));
 
-  return maxAmount > paymentEpsilon
+  return maxAmount > 0
     ? { paymentType, maxAmount }
     : { paymentType: null, maxAmount: 0 };
 }
@@ -809,7 +820,7 @@ interface Ctx {
   approveCancellation: (id: string) => void;
   declineCancellation: (id: string) => void;
   /* Secretary confirms a client receipt — pushes it to confirmedPayments visible on client portal */
-  confirmClientPayment: (inquiryId: string, payment: { date: string; amount: number; method: string; ref: string }) => void;
+  confirmClientPayment: (inquiryId: string, payment: { date: string; amount: number; method: string; ref: string }) => string | undefined;
   submitPayment: (inquiryId: string, payment: Omit<PaymentRecord, "id" | "inquiryId" | "paymentType" | "verificationStatus" | "verifiedAmount">) => void;
   verifyPayment: (inquiryId: string, paymentId: string, verifiedAmount?: number) => void;
   rejectPayment: (inquiryId: string, paymentId: string) => void;
@@ -1386,15 +1397,25 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   const confirmClientPayment: Ctx["confirmClientPayment"] = (inquiryId, payment) => {
+    const source = allInquiries.find((inquiry) => inquiry.id === inquiryId);
+    if (!source) return undefined;
+    const allowance = paymentSubmissionAllowance(source);
+    const paymentAmount = fromMoneyCents(toMoneyCents(payment.amount));
+    if (
+      !allowance.paymentType
+      || !Number.isFinite(paymentAmount)
+      || paymentAmount <= 0
+      || toMoneyCents(paymentAmount) > toMoneyCents(allowance.maxAmount)
+    ) return undefined;
     const id = `cp-${Date.now()}-${++paymentSequence.current}`;
     setAllInquiries((prev) => prev.map((x) => {
       const allowance = paymentSubmissionAllowance(x);
       if (
         x.id !== inquiryId
         || !allowance.paymentType
-        || !Number.isFinite(payment.amount)
-        || payment.amount <= 0
-        || payment.amount > allowance.maxAmount
+        || !Number.isFinite(paymentAmount)
+        || paymentAmount <= 0
+        || toMoneyCents(paymentAmount) > toMoneyCents(allowance.maxAmount)
       ) return x;
       return {
         ...x,
@@ -1405,29 +1426,31 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           inquiryId,
           invoiceNo: x.invoiceNo,
           paymentType: allowance.paymentType,
-          submittedAmount: payment.amount,
-          verifiedAmount: payment.amount,
+          submittedAmount: paymentAmount,
+          verifiedAmount: paymentAmount,
           method: payment.method,
           referenceNumber: payment.ref,
           paymentDate: payment.date,
           verificationStatus: "verified" as const,
         },
       ],
-      confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, id }],
+      confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, amount: paymentAmount, id }],
       };
     }));
+    return id;
   };
 
   const submitPayment: Ctx["submitPayment"] = (inquiryId, payment) => {
     const id = `pmt-${Date.now()}-${++paymentSequence.current}`;
+    const submittedAmount = fromMoneyCents(toMoneyCents(payment.submittedAmount));
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== inquiryId) return x;
       const allowance = paymentSubmissionAllowance(x);
       if (
         !allowance.paymentType
-        || !Number.isFinite(payment.submittedAmount)
-        || payment.submittedAmount <= 0
-        || payment.submittedAmount > allowance.maxAmount
+        || !Number.isFinite(submittedAmount)
+        || submittedAmount <= 0
+        || toMoneyCents(submittedAmount) > toMoneyCents(allowance.maxAmount)
       ) return x;
       return {
         ...x,
@@ -1438,7 +1461,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
               id,
               date: payment.paymentDate,
               filename: payment.receiptFile,
-              amount: payment.submittedAmount,
+              amount: submittedAmount,
               note: payment.note ?? payment.referenceNumber,
             },
           ]
@@ -1447,6 +1470,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         ...(x.payments ?? []),
         {
           ...payment,
+          submittedAmount,
           id,
           inquiryId,
           invoiceNo: payment.invoiceNo ?? x.invoiceNo,
@@ -1461,20 +1485,28 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const verifyPayment: Ctx["verifyPayment"] = (inquiryId, paymentId, verifiedAmount) => {
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== inquiryId) return x;
-      const payments = (x.payments ?? []).map((payment) => payment.id === paymentId
-        && payment.verificationStatus === "pending"
-        && payment.submittedAmount > 0
-        ? {
-            ...payment,
-            verifiedAmount: verifiedAmount ?? payment.submittedAmount,
-            verificationStatus: "verified" as const,
-            verifiedAt: new Date().toISOString(),
-          }
-        : payment);
+      const currentState = paymentState(x);
+      const payments = (x.payments ?? []).map((payment) => {
+        if (payment.id !== paymentId || payment.verificationStatus !== "pending" || payment.submittedAmount <= 0) return payment;
+        const amountToVerifyCents = toMoneyCents(verifiedAmount ?? payment.submittedAmount);
+        const submittedAmountCents = toMoneyCents(payment.submittedAmount);
+        const invoiceBalanceCents = toMoneyCents(currentState.remainingInvoiceBalance);
+        const downpaymentBalanceCents = toMoneyCents(currentState.remainingDownpayment);
+        const maximumVerifiedCents = payment.paymentType === "DOWNPAYMENT"
+          ? Math.min(submittedAmountCents, downpaymentBalanceCents, invoiceBalanceCents)
+          : Math.min(submittedAmountCents, invoiceBalanceCents);
+        if (!Number.isFinite(amountToVerifyCents) || amountToVerifyCents <= 0 || amountToVerifyCents > maximumVerifiedCents) return payment;
+        return {
+          ...payment,
+          verifiedAmount: fromMoneyCents(amountToVerifyCents),
+          verificationStatus: "verified" as const,
+          verifiedAt: new Date().toISOString(),
+        };
+      });
       const verifiedInquiry = { ...x, payments };
       const state = paymentState(verifiedInquiry);
-      const downpaymentConfirmed = state.requiredDownpaymentAmount > paymentEpsilon
-        && state.verifiedDownpaymentAmount + paymentEpsilon >= state.requiredDownpaymentAmount;
+      const downpaymentConfirmed = toMoneyCents(state.requiredDownpaymentAmount) > 0
+        && toMoneyCents(state.verifiedDownpaymentAmount) >= toMoneyCents(state.requiredDownpaymentAmount);
       return downpaymentConfirmed
         ? {
             ...verifiedInquiry,
@@ -1516,7 +1548,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     if (allInquiries.some((inquiry) => inquiry.officialReceipt?.orNumber === normalizedNumber)) return false;
     const state = paymentState(source);
     const payments = paymentRecords(source);
-    if (state.state !== "FULLY_PAID" || state.remainingInvoiceBalance > paymentEpsilon || payments.some((payment) => payment.verificationStatus === "pending")) return false;
+    if (state.state !== "FULLY_PAID" || state.remainingInvoiceBalance > 0 || payments.some((payment) => payment.verificationStatus === "pending")) return false;
     const issueDate = new Date().toISOString();
     const invoiceNo = source.invoiceNo ?? `SI-${source.code.replace("INQ-", "")}`;
     const amount = state.totalVerifiedPayments;

@@ -203,6 +203,7 @@ export interface PaymentRecord {
   paymentDate: string;
   verificationStatus: PaymentVerificationStatus;
   verifiedAt?: string;
+  rejectionReason?: string;
   rejectedAt?: string;
   note?: string;
 }
@@ -610,6 +611,12 @@ export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: Payment
     : { paymentType: null, maxAmount: 0 };
 }
 
+export const exactDownpaymentValidationMessage = (inq: Inquiry, submittedAmount: number): string | undefined => {
+  const requiredCents = toMoneyCents(requiredDownpaymentAmount(inq));
+  if (toMoneyCents(submittedAmount) === requiredCents) return undefined;
+  return `Please enter the exact required downpayment amount of ₱${formatMoney(fromMoneyCents(requiredCents))}. Partial or excess downpayment amounts are not accepted.`;
+};
+
 const seed: Inquiry[] = [
   {
     id: "i1", code: "INQ-005", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
@@ -821,9 +828,9 @@ interface Ctx {
   declineCancellation: (id: string) => void;
   /* Secretary confirms a client receipt — pushes it to confirmedPayments visible on client portal */
   confirmClientPayment: (inquiryId: string, payment: { date: string; amount: number; method: string; ref: string }) => string | undefined;
-  submitPayment: (inquiryId: string, payment: Omit<PaymentRecord, "id" | "inquiryId" | "paymentType" | "verificationStatus" | "verifiedAmount">) => void;
+  submitPayment: (inquiryId: string, payment: Omit<PaymentRecord, "id" | "inquiryId" | "paymentType" | "verificationStatus" | "verifiedAmount">) => boolean;
   verifyPayment: (inquiryId: string, paymentId: string, verifiedAmount?: number) => void;
-  rejectPayment: (inquiryId: string, paymentId: string) => void;
+  rejectPayment: (inquiryId: string, paymentId: string, reason: string) => boolean;
   generateOfficialReceiptNumber: () => string;
   issueOfficialReceipt: (inquiryId: string, orNumber: string, issuedBy: string) => boolean;
   /* BOM lifecycle */
@@ -1441,8 +1448,19 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   const submitPayment: Ctx["submitPayment"] = (inquiryId, payment) => {
-    const id = `pmt-${Date.now()}-${++paymentSequence.current}`;
     const submittedAmount = fromMoneyCents(toMoneyCents(payment.submittedAmount));
+    const source = allInquiries.find((inquiry) => inquiry.id === inquiryId);
+    if (!source) return false;
+    const sourceAllowance = paymentSubmissionAllowance(source);
+    if (
+      !sourceAllowance.paymentType
+      || !Number.isFinite(submittedAmount)
+      || submittedAmount <= 0
+      || toMoneyCents(submittedAmount) > toMoneyCents(sourceAllowance.maxAmount)
+      || (sourceAllowance.paymentType === "DOWNPAYMENT"
+        && toMoneyCents(submittedAmount) !== toMoneyCents(requiredDownpaymentAmount(source)))
+    ) return false;
+    const id = `pmt-${Date.now()}-${++paymentSequence.current}`;
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== inquiryId) return x;
       const allowance = paymentSubmissionAllowance(x);
@@ -1451,6 +1469,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         || !Number.isFinite(submittedAmount)
         || submittedAmount <= 0
         || toMoneyCents(submittedAmount) > toMoneyCents(allowance.maxAmount)
+        || (allowance.paymentType === "DOWNPAYMENT"
+          && toMoneyCents(submittedAmount) !== toMoneyCents(requiredDownpaymentAmount(x)))
       ) return x;
       return {
         ...x,
@@ -1480,6 +1500,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       ],
       };
     }));
+    return true;
   };
 
   const verifyPayment: Ctx["verifyPayment"] = (inquiryId, paymentId, verifiedAmount) => {
@@ -1518,16 +1539,25 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const rejectPayment: Ctx["rejectPayment"] = (inquiryId, paymentId) => {
+  const rejectPayment: Ctx["rejectPayment"] = (inquiryId, paymentId, reason) => {
+    const rejectionReason = reason.trim();
+    const inquiry = allInquiries.find((item) => item.id === inquiryId);
+    if (
+      !rejectionReason
+      || !inquiry?.payments?.some((payment) => payment.id === paymentId && payment.verificationStatus === "pending")
+    ) return false;
+
     setAllInquiries((prev) => prev.map((x) => x.id === inquiryId ? {
       ...x,
       payments: (x.payments ?? []).map((payment) => payment.id === paymentId && payment.verificationStatus === "pending" ? {
         ...payment,
         verifiedAmount: undefined,
         verificationStatus: "rejected" as const,
+        rejectionReason,
         rejectedAt: new Date().toISOString(),
       } : payment),
     } : x));
+    return true;
   };
 
   const generateOfficialReceiptNumber: Ctx["generateOfficialReceiptNumber"] = () => {

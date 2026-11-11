@@ -1,10 +1,17 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, Printer, X } from "lucide-react";
 import type { OfficialReceipt } from "../store/orders";
 
 export function OfficialReceiptPreviewModal({ receipt, onClose }: { receipt: OfficialReceipt; onClose: () => void }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const filename = `${receipt.orNumber}.html`;
+  const [isLoading, setIsLoading] = useState(Boolean(receipt.documentDataUrl));
+  const [hasError, setHasError] = useState(!receipt.documentDataUrl);
+
+  useEffect(() => {
+    setIsLoading(Boolean(receipt.documentDataUrl));
+    setHasError(!receipt.documentDataUrl);
+  }, [receipt.documentDataUrl]);
 
   const printReceipt = () => {
     frameRef.current?.contentWindow?.focus();
@@ -31,7 +38,27 @@ export function OfficialReceiptPreviewModal({ receipt, onClose }: { receipt: Off
             <button onClick={onClose} aria-label="Close Official Receipt" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
           </div>
         </div>
-        <iframe ref={frameRef} src={receipt.documentDataUrl} title={`${receipt.orNumber} Official Receipt`} className="flex-1 min-h-0 w-full bg-white" />
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-100 p-3 sm:p-5">
+          {isLoading && !hasError && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100 font-dm text-sm text-slate-500">
+              Loading Official Receipt…
+            </div>
+          )}
+          {hasError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-center font-dm text-sm text-red-800">
+              This Official Receipt could not be displayed. Please try downloading it or contact Accounting.
+            </div>
+          ) : (
+            <iframe
+              ref={frameRef}
+              src={receipt.documentDataUrl}
+              title={`${receipt.orNumber} Official Receipt`}
+              onLoad={() => { setIsLoading(false); setHasError(false); }}
+              onError={() => { setIsLoading(false); setHasError(true); }}
+              className="h-full min-h-[420px] w-full max-w-4xl shrink-0 bg-white shadow-sm"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

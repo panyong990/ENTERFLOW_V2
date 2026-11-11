@@ -1722,7 +1722,7 @@ function StatusTab({ clientName }: { clientName: string }) {
   const [showJO, setShowJO] = useState(false);
   const [searchOrders, setSearchOrders] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "awaitingQuotation" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
+    "all" | "awaitingQuotation" | "poSubmitted" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
   >("all");
 
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
@@ -1731,6 +1731,7 @@ function StatusTab({ clientName }: { clientName: string }) {
   const [expandedPO, setExpandedPO] = useState<string | null>(activeOrders[0]?.order.id ?? null);
   const statusStages = {
     awaitingQuotation: "inquiry",
+    poSubmitted: "po",
     inProduction: "in_production",
     readyForDispatch: "ready_for_dispatch",
     outForDelivery: "dispatched",
@@ -1784,6 +1785,7 @@ function StatusTab({ clientName }: { clientName: string }) {
         >
           <option value="all">All Statuses</option>
           <option value="awaitingQuotation">Awaiting Quotation</option>
+          <option value="poSubmitted">PO Submitted</option>
           <option value="inProduction">In Production</option>
           <option value="readyForDispatch">Ready for Dispatch</option>
           <option value="outForDelivery">Out for Delivery</option>
@@ -2297,30 +2299,37 @@ function LogisticsTab({ clientName }: { clientName: string }) {
     <div className="px-8 py-8 flex flex-col gap-6">
       <div>
         <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Delivery &amp; Tracking</h1>
-        <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Delivery method, live tracking, order status, and receipts for each of your orders.</p>
+        <p className="font-dm mt-2" style={{ fontSize: 13, color: "#64748B" }}>Delivery method, live tracking, order status, and receipts for each of your orders.</p>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-4 rounded-xl border border-slate-200/70 bg-white p-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2.5">
           {filters.map((f) => {
             const active = filter === f;
             return (
-              <button key={f} onClick={() => setFilter(f)} className="font-dm min-h-10 px-4 py-2 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A] focus-visible:ring-offset-2" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#1A2B4A", borderColor: active ? "#C8102E" : "#CBD5E1" }}>
+              <button key={f} onClick={() => setFilter(f)} className="font-dm inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-md border px-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A] focus-visible:ring-offset-2" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#1A2B4A", borderColor: active ? "#C8102E" : "#CBD5E1" }}>
                 {filterLabels[f]}
               </button>
             );
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="logistics-date-from" className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>From</label>
-          <input id="logistics-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="font-dm min-h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }} />
-          <label htmlFor="logistics-date-to" className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>To</label>
-          <input id="logistics-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="font-dm min-h-10 min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }} />
-          <select aria-label="Sort deliveries" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm min-h-10 rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }}>
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+          <div className="min-w-0">
+            <label htmlFor="logistics-date-from" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">Start date</label>
+            <input id="logistics-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="font-dm mt-1 min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }} />
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="logistics-date-to" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">End date</label>
+            <input id="logistics-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="font-dm mt-1 min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }} />
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <label htmlFor="logistics-sort" className="sr-only">Sort deliveries</label>
+            <select id="logistics-sort" aria-label="Sort deliveries" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:mt-[18px] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }}>
             <option value="date-desc">Newest first</option>
             <option value="date-asc">Oldest first</option>
             <option value="status">By status</option>
-          </select>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -2332,66 +2341,71 @@ function LogisticsTab({ clientName }: { clientName: string }) {
           const hasSignedDR = Boolean(r.signedDRFileName && r.signedDRNumber === r.deliveryReceiptNumber && r.signedDRReceivedAt);
           const trackUrl = trackingHref(r.trackingLink);
           return (
-            <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200/70 bg-white" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+            <div key={r.id} className="overflow-hidden rounded-xl border border-slate-200/70 bg-white transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-sm" style={{ borderColor: isExpanded ? "#CBD5E1" : undefined, boxShadow: isExpanded ? "0 2px 8px rgba(15,23,42,0.06)" : "0 1px 2px rgba(15,23,42,0.04)" }}>
               {/* Row Header */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : r.id)}
-                className="w-full flex items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1A2B4A] sm:px-5"
+                className="group flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1A2B4A] sm:gap-4 sm:px-5"
               >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: "#F1F5F9" }}>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100">
                   <Icon size={18} style={{ color: methodColor(r.method) }} />
                 </div>
-                <div className="grid min-w-0 flex-1 grid-cols-1 items-center gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto_auto]">
+                <div className="grid min-w-0 flex-1 grid-cols-1 items-center gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto_auto] lg:gap-4">
                   <div className="min-w-0">
-                    <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{r.joNumber ?? r.po}</div>
+                    <div className="font-mono-jb" style={{ fontSize: 13, fontWeight: 800, color: "#1A2B4A" }}>{r.joNumber ?? r.po}</div>
                     <div className="mt-0.5 line-clamp-1 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item} · Qty {r.qty}</div>
                   </div>
-                  <div className="min-w-0 break-words font-dm" style={{ fontSize: 13, color: methodColor(r.method), fontWeight: 600 }}>{r.method ?? "Delivery method not specified"}</div>
-                  <span className="inline-flex items-center gap-2 justify-self-start whitespace-nowrap rounded-full px-3 py-1.5 font-dm" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.35, backgroundColor: r.statusBg, color: r.statusFg }}>
+                  <span className="inline-flex w-fit max-w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-dm text-xs font-semibold text-slate-700">
+                    <Icon size={14} className="shrink-0" style={{ color: r.method ? methodColor(r.method) : "#94A3B8" }} />
+                    <span className="truncate">{r.method ?? "Method not specified"}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-2 justify-self-start whitespace-nowrap rounded-full px-3 py-1.5 font-dm" style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.45, backgroundColor: r.statusBg, color: r.statusFg }}>
                     <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: r.statusFg }} />
                     {r.status}
                   </span>
                   <div className="flex justify-end">
-                    {isExpanded ? <ChevronUp size={16} style={{ color: "#64748B" }} /> : <ChevronDown size={16} style={{ color: "#64748B" }} />}
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-white">
+                      {isExpanded ? <ChevronUp size={16} style={{ color: "#64748B" }} /> : <ChevronDown size={16} style={{ color: "#64748B" }} />}
+                    </span>
                   </div>
                 </div>
               </button>
 
               {/* Expanded Detail */}
               {isExpanded && (
-                <div className="border-t border-slate-200/80 bg-slate-50 px-4 py-4 sm:px-5">
+                <div className="border-t border-slate-200/80 bg-slate-50/70 px-4 py-5 sm:px-5">
                   <section className="border-b border-slate-200/80 pb-3">
                       <div className="flex items-start gap-4">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: r.statusBg, color: r.statusFg }}>
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: r.statusBg, color: r.statusFg }}>
                           {r.status === "DELIVERED" ? <CheckCircle2 size={19} /> : r.status === "IN TRANSIT" ? <Truck size={19} /> : <MapPin size={19} />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-dm text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Delivery status</div>
-                          <h2 className="mt-0.5 font-syne text-lg font-extrabold tracking-tight text-slate-900">{r.status}</h2>
+                          <div className="font-dm text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Delivery status</div>
+                          <h2 className="mt-1 font-syne text-base font-extrabold tracking-tight text-slate-900">{r.status}</h2>
                           <p className="mt-1 font-dm text-xs leading-5 text-slate-600">
                             {r.status === "DELIVERED"
                               ? "Your order has been delivered and the signed receipt is on file."
                               : r.status === "IN TRANSIT"
-                                ? "Your delivery details are available below."
+                                ? "Your delivery is in transit. Any shared tracking details are shown below."
                                 : "Delivery has not started yet. Tracking will appear here once shared."}
                           </p>
                         </div>
                       </div>
 
-                      <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="mt-4 grid gap-x-5 sm:grid-cols-2 lg:grid-cols-3">
                         {[
                           { label: "Job Order", value: r.joNumber ?? "—" },
                           { label: "Order Reference", value: r.po },
-                          { label: "Delivery Method", value: r.method ?? "Not specified" },
+                          { label: "Delivery Method", value: r.method ?? "Method not specified" },
                           { label: "Item", value: r.item },
                           { label: "Quantity", value: `${r.qty} pcs` },
                           ...(r.status === "DELIVERED" && r.deliveryDate
                             ? [{ label: "Delivery Date", value: new Date(r.deliveryDate).toLocaleString() }]
                             : []),
                         ].map((detail) => (
-                          <div key={detail.label} className="min-w-0 border-b border-slate-100 pb-1.5 last:border-b-0">
+                          <div key={detail.label} className="min-w-0 border-b border-slate-200/70 py-2.5">
                             <div className="font-dm text-[10px] font-semibold uppercase tracking-wide text-slate-500">{detail.label}</div>
-                            <div className="mt-0.5 break-words font-dm text-xs font-semibold text-slate-900">{detail.value}</div>
+                            <div className="mt-1 break-words font-dm text-xs font-semibold text-slate-900">{detail.value}</div>
                           </div>
                         ))}
                       </div>
@@ -2503,11 +2517,15 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                     )}
                   </section>}
 
-                  <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
-                    <div className="font-syne text-base font-extrabold text-slate-900">PAYMENT CYCLE</div>
+                  <section className="mt-4 rounded-xl border border-slate-200/80 bg-white p-4 sm:p-5">
+                    <h3 className="font-syne text-sm font-extrabold text-slate-900">Payment Cycle</h3>
                     {!hasSignedDR ? (
-                      <div className="mt-3 rounded-lg bg-slate-100 p-4 font-dm text-sm font-bold text-slate-600">
-                        PAYMENT CYCLE NOT ACTIVE · AWAITING SIGNED DELIVERY RECEIPT
+                      <div className="mt-3 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3.5 py-3">
+                        <Info size={16} className="mt-0.5 shrink-0 text-amber-700" />
+                        <div>
+                          <div className="font-dm text-xs font-bold text-amber-900">Payment cycle not active</div>
+                          <div className="mt-0.5 font-dm text-xs leading-5 text-amber-800">Awaiting signed delivery receipt</div>
+                        </div>
                       </div>
                     ) : (
                       (() => {
@@ -2524,12 +2542,12 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                               ? "PAYMENT CYCLE ACTIVE"
                               : "PAYMENT CYCLE STARTING";
                         const statusClass = r.paymentIsFullyPaid
-                          ? "bg-green-100 text-green-800"
+                          ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200"
                           : isOverdue
-                            ? "bg-red-100 text-red-800"
+                            ? "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200"
                             : r.paymentCycleStartedAt
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-slate-100 text-slate-700";
+                              ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200"
+                              : "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200";
                         const remainingTime = daysRemaining === undefined
                           ? "Due date unavailable"
                           : daysRemaining < 0

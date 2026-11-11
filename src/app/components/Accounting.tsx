@@ -176,6 +176,7 @@ export function Accounting() {
   const [newPmt, setNewPmt] = useState<Record<string, { amount: string; method: string; ref: string; datePaid: string }>>({});
   const [viewReceiptsId, setViewReceiptsId] = useState<string | null>(null);
   const [view, setView] = useState<"active" | "history">("active");
+  const [expandedClientPayments, setExpandedClientPayments] = useState<Set<string>>(() => new Set());
   const [downpaymentFilter, setDownpaymentFilter] = useState<"ALL" | "AWAITING VERIFICATION" | "VERIFIED" | "REJECTED" | "PAID/COMPLETED">("ALL");
   const [activeCycleFilter, setActiveCycleFilter] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID/COMPLETED" | "OVERDUE" | "AWAITING VERIFICATION" | "REJECTED">("ALL");
   const [dateFrom, setDateFrom] = useState("");
@@ -1024,12 +1025,32 @@ export function Accounting() {
                                     ? Math.max(0, paymentBalanceCents - toMoneyCents(p.submittedAmount))
                                     : paymentBalanceCents;
                                   const remainingAfter = fromMoneyCents(remainingAfterCents);
+                                  const paymentKey = `${r.id}:${p.id}`;
+                                  const isPaymentExpanded = expandedClientPayments.has(paymentKey);
                                   return (
-                                  <div key={p.id} className="rounded-lg p-3 mb-2 last:mb-0 bg-white border border-blue-200 shadow-sm">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                                      <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>PAYMENT {p.verificationStatus === "pending" ? "SUBMITTED" : statusLabel}</div>
-                                      <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 800, color: statusColor, backgroundColor: `${statusColor}18` }}>{statusLabel}</span>
-                                    </div>
+                                  <div key={paymentKey} className="mb-2 last:mb-0 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-sm">
+                                    <button
+                                      type="button"
+                                      aria-expanded={isPaymentExpanded}
+                                      aria-controls={`client-payment-details-${paymentKey}`}
+                                      onClick={() => setExpandedClientPayments((previous) => {
+                                        const next = new Set(previous);
+                                        if (next.has(paymentKey)) next.delete(paymentKey);
+                                        else next.add(paymentKey);
+                                        return next;
+                                      })}
+                                      className="flex w-full flex-wrap items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-slate-50"
+                                    >
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>{r.client} · {p.invoiceNo ?? r.inv}</span>
+                                        <span className="mt-0.5 block font-dm" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>{paymentType} · PAYMENT {p.verificationStatus === "pending" ? "SUBMITTED" : statusLabel}</span>
+                                      </span>
+                                      <span className="flex shrink-0 items-center gap-2">
+                                        <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 800, color: statusColor, backgroundColor: `${statusColor}18` }}>{statusLabel}</span>
+                                        {isPaymentExpanded ? <ChevronUp size={16} color="#64748B" /> : <ChevronDown size={16} color="#64748B" />}
+                                      </span>
+                                    </button>
+                                    {isPaymentExpanded && <div id={`client-payment-details-${paymentKey}`} className="border-t border-blue-100 p-3">
                                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4 xl:grid-cols-6 font-dm" style={{ fontSize: 11, color: "#475569" }}>
                                       <span>Client</span><strong>{r.client}</strong>
                                       <span>Invoice</span><strong>{p.invoiceNo ?? r.inv}</strong>
@@ -1060,6 +1081,7 @@ export function Accounting() {
                                         <button onClick={() => handleVerifyClientPayment(r, p)} disabled={!p.receiptDataUrl || p.submittedAmount <= 0} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#15803D" }}><CheckCircle2 size={11} /> VERIFY PAYMENT</button>
                                       </>}
                                     </div>
+                                    </div>}
                                   </div>
                                   );
                                 })}

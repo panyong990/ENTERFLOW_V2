@@ -2355,37 +2355,58 @@ function LogisticsTab({ clientName }: { clientName: string }) {
 
   return (
     <div className="px-8 py-8 flex flex-col gap-6">
+      <style>{`
+        .client-logistics-date-empty {
+          color: #94A3B8 !important;
+        }
+        .client-logistics-date::-webkit-calendar-picker-indicator {
+          position: absolute !important;
+          left: 0.75rem !important;
+          right: auto !important;
+          width: 1rem;
+          height: 1rem;
+          margin: 0;
+          padding: 0;
+          opacity: 0.55;
+          filter: invert(22%) sepia(14%) saturate(1034%) hue-rotate(177deg) brightness(94%) contrast(88%);
+          cursor: pointer;
+          transition: opacity 150ms ease;
+        }
+        .client-logistics-date:hover::-webkit-calendar-picker-indicator {
+          opacity: 0.8;
+        }
+      `}</style>
       <div>
         <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Delivery &amp; Tracking</h1>
         <p className="font-dm mt-2" style={{ fontSize: 13, color: "#64748B" }}>Delivery method, live tracking, order status, and receipts for each of your orders.</p>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-xl border border-slate-200/70 bg-white p-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           {filters.map((f) => {
             const active = filter === f;
             return (
-              <button key={f} onClick={() => setFilter(f)} className="font-dm inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-md border px-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A] focus-visible:ring-offset-2" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#1A2B4A", borderColor: active ? "#C8102E" : "#CBD5E1" }}>
+              <button key={f} onClick={() => setFilter(f)} className="font-dm inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-lg border px-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A] focus-visible:ring-offset-2" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#1A2B4A", borderColor: active ? "#C8102E" : "#CBD5E1" }}>
                 {filterLabels[f]}
               </button>
             );
           })}
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
-          <div className="min-w-0">
-            <label htmlFor="logistics-date-from" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">Start date</label>
-            <input id="logistics-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="font-dm mt-1 min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }} />
+        <div className="flex flex-wrap items-end gap-3 lg:ml-auto">
+          <div className="w-[145px] max-w-full">
+            <label htmlFor="logistics-date-from" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">Start Date</label>
+            <input id="logistics-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={`client-logistics-date font-dm relative mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 outline-none transition-colors hover:border-slate-300 focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] ${dateFrom ? "" : "client-logistics-date-empty"}`} style={{ fontSize: 12, color: "#0F172A" }} />
           </div>
-          <div className="min-w-0">
-            <label htmlFor="logistics-date-to" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">End date</label>
-            <input id="logistics-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="font-dm mt-1 min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }} />
+          <div className="w-[145px] max-w-full">
+            <label htmlFor="logistics-date-to" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">End Date</label>
+            <input id="logistics-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={`client-logistics-date font-dm relative mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 outline-none transition-colors hover:border-slate-300 focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] ${dateTo ? "" : "client-logistics-date-empty"}`} style={{ fontSize: 12, color: "#0F172A" }} />
           </div>
-          <div className="col-span-2 sm:col-span-1">
-            <label htmlFor="logistics-sort" className="sr-only">Sort deliveries</label>
-            <select id="logistics-sort" aria-label="Sort deliveries" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:mt-[18px] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }}>
-            <option value="date-desc">Newest first</option>
-            <option value="date-asc">Oldest first</option>
-            <option value="status">By status</option>
+          <div className="w-[145px] max-w-full">
+            <label htmlFor="logistics-sort" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">Sort Order</label>
+            <select id="logistics-sort" aria-label="Sort deliveries" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 outline-none transition-colors hover:border-slate-300 focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }}>
+              <option value="date-desc">Newest first</option>
+              <option value="date-asc">Oldest first</option>
+              <option value="status">By status</option>
             </select>
           </div>
         </div>
@@ -2722,6 +2743,33 @@ function inquiryToClientInvoice(inq: Inquiry) {
   };
 }
 
+type ClientInvoiceStatus = "Awaiting Verification" | "Partial" | "Awaiting Signed DR" | "Payment Required" | "Fully Paid";
+type ClientInvoiceStatusFilter = "All" | Exclude<ClientInvoiceStatus, "Fully Paid">;
+
+const clientInvoiceStatusFilters: Exclude<ClientInvoiceStatusFilter, "All">[] = [
+  "Awaiting Verification",
+  "Partial",
+  "Awaiting Signed DR",
+  "Payment Required",
+];
+
+const clientInvoiceStatusStyles: Record<ClientInvoiceStatus, { bg: string; fg: string }> = {
+  "Awaiting Verification": { bg: "#DBEAFE", fg: "#1D4ED8" },
+  Partial: { bg: "#DBEAFE", fg: "#1D4ED8" },
+  "Awaiting Signed DR": { bg: "#E2E8F0", fg: "#475569" },
+  "Payment Required": { bg: "#FEF3C7", fg: "#B45309" },
+  "Fully Paid": { bg: "#DCFCE7", fg: "#15803D" },
+};
+
+function clientInvoiceStatus(row: ReturnType<typeof inquiryToClientInvoice>): ClientInvoiceStatus {
+  const { paymentState: state, payments, paymentCycleActive } = row;
+  if (state.state === "FULLY_PAID") return "Fully Paid";
+  if (payments.some((payment) => payment.verificationStatus === "pending")) return "Awaiting Verification";
+  if (state.currentPaymentType === "BALANCE_PAYMENT" && !paymentCycleActive) return "Awaiting Signed DR";
+  if (state.totalVerifiedPayments > 0 && state.currentPaymentType !== null) return "Partial";
+  return "Payment Required";
+}
+
 /* ---------- Accounting Tab ---------- */
 function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: string; focusInvoiceId?: string | null }) {
   const { byClient, submitPayment } = useOrders();
@@ -2732,6 +2780,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; reference: string; note: string; file: string; receiptDataUrl?: string; methodId?: string }>>({});
   const submittingPayments = useRef(new Set<string>());
   const [view, setView] = useState<"active" | "history">("active");
+  const [statusFilter, setStatusFilter] = useState<ClientInvoiceStatusFilter>("All");
 
   /* DERIVED: pull this client's invoiced inquiries (delivered / overdue / paid). PO/quotation/in-production aren't yet billable. */
   const myInvoiced = byClient(clientName).filter((i) => !i.archived && !!i.invoiceSentAt && !!i.invoiceNo);
@@ -2741,7 +2790,8 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
 
   const activeRows = rows.filter(r => r.paymentState.state !== "FULLY_PAID");
   const historyRows = rows.filter(r => r.paymentState.state === "FULLY_PAID");
-  const visibleRows = view === "active" ? activeRows : historyRows;
+  const visibleRows = (view === "active" ? activeRows : historyRows)
+    .filter((row) => statusFilter === "All" || clientInvoiceStatus(row) === statusFilter);
 
   const [openId, setOpenId] = useState<string | null>(focusInvoiceId ?? activeRows[0]?.id ?? null);
 
@@ -2815,7 +2865,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           {view === "history" && (
-            <button onClick={() => setView("active")} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
+            <button onClick={() => { setView("active"); setStatusFilter("All"); }} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
               ← Back to active
             </button>
           )}
@@ -2827,7 +2877,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
           </p>
         </div>
         {view === "active" && historyRows.length > 0 && (
-          <button onClick={() => setView("history")} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white font-dm hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
+          <button onClick={() => { setView("history"); setStatusFilter("All"); }} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white font-dm hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
             View Paid Transactions ({historyRows.length}) →
           </button>
         )}
@@ -2836,8 +2886,26 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
         {pill("Total Invoices", String(rows.length))}
         {pill("Paid", String(historyRows.length), "#16A34A")}
         {pill("Pending", String(activeRows.length), "#D97706")}
-        {pill("Amount Due", `₱${activeRows.reduce((s, r) => s + r.paymentState.remainingInvoiceBalance, 0).toLocaleString("en-PH")}`, "#C8102E")}
+        {pill("Amount Due", `₱${activeRows.reduce((sum, row) => sum + row.paymentState.remainingInvoiceBalance, 0).toLocaleString("en-PH")}`, "#C8102E")}
       </div>
+      {view === "active" && (
+        <div className="flex w-full items-start justify-end">
+          <label htmlFor="client-invoice-status-filter" className="sr-only">Filter invoices by payment status</label>
+          <select
+            id="client-invoice-status-filter"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as ClientInvoiceStatusFilter)}
+            aria-label="Filter invoices by payment status"
+            className="font-dm min-h-10 min-w-[220px] self-start rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#475569" }}
+          >
+            <option value="All">All Statuses</option>
+            {clientInvoiceStatusFilters.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
@@ -2853,7 +2921,11 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
           <tbody>
             {visibleRows.length === 0 && (
               <tr><td colSpan={7} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
-                {view === "active" ? "✅ No pending invoices · all caught up!" : "No paid transactions yet."}
+                {statusFilter !== "All"
+                  ? "No invoices match this status."
+                  : view === "active"
+                    ? "✅ No pending invoices · all caught up!"
+                    : "No paid transactions yet."}
               </td></tr>
             )}
             {visibleRows.map((r) => {
@@ -2865,16 +2937,8 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                 payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
               );
               const isPayable = r.submissionAllowance.paymentType !== null;
-              const isPartial = state.totalVerifiedPayments > 0 && state.currentPaymentType !== null;
-              const status = state.state === "FULLY_PAID"
-                ? { bg: "#DCFCE7", fg: "#15803D", label: "Fully Paid" }
-                : pendingPayments.length > 0
-                ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Awaiting Verification" }
-                : state.currentPaymentType === "BALANCE_PAYMENT" && !r.paymentCycleActive
-                ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Signed DR" }
-                : isPartial
-                ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Partial" }
-                : { bg: "#FEF3C7", fg: "#B45309", label: "Payment Required" };
+              const statusLabel = clientInvoiceStatus(r);
+              const status = clientInvoiceStatusStyles[statusLabel];
               const rf = receiptForm[r.id] ?? { amount: "", reference: "", note: "", file: "", receiptDataUrl: "", methodId: settings.paymentMethods[0]?.id };
               const selectedMethod = settings.paymentMethods.find((m) => m.id === rf.methodId) ?? settings.paymentMethods[0];
               const paymentTypeLabel: Record<PaymentType, string> = {
@@ -2911,11 +2975,31 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                       <div className="mt-0.5 text-[11px]">{r.payment}</div>
                     </td>
                     <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: isPending ? "#D97706" : "#475569", fontWeight: isPending ? 600 : 400 }}>{view === "history" ? r.paidDate : r.due}</td>
-                    <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: status.bg, color: status.fg }}>{status.label}</span></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: status.bg, color: status.fg }}>{statusLabel}</span>
+                        <button
+                          type="button"
+                          aria-label={`${isOpen ? "Collapse" : "Expand"} invoice ${r.inv}`}
+                          aria-expanded={isOpen}
+                          aria-controls={`client-invoice-details-${r.id}`}
+                          onClick={(event) => { event.stopPropagation(); setOpenId(isOpen ? null : r.id); }}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100"
+                        >
+                          {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                  {isOpen && (
-                    <tr style={{ backgroundColor: "#FAFBFC" }}>
-                      <td colSpan={7} className="px-6 py-5">
+                  <tr aria-hidden={!isOpen} style={{ backgroundColor: "#FAFBFC" }}>
+                    <td colSpan={7} className="p-0">
+                      <div
+                        id={`client-invoice-details-${r.id}`}
+                        className="grid transition-[grid-template-rows] duration-200 ease-in-out"
+                        style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                        <div className="px-6 py-5">
                         <div className="grid grid-cols-2 gap-6">
                           {/* Shared payment status and history */}
                           <div>
@@ -3140,9 +3224,11 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                             )}
                           </div>
                         </div>
+                        </div>
+                        </div>
+                      </div>
                       </td>
-                    </tr>
-                  )}
+                  </tr>
                 </Fragment>
               );
             })}

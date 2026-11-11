@@ -14,6 +14,7 @@ import {
   quotationTotal,
   paymentRecords,
   paymentState,
+  invoiceTotal,
   poNumberForDisplay,
   type Inquiry,
   type PaymentStateSummary,
@@ -650,29 +651,46 @@ function TransactionsTab({ clientName }: { clientName: string }) {
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
             <tr>
-              {["Date", "PO No.", "Item", "Amount", "Payment Terms", "Status"].map((h) => (
+              {["Date", "PO No.", "Item", "Amount", "Payment Terms", "Status", "Official Receipt"].map((h) => (
                 <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {allOrders.length === 0 && (
-              <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
             )}
-            {allOrders.map((inq) => (
+            {allOrders.map((inq) => {
+              const fullyPaid = inq.stage === "paid" || paymentState(inq).state === "FULLY_PAID";
+              const issuedReceipt = inq.officialReceipt?.status === "issued"
+                && inq.officialReceipt.invoiceId === inq.id
+                ? inq.officialReceipt
+                : undefined;
+              const poNumber = poNumberForDisplay(inq) ?? "—";
+              const itemDescription = inq.products
+                .map((product) => product.filterName ?? product.type)
+                .filter(Boolean)
+                .join(", ") || "—";
+              return (
               <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
-                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.deliveredDate ?? inq.submittedDate}</td>
-                <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{inq.code}</td>
-                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{inq.products[0]?.filterName ?? labelForType(inq.products[0]?.type ?? "")}</td>
-                <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{(inq.invoiceAmount ?? inq.quotedTotal ?? 0).toLocaleString("en-PH")}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.invoiceDate ?? inq.deliveredDate ?? inq.submittedDate}</td>
+                <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{poNumber}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{itemDescription}</td>
+                <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{invoiceTotal(inq).toLocaleString("en-PH")}</td>
                 <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
                 <td className="px-4 py-3">
-                  <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: inq.stage === "paid" ? "#DCFCE7" : "#DBEAFE", color: inq.stage === "paid" ? "#15803D" : "#1D4ED8" }}>
-                    {inq.stage === "paid" ? "✅ Paid" : "📦 Delivered"}
+                  <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: fullyPaid ? "#DCFCE7" : "#DBEAFE", color: fullyPaid ? "#15803D" : "#1D4ED8" }}>
+                    {fullyPaid ? "✅ Paid" : "📦 Delivered"}
                   </span>
                 </td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 11, color: issuedReceipt ? "#15803D" : fullyPaid ? "#B45309" : "#94A3B8", fontWeight: 700 }}>
+                  {issuedReceipt ? (
+                    <a href={issuedReceipt.documentDataUrl} download={`${issuedReceipt.orNumber}.html`} target="_blank" rel="noreferrer" className="text-blue-700 underline">View/Download OR · {issuedReceipt.orNumber}</a>
+                  ) : fullyPaid ? "OR Pending" : "Not Issued"}
+                </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

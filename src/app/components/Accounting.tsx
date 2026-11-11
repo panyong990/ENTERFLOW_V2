@@ -2,6 +2,7 @@ import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import { FileText, ClipboardList, Search, Plus, CheckCircle2, X, Send, AlertTriangle, ChevronDown, ChevronUp, PlusCircle, Receipt, Eye, History, Pencil, Download } from "lucide-react";
 import { hasValidSignedDeliveryReceipt, useOrders, paymentDaysRemaining, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
+import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 
@@ -39,6 +40,7 @@ interface Invoice {
   signedDeliveryReceiptSubmittedBy?: string;
   signedDeliveryReceiptReceivedAt?: string;
   signedDeliveryReceiptDataUrl?: string;
+  officialReceipt?: Inquiry["officialReceipt"];
 }
 
 type ReminderCategory = "dueSoon" | "overdue" | "remainingBalance";
@@ -110,6 +112,7 @@ function inquiryToInvoice(inq: Inquiry): Invoice {
     signedDeliveryReceiptSubmittedBy: signedDRReceived ? inq.signedDeliveryReceiptSubmittedBy : undefined,
     signedDeliveryReceiptReceivedAt: signedDRReceived ? inq.signedDeliveryReceiptReceivedAt : undefined,
     signedDeliveryReceiptDataUrl: signedDRReceived ? inq.signedDeliveryReceiptDataUrl : undefined,
+    officialReceipt: inq.officialReceipt,
   };
 }
 
@@ -178,9 +181,12 @@ export function Accounting() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
+  const [orConfirmation, setOrConfirmation] = useState<Invoice | null>(null);
+  const [orBuilder, setOrBuilder] = useState<Invoice | null>(null);
   const [proofToView, setProofToView] = useState<{ filename: string; dataUrl: string } | null>(null);
-  const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment } = useOrders();
+  const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
+  const { name: issuingStaff } = useSession();
   const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
   const [sendingReminderIds, setSendingReminderIds] = useState<Set<string>>(() => new Set());
@@ -514,6 +520,57 @@ export function Accounting() {
     }
   };
 
+  const beginOfficialReceipt = (invoice: Invoice) => {
+    const current = rows.find((row) => row.id === invoice.id);
+    if (!current || current.officialReceipt) {
+      toast.error("This invoice already has an issued Official Receipt.");
+      return;
+    }
+    const currentInquiry = byClient(current.client).find((inquiry) => inquiry.id === current.id);
+    const currentState = currentInquiry ? paymentState(currentInquiry) : current.paymentState;
+    const hasUnverifiedPayment = currentInquiry ? paymentRecords(currentInquiry).some((payment) => payment.verificationStatus === "pending") : true;
+    if (currentState.state !== "FULLY_PAID" || currentState.remainingInvoiceBalance > 0.005 || hasUnverifiedPayment) {
+      toast.error("Official Receipt issuance is unavailable until all payments are verified and the balance is zero.");
+      return;
+    }
+    setOrConfirmation(current);
+  };
+
+  const proceedToOfficialReceiptBuilder = () => {
+    if (!orConfirmation) return;
+    const current = rows.find((row) => row.id === orConfirmation.id);
+    const currentInquiry = current ? byClient(current.client).find((inquiry) => inquiry.id === current.id) : undefined;
+    const currentState = currentInquiry ? paymentState(currentInquiry) : undefined;
+    const hasUnverifiedPayment = currentInquiry ? paymentRecords(currentInquiry).some((payment) => payment.verificationStatus === "pending") : true;
+    if (!current || current.officialReceipt || !currentState || currentState.state !== "FULLY_PAID" || currentState.remainingInvoiceBalance > 0.005 || hasUnverifiedPayment) {
+      setOrConfirmation(null);
+      toast.error("The invoice changed and is no longer eligible for Official Receipt issuance.");
+      return;
+    }
+    setOrConfirmation(null);
+    setOrBuilder(current);
+  };
+
+  const issueReceipt = (invoice: Invoice, orNumber: string) => {
+    const succeeded = issueOfficialReceipt(invoice.id, orNumber, issuingStaff);
+    if (!succeeded) {
+      toast.error("Official Receipt could not be issued. Verify the invoice state and OR number.");
+      return;
+    }
+    pushNotif({
+      dept: "payments",
+      title: `Official Receipt available: ${orNumber.trim()}`,
+      body: `${invoice.client} · ${invoice.inv} · ₱${invoice.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+      link: "client-portal",
+      recipients: ["client"],
+      clientName: invoice.client,
+      resourceType: "official-receipt",
+      resourceId: invoice.id,
+    });
+    setOrBuilder(null);
+    toast.success("Official Receipt issued", { description: `${orNumber.trim()} · prototype-generated document` });
+  };
+
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
@@ -763,7 +820,27 @@ export function Accounting() {
                         <div style={{ fontWeight: 700, color: "#1A2B4A" }}>{r.paymentType}</div>
                         <div style={{ fontSize: 11, color: "#64748B" }}>{r.payment}</div>
                       </td>
-                      <td className="px-4 py-3"><StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} /></td>
+                      <td className="px-4 py-3">
+                        <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
+                        {view === "history" && (
+                          <div className="mt-2 flex flex-col items-start gap-1">
+                            <span className="font-dm" style={{ fontSize: 10, fontWeight: 800, color: r.officialReceipt ? "#15803D" : "#B45309" }}>{r.officialReceipt ? "OR Issued" : "OR Pending"}</span>
+                            {r.officialReceipt ? (
+                              <button
+                                onClick={(event) => { event.stopPropagation(); setProofToView({ filename: `${r.officialReceipt!.orNumber}.html`, dataUrl: r.officialReceipt!.documentDataUrl }); }}
+                                className="font-dm hover:underline"
+                                style={{ fontSize: 10, fontWeight: 800, color: "#1D4ED8" }}
+                              >View Official Receipt</button>
+                            ) : (
+                              <button
+                                onClick={(event) => { event.stopPropagation(); beginOfficialReceipt(r); }}
+                                className="font-dm px-2 py-1 rounded-md text-white hover:opacity-90"
+                                style={{ backgroundColor: "#C8102E", fontSize: 10, fontWeight: 800 }}
+                              >Issue Official Receipt</button>
+                            )}
+                          </div>
+                        )}
+                      </td>
                     </tr>
                     {isOpen && (() => {
                       const pmts = payments[r.id] ?? [];
@@ -1246,6 +1323,23 @@ export function Accounting() {
         </div>
       )}
 
+      {orConfirmation && (
+        <OfficialReceiptConfirmation
+          invoice={orConfirmation}
+          onCancel={() => setOrConfirmation(null)}
+          onProceed={proceedToOfficialReceiptBuilder}
+        />
+      )}
+      {orBuilder && (
+        <OfficialReceiptBuilder
+          invoice={orBuilder}
+          suggestedNumber={generateOfficialReceiptNumber()}
+          issuingStaff={issuingStaff}
+          onCancel={() => setOrBuilder(null)}
+          onIssue={(orNumber) => issueReceipt(orBuilder, orNumber)}
+        />
+      )}
+
     </div>
   );
 }
@@ -1309,6 +1403,78 @@ function EditReceiptModal({ receipt, onClose, onSave }: {
           <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
           <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Save Changes</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function OfficialReceiptConfirmation({ invoice, onCancel, onProceed }: {
+  invoice: Invoice;
+  onCancel: () => void;
+  onProceed: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onCancel}>
+      <div className="bg-white rounded-xl w-full max-w-lg" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={(event) => event.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Confirm Official Receipt Issuance</h3>
+          <button onClick={onCancel} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
+        </div>
+        <div className="p-6 grid grid-cols-2 gap-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+          <span>Client / Company</span><strong>{invoice.client}</strong>
+          <span>Invoice Number</span><strong>{invoice.inv}</strong>
+          <span>Original Invoice Total</span><strong>₱{invoice.paymentState.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
+          <span>Total Verified Payments</span><strong>₱{invoice.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
+          <span>Outstanding Balance</span><strong style={{ color: invoice.paymentState.remainingInvoiceBalance === 0 ? "#15803D" : "#C8102E" }}>₱{invoice.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
+          <span>OR Issuance Status</span><strong style={{ color: "#B45309" }}>OR Pending</strong>
+        </div>
+        <div className="mx-6 mb-5 rounded-md border border-amber-200 bg-amber-50 p-3 font-dm" style={{ fontSize: 11, color: "#92400E" }}>
+          Payment completion is already recorded. This separate action will open the receipt builder; no payment or invoice record will be created.
+        </div>
+        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+          <button onClick={onCancel} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+          <button onClick={onProceed} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Proceed to OR Builder</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OfficialReceiptBuilder({ invoice, suggestedNumber, issuingStaff, onCancel, onIssue }: {
+  invoice: Invoice;
+  suggestedNumber: string;
+  issuingStaff: string;
+  onCancel: () => void;
+  onIssue: (orNumber: string) => void;
+}) {
+  const [orNumber, setOrNumber] = useState(suggestedNumber);
+  const [submitting, setSubmitting] = useState(false);
+  const issue = () => {
+    if (!orNumber.trim()) { toast.error("OR number is required"); return; }
+    if (submitting) return;
+    setSubmitting(true);
+    onIssue(orNumber);
+    setSubmitting(false);
+  };
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onCancel}>
+      <div className="bg-white rounded-xl w-full max-w-2xl flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(event) => event.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div><h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Official Receipt Builder</h3><div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Prototype-generated receipt · not BIR-compliant</div></div>
+          <button onClick={onCancel} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
+        </div>
+        <div className="p-6 overflow-auto grid grid-cols-2 gap-4 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+          <label className="flex flex-col gap-1"><span className="font-semibold">OR Number</span><input value={orNumber} onChange={(event) => setOrNumber(event.target.value)} className="px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" /></label>
+          <div><div className="font-semibold">Issue Date</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{new Date().toLocaleDateString("en-US")}</div></div>
+          <div><div className="font-semibold">Client / Company</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{invoice.client}</div></div>
+          <div><div className="font-semibold">Related Invoice</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{invoice.inv}</div></div>
+          <div><div className="font-semibold">Original Invoice Amount</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">₱{invoice.paymentState.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div></div>
+          <div><div className="font-semibold">Amount Covered by OR</div><div className="mt-2 px-3 py-2 rounded-md bg-green-50 text-green-800">₱{invoice.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div></div>
+          <div><div className="font-semibold">Issuing Staff</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{issuingStaff}</div></div>
+          <div><div className="font-semibold">Outstanding Balance</div><div className="mt-2 px-3 py-2 rounded-md bg-green-50 text-green-800">₱{invoice.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div></div>
+          <div className="col-span-2 rounded-md border border-slate-200 p-3"><div className="font-semibold mb-2">Verified Payments</div>{invoice.paymentRecords.filter((payment) => payment.verificationStatus === "verified").map((payment) => <div key={payment.id} className="flex justify-between py-1"><span>{payment.paymentDate} · {payment.paymentType}</span><strong>₱{(payment.verifiedAmount ?? payment.submittedAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong></div>)}</div>
+        </div>
+        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2"><button onClick={onCancel} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button><button onClick={issue} disabled={submitting} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Issue Official Receipt</button></div>
       </div>
     </div>
   );

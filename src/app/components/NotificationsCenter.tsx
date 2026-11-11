@@ -5,6 +5,8 @@ import { useNotifications, deptStyle, type Department } from "../store/notificat
 import { useSession } from "../store/session";
 import { useOrders } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
+import { findReceiptForNotification, isOfficialReceiptNotification } from "./officialReceiptNotifications";
+import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
 
 export function NotificationsCenter() {
   const session = useSession();
@@ -18,6 +20,7 @@ export function NotificationsCenter() {
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all");
   /* Section G — per-notification reply drafts for urgent-upgrade requests */
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
+  const [receiptToView, setReceiptToView] = useState<NonNullable<ReturnType<typeof findReceiptForNotification>> | null>(null);
 
   const visible = items.filter((n) => {
     const q = query.toLowerCase();
@@ -27,9 +30,15 @@ export function NotificationsCenter() {
     return searchOk && deptOk && readOk;
   });
 
-  const handleClick = (id: string, link?: string) => {
-    markRead(id);
-    if (link && session.navigate) session.navigate(link);
+  const handleClick = (notification: (typeof items)[number]) => {
+    markRead(notification.id);
+    if (isOfficialReceiptNotification(notification)) {
+      const receipt = findReceiptForNotification(notification, allInqs, session.role === "client" ? session.name : undefined);
+      if (receipt) setReceiptToView(receipt);
+      else toast.error("Official Receipt could not be found. Please contact Accounting.");
+      return;
+    }
+    if (notification.link && session.navigate) session.navigate(notification.link);
   };
 
   return (
@@ -177,7 +186,7 @@ export function NotificationsCenter() {
                   className="flex items-start gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition-colors group"
                   style={{ backgroundColor: n.read ? "white" : "#FEFCE8" }}
                 >
-                  <button onClick={() => handleClick(n.id, n.link)} className="flex-1 text-left flex flex-col gap-1">
+                  <button onClick={() => handleClick(n)} className="flex-1 text-left flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 9, fontWeight: 800, backgroundColor: d.bg, color: d.color, letterSpacing: 0.5, textTransform: "uppercase" }}>{d.label}</span>
                       {!n.read && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#C8102E" }} />}
@@ -227,6 +236,7 @@ export function NotificationsCenter() {
           ℹ️ Notifications are role-filtered. Email alerts via <strong>SendGrid</strong> — toggle channels per event in Settings.
         </div>
       </div>
+      {receiptToView && <OfficialReceiptPreviewModal receipt={receiptToView} onClose={() => setReceiptToView(null)} />}
     </div>
   );
 }

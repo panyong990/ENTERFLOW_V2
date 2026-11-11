@@ -175,6 +175,18 @@ export type PaymentState =
   | "BALANCE_PAYMENT_REQUIRED"
   | "FULLY_PAID";
 
+export interface OfficialReceipt {
+  orNumber: string;
+  issueDate: string;
+  invoiceId: string;
+  invoiceNo: string;
+  clientName: string;
+  amount: number;
+  issuedBy: string;
+  status: "issued";
+  documentDataUrl: string;
+}
+
 /* Canonical payment record used by the payment workflow. Legacy receipt and
    confirmed-payment fields remain on Inquiry for existing UI compatibility. */
 export interface PaymentRecord {
@@ -292,6 +304,8 @@ export interface Inquiry {
   /* — confirmed payments (secretary-confirmed amounts that show on the client side) — */
   confirmedPayments?: { id: string; date: string; amount: number; method: string; ref: string }[];
   payments?: PaymentRecord[];
+  /* Accounting-issued Official Receipt; separate from payment completion. */
+  officialReceipt?: OfficialReceipt;
   /* — cancellation approval flow — */
   pendingCancellation?: { reason: string; requestedAt: string; requestedBy: "client" | "management" };
   /* — bill of materials + cost config (set during quotation, carried into JO) — */
@@ -799,6 +813,8 @@ interface Ctx {
   submitPayment: (inquiryId: string, payment: Omit<PaymentRecord, "id" | "inquiryId" | "paymentType" | "verificationStatus" | "verifiedAmount">) => void;
   verifyPayment: (inquiryId: string, paymentId: string, verifiedAmount?: number) => void;
   rejectPayment: (inquiryId: string, paymentId: string) => void;
+  generateOfficialReceiptNumber: () => string;
+  issueOfficialReceipt: (inquiryId: string, orNumber: string, issuedBy: string) => boolean;
   /* BOM lifecycle */
   setBillOfMaterials: (id: string, bom: BOMLine[], costConfig: CostConfig, unitPrice: number, quotedTotal: number) => void;
   setProductsCosting: (id: string, data: { boms: (BOMLine[] | null)[]; configs: (CostConfig | null)[]; unitPrices: (number | null)[]; totals: (number | null)[] }) => void;
@@ -1482,6 +1498,45 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     } : x));
   };
 
+  const generateOfficialReceiptNumber: Ctx["generateOfficialReceiptNumber"] = () => {
+    const year = new Date().getFullYear();
+    const used = allInquiries
+      .map((inquiry) => inquiry.officialReceipt?.orNumber)
+      .filter((number): number is string => Boolean(number))
+      .map((number) => Number.parseInt(number.match(new RegExp(`^OR-${year}-(\\d+)$`, "i"))?.[1] ?? "0", 10))
+      .filter((number) => Number.isFinite(number));
+    return `OR-${year}-${String(used.length ? Math.max(...used) + 1 : 1).padStart(4, "0")}`;
+  };
+
+  const issueOfficialReceipt: Ctx["issueOfficialReceipt"] = (inquiryId, orNumber, issuedBy) => {
+    const normalizedNumber = orNumber.trim();
+    if (!normalizedNumber || !issuedBy.trim()) return false;
+    const source = allInquiries.find((inquiry) => inquiry.id === inquiryId);
+    if (!source || source.officialReceipt) return false;
+    if (allInquiries.some((inquiry) => inquiry.officialReceipt?.orNumber === normalizedNumber)) return false;
+    const state = paymentState(source);
+    const payments = paymentRecords(source);
+    if (state.state !== "FULLY_PAID" || state.remainingInvoiceBalance > paymentEpsilon || payments.some((payment) => payment.verificationStatus === "pending")) return false;
+    const issueDate = new Date().toISOString();
+    const invoiceNo = source.invoiceNo ?? `SI-${source.code.replace("INQ-", "")}`;
+    const amount = state.totalVerifiedPayments;
+    const escapeHtml = (value: string) => value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#39;" }[character] ?? character));
+    const documentHtml = `<!doctype html><html><head><meta charset="utf-8"><title>Official Receipt ${escapeHtml(normalizedNumber)}</title><style>body{font-family:Arial,sans-serif;color:#0f172a;padding:36px;max-width:760px;margin:auto}h1{color:#1a2b4a}table{width:100%;border-collapse:collapse}td{padding:9px;border-bottom:1px solid #e2e8f0}.label{color:#64748b;font-size:12px;text-transform:uppercase}</style></head><body><h1>Official Receipt</h1><p>Prototype-generated receipt. Not a BIR-compliant document.</p><table><tr><td class="label">OR Number</td><td>${escapeHtml(normalizedNumber)}</td></tr><tr><td class="label">Issue Date</td><td>${escapeHtml(new Date(issueDate).toLocaleDateString("en-US"))}</td></tr><tr><td class="label">Client</td><td>${escapeHtml(source.clientName)}</td></tr><tr><td class="label">Invoice</td><td>${escapeHtml(invoiceNo)}</td></tr><tr><td class="label">Amount Covered</td><td>₱${amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td></tr><tr><td class="label">Issued By</td><td>${escapeHtml(issuedBy)}</td></tr></table></body></html>`;
+    const receipt: OfficialReceipt = {
+      orNumber: normalizedNumber,
+      issueDate,
+      invoiceId: source.id,
+      invoiceNo,
+      clientName: source.clientName,
+      amount,
+      issuedBy: issuedBy.trim(),
+      status: "issued",
+      documentDataUrl: `data:text/html;charset=utf-8,${encodeURIComponent(documentHtml)}`,
+    };
+    setAllInquiries((prev) => prev.map((inquiry) => inquiry.id === inquiryId && !inquiry.officialReceipt ? { ...inquiry, officialReceipt: receipt } : inquiry));
+    return true;
+  };
+
   const updateInquiry: Ctx["updateInquiry"] = (id, patch) => {
     const safePatch = { ...patch };
     if (Object.prototype.hasOwnProperty.call(safePatch, "productionDueDate")) {
@@ -1832,7 +1887,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       addInquiry, addInquiryWithProductSketches, sendQuotation, uploadPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
       requestCancellation, approveCancellation, declineCancellation,
-      confirmClientPayment, submitPayment, verifyPayment, rejectPayment,
+      confirmClientPayment, submitPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt,
       setBillOfMaterials, setProductsCosting, markInventoryDeducted,
       setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, generateInvoice, generateDeliveryReceipt, sendDeliveryReceiptToLogistics, markDeliveryReceiptSent, sendInvoice, finalizeProductJOs,
       addClientReceipt, addReplacementRequest, resolveReplacement, reorderToProduction, markPOCleared,

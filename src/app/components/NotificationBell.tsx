@@ -3,6 +3,10 @@ import { Bell, CheckCheck } from "lucide-react";
 import { useNotifications, deptStyle } from "../store/notifications";
 import { useSession } from "../store/session";
 import type { Role } from "./Login";
+import { useOrders } from "../store/orders";
+import { findReceiptForNotification, isOfficialReceiptNotification } from "./officialReceiptNotifications";
+import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
+import { toast } from "sonner";
 
 interface Props {
   role?: Role;
@@ -15,10 +19,12 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
   const role = roleProp ?? session.role;
   const navigate = onNavigate ?? session.navigate;
   const { unreadFor, markRead, markAllRead } = useNotifications();
+  const { inquiries, completedJOs } = useOrders();
   const notificationClient = role === "client" ? clientName ?? session.name : undefined;
   const items = unreadFor(role, notificationClient);
   const unreadCount = items.filter((n) => !n.read).length;
   const [open, setOpen] = useState(false);
+  const [receiptToView, setReceiptToView] = useState<NonNullable<ReturnType<typeof findReceiptForNotification>> | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,9 +35,17 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [open]);
 
-  const handleClick = (id: string, link?: string) => {
-    markRead(id);
-    if (link) navigate?.(link);
+  const handleClick = (notification: (typeof items)[number]) => {
+    const isReceipt = isOfficialReceiptNotification(notification);
+    markRead(notification.id);
+    if (isReceipt) {
+      const receipt = findReceiptForNotification(notification, [...inquiries, ...completedJOs], notificationClient);
+      if (receipt) setReceiptToView(receipt);
+      else toast.error("Official Receipt could not be found. Please contact Accounting.");
+      setOpen(false);
+      return;
+    }
+    if (notification.link) navigate?.(notification.link);
     setOpen(false);
   };
 
@@ -94,7 +108,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
                 return (
                   <button
                     key={n.id}
-                    onClick={() => handleClick(n.id, n.link)}
+                    onClick={() => handleClick(n)}
                     className="w-full px-5 py-3 flex flex-col gap-1 text-left hover:bg-slate-50 border-b border-slate-100 transition-colors"
                     style={{ backgroundColor: n.read ? "white" : "#FEFCE8" }}
                   >
@@ -128,6 +142,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
           </div>
         </div>
       )}
+      {receiptToView && <OfficialReceiptPreviewModal receipt={receiptToView} onClose={() => setReceiptToView(null)} />}
     </div>
   );
 }

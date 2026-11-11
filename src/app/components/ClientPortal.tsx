@@ -16,6 +16,7 @@ import {
   paymentState,
   invoiceTotal,
   poNumberForDisplay,
+  stageLabel,
   type Inquiry,
   type PaymentStateSummary,
   type ProductLine,
@@ -634,12 +635,20 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
   );
 }
 
-/* ─────────── TransactionsTab — paid invoices only, derived from store ─────────── */
+/* ─────────── TransactionsTab — client-scoped delivered and invoiced orders ─────────── */
 function TransactionsTab({ clientName }: { clientName: string }) {
   const { byClient } = useOrders();
-
-  /* Include delivered + paid orders */
-  const allOrders = byClient(clientName).filter((i) => !i.archived && ["delivered", "paid"].includes(i.stage));
+  const clientInquiries = byClient(clientName).filter((inquiry) => !inquiry.archived);
+  const allOrders = Array.from(new Map(
+    clientInquiries
+      .filter((inquiry) => (
+        ["delivered", "paid"].includes(inquiry.stage)
+        || Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt)
+        || paymentState(inquiry).state === "FULLY_PAID"
+        || inquiry.officialReceipt?.invoiceId === inquiry.id
+      ))
+      .map((inquiry) => [inquiry.invoiceNo?.trim().toUpperCase() || inquiry.id, inquiry] as const),
+  ).values());
 
   return (
     <div className="px-8 py-8 flex flex-col gap-4">
@@ -661,9 +670,16 @@ function TransactionsTab({ clientName }: { clientName: string }) {
               <tr><td colSpan={7} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
             )}
             {allOrders.map((inq) => {
-              const fullyPaid = inq.stage === "paid" || paymentState(inq).state === "FULLY_PAID";
+              const inquiryPaymentState = paymentState(inq);
+              const fullyPaid = inq.stage === "paid" || inquiryPaymentState.state === "FULLY_PAID";
+              const eligibleForReceipt = inquiryPaymentState.state === "FULLY_PAID"
+                && inquiryPaymentState.remainingInvoiceBalance <= 0.005
+                && !paymentRecords(inq).some((payment) => payment.verificationStatus === "pending");
+              const actualInvoiceNumber = inq.invoiceNo?.trim();
               const issuedReceipt = inq.officialReceipt?.status === "issued"
                 && inq.officialReceipt.invoiceId === inq.id
+                && inq.officialReceipt.clientName === inq.clientName
+                && (!actualInvoiceNumber || inq.officialReceipt.invoiceNo === actualInvoiceNumber)
                 ? inq.officialReceipt
                 : undefined;
               const poNumber = poNumberForDisplay(inq) ?? "—";
@@ -680,13 +696,13 @@ function TransactionsTab({ clientName }: { clientName: string }) {
                 <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
                 <td className="px-4 py-3">
                   <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: fullyPaid ? "#DCFCE7" : "#DBEAFE", color: fullyPaid ? "#15803D" : "#1D4ED8" }}>
-                    {fullyPaid ? "✅ Paid" : "📦 Delivered"}
+                    {fullyPaid ? "✅ Paid" : `📦 ${stageLabel[inq.stage]}`}
                   </span>
                 </td>
                 <td className="px-4 py-3 font-dm" style={{ fontSize: 11, color: issuedReceipt ? "#15803D" : fullyPaid ? "#B45309" : "#94A3B8", fontWeight: 700 }}>
                   {issuedReceipt ? (
                     <a href={issuedReceipt.documentDataUrl} download={`${issuedReceipt.orNumber}.html`} target="_blank" rel="noreferrer" className="text-blue-700 underline">View/Download OR · {issuedReceipt.orNumber}</a>
-                  ) : fullyPaid ? "OR Pending" : "Not Issued"}
+                  ) : eligibleForReceipt ? "OR Pending" : "Not Issued"}
                 </td>
               </tr>
               );

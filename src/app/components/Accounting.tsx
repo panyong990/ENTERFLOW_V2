@@ -181,8 +181,7 @@ export function Accounting() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
-  const [orConfirmation, setOrConfirmation] = useState<Invoice | null>(null);
-  const [orBuilder, setOrBuilder] = useState<Invoice | null>(null);
+  const [receiptToIssue, setReceiptToIssue] = useState<Invoice | null>(null);
   const [proofToView, setProofToView] = useState<{ filename: string; dataUrl: string } | null>(null);
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
@@ -533,22 +532,7 @@ export function Accounting() {
       toast.error("Official Receipt issuance is unavailable until all payments are verified and the balance is zero.");
       return;
     }
-    setOrConfirmation(current);
-  };
-
-  const proceedToOfficialReceiptBuilder = () => {
-    if (!orConfirmation) return;
-    const current = rows.find((row) => row.id === orConfirmation.id);
-    const currentInquiry = current ? byClient(current.client).find((inquiry) => inquiry.id === current.id) : undefined;
-    const currentState = currentInquiry ? paymentState(currentInquiry) : undefined;
-    const hasUnverifiedPayment = currentInquiry ? paymentRecords(currentInquiry).some((payment) => payment.verificationStatus === "pending") : true;
-    if (!current || current.officialReceipt || !currentState || currentState.state !== "FULLY_PAID" || currentState.remainingInvoiceBalance > 0.005 || hasUnverifiedPayment) {
-      setOrConfirmation(null);
-      toast.error("The invoice changed and is no longer eligible for Official Receipt issuance.");
-      return;
-    }
-    setOrConfirmation(null);
-    setOrBuilder(current);
+    setReceiptToIssue(current);
   };
 
   const issueReceipt = (invoice: Invoice, orNumber: string) => {
@@ -567,7 +551,7 @@ export function Accounting() {
       resourceType: "official-receipt",
       resourceId: invoice.id,
     });
-    setOrBuilder(null);
+    setReceiptToIssue(null);
     toast.success("Official Receipt issued", { description: `${orNumber.trim()} · prototype-generated document` });
   };
 
@@ -823,19 +807,19 @@ export function Accounting() {
                       <td className="px-4 py-3">
                         <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
                         {view === "history" && (
-                          <div className="mt-2 flex flex-col items-start gap-1">
-                            <span className="font-dm" style={{ fontSize: 10, fontWeight: 800, color: r.officialReceipt ? "#15803D" : "#B45309" }}>{r.officialReceipt ? "OR Issued" : "OR Pending"}</span>
+                          <div className="mt-2 flex flex-col items-start gap-2">
+                            <span className="font-dm inline-flex items-center rounded-full px-2.5 py-1" style={{ fontSize: 10, fontWeight: 800, color: r.officialReceipt ? "#15803D" : "#B45309", backgroundColor: r.officialReceipt ? "#DCFCE7" : "#FEF3C7" }}>{r.officialReceipt ? "OR Issued" : "OR Pending"}</span>
                             {r.officialReceipt ? (
                               <button
                                 onClick={(event) => { event.stopPropagation(); setProofToView({ filename: `${r.officialReceipt!.orNumber}.html`, dataUrl: r.officialReceipt!.documentDataUrl }); }}
-                                className="font-dm hover:underline"
-                                style={{ fontSize: 10, fontWeight: 800, color: "#1D4ED8" }}
+                                className="font-dm rounded-md px-2.5 py-1.5 hover:bg-blue-50"
+                                style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8" }}
                               >View Official Receipt</button>
                             ) : (
                               <button
                                 onClick={(event) => { event.stopPropagation(); beginOfficialReceipt(r); }}
-                                className="font-dm px-2 py-1 rounded-md text-white hover:opacity-90"
-                                style={{ backgroundColor: "#C8102E", fontSize: 10, fontWeight: 800 }}
+                                className="font-dm inline-flex items-center justify-center rounded-md px-3 py-2 text-white shadow-sm transition-opacity hover:opacity-90"
+                                style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700, lineHeight: 1.2, whiteSpace: "nowrap" }}
                               >Issue Official Receipt</button>
                             )}
                           </div>
@@ -1323,20 +1307,13 @@ export function Accounting() {
         </div>
       )}
 
-      {orConfirmation && (
-        <OfficialReceiptConfirmation
-          invoice={orConfirmation}
-          onCancel={() => setOrConfirmation(null)}
-          onProceed={proceedToOfficialReceiptBuilder}
-        />
-      )}
-      {orBuilder && (
-        <OfficialReceiptBuilder
-          invoice={orBuilder}
+      {receiptToIssue && (
+        <OfficialReceiptModal
+          invoice={receiptToIssue}
           suggestedNumber={generateOfficialReceiptNumber()}
           issuingStaff={issuingStaff}
-          onCancel={() => setOrBuilder(null)}
-          onIssue={(orNumber) => issueReceipt(orBuilder, orNumber)}
+          onCancel={() => setReceiptToIssue(null)}
+          onIssue={(orNumber) => issueReceipt(receiptToIssue, orNumber)}
         />
       )}
 
@@ -1408,39 +1385,7 @@ function EditReceiptModal({ receipt, onClose, onSave }: {
   );
 }
 
-function OfficialReceiptConfirmation({ invoice, onCancel, onProceed }: {
-  invoice: Invoice;
-  onCancel: () => void;
-  onProceed: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onCancel}>
-      <div className="bg-white rounded-xl w-full max-w-lg" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }} onClick={(event) => event.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Confirm Official Receipt Issuance</h3>
-          <button onClick={onCancel} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
-        </div>
-        <div className="p-6 grid grid-cols-2 gap-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
-          <span>Client / Company</span><strong>{invoice.client}</strong>
-          <span>Invoice Number</span><strong>{invoice.inv}</strong>
-          <span>Original Invoice Total</span><strong>₱{invoice.paymentState.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
-          <span>Total Verified Payments</span><strong>₱{invoice.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
-          <span>Outstanding Balance</span><strong style={{ color: invoice.paymentState.remainingInvoiceBalance === 0 ? "#15803D" : "#C8102E" }}>₱{invoice.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
-          <span>OR Issuance Status</span><strong style={{ color: "#B45309" }}>OR Pending</strong>
-        </div>
-        <div className="mx-6 mb-5 rounded-md border border-amber-200 bg-amber-50 p-3 font-dm" style={{ fontSize: 11, color: "#92400E" }}>
-          Payment completion is already recorded. This separate action will open the receipt builder; no payment or invoice record will be created.
-        </div>
-        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onCancel} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-          <button onClick={onProceed} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Proceed to OR Builder</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OfficialReceiptBuilder({ invoice, suggestedNumber, issuingStaff, onCancel, onIssue }: {
+function OfficialReceiptModal({ invoice, suggestedNumber, issuingStaff, onCancel, onIssue }: {
   invoice: Invoice;
   suggestedNumber: string;
   issuingStaff: string;
@@ -1460,7 +1405,7 @@ function OfficialReceiptBuilder({ invoice, suggestedNumber, issuingStaff, onCanc
     <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onCancel}>
       <div className="bg-white rounded-xl w-full max-w-2xl flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(event) => event.stopPropagation()}>
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div><h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Official Receipt Builder</h3><div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Prototype-generated receipt · not BIR-compliant</div></div>
+          <div><h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Issue Official Receipt</h3><div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Prototype-generated receipt · not BIR-compliant</div></div>
           <button onClick={onCancel} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
         <div className="p-6 overflow-auto grid grid-cols-2 gap-4 font-dm" style={{ fontSize: 12, color: "#475569" }}>

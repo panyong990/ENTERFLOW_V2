@@ -47,6 +47,33 @@ interface Invoice {
 type ReminderCategory = "dueSoon" | "overdue" | "remainingBalance";
 type ReminderFilter = "all" | "remainingBalance" | "dueSoon" | "overdue";
 const DUE_SOON_WINDOW_DAYS = 7;
+const REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+const REMINDER_HISTORY_STORAGE_KEY = "enterflow.paymentReminderHistory.v1";
+
+function loadReminderHistory(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(REMINDER_HISTORY_STORAGE_KEY) ?? "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "string"));
+  } catch {
+    return {};
+  }
+}
+
+function reminderNextEligibleAt(lastReminderAt: string): number {
+  return new Date(lastReminderAt).getTime() + REMINDER_COOLDOWN_MS;
+}
+
+function formatReminderDate(value: string | number): string {
+  return new Date(value).toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 function isEligibleReminder(invoice: Invoice): boolean {
   const balance = invoice.paymentState.remainingInvoiceBalance;
@@ -194,6 +221,7 @@ export function Accounting() {
   const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
   const [sendingReminderIds, setSendingReminderIds] = useState<Set<string>>(() => new Set());
   const [sendingAllReminders, setSendingAllReminders] = useState(false);
+  const [reminderHistory, setReminderHistory] = useState<Record<string, string>>(loadReminderHistory);
   const sendingReminderIdsRef = useRef(new Set<string>());
   const sendingAllRemindersRef = useRef(false);
   const [now, setNow] = useState(() => new Date());
@@ -202,6 +230,14 @@ export function Accounting() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(REMINDER_HISTORY_STORAGE_KEY, JSON.stringify(reminderHistory));
+    } catch (error) {
+      console.error("[EnterFlow] Could not persist payment reminder history.", error);
+    }
+  }, [reminderHistory]);
 
   /* DERIVED: invoices come from the orders store. Anything past delivery is invoiced. */
   const trackedInquiries = useMemo(
@@ -262,6 +298,11 @@ export function Accounting() {
   const activePaymentCycleRows = visible.filter((r) =>
     isActiveBalancePaymentCycle(r)
   );
+  const fullyPaidHistoryRows = activePaymentCycleRows.filter((r) =>
+    r.paymentState.state === "FULLY_PAID"
+    && r.paymentState.remainingInvoiceBalance === 0
+    && !r.paymentRecords.some((payment) => payment.verificationStatus === "pending")
+  );
   const downpaymentRowsForFilter = (filter: typeof downpaymentFilter) => downpaymentRows.filter((r) => {
     if (filter === "ALL") return true;
     const records = r.paymentRecords.filter((payment) => payment.paymentType === "DOWNPAYMENT");
@@ -270,7 +311,7 @@ export function Accounting() {
     if (filter === "REJECTED") return records.some((payment) => payment.verificationStatus === "rejected");
     return r.paymentState.downpaymentStatus === "COMPLETE";
   });
-  const activePaymentCycleRowsForFilter = (filter: typeof activeCycleFilter) => activePaymentCycleRows.filter((r) => {
+  const activePaymentCycleRowsForFilter = (filter: typeof activeCycleFilter, sourceRows = activePaymentCycleRows) => sourceRows.filter((r) => {
     if (filter === "ALL") return true;
     const status = granularStatus(r, r.paymentState.totalVerifiedPayments, now);
     if (filter === "PAID/COMPLETED") return status === "Paid";
@@ -292,11 +333,16 @@ export function Accounting() {
     },
     {
       key: "active-cycle",
-      label: "ACTIVE PAYMENT CYCLE",
-      description: "Orders with a received signed Delivery Receipt and an active balance-payment cycle.",
-      rows: activePaymentCycleRowsForFilter(activeCycleFilter),
+      label: view === "history" ? "FULLY PAID / CLEARED" : "ACTIVE PAYMENT CYCLE",
+      description: view === "history"
+        ? "Invoices with fully verified payments and zero outstanding balance."
+        : "Orders with a received signed Delivery Receipt and an active balance-payment cycle.",
+      rows: activePaymentCycleRowsForFilter(
+        activeCycleFilter,
+        view === "history" ? fullyPaidHistoryRows : activePaymentCycleRows,
+      ),
     },
-  ];
+  ].filter((section) => view !== "history" || section.key !== "downpayment");
 
   /* Auto-overdue notification: fire once per overdue invoice on mount */
   const [overdueNotified, setOverdueNotified] = useState<Set<string>>(new Set());
@@ -511,10 +557,17 @@ export function Accounting() {
     setRejectionReason("");
   };
 
-  const eligibleReminderRows = rows.filter(isEligibleReminder);
+  const reminderCandidates = rows.filter(isEligibleReminder);
+  const isReminderCoolingDown = (invoice: Invoice) => {
+    const lastReminderAt = reminderHistory[invoice.id];
+    if (!lastReminderAt) return false;
+    const nextEligibleAt = reminderNextEligibleAt(lastReminderAt);
+    return Number.isFinite(nextEligibleAt) && now.getTime() < nextEligibleAt;
+  };
+  const eligibleReminderRows = reminderCandidates.filter((invoice) => !isReminderCoolingDown(invoice));
   const dueSoonReminderCount = eligibleReminderRows.filter((r) => reminderCategory(r, now) === "dueSoon").length;
   const overdueReminderCount = eligibleReminderRows.filter((r) => reminderCategory(r, now) === "overdue").length;
-  const filteredReminderRows = filterReminderRows(eligibleReminderRows, reminderFilter, now);
+  const filteredReminderRows = filterReminderRows(reminderCandidates, reminderFilter, now);
 
   const createReminderNotification = (invoice: Invoice) => {
     if (!isEligibleReminder(invoice)) {
@@ -530,14 +583,17 @@ export function Accounting() {
       clientName: invoice.client,
       recipients: ["client"],
     });
+    return true;
   };
 
   const sendInvoiceReminder = (invoice: Invoice) => {
-    if (sendingAllRemindersRef.current || sendingReminderIdsRef.current.has(invoice.id)) return;
+    if (sendingAllRemindersRef.current || sendingReminderIdsRef.current.has(invoice.id) || isReminderCoolingDown(invoice)) return;
     sendingReminderIdsRef.current.add(invoice.id);
     setSendingReminderIds(new Set(sendingReminderIdsRef.current));
     try {
       createReminderNotification(invoice);
+      const sentAt = new Date().toISOString();
+      setReminderHistory((previous) => ({ ...previous, [invoice.id]: sentAt }));
     } catch (error) {
       console.error("[EnterFlow] Could not create invoice reminder notification.", error);
       toast.error("Reminder could not be sent", { description: `${invoice.inv} · Please try again.` });
@@ -553,9 +609,11 @@ export function Accounting() {
   };
 
   const sendFilteredReminders = () => {
-    if (sendingAllRemindersRef.current || filteredReminderRows.length === 0) return;
+    const eligibleInvoices = filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice));
+    if (sendingAllRemindersRef.current || eligibleInvoices.length === 0) return;
     sendingAllRemindersRef.current = true;
-    const invoicesToSend = [...filteredReminderRows];
+    const invoicesToSend = [...eligibleInvoices];
+    const skippedCount = filteredReminderRows.length - invoicesToSend.length;
     invoicesToSend.forEach((invoice) => sendingReminderIdsRef.current.add(invoice.id));
     setSendingAllReminders(true);
     setSendingReminderIds(new Set(sendingReminderIdsRef.current));
@@ -565,15 +623,17 @@ export function Accounting() {
       invoicesToSend.forEach((invoice) => {
         try {
           createReminderNotification(invoice);
+          const sentAt = new Date().toISOString();
+          setReminderHistory((previous) => ({ ...previous, [invoice.id]: sentAt }));
           sentCount += 1;
         } catch (error) {
           console.error(`[EnterFlow] Could not create invoice reminder notification for ${invoice.inv}.`, error);
           failedInvoices.push(invoice.inv);
         }
       });
-      if (sentCount > 0) {
-        toast.success(`${sentCount} reminder notification${sentCount === 1 ? "" : "s"} created`, {
-          description: "Prototype notifications were added for the invoices in the selected filter.",
+      if (sentCount > 0 || skippedCount > 0) {
+        toast.success(`${sentCount} reminder${sentCount === 1 ? "" : "s"} sent successfully.`, {
+          description: `${skippedCount} invoice${skippedCount === 1 ? "" : "s"} skipped because the reminder cooldown is still active.`,
         });
       }
       if (failedInvoices.length > 0) {
@@ -878,9 +938,6 @@ export function Accounting() {
                         <div className="flex min-w-[145px] flex-col items-start gap-1.5">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
-                            {view === "history" && (
-                              <span className="font-dm inline-flex items-center rounded-full px-2.5 py-1" style={{ fontSize: 10, fontWeight: 800, color: r.officialReceipt ? "#15803D" : "#B45309", backgroundColor: r.officialReceipt ? "#DCFCE7" : "#FEF3C7" }}>{r.officialReceipt ? "OR Issued" : "OR Pending"}</span>
-                            )}
                           </div>
                         {view === "history" && (
                           <div className="flex flex-col items-start gap-1">
@@ -1345,26 +1402,26 @@ export function Accounting() {
 
       {showOverdueModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setShowOverdueModal(false)}>
-          <div className="bg-white rounded-xl w-full max-w-lg flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "85vh" }} onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#FEF2F2" }}>
+          <div className="bg-white rounded-xl w-full max-w-[800px] h-[85vh] max-h-[85vh] flex flex-col" style={{ boxShadow: "0 24px 48px rgba(15,23,42,0.28)" }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#FEF2F2" }}>
               <div className="flex items-center gap-2">
                 <AlertTriangle size={18} style={{ color: "#C8102E" }} />
                 <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#991B1B" }}>Overdue &amp; Pending Invoices</h3>
               </div>
               <button onClick={() => setShowOverdueModal(false)} className="w-8 h-8 rounded-md hover:bg-red-100 flex items-center justify-center"><X size={16} style={{ color: "#991B1B" }} /></button>
             </div>
-            <div className="p-6 overflow-auto flex flex-col gap-3">
-              <p className="font-dm" style={{ fontSize: 13, color: "#475569" }}>
+            <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
+              <p className="font-dm flex-none" style={{ fontSize: 13, color: "#475569" }}>
                 Review eligible outstanding invoices and create a client reminder notification for each selected invoice.
               </p>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
                 <label htmlFor="reminder-filter" className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Filter reminders</label>
                 <select
                   id="reminder-filter"
                   value={reminderFilter}
                   onChange={(event) => setReminderFilter(event.target.value as ReminderFilter)}
                   disabled={sendingAllReminders}
-                  className="font-dm rounded-md border border-slate-300 bg-white px-3 py-2 outline-none focus:border-slate-500 disabled:opacity-60"
+                  className="font-dm rounded-md border border-slate-300 bg-white px-2.5 py-1.5 outline-none focus:border-slate-500 disabled:opacity-60"
                   style={{ fontSize: 12, color: "#0F172A" }}
                 >
                   <option value="all">All Reminders</option>
@@ -1373,14 +1430,15 @@ export function Accounting() {
                   <option value="overdue">Overdue</option>
                 </select>
                 <span className="font-dm w-full" style={{ fontSize: 11, color: "#64748B" }}>
-                  {filteredReminderRows.length} eligible · {dueSoonReminderCount} due soon · {overdueReminderCount} overdue
+                  {filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length} eligible · {dueSoonReminderCount} due soon · {overdueReminderCount} overdue
                 </span>
                 <span className="font-dm w-full" style={{ fontSize: 10, color: "#94A3B8" }}>
                   Due soon means due within 7 days; Remaining Balance includes later or undated invoices.
                 </span>
               </div>
+              <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
               {filteredReminderRows.length === 0 ? (
-                <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 13, color: "#16A34A", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                <div className="rounded-lg p-5 text-center font-dm" style={{ fontSize: 13, color: "#16A34A", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
                   {eligibleReminderRows.length === 0
                     ? "✅ No eligible reminders — all invoices are cleared or have no outstanding balance."
                     : "No eligible invoices match this reminder filter."}
@@ -1389,54 +1447,79 @@ export function Accounting() {
                 const category = reminderCategory(r, now);
                 const isOverdue = category === "overdue";
                 const isDueSoon = category === "dueSoon";
+                const lastReminderAt = reminderHistory[r.id];
+                const reminderOnCooldown = isReminderCoolingDown(r);
+                const nextEligibleAt = lastReminderAt ? reminderNextEligibleAt(lastReminderAt) : undefined;
                 return (
-                  <div key={r.id} className="rounded-lg p-4 border" style={{ backgroundColor: isOverdue ? "#FEF2F2" : isDueSoon ? "#FFFBEB" : "#F8FAFC", borderColor: isOverdue ? "#FECACA" : isDueSoon ? "#FDE68A" : "#CBD5E1" }}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{r.inv}</span>
-                          <span
-                            className="font-dm px-2 py-0.5 rounded-full"
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 700,
-                              backgroundColor: isOverdue ? "#FEE2E2" : isDueSoon ? "#FEF3C7" : "#E2E8F0",
-                              color: isOverdue ? "#C8102E" : isDueSoon ? "#B45309" : "#475569",
-                            }}
-                          >
-                            {isOverdue ? "OVERDUE" : isDueSoon ? "DUE SOON" : "REMAINING BALANCE"}
-                          </span>
-                        </div>
-                        <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</div>
-                        <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item}</div>
-                        <div className="flex items-center gap-4 mt-1">
-                          <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Balance: ₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</span>
-                          <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Due: {r.dueDate ?? "—"}</span>
-                          <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.payment}</span>
-                        </div>
+                  <div key={r.id} className="rounded-lg border p-3" style={{ backgroundColor: isOverdue ? "#FEF2F2" : isDueSoon ? "#FFFBEB" : "#F8FAFC", borderColor: isOverdue ? "#FECACA" : isDueSoon ? "#FDE68A" : "#CBD5E1" }}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="font-mono-jb whitespace-nowrap" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{r.inv}</span>
+                        <span
+                          className="font-dm whitespace-nowrap rounded-full px-2 py-0.5"
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            backgroundColor: isOverdue ? "#FEE2E2" : isDueSoon ? "#FEF3C7" : "#E2E8F0",
+                            color: isOverdue ? "#C8102E" : isDueSoon ? "#B45309" : "#475569",
+                          }}
+                        >
+                          {isOverdue ? "OVERDUE" : isDueSoon ? "DUE SOON" : "REMAINING BALANCE"}
+                        </span>
                       </div>
-                      <button
-                        onClick={() => sendInvoiceReminder(r)}
-                        disabled={sendingAllReminders || sendingReminderIds.has(r.id)}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-md text-white font-dm hover:opacity-90 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
-                        style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}
-                      >
-                        <Send size={12} /> {sendingReminderIds.has(r.id) ? "Sending..." : "Send Reminder"}
-                      </button>
+                      {reminderOnCooldown ? (
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 font-dm text-[10px] font-bold text-green-800">Reminder Sent</span>
+                          {lastReminderAt && (
+                            <div className="text-right font-dm" style={{ fontSize: 10, color: "#64748B", lineHeight: 1.35 }}>
+                              <div>Last reminder: {formatReminderDate(lastReminderAt)}</div>
+                              {nextEligibleAt !== undefined && <div>Next eligible: {formatReminderDate(nextEligibleAt)}</div>}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => sendInvoiceReminder(r)}
+                          disabled={sendingAllReminders || sendingReminderIds.has(r.id)}
+                          className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}
+                        >
+                          <Send size={12} /> {sendingReminderIds.has(r.id) ? "Sending..." : "Send Reminder"}
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-2">
+                      <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</div>
+                      <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>{r.item}</div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 border-t border-slate-200/80 pt-2 sm:grid-cols-3 sm:gap-3">
+                      <div>
+                        <div className="font-dm uppercase" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.35 }}>Balance</div>
+                        <div className="font-syne mt-0.5" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</div>
+                      </div>
+                      <div>
+                        <div className="font-dm uppercase" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.35 }}>Due Date</div>
+                        <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#475569" }}>{r.dueDate ?? "—"}</div>
+                      </div>
+                      <div>
+                        <div className="font-dm uppercase" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.35 }}>Payment Terms</div>
+                        <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#475569" }}>{r.payment}</div>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-between items-center">
-              <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{filteredReminderRows.length} eligible reminder{filteredReminderRows.length === 1 ? "" : "s"}</span>
-              <div className="flex gap-2">
-                <button onClick={() => setShowOverdueModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Close</button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
+              <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length} eligible reminder{filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length === 1 ? "" : "s"}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => setShowOverdueModal(false)} className="font-dm rounded-md px-3 py-1.5 hover:bg-slate-100" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Close</button>
                 <button
                   onClick={sendFilteredReminders}
-                  disabled={filteredReminderRows.length === 0 || sendingAllReminders}
-                  className="flex items-center gap-2 px-4 py-2 rounded-md text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}
+                  disabled={filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length === 0 || sendingAllReminders}
+                  className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700 }}
                 >
                   <Send size={14} /> {sendingAllReminders ? "Sending..." : "Send All Payment Reminders"}
                 </button>

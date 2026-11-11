@@ -10,6 +10,7 @@ import {
   PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Toaster, toast } from "sonner";
+import { NotificationBell } from "./NotificationBell";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { useMaterials, partCategoryMeta, type RawMaterial } from "../store/materials";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -578,79 +579,82 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
             </div>
           </div>
 
-          <Popover open={periodOpen} onOpenChange={updatePeriodPopover}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label={`Reporting Period: ${periodDisplay(reportMonth)}. Change reporting period`}
-                aria-haspopup="dialog"
-                aria-expanded={periodOpen}
-                className="flex min-w-[210px] flex-col rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition-colors hover:border-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-w-[230px]"
-              >
-                <span className="font-dm" style={{ fontSize: 10, fontWeight: 600, color: palette.muted }}>Reporting Period</span>
-                <span className="mt-0.5 flex w-full items-center justify-between gap-4 font-dm" style={{ fontSize: 13, fontWeight: 700, color: palette.text }}>
-                  {periodDisplay(reportMonth)}
-                  <ChevronDown size={15} aria-hidden="true" />
-                </span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent aria-labelledby="reporting-period-title" align="end" sideOffset={6} className="w-[min(22rem,calc(100vw-2rem))] p-4">
-              <div className="mb-3">
-                <h2 id="reporting-period-title" className="font-dm" style={{ fontSize: 14, fontWeight: 700, color: palette.text }}>Reporting Period</h2>
-                <p className="mt-1 font-dm" style={{ fontSize: 11, color: palette.muted }}>Choose the month and year to review.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="min-w-0">
-                  <span className="mb-1 block font-dm" style={{ fontSize: 11, fontWeight: 600, color: palette.muted }}>Month</span>
-                  <Select value={String(draftMonth)} onValueChange={(value) => setDraftMonth(Number(value))}>
-                    <SelectTrigger aria-label="Reporting month" className="h-9 bg-white font-dm text-xs focus-visible:ring-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {monthOptions.map((month, index) => (
-                        <SelectItem key={month} value={String(index + 1)}>{month}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-                <label className="min-w-0">
-                  <span className="mb-1 block font-dm" style={{ fontSize: 11, fontWeight: 600, color: palette.muted }}>Year</span>
-                  <Select
-                    value={availableYears.includes(draftYear) ? String(draftYear) : ""}
-                    onValueChange={(value) => setDraftYear(Number(value))}
-                    disabled={!availableYears.length}
+          <div className="flex items-center gap-3">
+            <Popover open={periodOpen} onOpenChange={updatePeriodPopover}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Reporting Period: ${periodDisplay(reportMonth)}. Change reporting period`}
+                  aria-haspopup="dialog"
+                  aria-expanded={periodOpen}
+                  className="flex min-w-[210px] flex-col rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition-colors hover:border-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-w-[230px]"
+                >
+                  <span className="font-dm" style={{ fontSize: 10, fontWeight: 600, color: palette.muted }}>Reporting Period</span>
+                  <span className="mt-0.5 flex w-full items-center justify-between gap-4 font-dm" style={{ fontSize: 13, fontWeight: 700, color: palette.text }}>
+                    {periodDisplay(reportMonth)}
+                    <ChevronDown size={15} aria-hidden="true" />
+                  </span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent aria-labelledby="reporting-period-title" align="end" sideOffset={6} className="w-[min(22rem,calc(100vw-2rem))] p-4">
+                <div className="mb-3">
+                  <h2 id="reporting-period-title" className="font-dm" style={{ fontSize: 14, fontWeight: 700, color: palette.text }}>Reporting Period</h2>
+                  <p className="mt-1 font-dm" style={{ fontSize: 11, color: palette.muted }}>Choose the month and year to review.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="min-w-0">
+                    <span className="mb-1 block font-dm" style={{ fontSize: 11, fontWeight: 600, color: palette.muted }}>Month</span>
+                    <Select value={String(draftMonth)} onValueChange={(value) => setDraftMonth(Number(value))}>
+                      <SelectTrigger aria-label="Reporting month" className="h-9 bg-white font-dm text-xs focus-visible:ring-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {monthOptions.map((month, index) => (
+                          <SelectItem key={month} value={String(index + 1)}>{month}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label className="min-w-0">
+                    <span className="mb-1 block font-dm" style={{ fontSize: 11, fontWeight: 600, color: palette.muted }}>Year</span>
+                    <Select
+                      value={availableYears.includes(draftYear) ? String(draftYear) : ""}
+                      onValueChange={(value) => setDraftYear(Number(value))}
+                      disabled={!availableYears.length}
+                    >
+                      <SelectTrigger aria-label="Reporting year" className="h-9 bg-white font-dm text-xs focus-visible:ring-2">
+                        <SelectValue placeholder="No dated records" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableYears.map((year) => (
+                          <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPeriodOpen(false)}
+                    className="rounded-md border border-slate-200 px-3 py-1.5 font-dm text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
-                    <SelectTrigger aria-label="Reporting year" className="h-9 bg-white font-dm text-xs focus-visible:ring-2">
-                      <SelectValue placeholder="No dated records" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableYears.map((year) => (
-                        <SelectItem key={year} value={String(year)}>{year}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPeriodOpen(false)}
-                  className="rounded-md border border-slate-200 px-3 py-1.5 font-dm text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={applyPeriodSelection}
-                  disabled={!availableYears.length}
-                  className="rounded-md px-3 py-1.5 font-dm text-xs font-semibold text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{ backgroundColor: palette.navy }}
-                >
-                  Apply
-                </button>
-              </div>
-            </PopoverContent>
-          </Popover>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyPeriodSelection}
+                    disabled={!availableYears.length}
+                    className="rounded-md px-3 py-1.5 font-dm text-xs font-semibold text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{ backgroundColor: palette.navy }}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <NotificationBell role="owner" />
+          </div>
         </div>
       </header>
 

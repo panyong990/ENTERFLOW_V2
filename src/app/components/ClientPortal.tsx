@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  ClipboardList, MapPin, Truck, CreditCard, Upload, CheckCircle2, Circle,
+  ClipboardList, MapPin, Truck, CreditCard, Bell, Upload, CheckCircle2, Circle,
   Building2, User as UserIcon, Info, Camera, Send, Plus, Trash2, ChevronDown,
   ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw, Printer,
 } from "lucide-react";
@@ -31,6 +31,7 @@ import { useSettings } from "../store/settings";
 import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
 import { loadProductSketchAttachment, readFileAsDataUrl } from "../store/attachments";
 import { NotificationBell } from "./NotificationBell";
+import { NotificationsCenter } from "./NotificationsCenter";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
@@ -47,13 +48,14 @@ import {
 } from "./ui/alert-dialog";
 import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../store/filterTemplates";
 
-type Tab = "orders" | "status" | "logistics" | "accounting" | "settings";
+type Tab = "orders" | "status" | "logistics" | "accounting" | "notifications" | "settings";
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "orders", label: "Orders", icon: ClipboardList },
   { id: "status", label: "Status", icon: MapPin },
   { id: "logistics", label: "Logistics", icon: Truck },
   { id: "accounting", label: "Accounting", icon: CreditCard },
+  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -3582,6 +3584,13 @@ export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLo
       {tab === "status" && <StatusTab clientName={clientName} />}
       {tab === "logistics" && <LogisticsTab clientName={clientName} />}
       {tab === "accounting" && <ClientAccountingTab clientName={clientName} focusInvoiceId={paymentInvoiceId} />}
+      {tab === "notifications" && (
+        <NotificationsCenter
+          role="client"
+          clientName={clientName}
+          onNavigate={(id) => tabs.some((item) => item.id === id) && setTab(id as Tab)}
+        />
+      )}
       {tab === "settings" && <SettingsTab clientName={clientName} />}
     </Shell>
   );

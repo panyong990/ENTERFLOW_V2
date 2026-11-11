@@ -485,6 +485,7 @@ export function Accounting() {
       title: `Payment confirmed for ${invoice.client}`,
       body: `₱${amt.toLocaleString("en-PH")} · ${invoice.inv} · synced to client portal`,
       link: "accounting",
+      clientName: invoice.client,
       recipients: ["client"],
     });
     toast.success("Payment recorded", { description: `₱${formatMoney(amt)} via ${f.method} · synced to client portal` });

@@ -908,6 +908,7 @@ function StageMonitoringPage({
               const isCurrent = i === job.stageIndex && !allStagesCompleted;
               const isPending = i > job.stageIndex;
               const history = job.stageHistory[i];
+              const showCompleteJoButton = i === STAGES.length - 1 && allStagesCompleted && !joCompleted && !readOnly;
 
               let statusLabel = isPending ? "Pending" : isCurrent ? "Current" : isDone ? "Done" : "Pending";
               let statusBg = isPending ? "#F1F5F9" : isCurrent ? "#DBEAFE" : isDone ? "#DCFCE7" : "#F1F5F9";
@@ -921,7 +922,7 @@ function StageMonitoringPage({
                 statusIcon = "⚠️";
               }
 
-              return (
+              const stageCard = (
                 <div
                   key={stageName}
                   className="rounded-xl border overflow-hidden"
@@ -993,30 +994,23 @@ function StageMonitoringPage({
                   </div>
                 </div>
               );
+
+              return showCompleteJoButton ? (
+                <div key={stageName} className="relative">
+                  {stageCard}
+                  <div className="mt-3 flex justify-end lg:absolute lg:left-full lg:top-1/2 lg:ml-3 lg:mt-0 lg:w-max lg:-translate-y-1/2">
+                    <button
+                      onClick={onRequestComplete}
+                      className="flex shrink-0 items-center justify-center gap-2 rounded-md px-4 py-2.5 font-dm text-white hover:opacity-90"
+                      style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700 }}
+                    >
+                      <CheckCircle2 size={14} /> Complete JO
+                    </button>
+                  </div>
+                </div>
+              ) : stageCard;
             })}
           </div>
-
-          {allStagesCompleted && (
-            <div className="mt-5 rounded-xl border p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ backgroundColor: joCompleted ? "#F0FDF4" : "#EFF6FF", borderColor: joCompleted ? "#BBF7D0" : "#BFDBFE" }}>
-              <div>
-                <div className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: joCompleted ? "#15803D" : "#1A2B4A" }}>
-                  {joCompleted ? "JO Completed" : "All 9 production stages completed"}
-                </div>
-                <div className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>
-                  {joCompleted ? "This Job Order is available in Warehouse." : "Complete the JO to hand it off to Warehouse."}
-                </div>
-              </div>
-              {!joCompleted && !readOnly && (
-                <button
-                  onClick={onRequestComplete}
-                  className="flex shrink-0 items-center justify-center gap-2 rounded-md px-4 py-2.5 font-dm text-white hover:opacity-90"
-                  style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700 }}
-                >
-                  <CheckCircle2 size={14} /> Complete JO
-                </button>
-              )}
-            </div>
-          )}
 
           {/* Activity Log */}
           {job.activityLog.length > 0 && (

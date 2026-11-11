@@ -1,9 +1,11 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Building2, Eye, Pencil, Search, SlidersHorizontal, X } from "lucide-react";
+import { Building2, Eye, KeyRound, Pencil, Search, SlidersHorizontal, X, type LucideIcon } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import {
   getAccounts,
+  hashPassword,
   saveAccounts,
   type Account,
 } from "../store/accounts";
@@ -20,6 +22,24 @@ function isClientAccount(account: Account): account is ClientAccount {
 
 function statusClass(active: boolean) {
   return active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500";
+}
+
+function IconActionButton({ icon: Icon, label, onClick, className }: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  className: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" onClick={onClick} aria-label={label} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 ${className}`}>
+          <Icon size={15} aria-hidden />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function ClientManagement() {
@@ -39,6 +59,9 @@ function ClientManagementPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ClientAccount | null>(null);
   const [editing, setEditing] = useState<ClientAccount | null>(null);
+  const [resetting, setResetting] = useState<ClientAccount | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ name: "", contactPerson: "", email: "", username: "", phone: "" });
 
   const clients = useMemo(() => accounts.filter(isClientAccount), [accounts]);
@@ -113,6 +136,41 @@ function ClientManagementPage() {
       toast.success("Client details updated.");
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Unable to save client details.");
+    }
+  };
+  const toggleClient = (client: ClientAccount) => {
+    const action = client.active ? "deactivate" : "activate";
+    if (!window.confirm(`Are you sure you want to ${action} access for ${client.name}?`)) return;
+    try {
+      updateAccounts(accounts.map((account) => account.id === client.id ? { ...account, active: !client.active } : account));
+      if (selected?.id === client.id) setSelected({ ...client, active: !client.active });
+      toast.success(`${client.name} ${client.active ? "deactivated" : "activated"}.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `Unable to ${action} client access.`);
+    }
+  };
+  const resetClientPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!resetting) return;
+    if (newPassword.length < 8) {
+      toast.error("Set a password with at least 8 characters.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const passwordHash = await hashPassword(newPassword);
+      updateAccounts(accounts.map((account) => {
+        if (account.id !== resetting.id) return account;
+        const { password: _legacyPassword, ...accountWithoutPlaintextPassword } = account;
+        return { ...accountWithoutPlaintextPassword, passwordHash };
+      }));
+      setResetting(null);
+      setNewPassword("");
+      toast.success("Password updated. No plaintext password was stored or displayed.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to reset the client password.");
+    } finally {
+      setSaving(false);
     }
   };
   const openDetails = (client: ClientAccount) => {
@@ -207,9 +265,10 @@ function ClientManagementPage() {
                       <td className="whitespace-nowrap px-4 py-3 font-dm text-xs text-slate-600">{client.phone || "—"}</td>
                       <td className="whitespace-nowrap px-4 py-3"><span className={`rounded-full px-2.5 py-1 font-dm text-[11px] font-semibold ${statusClass(client.active)}`}>{client.active ? "Active" : "Deactivated"}</span></td>
                       <td className="whitespace-nowrap px-4 py-3 font-dm text-xs text-slate-500">{client.joined}</td>
-                      <td className="whitespace-nowrap px-4 py-3"><div className="flex items-center gap-2">
-                        <button type="button" onClick={() => openDetails(client)} aria-label={`View ${client.name}`} title="View details" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#1A2B4A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"><Eye size={15} /></button>
-                        <button type="button" onClick={() => beginEdit(client)} aria-label={`Edit ${client.name}`} title="Edit client details" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#1A2B4A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"><Pencil size={15} /></button>
+                      <td className="whitespace-nowrap px-4 py-3"><div className="flex items-center gap-1">
+                        <IconActionButton icon={Eye} label={`View ${client.name}`} onClick={() => openDetails(client)} className="bg-white text-slate-500 hover:bg-slate-50 hover:text-[#1A2B4A]" />
+                        <IconActionButton icon={Pencil} label={`Edit ${client.name}`} onClick={() => beginEdit(client)} className="bg-white text-slate-500 hover:bg-blue-50 hover:text-blue-700" />
+                        <IconActionButton icon={KeyRound} label={`Reset password for ${client.name}`} onClick={() => { setResetting(client); setNewPassword(""); }} className="bg-white text-slate-500 hover:bg-amber-50 hover:text-amber-700" />
                       </div></td>
                     </tr>
                   ))}
@@ -234,8 +293,16 @@ function ClientManagementPage() {
           <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             {[["Client ID", selected.id], ["Contact person", selected.contactPerson || "—"], ["Email address", selected.email], ["Username", selected.username], ["Contact number", selected.phone || "—"], ["Account status", selected.active ? "Active" : "Deactivated"], ["Registration date", selected.joined]].map(([label, value]) => <div key={label}><dt className="font-dm text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-1 font-dm text-sm text-slate-800">{value}</dd></div>)}
           </dl>
-          <div className="mt-6 flex justify-end"><button type="button" onClick={() => beginEdit(selected)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">Edit details</button></div>
+          <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => beginEdit(selected)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">Edit details</button><button type="button" onClick={() => toggleClient(selected)} className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 font-dm text-sm font-semibold text-red-700 transition-colors hover:bg-red-100">{selected.active ? "Deactivate Account" : "Activate Account"}</button></div>
         </section>
+      </div>}
+
+      {resetting && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setResetting(null); }}>
+        <form onSubmit={resetClientPassword} role="dialog" aria-modal="true" aria-label={`Reset password for ${resetting.name}`} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <h2 className="font-syne text-xl font-bold text-slate-900">Set a new password</h2><p className="mt-1 font-dm text-sm text-slate-500">For {resetting.name}. The password will be stored as a salted hash.</p>
+          <label className="mt-5 block font-dm text-xs font-semibold text-slate-600">New password<input required minLength={8} type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-red-300" /></label>
+          <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setResetting(null)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-600">Cancel</button><button type="submit" disabled={saving} className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Update password"}</button></div>
+        </form>
       </div>}
 
       {editing && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null); }}>

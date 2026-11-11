@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { toast } from "sonner";
 import type { Role } from "../components/Login";
 
-export type Department = "sales" | "production" | "logistics" | "payments" | "system";
+export type Department = "sales" | "production" | "warehouse" | "logistics" | "payments" | "system";
 
 export interface Notification {
   id: string;
@@ -15,12 +15,16 @@ export interface Notification {
   clientName?: string;
   resourceType?: "official-receipt";
   resourceId?: string;
+  clientLink?: string;
+  readBy?: string[];
+  hiddenFor?: string[];
   read: boolean;
 }
 
 export const deptStyle: Record<Department, { color: string; bg: string; label: string }> = {
   sales:      { color: "#C8102E", bg: "#FEE2E2", label: "Sales" },
   production: { color: "#1A2B4A", bg: "#DBEAFE", label: "Production" },
+  warehouse:  { color: "#475569", bg: "#E2E8F0", label: "Warehouse" },
   logistics:  { color: "#C9A84C", bg: "#FEF3C7", label: "Logistics" },
   payments:   { color: "#16A34A", bg: "#DCFCE7", label: "Payments" },
   system:     { color: "#475569", bg: "#E2E8F0", label: "System" },
@@ -63,10 +67,11 @@ interface Ctx {
   notifications: Notification[];
   unreadFor: (role: Role, clientName?: string) => Notification[];
   push: (n: Omit<Notification, "id" | "time" | "read">) => void;
-  markRead: (id: string) => void;
+  isReadFor: (notification: Notification, role: Role, clientName?: string) => boolean;
+  markRead: (id: string, role: Role, clientName?: string) => void;
   markAllRead: (role: Role, clientName?: string) => void;
-  remove: (id: string) => void;
-  removeAllRead: (role: Role) => void;
+  remove: (id: string, role: Role, clientName?: string) => void;
+  removeAllRead: (role: Role, clientName?: string) => void;
 }
 
 const NotifContext = createContext<Ctx | null>(null);
@@ -94,6 +99,38 @@ function loadPersistedNotifications(): Notification[] {
   }
 }
 
+function recipientKey(role: Role, clientName?: string): string | undefined {
+  if (role !== "client") return `role:${role}`;
+  const normalizedClient = clientName?.trim().toLocaleLowerCase();
+  return normalizedClient ? `client:${normalizedClient}` : undefined;
+}
+
+function isRecipient(notification: Notification, role: Role, clientName?: string): boolean {
+  if (!notification.recipients.includes(role)) return false;
+  if (role !== "client") return true;
+  const normalizedClient = clientName?.trim().toLocaleLowerCase();
+  const notificationClient = typeof notification.clientName === "string"
+    ? notification.clientName.trim().toLocaleLowerCase()
+    : "";
+  return Boolean(normalizedClient && notificationClient === normalizedClient);
+}
+
+export function notificationDestination(notification: Notification, role: Role): string | undefined {
+  return role === "client" ? notification.clientLink ?? notification.link : notification.link;
+}
+
+export function notificationStyle(dept: string) {
+  return deptStyle[dept as Department] ?? deptStyle.system;
+}
+
+function hasScopeValue(values: string[] | undefined, key: string): boolean {
+  return Array.isArray(values) && values.includes(key);
+}
+
+function addScopeValue(values: string[] | undefined, key: string): string[] {
+  return [...new Set([...(Array.isArray(values) ? values : []), key])];
+}
+
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [list, setList] = useState<Notification[]>(loadPersistedNotifications);
   const nextNotificationId = useRef(0);
@@ -107,10 +144,24 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }
   }, [list]);
 
-  const unreadFor: Ctx["unreadFor"] = (role, clientName) =>
-    list.filter((n) => n.recipients.includes(role) && (role !== "client" || !n.clientName || n.clientName === clientName));
+  const unreadFor: Ctx["unreadFor"] = (role, clientName) => {
+    const key = recipientKey(role, clientName);
+    if (!key) return [];
+    return list.filter((notification) => (
+      isRecipient(notification, role, clientName)
+      && !hasScopeValue(notification.hiddenFor, key)
+    ));
+  };
+
+  const isReadFor: Ctx["isReadFor"] = (notification, role, clientName) => {
+    const key = recipientKey(role, clientName);
+    return notification.read || Boolean(key && hasScopeValue(notification.readBy, key));
+  };
 
   const push: Ctx["push"] = (n) => {
+    if (n.recipients.includes("client") && !n.clientName?.trim()) {
+      throw new Error("Client notifications must include the intended client name.");
+    }
     const id = `n-${Date.now()}-${nextNotificationId.current++}`;
     setList((prev) => [
       { ...n, id, time: "just now", read: false },
@@ -136,6 +187,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const map: Record<Department, string[]> = {
       sales: ["Email"],
       production: ["Email"],
+      warehouse: ["Email"],
       logistics: ["Email"],
       payments: ["Email"],
       system: ["Email"],
@@ -143,28 +195,50 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return map[dept];
   }
 
-  const markRead: Ctx["markRead"] = (id) => {
-    setList((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-  };
-
-  const markAllRead: Ctx["markAllRead"] = (role, clientName) => {
-    setList((prev) => prev.map((n) => (
-      n.recipients.includes(role) && (role !== "client" || !n.clientName || n.clientName === clientName)
-        ? { ...n, read: true }
-        : n
+  const markRead: Ctx["markRead"] = (id, role, clientName) => {
+    const key = recipientKey(role, clientName);
+    if (!key) return;
+    setList((prev) => prev.map((notification) => (
+      notification.id === id
+      && isRecipient(notification, role, clientName)
+      && !isReadFor(notification, role, clientName)
+        ? { ...notification, readBy: addScopeValue(notification.readBy, key) }
+        : notification
     )));
   };
 
-  const remove: Ctx["remove"] = (id) => {
-    setList((prev) => prev.filter((n) => n.id !== id));
+  const markAllRead: Ctx["markAllRead"] = (role, clientName) => {
+    const key = recipientKey(role, clientName);
+    if (!key) return;
+    setList((prev) => prev.map((notification) => (
+      isRecipient(notification, role, clientName) && !isReadFor(notification, role, clientName)
+        ? { ...notification, readBy: addScopeValue(notification.readBy, key) }
+        : notification
+    )));
   };
 
-  const removeAllRead: Ctx["removeAllRead"] = (role) => {
-    setList((prev) => prev.filter((n) => !(n.recipients.includes(role) && n.read)));
+  const remove: Ctx["remove"] = (id, role, clientName) => {
+    const key = recipientKey(role, clientName);
+    if (!key) return;
+    setList((prev) => prev.map((notification) => (
+      notification.id === id && isRecipient(notification, role, clientName)
+        ? { ...notification, hiddenFor: addScopeValue(notification.hiddenFor, key) }
+        : notification
+    )));
+  };
+
+  const removeAllRead: Ctx["removeAllRead"] = (role, clientName) => {
+    const key = recipientKey(role, clientName);
+    if (!key) return;
+    setList((prev) => prev.map((notification) => (
+      isRecipient(notification, role, clientName) && isReadFor(notification, role, clientName)
+        ? { ...notification, hiddenFor: addScopeValue(notification.hiddenFor, key) }
+        : notification
+    )));
   };
 
   return (
-    <NotifContext.Provider value={{ notifications: list, unreadFor, push, markRead, markAllRead, remove, removeAllRead }}>
+    <NotifContext.Provider value={{ notifications: list, unreadFor, push, isReadFor, markRead, markAllRead, remove, removeAllRead }}>
       {children}
     </NotifContext.Provider>
   );

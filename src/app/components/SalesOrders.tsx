@@ -1043,6 +1043,8 @@ export function SalesOrders() {
                           title: `Inquiry rejected: ${c.code}`,
                           body: `${c.clientName} · Reason: ${reason}`,
                           link: "sales",
+                          clientLink: "orders",
+                          clientName: c.clientName,
                           recipients: ["owner", "operations", "sales", "client"],
                         });
                         toast.info("Inquiry rejected", { description: `${c.code} archived · client notified with reason` });
@@ -1053,7 +1055,8 @@ export function SalesOrders() {
                           dept: "sales",
                           title: `Cancellation accepted: ${c.code}`,
                           body: `${c.clientName} · order archived as cancelled`,
-                          link: "sales",
+                          link: "orders",
+                          clientName: c.clientName,
                           recipients: ["client"],
                         });
                         toast.success("Cancellation accepted", { description: `${c.code} archived · client notified` });
@@ -1064,7 +1067,8 @@ export function SalesOrders() {
                           dept: "sales",
                           title: `Cancellation declined: ${c.code}`,
                           body: `${c.clientName} · please reach out via email to discuss`,
-                          link: "sales",
+                          link: "orders",
+                          clientName: c.clientName,
                           recipients: ["client"],
                         });
                         toast.info("Cancellation declined", { description: `Contact ${c.clientName} via email to discuss` });
@@ -1114,6 +1118,7 @@ export function SalesOrders() {
                 title: `📝 Revised quotation sent to ${reviewing.clientName}`,
                 body: `${reviewing.code} · v${newHistory.length + 1}${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}`,
                 link: "orders",
+                clientName: reviewing.clientName,
                 recipients: ["client"],
               });
             }
@@ -1122,6 +1127,8 @@ export function SalesOrders() {
               title: `Quotation sent: ${quotationDoc?.quotationNo ?? reviewing.code}`,
               body: `${reviewing.clientName} · awaiting PO · ${q.leadTimeDays} day lead time${bomData ? ` · ₱${bomData.unitPrice.toFixed(2)}/unit` : ""}`,
               link: "sales",
+              clientLink: "orders",
+              clientName: reviewing.clientName,
               recipients: ["owner", "operations", "sales", "client"],
             });
             setReviewId(null);

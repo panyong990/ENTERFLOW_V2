@@ -48,7 +48,7 @@ function Shell() {
   const [session, setSession] = useState<Session | null>(null);
   const [active, setActive] = useState("dashboard");
   const { inquiries } = useOrders();
-  const { unreadFor } = useNotifications();
+  const { unreadFor, isReadFor } = useNotifications();
 
   const login = (role: Role, name: string) => {
     setSession({ role, name });
@@ -74,7 +74,7 @@ function Shell() {
 
   const poCount = inquiries.filter((i) => i.stage === "po").length;
   const inquiryCount = inquiries.filter((i) => i.stage === "inquiry").length;
-  const unreadCount = unreadFor(role).filter(n => !n.read).length;
+  const unreadCount = unreadFor(role).filter((notification) => !isReadFor(notification, role)).length;
   const badges: Record<string, number> = { sales: poCount + inquiryCount };
 
   const screen = !isAllowed ? <Unauthorized /> :

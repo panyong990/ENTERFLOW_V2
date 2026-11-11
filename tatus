@@ -1,0 +1,235 @@
+[1mdiff --cc src/app/store/orders.tsx[m
+[1mindex 5a02bba1,c393e788..00000000[m
+[1m--- a/src/app/store/orders.tsx[m
+[1m+++ b/src/app/store/orders.tsx[m
+[36m@@@ -462,20 -448,30 +462,47 @@@[m [mexport const quotationTotal = (inq: Inq[m
+      return sum + (p ? lineSubtotal(l, p.qty) : 0);[m
+    }, 0);[m
+  [m
+[32m++<<<<<<< Updated upstream[m
+[32m +export const toMoneyCents = (amount: number): number => Math.round(amount * 100);[m
+[32m +export const fromMoneyCents = (cents: number): number => cents / 100;[m
+[32m +export const formatMoney = (amount: number): string =>[m
+[32m +  fromMoneyCents(toMoneyCents(amount)).toLocaleString("en-PH", {[m
+[32m +    minimumFractionDigits: 2,[m
+[32m +    maximumFractionDigits: 2,[m
+[32m +  });[m
+[32m +[m
+[32m +export const invoiceTotal = (inq: Inquiry): number =>[m
+[32m +  fromMoneyCents(toMoneyCents(inq.invoiceAmount ?? inq.quotedTotal ?? quotationTotal(inq)));[m
+[32m +[m
+[32m +export const requiredDownpaymentAmount = (inq: Inquiry): number => {[m
+[32m +  const percent = inq.quotationDoc?.downpaymentPercent ?? inq.downpaymentPercent ?? 0;[m
+[32m +  return fromMoneyCents(Math.round(toMoneyCents(invoiceTotal(inq)) * percent / 100));[m
+[32m++=======[m
+[32m+ export const moneyToCents = (amount: number): number =>[m
+[32m+   Number.isFinite(amount) ? Math.round((amount + Number.EPSILON) * 100) : Number.NaN;[m
+[32m+ [m
+[32m+ export const centsToMoney = (cents: number): number => cents / 100;[m
+[32m+ [m
+[32m+ export const parsePaymentAmountCents = (value: string): number | null => {[m
+[32m+   const amount = value.trim();[m
+[32m+   if (!/^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/.test(amount)) return null;[m
+[32m+   const [whole = "0", fraction = ""] = amount.split(".");[m
+[32m+   const cents = Number(whole || "0") * 100 + Number((fraction + "00").slice(0, 2));[m
+[32m+   return Number.isSafeInteger(cents) ? cents : null;[m
+[32m+ };[m
+[32m+ [m
+[32m+ const isValidCentAmount = (amount: number): boolean => {[m
+[32m+   const cents = moneyToCents(amount);[m
+[32m+   return Number.isSafeInteger(cents) && Math.abs(amount * 100 - cents) < 0.000001;[m
+[32m+ };[m
+[32m+ [m
+[32m+ export const invoiceTotal = (inq: Inquiry): number =>[m
+[32m+   centsToMoney(moneyToCents(inq.invoiceAmount ?? inq.quotedTotal ?? quotationTotal(inq)));[m
+[32m+ [m
+[32m+ export const requiredDownpaymentAmount = (inq: Inquiry): number => {[m
+[32m+   const percent = inq.quotationDoc?.downpaymentPercent ?? inq.downpaymentPercent ?? 0;[m
+[32m+   return centsToMoney(Math.round(moneyToCents(invoiceTotal(inq)) * (percent / 100)));[m
+[32m++>>>>>>> Stashed changes[m
+  };[m
+  [m
+  const legacyPaymentRecords = (inq: Inquiry): PaymentRecord[] => {[m
+[36m@@@ -524,24 -519,26 +551,47 @@@[m [mexport const verifiedPayments = (inq: I[m
+    paymentRecords(inq).filter((payment) => payment.verificationStatus === "verified");[m
+  [m
+  export const paymentState = (inq: Inquiry): PaymentStateSummary => {[m
+[32m++<<<<<<< Updated upstream[m
+[32m +  const total = invoiceTotal(inq);[m
+[32m +  const requiredDp = requiredDownpaymentAmount(inq);[m
+[32m +  const totalCents = toMoneyCents(total);[m
+[32m +  const requiredDpCents = toMoneyCents(requiredDp);[m
+[32m +  const verified = verifiedPayments(inq);[m
+[32m +  const verifiedDpCents = verified[m
+[32m +    .filter((payment) => payment.paymentType === "DOWNPAYMENT")[m
+[32m +    .reduce((sum, payment) => sum + toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount), 0);[m
+[32m +  const totalVerifiedCents = verified.reduce([m
+[32m +    (sum, payment) => sum + toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount),[m
+[32m +    0,[m
+[32m +  );[m
+[32m +  const verifiedDp = fromMoneyCents(verifiedDpCents);[m
+[32m +  const totalVerified = fromMoneyCents(totalVerifiedCents);[m
+[32m +  const remainingDp = fromMoneyCents(Math.max(0, requiredDpCents - verifiedDpCents));[m
+[32m +  const remainingBalance = fromMoneyCents(Math.max(0, totalCents - totalVerifiedCents));[m
+[32m +[m
+[32m +  if (remainingBalance === 0) {[m
+[32m++=======[m
+[32m+   const totalCents = moneyToCents(invoiceTotal(inq));[m
+[32m+   const requiredDpCents = moneyToCents(requiredDownpaymentAmount(inq));[m
+[32m+   const verified = verifiedPayments(inq);[m
+[32m+   const verifiedDpCents = verified[m
+[32m+     .filter((payment) => payment.paymentType === "DOWNPAYMENT")[m
+[32m+     .reduce((sum, payment) => sum + moneyToCents(payment.verifiedAmount ?? payment.submittedAmount), 0);[m
+[32m+   const totalVerifiedCents = verified.reduce([m
+[32m+     (sum, payment) => sum + moneyToCents(payment.verifiedAmount ?? payment.submittedAmount),[m
+[32m+     0,[m
+[32m+   );[m
+[32m+   const remainingDpCents = Math.max(0, requiredDpCents - verifiedDpCents);[m
+[32m+   const remainingBalanceCents = Math.max(0, totalCents - totalVerifiedCents);[m
+[32m+   const total = centsToMoney(totalCents);[m
+[32m+   const requiredDp = centsToMoney(requiredDpCents);[m
+[32m+   const verifiedDp = centsToMoney(verifiedDpCents);[m
+[32m+   const totalVerified = centsToMoney(totalVerifiedCents);[m
+[32m+   const remainingDp = centsToMoney(remainingDpCents);[m
+[32m+   const remainingBalance = centsToMoney(remainingBalanceCents);[m
+[32m+ [m
+[32m+   if (remainingBalanceCents <= 0) {[m
+[32m++>>>>>>> Stashed changes[m
+      return {[m
+        invoiceTotal: total,[m
+        requiredDownpaymentAmount: requiredDp,[m
+[36m@@@ -598,12 -595,12 +648,21 @@@[m [mexport function paymentSubmissionAllowa[m
+  [m
+    const pendingAmountCents = records[m
+      .filter((payment) => payment.verificationStatus === "pending")[m
+[32m++<<<<<<< Updated upstream[m
+[32m +    .reduce((sum, payment) => sum + toMoneyCents(payment.submittedAmount), 0);[m
+[32m +  const availableBalanceCents = Math.max(0, toMoneyCents(state.remainingInvoiceBalance) - pendingAmountCents);[m
+[32m +  const typeBalanceCents = paymentType === "DOWNPAYMENT"[m
+[32m +    ? toMoneyCents(state.remainingDownpayment)[m
+[32m +    : toMoneyCents(state.remainingInvoiceBalance);[m
+[32m +  const maxAmount = fromMoneyCents(Math.min(availableBalanceCents, typeBalanceCents));[m
+[32m++=======[m
+[32m+     .reduce((sum, payment) => sum + moneyToCents(payment.submittedAmount), 0);[m
+[32m+   const availableBalanceCents = Math.max(0, moneyToCents(state.remainingInvoiceBalance) - pendingAmountCents);[m
+[32m+   const typeBalanceCents = paymentType === "DOWNPAYMENT"[m
+[32m+     ? moneyToCents(state.remainingDownpayment)[m
+[32m+     : moneyToCents(state.remainingInvoiceBalance);[m
+[32m+   const maxAmount = centsToMoney(Math.min(availableBalanceCents, typeBalanceCents));[m
+[32m++>>>>>>> Stashed changes[m
+  [m
+    return maxAmount > 0[m
+      ? { paymentType, maxAmount }[m
+[36m@@@ -1413,10 -1399,12 +1473,18 @@@[m [mexport function OrdersProvider({ childr[m
+        if ([m
+          x.id !== inquiryId[m
+          || !allowance.paymentType[m
+[32m++<<<<<<< Updated upstream[m
+[32m +        || !Number.isFinite(paymentAmount)[m
+[32m +        || paymentAmount <= 0[m
+[32m +        || toMoneyCents(paymentAmount) > toMoneyCents(allowance.maxAmount)[m
+[32m++=======[m
+[32m+         || !Number.isFinite(payment.amount)[m
+[32m+         || !isValidCentAmount(payment.amount)[m
+[32m+         || paymentCents <= 0[m
+[32m+         || paymentCents > moneyToCents(allowance.maxAmount)[m
+[32m++>>>>>>> Stashed changes[m
+        ) return x;[m
+[32m+       const amount = centsToMoney(paymentCents);[m
+        return {[m
+          ...x,[m
+        payments: [[m
+[36m@@@ -1426,18 -1414,17 +1494,27 @@@[m
+            inquiryId,[m
+            invoiceNo: x.invoiceNo,[m
+            paymentType: allowance.paymentType,[m
+[32m++<<<<<<< Updated upstream[m
+[32m +          submittedAmount: paymentAmount,[m
+[32m +          verifiedAmount: paymentAmount,[m
+[32m++=======[m
+[32m+           submittedAmount: amount,[m
+[32m+           verifiedAmount: amount,[m
+[32m++>>>>>>> Stashed changes[m
+            method: payment.method,[m
+            referenceNumber: payment.ref,[m
+            paymentDate: payment.date,[m
+            verificationStatus: "verified" as const,[m
+          },[m
+        ],[m
+[32m++<<<<<<< Updated upstream[m
+[32m +      confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, amount: paymentAmount, id }],[m
+[32m++=======[m
+[32m+       confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, amount, id }],[m
+[32m++>>>>>>> Stashed changes[m
+        };[m
+      }));[m
+[32m +    return id;[m
+    };[m
+  [m
+    const submitPayment: Ctx["submitPayment"] = (inquiryId, payment) => {[m
+[36m@@@ -1446,12 -1432,15 +1523,21 @@@[m
+      setAllInquiries((prev) => prev.map((x) => {[m
+        if (x.id !== inquiryId) return x;[m
+        const allowance = paymentSubmissionAllowance(x);[m
+[32m+       const submittedAmountCents = moneyToCents(payment.submittedAmount);[m
+        if ([m
+          !allowance.paymentType[m
+[32m++<<<<<<< Updated upstream[m
+[32m +        || !Number.isFinite(submittedAmount)[m
+[32m +        || submittedAmount <= 0[m
+[32m +        || toMoneyCents(submittedAmount) > toMoneyCents(allowance.maxAmount)[m
+[32m++=======[m
+[32m+         || !Number.isFinite(payment.submittedAmount)[m
+[32m+         || !isValidCentAmount(payment.submittedAmount)[m
+[32m+         || submittedAmountCents <= 0[m
+[32m+         || submittedAmountCents > moneyToCents(allowance.maxAmount)[m
+[32m++>>>>>>> Stashed changes[m
+        ) return x;[m
+[32m+       const submittedAmount = centsToMoney(submittedAmountCents);[m
+        return {[m
+          ...x,[m
+        clientPaymentReceipts: payment.receiptFile[m
+[36m@@@ -1485,28 -1474,20 +1571,33 @@@[m
+    const verifyPayment: Ctx["verifyPayment"] = (inquiryId, paymentId, verifiedAmount) => {[m
+      setAllInquiries((prev) => prev.map((x) => {[m
+        if (x.id !== inquiryId) return x;[m
+[31m -      const payments = (x.payments ?? []).map((payment) => payment.id === paymentId[m
+[31m -        && payment.verificationStatus === "pending"[m
+[31m -        && payment.submittedAmount > 0[m
+[31m -        ? {[m
+[31m -            ...payment,[m
+[31m -            verifiedAmount: verifiedAmount ?? payment.submittedAmount,[m
+[31m -            verificationStatus: "verified" as const,[m
+[31m -            verifiedAt: new Date().toISOString(),[m
+[31m -          }[m
+[31m -        : payment);[m
+[32m +      const currentState = paymentState(x);[m
+[32m +      const payments = (x.payments ?? []).map((payment) => {[m
+[32m +        if (payment.id !== paymentId || payment.verificationStatus !== "pending" || payment.submittedAmount <= 0) return payment;[m
+[32m +        const amountToVerifyCents = toMoneyCents(verifiedAmount ?? payment.submittedAmount);[m
+[32m +        const submittedAmountCents = toMoneyCents(payment.submittedAmount);[m
+[32m +        const invoiceBalanceCents = toMoneyCents(currentState.remainingInvoiceBalance);[m
+[32m +        const downpaymentBalanceCents = toMoneyCents(currentState.remainingDownpayment);[m
+[32m +        const maximumVerifiedCents = payment.paymentType === "DOWNPAYMENT"[m
+[32m +          ? Math.min(submittedAmountCents, downpaymentBalanceCents, invoiceBalanceCents)[m
+[32m +          : Math.min(submittedAmountCents, invoiceBalanceCents);[m
+[32m +        if (!Number.isFinite(amountToVerifyCents) || amountToVerifyCents <= 0 || amountToVerifyCents > maximumVerifiedCents) return payment;[m
+[32m +        return {[m
+[32m +          ...payment,[m
+[32m +          verifiedAmount: fromMoneyCents(amountToVerifyCents),[m
+[32m +          verificationStatus: "verified" as const,[m
+[32m +          verifiedAt: new Date().toISOString(),[m
+[32m +        };[m
+[32m +      });[m
+        const verifiedInquiry = { ...x, payments };[m
+        const state = paymentState(verifiedInquiry);[m
+[32m++<<<<<<< Updated upstream[m
+[32m +      const downpaymentConfirmed = toMoneyCents(state.requiredDownpaymentAmount) > 0[m
+[32m +        && toMoneyCents(state.verifiedDownpaymentAmount) >= toMoneyCents(state.requiredDownpaymentAmount);[m
+[32m++=======[m
+[32m+       const downpaymentConfirmed = moneyToCents(state.requiredDownpaymentAmount) > 0[m
+[32m+         && moneyToCents(state.verifiedDownpaymentAmount) >= moneyToCents(state.requiredDownpaymentAmount);[m
+[32m++>>>>>>> Stashed changes[m
+        return downpaymentConfirmed[m
+          ? {[m
+              ...verifiedInquiry,[m

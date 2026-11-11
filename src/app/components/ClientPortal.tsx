@@ -211,6 +211,10 @@ function Shell({ active, onChange, children, clientName, onLogout }: {
 
 /* ---------- Orders Tab ---------- */
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
+const formatMoneyAmount = (amount: number) => amount.toLocaleString("en-PH", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 const blankProduct = (id: string): ProductLine => ({
   id, type: "AIRFIL", filterName: "",
@@ -288,6 +292,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showJobs, setShowJobs] = useState(false);
+  const [showCreateOptions, setShowCreateOptions] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
 
   const createReorderInquiry = async (source: Inquiry, quantities: Record<string, number>): Promise<boolean> => {
@@ -366,14 +371,14 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Orders</h2>
-          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Inquiries, quotations, POs, and sent invoices · click <strong>+ New Order</strong> to start a new inquiry.</p>
+          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Inquiries, quotations, POs, and sent invoices · create a new inquiry or reorder a previous Job Order.</p>
         </div>
         <button
-          onClick={() => setShowWizard(true)}
+          onClick={() => setShowCreateOptions(true)}
           className="font-dm flex items-center gap-2 px-5 py-3 rounded-md text-white hover:opacity-90 shadow-sm"
           style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
         >
-          <Plus size={16} strokeWidth={3} /> New Order
+          <Plus size={16} strokeWidth={3} /> Create Order
         </button>
       </div>
 
@@ -381,14 +386,11 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         <button onClick={() => setShowTransactions(true)} className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
           <ClipboardList size={14} /> View Transaction History
         </button>
-        <button onClick={() => setShowJobs(true)} className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
-          <FileCheck size={14} /> View Job Orders
-        </button>
       </div>
 
       {myOrders.length === 0 && (
         <div className="bg-white rounded-xl border border-slate-200/70 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-          No active orders yet — click <strong>+ New Order</strong> to submit your first inquiry.
+          No active orders yet — click <strong>Create Order</strong> to submit your first inquiry.
         </div>
       )}
       {myOrders.length > 0 && (
@@ -445,6 +447,42 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         />
       ))}
 
+      {showCreateOptions && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setShowCreateOptions(false)}>
+          <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
+              <div>
+                <h2 className="font-syne text-lg font-extrabold text-slate-900">Create Order</h2>
+                <p className="font-dm mt-1 text-xs text-slate-500">Choose how you would like to start your inquiry.</p>
+              </div>
+              <button onClick={() => setShowCreateOptions(false)} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="Close create order options"><X size={16} /></button>
+            </div>
+            <div className="flex flex-col gap-3 p-5 sm:p-6">
+              <button
+                onClick={() => { setShowCreateOptions(false); setShowWizard(true); }}
+                className="flex min-h-20 items-center gap-4 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:border-[#C8102E] hover:bg-red-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A]"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#C8102E]"><Plus size={20} strokeWidth={2.5} /></span>
+                <span>
+                  <span className="block font-syne text-sm font-extrabold text-slate-900">New Order</span>
+                  <span className="font-dm mt-1 block text-xs leading-5 text-slate-600">Start a new inquiry with the existing order form.</span>
+                </span>
+              </button>
+              <button
+                onClick={() => { setShowCreateOptions(false); setShowJobs(true); }}
+                className="flex min-h-20 items-center gap-4 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:border-[#1A2B4A] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A]"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#1A2B4A]"><RotateCcw size={18} /></span>
+                <span>
+                  <span className="block font-syne text-sm font-extrabold text-slate-900">Reorder</span>
+                  <span className="font-dm mt-1 block text-xs leading-5 text-slate-600">Choose a previous Job Order and update quantities for a new inquiry.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showWizard && (
         <NewOrderWizardModal
           clientName={clientName}
@@ -460,7 +498,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         />
       )}
       {showJobs && (
-        <ClientTableModal title="Job Orders" onClose={() => setShowJobs(false)}>
+        <ClientTableModal title="Select a Job Order to Reorder" onClose={() => setShowJobs(false)}>
           <JobOrdersTab
             clientName={clientName}
             onContinueReorder={async (inquiry, quantities) => {
@@ -532,13 +570,14 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
   };
 
   return (
-    <div className="px-8 py-8 flex flex-col gap-4">
+    <div className="px-4 py-6 flex flex-col gap-4 sm:px-8 sm:py-8">
       <div>
         <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Job Orders</h1>
-        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Click <strong>Reorder</strong> on any past production order to review its specs and quantities.</p>
+        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Select a previous Job Order to review its product details and set reorder quantities.</p>
       </div>
-      <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        <table className="w-full">
+      <div className="overflow-hidden rounded-xl border border-slate-200/70 bg-white" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px]">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
             <tr>
               {["Job Order", "Date", "Item", "Qty", "Status", ""].map((h) => (
@@ -551,7 +590,7 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
               <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No job orders yet.</td></tr>
             )}
             {jobOrders.map((inq) => {
-              const item = inq.products[0]?.filterName || labelForType(inq.products[0]?.type ?? "");
+              const item = inq.products.map((product) => product.filterName || labelForType(product.type)).join(", ");
               const qty = inq.products.reduce((s, p) => s + p.qty, 0);
               return (
                 <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
@@ -570,18 +609,19 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
             })}
           </tbody>
         </table>
+        </div>
       </div>
       {reorderInquiry && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => { if (!isSubmittingReorder) setReorderInquiry(null); }}>
           <div className="bg-white rounded-xl w-full max-w-2xl overflow-hidden" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(event) => event.stopPropagation()}>
-            <div className="px-6 py-5 flex items-start justify-between" style={{ backgroundColor: "#1A2B4A" }}>
+            <div className="px-4 py-4 flex items-start justify-between sm:px-6 sm:py-5" style={{ backgroundColor: "#1A2B4A" }}>
               <div>
                 <h2 className="font-syne text-white" style={{ fontSize: 18, fontWeight: 700 }}>Confirm Reorder Quantities</h2>
                 <p className="font-dm text-white/70 mt-1" style={{ fontSize: 12 }}>Job Order {reorderInquiry.joNumber ?? reorderInquiry.code}</p>
               </div>
               <button onClick={() => setReorderInquiry(null)} disabled={isSubmittingReorder} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center text-white disabled:opacity-50" aria-label="Close"><X size={16} /></button>
             </div>
-            <div className="p-6 overflow-auto flex flex-col gap-4" style={{ maxHeight: "calc(90vh - 150px)" }}>
+            <div className="p-4 overflow-auto flex flex-col gap-4 sm:p-6" style={{ maxHeight: "calc(90vh - 150px)" }}>
               {reorderInquiry.products.map((product, index) => {
                 const dimensions = GROUP_TEMPLATES[groupForType(product.type)].dimensions
                   .map((dimension) => `${DIMENSION_LABELS[dimension]}: ${product[dimension] || "—"}`)
@@ -605,15 +645,15 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
                       <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{labelForType(product.type)} · {dimensions}</div>
                       {optionalComponents && <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{optionalComponents}</div>}
                     </div>
-                    <label className="font-dm flex items-center gap-3" style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
-                      <span className="min-w-32">Quantity (original: {product.qty})</span>
+                    <label className="font-dm flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3" style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
+                      <span className="sm:min-w-32">Quantity (original: {product.qty})</span>
                       <input
                         type="number"
                         min={10}
                         step={1}
                         value={quantities[product.id] ?? ""}
                         onChange={(event) => setQuantities((previous) => ({ ...previous, [product.id]: event.target.value }))}
-                        className="w-36 font-syne px-3 py-2 rounded-md border border-slate-300 outline-none focus:border-slate-500 bg-white"
+                        className="w-full max-w-36 font-syne px-3 py-2 rounded-md border border-slate-300 outline-none focus:border-slate-500 bg-white"
                         style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}
                         aria-label={`Quantity for ${product.filterName || labelForType(product.type)}`}
                       />
@@ -626,7 +666,7 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
                 );
               })}
             </div>
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+            <div className="px-4 py-4 border-t border-slate-200 flex flex-col-reverse justify-end gap-2 sm:flex-row sm:px-6">
               <button onClick={() => setReorderInquiry(null)} disabled={isSubmittingReorder} className="font-dm px-4 py-2.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-50" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
               <button onClick={continueReorder} disabled={!quantitiesAreValid || isSubmittingReorder} className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>{isSubmittingReorder ? "Creating Inquiry..." : "Confirm Reorder"}</button>
             </div>

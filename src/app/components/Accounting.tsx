@@ -161,22 +161,35 @@ function granularStatus(inv: Invoice, totalPaid: number, now = new Date()): Gran
   return "Pending";
 }
 
-const granularStyle: Record<GranularStatus, { bg: string; fg: string }> = {
-  Paid:    { bg: "#DCFCE7", fg: "#15803D" },
-  Partial: { bg: "#DBEAFE", fg: "#1D4ED8" },
-  Pending: { bg: "#FEF3C7", fg: "#B45309" },
-  Overdue: { bg: "#FEE2E2", fg: "#C8102E" },
-  "Awaiting Verification": { bg: "#FEF3C7", fg: "#B45309" },
-  Rejected: { bg: "#FEE2E2", fg: "#C8102E" },
-  Verified: { bg: "#DCFCE7", fg: "#15803D" },
-  "Paid/Completed": { bg: "#DCFCE7", fg: "#15803D" },
+function hasFullyPaidBalancePayment(inv: Invoice): boolean {
+  return inv.status === "paid"
+    && inv.paymentState.state === "FULLY_PAID"
+    && inv.paymentState.remainingInvoiceBalance === 0
+    && inv.paymentRecords.some((payment) =>
+      payment.paymentType === "BALANCE_PAYMENT" && payment.verificationStatus === "verified",
+    )
+    && !inv.paymentRecords.some((payment) => payment.verificationStatus === "pending");
+}
+
+const granularStyle: Record<GranularStatus, { bg: string; fg: string; border: string }> = {
+  Paid:    { bg: "#ECFDF3", fg: "#15803D", border: "#BBF7D0" },
+  Partial: { bg: "#EFF6FF", fg: "#1D4ED8", border: "#BFDBFE" },
+  Pending: { bg: "#FFFBEB", fg: "#B45309", border: "#FDE68A" },
+  Overdue: { bg: "#FEF2F2", fg: "#C8102E", border: "#FECACA" },
+  "Awaiting Verification": { bg: "#FFFBEB", fg: "#B45309", border: "#FDE68A" },
+  Rejected: { bg: "#FEF2F2", fg: "#C8102E", border: "#FECACA" },
+  Verified: { bg: "#ECFDF3", fg: "#15803D", border: "#BBF7D0" },
+  "Paid/Completed": { bg: "#ECFDF3", fg: "#15803D", border: "#BBF7D0" },
 };
 
 function StatusPill({ status }: { status: GranularStatus }) {
   const s = granularStyle[status];
   return (
-    <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: s.bg, color: s.fg }}>
-      {status === "Overdue" ? "⚠️ " : ""}{status}
+    <span
+      className="inline-flex min-h-7 max-w-full shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-3 py-1 text-center font-dm text-[11px] font-semibold leading-4"
+      style={{ backgroundColor: s.bg, color: s.fg, borderColor: s.border }}
+    >
+      {status}
     </span>
   );
 }
@@ -876,7 +889,17 @@ export function Accounting() {
         )}
 
         <div className="bg-white rounded-xl border border-slate-200/70 overflow-x-auto" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-          <table className="w-full min-w-[1080px] table-fixed">
+          <table className="w-full min-w-[1180px] table-fixed">
+            <colgroup>
+              <col style={{ width: 115 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 140 }} />
+              <col style={{ width: 175 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 165 }} />
+              <col style={{ width: 235 }} />
+            </colgroup>
             <thead style={{ backgroundColor: "#F4F6F9" }}>
               <tr>
                 {["Date", "Invoice No.", "Source PO No.", "Client", "Item", "Amount", "Payment", "Status"].map((h) => (
@@ -935,11 +958,20 @@ export function Accounting() {
                         <div style={{ fontWeight: 700, color: "#1A2B4A" }}>{r.paymentType}</div>
                         <div style={{ fontSize: 11, color: "#64748B" }}>{r.payment}</div>
                       </td>
-                      <td className="px-4 py-3 align-top">
-                        <div className="flex min-w-[145px] flex-col items-start gap-1.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
-                          </div>
+                      <td className="px-3 py-3 align-middle">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                          <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
+                          {view === "history" && hasFullyPaidBalancePayment(r) && (
+                            <button
+                              type="button"
+                              aria-label={`View payment history for ${r.inv}`}
+                              onClick={(event) => { event.stopPropagation(); setOpenId(r.id); }}
+                              className="shrink-0 whitespace-nowrap rounded-md px-1 py-1 font-dm text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                            >
+                              View Payment History →
+                            </button>
+                          )}
+                        </div>
                         {view === "history" && (
                           <div className="flex flex-col items-start gap-1">
                             {r.officialReceipt ? (
@@ -957,7 +989,6 @@ export function Accounting() {
                             )}
                           </div>
                         )}
-                        </div>
                       </td>
                     </tr>
                     {isOpen && (() => {

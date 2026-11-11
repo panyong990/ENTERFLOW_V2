@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BOMLine, CostConfig } from "./materials";
+import { createDemoInquiries } from "./demoOrders";
 import { discardPendingSignedDeliveryReceiptAttachment, loadInquiryAttachments, promotePendingSignedDeliveryReceipt, readFileAsDataUrl, saveInquiryAttachments, saveProductSketchAttachments } from "./attachments";
 
 /* Quotation document — what the client sees */
@@ -902,6 +903,16 @@ function businessState(inquiries: Inquiry[]): Inquiry[] {
   }));
 }
 
+function addDevelopmentDemoInquiries(inquiries: Inquiry[]): Inquiry[] {
+  if (!import.meta.env.DEV) return inquiries;
+  const existingIds = new Set(inquiries.map((inquiry) => inquiry.id));
+  const missingDemoInquiries = createDemoInquiries(inquiries)
+    .filter((inquiry) => !existingIds.has(inquiry.id));
+  return missingDemoInquiries.length > 0
+    ? [...inquiries, ...missingDemoInquiries]
+    : inquiries;
+}
+
 function repairPersistedDemoOilfilBom(inquiries: Inquiry[]): { inquiries: Inquiry[]; changed: boolean } {
   const matches = inquiries.filter((inquiry) => {
     if (inquiry.products.length !== 1) return false;
@@ -973,13 +984,14 @@ function loadPersistedOrders(): PersistedOrdersState | null {
     ))) return null;
     if (!value.clearedPOs.every((po) => typeof po === "string")) return null;
     const repaired = repairPersistedDemoOilfilBom(value.inquiries as Inquiry[]);
-    if (repaired.changed) {
+    const inquiries = addDevelopmentDemoInquiries(repaired.inquiries);
+    if (repaired.changed || inquiries !== repaired.inquiries) {
       window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify({
-        inquiries: businessState(repaired.inquiries),
+        inquiries: businessState(inquiries),
         clearedPOs: value.clearedPOs,
       }));
     }
-    return { inquiries: repaired.inquiries, clearedPOs: value.clearedPOs as string[] };
+    return { inquiries, clearedPOs: value.clearedPOs as string[] };
   } catch {
     return null;
   }
@@ -987,7 +999,7 @@ function loadPersistedOrders(): PersistedOrdersState | null {
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
   const [savedOrders] = useState<PersistedOrdersState | null>(() => loadPersistedOrders());
-  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => savedOrders?.inquiries ?? seed);
+  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => savedOrders?.inquiries ?? addDevelopmentDemoInquiries(seed));
   const [clearedPOs, setClearedPOs] = useState<string[]>(() => savedOrders?.clearedPOs ?? []);
   const signedDRUploadsInProgress = useRef(new Set<string>());
   const paymentSequence = useRef(0);

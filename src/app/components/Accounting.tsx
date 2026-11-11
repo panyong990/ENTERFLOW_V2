@@ -4,6 +4,7 @@ import { formatMoney, fromMoneyCents, hasValidSignedDeliveryReceipt, paymentSubm
 import { useNotifications } from "../store/notifications";
 import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
+import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
 import { Toaster, toast } from "sonner";
 
 type Status = "paid" | "pending";
@@ -183,6 +184,9 @@ export function Accounting() {
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
   const [receiptToIssue, setReceiptToIssue] = useState<Invoice | null>(null);
   const [proofToView, setProofToView] = useState<{ filename: string; dataUrl: string } | null>(null);
+  const [receiptToView, setReceiptToView] = useState<NonNullable<Invoice["officialReceipt"]> | null>(null);
+  const [paymentToReject, setPaymentToReject] = useState<{ invoice: Invoice; payment: PaymentRecord } | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
   const { name: issuingStaff } = useSession();
@@ -481,16 +485,30 @@ export function Accounting() {
 
   const handleRejectClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
     if (payment.verificationStatus !== "pending") return;
-    rejectPayment(invoice.id, payment.id);
+    setRejectionReason("");
+    setPaymentToReject({ invoice, payment });
+  };
+
+  const confirmRejectClientPayment = () => {
+    const reason = rejectionReason.trim();
+    if (!paymentToReject || !reason) return;
+    const { invoice, payment } = paymentToReject;
+    if (!rejectPayment(invoice.id, payment.id, reason)) {
+      toast.error("This payment is no longer awaiting verification.");
+      setPaymentToReject(null);
+      return;
+    }
     pushNotif({
       dept: "payments",
       title: `Payment Rejected: ${invoice.inv}`,
-      body: `${invoice.client} · ${payment.paymentType.replace("_", " ")} · ₱${payment.submittedAmount.toLocaleString("en-PH")} · Please review and resubmit proof of payment.`,
+      body: `${invoice.client} · ${payment.paymentType.replace("_", " ")} · ₱${payment.submittedAmount.toLocaleString("en-PH")} · Reason for Rejection: ${reason}`,
       link: "accounting",
       clientName: invoice.client,
       recipients: ["client"],
     });
-    toast.info("Payment rejected", { description: `${invoice.inv} · client notified to resubmit` });
+    toast.info("Payment rejected", { description: `${invoice.inv} · client notified` });
+    setPaymentToReject(null);
+    setRejectionReason("");
   };
 
   const eligibleReminderRows = rows.filter(isEligibleReminder);
@@ -796,8 +814,8 @@ export function Accounting() {
           </section>
         )}
 
-        <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-          <table className="w-full">
+        <div className="bg-white rounded-xl border border-slate-200/70 overflow-x-auto" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+          <table className="w-full min-w-[1080px] table-fixed">
             <thead style={{ backgroundColor: "#F4F6F9" }}>
               <tr>
                 {["Date", "Invoice No.", "Source PO No.", "Client", "Item", "Amount", "Payment", "Status"].map((h) => (
@@ -849,22 +867,27 @@ export function Accounting() {
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.inv}</td>
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.po}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
+                      <td className="px-4 py-3 font-dm break-words" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
+                      <td className="px-4 py-3 font-dm break-words" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{formatMoney(r.amount)}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                         <div style={{ fontWeight: 700, color: "#1A2B4A" }}>{r.paymentType}</div>
                         <div style={{ fontSize: 11, color: "#64748B" }}>{r.payment}</div>
                       </td>
-                      <td className="px-4 py-3">
-                        <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex min-w-[145px] flex-col items-start gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
+                            {view === "history" && (
+                              <span className="font-dm inline-flex items-center rounded-full px-2.5 py-1" style={{ fontSize: 10, fontWeight: 800, color: r.officialReceipt ? "#15803D" : "#B45309", backgroundColor: r.officialReceipt ? "#DCFCE7" : "#FEF3C7" }}>{r.officialReceipt ? "OR Issued" : "OR Pending"}</span>
+                            )}
+                          </div>
                         {view === "history" && (
-                          <div className="mt-2 flex flex-col items-start gap-2">
-                            <span className="font-dm inline-flex items-center rounded-full px-2.5 py-1" style={{ fontSize: 10, fontWeight: 800, color: r.officialReceipt ? "#15803D" : "#B45309", backgroundColor: r.officialReceipt ? "#DCFCE7" : "#FEF3C7" }}>{r.officialReceipt ? "OR Issued" : "OR Pending"}</span>
+                          <div className="flex flex-col items-start gap-1">
                             {r.officialReceipt ? (
                               <button
-                                onClick={(event) => { event.stopPropagation(); setProofToView({ filename: `${r.officialReceipt!.orNumber}.html`, dataUrl: r.officialReceipt!.documentDataUrl }); }}
-                                className="font-dm rounded-md px-2.5 py-1.5 hover:bg-blue-50"
+                                onClick={(event) => { event.stopPropagation(); setReceiptToView(r.officialReceipt!); }}
+                                className="font-dm rounded-md px-0 py-0.5 hover:bg-blue-50"
                                 style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8" }}
                               >View Official Receipt</button>
                             ) : (
@@ -876,6 +899,7 @@ export function Accounting() {
                             )}
                           </div>
                         )}
+                        </div>
                       </td>
                     </tr>
                     {isOpen && (() => {
@@ -1227,6 +1251,60 @@ export function Accounting() {
 
       {/* Overdue Reminders Modal */}
       {/* Edit Receipt Modal */}
+      {paymentToReject && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,.65)" }}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reject-payment-title"
+            className="bg-white rounded-xl w-full max-w-lg overflow-hidden"
+            style={{ boxShadow: "0 24px 48px rgba(0,0,0,.25)" }}
+          >
+            <header className="px-6 py-4 border-b border-slate-200">
+              <h2 id="reject-payment-title" className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>Reject Payment</h2>
+            </header>
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-slate-50 p-4 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+                <span>Client</span><strong>{paymentToReject.invoice.client}</strong>
+                <span>Invoice</span><strong>{paymentToReject.payment.invoiceNo ?? paymentToReject.invoice.inv}</strong>
+                <span>Payment Type</span><strong>{paymentToReject.payment.paymentType.replace("_", " ")}</strong>
+                <span>Submitted Amount</span><strong>₱{formatMoney(paymentToReject.payment.submittedAmount)}</strong>
+              </div>
+              <label htmlFor="payment-rejection-reason" className="font-dm block mt-5 mb-1.5" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                Reason for Rejection <span style={{ color: "#C8102E" }}>*</span>
+              </label>
+              <textarea
+                id="payment-rejection-reason"
+                value={rejectionReason}
+                onChange={(event) => setRejectionReason(event.target.value)}
+                placeholder="Explain why this payment is being rejected..."
+                rows={4}
+                required
+                className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-y"
+                style={{ fontSize: 13 }}
+              />
+            </div>
+            <footer className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                onClick={() => { setPaymentToReject(null); setRejectionReason(""); }}
+                className="font-dm px-4 py-2 rounded-md border border-slate-200 hover:bg-slate-50"
+                style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRejectClientPayment}
+                disabled={!rejectionReason.trim()}
+                className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}
+              >
+                Reject Payment
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {editingReceipt && (
         <EditReceiptModal
           receipt={editingReceipt.receipt}
@@ -1262,6 +1340,8 @@ export function Accounting() {
           </div>
         </div>
       )}
+
+      {receiptToView && <OfficialReceiptPreviewModal receipt={receiptToView} onClose={() => setReceiptToView(null)} />}
 
       {showOverdueModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setShowOverdueModal(false)}>

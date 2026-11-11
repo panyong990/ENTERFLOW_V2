@@ -14,6 +14,7 @@ import {
   quotationTotal,
   paymentRecords,
   paymentState,
+  exactDownpaymentValidationMessage,
   invoiceTotal,
   poNumberForDisplay,
   stageLabel,
@@ -33,6 +34,7 @@ import { NotificationBell } from "./NotificationBell";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
+import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -640,6 +642,7 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
 /* ─────────── TransactionsTab — client-scoped delivered and invoiced orders ─────────── */
 function TransactionsTab({ clientName }: { clientName: string }) {
   const { byClient } = useOrders();
+  const [receiptToView, setReceiptToView] = useState<NonNullable<Inquiry["officialReceipt"]> | null>(null);
   const clientInquiries = byClient(clientName).filter((inquiry) => !inquiry.archived);
   const allOrders = Array.from(new Map(
     clientInquiries
@@ -703,7 +706,7 @@ function TransactionsTab({ clientName }: { clientName: string }) {
                 </td>
                 <td className="px-4 py-3 font-dm" style={{ fontSize: 11, color: issuedReceipt ? "#15803D" : fullyPaid ? "#B45309" : "#94A3B8", fontWeight: 700 }}>
                   {issuedReceipt ? (
-                    <a href={issuedReceipt.documentDataUrl} download={`${issuedReceipt.orNumber}.html`} target="_blank" rel="noreferrer" className="text-blue-700 underline">View/Download OR · {issuedReceipt.orNumber}</a>
+                    <button onClick={() => setReceiptToView(issuedReceipt)} className="text-left text-blue-700 underline">View Official Receipt · {issuedReceipt.orNumber}</button>
                   ) : eligibleForReceipt ? "OR Pending" : "Not Issued"}
                 </td>
               </tr>
@@ -712,6 +715,8 @@ function TransactionsTab({ clientName }: { clientName: string }) {
           </tbody>
         </table>
       </div>
+
+      {receiptToView && <OfficialReceiptPreviewModal receipt={receiptToView} onClose={() => setReceiptToView(null)} />}
 
     </div>
   );
@@ -1294,8 +1299,11 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             {status.message}
           </div>
           {latestSubmittedPayment?.verificationStatus === "rejected" && (
-            <div className="mt-2 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12, fontWeight: 700 }}>
-              Payment rejected — please resubmit proof in Accounting.
+            <div className="mt-2 rounded-md border border-red-200 px-3 py-2.5 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12 }}>
+              <div style={{ fontWeight: 800 }}>Payment rejected · {latestSubmittedPayment.invoiceNo ?? inquiry.invoiceNo ?? "Invoice"}</div>
+              <div className="mt-1">Submitted amount: ₱{latestSubmittedPayment.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Submitted: {latestSubmittedPayment.paymentDate}</div>
+              <div className="mt-1"><strong>Reason for Rejection:</strong> {latestSubmittedPayment.rejectionReason ?? "Not recorded"}</div>
+              <div className="mt-1">Please correct the issue described above and submit a corrected payment.</div>
             </div>
           )}
 
@@ -2729,6 +2737,10 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
     const enteredAmount = Number(f.amount);
     const amountCents = toMoneyCents(enteredAmount);
     if (!Number.isFinite(enteredAmount) || amountCents <= 0) { toast.error("Please enter the amount paid"); return; }
+    if (allowance.paymentType === "DOWNPAYMENT") {
+      const validationMessage = exactDownpaymentValidationMessage(currentInquiry!, enteredAmount);
+      if (validationMessage) { toast.error(validationMessage); return; }
+    }
     if (amountCents > toMoneyCents(allowance.maxAmount)) {
       toast.error("Payment exceeds the amount currently due", {
         description: `Maximum submission: ₱${allowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -2739,7 +2751,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
     submittingPayments.current.add(rowId);
     const selectedMethod = settings.paymentMethods.find((m) => m.id === f.methodId) ?? settings.paymentMethods[0];
     try {
-      submitPayment(rowId, {
+      const submitted = submitPayment(rowId, {
         invoiceNo: invNo,
         submittedAmount: amt,
         method: selectedMethod?.label ?? bank.bankName,
@@ -2749,6 +2761,14 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
         paymentDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         note: f.note || undefined,
       });
+      if (!submitted) {
+        const latestInquiry = byClient(clientName).find((inquiry) => inquiry.id === rowId);
+        const message = latestInquiry && paymentState(latestInquiry).currentPaymentType === "DOWNPAYMENT"
+          ? exactDownpaymentValidationMessage(latestInquiry, enteredAmount)
+          : "This payment could not be submitted. Please review the amount and try again.";
+        toast.error(message ?? "This payment could not be submitted. Please try again.");
+        return;
+      }
       pushNotif({
         dept: "payments",
         title: `Receipt uploaded by ${clientName}`,
@@ -2960,11 +2980,18 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                         <div className="min-w-0">
                                           <div className="font-dm text-xs font-bold text-slate-800">{paymentTypeName} · ₱{payment.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                           <div className="font-dm text-[11px] text-slate-500">
-                                            {payment.paymentDate}{payment.method ? ` · ${payment.method}` : ""}{payment.referenceNumber ? ` · Ref ${payment.referenceNumber}` : ""}
+                                            {payment.invoiceNo ?? inquiry.invoiceNo ?? "Invoice"} · {payment.paymentDate}
+                                            {payment.method ? ` · ${payment.method}` : ""}{payment.referenceNumber ? ` · Ref ${payment.referenceNumber}` : ""}
                                             {payment.verificationStatus === "verified" && payment.verifiedAmount !== undefined
                                               ? ` · Verified ₱${payment.verifiedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                               : ""}
                                           </div>
+                                          {payment.verificationStatus === "rejected" && (
+                                            <div className="mt-1 font-dm text-[11px] text-red-700" style={{ lineHeight: 1.4 }}>
+                                              <span style={{ fontWeight: 800 }}>Reason for Rejection:</span>{" "}
+                                              <span style={{ fontWeight: 400 }}>{payment.rejectionReason ?? "Not recorded"}</span>
+                                            </div>
+                                          )}
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className="rounded-full px-2 py-1 font-dm text-[9px] font-extrabold" style={{ color: paymentStatus.color, backgroundColor: paymentStatus.bg }}>{paymentStatus.label}</span>
@@ -3052,7 +3079,11 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                   className="font-dm w-full px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
                                   style={{ fontSize: 13 }}
                                 />
-                                <div className="font-dm mt-1 text-[11px] text-slate-500">Maximum currently available: ₱{r.submissionAllowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                <div className="font-dm mt-1 text-[11px] text-slate-500">
+                                  {state.currentPaymentType === "DOWNPAYMENT"
+                                    ? `Exact required downpayment: ₱${state.requiredDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : `Maximum currently available: ₱${r.submissionAllowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </div>
                               </div>
                               {/* Reference */}
                               <div>

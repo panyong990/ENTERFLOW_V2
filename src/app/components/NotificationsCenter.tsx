@@ -18,7 +18,7 @@ import { canNavigateToNotification } from "./notificationRoutes";
 interface Props {
   role?: Role;
   clientName?: string;
-  onNavigate?: (id: string) => void;
+  onNavigate?: (id: string, inquiryId?: string) => void;
 }
 
 export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: Props = {}) {
@@ -56,7 +56,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
     }
     const destination = notificationDestination(notification, role);
     if (destination) {
-      if (canNavigateToNotification(role, destination)) navigate?.(destination);
+      if (canNavigateToNotification(role, destination)) navigate?.(destination, notification.inquiryId);
       else toast.info("This notification has no destination available to your role.");
     }
   };

@@ -24,6 +24,7 @@ import {
   type Inquiry,
   type PaymentStateSummary,
   type ProductLine,
+  type QuotationDoc,
   type ReplacementRequest,
   type PaymentType,
 } from "../store/orders";
@@ -63,10 +64,13 @@ const isClientDestination = (id: string): id is Tab =>
   id === "notifications" || tabs.some((tab) => tab.id === id);
 
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
+const hasPendingRevisionRequest = (inquiry: Inquiry) =>
+  Boolean(inquiry.revisionNote || inquiry.revisionRequests?.some((request) => request.status === "pending"));
 
 type ClientOrderStatusId =
   | "awaitingQuotation"
   | "quotationSent"
+  | "revisionRequested"
   | "awaitingPOVerification"
   | "poReceived"
   | "poRejected"
@@ -152,6 +156,15 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
     };
   }
   if (inquiry.stage === "quotation") {
+    if (hasPendingRevisionRequest(inquiry)) {
+      return {
+        id: "revisionRequested",
+        label: "REVISION REQUESTED",
+        bg: "#FEF3C7",
+        fg: "#92400E",
+        message: "Quotation revision requested — awaiting Sales review.",
+      };
+    }
     return {
       id: "quotationSent",
       label: "QUOTATION SENT",
@@ -170,7 +183,7 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
 };
 
 function Shell({ active, onChange, children, clientName, onLogout }: {
-  active: Tab; onChange: (t: Tab) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
+  active: Tab; onChange: (t: Tab, inquiryId?: string) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
 }) {
   return (
     <div className="size-full flex flex-col font-dm" style={{ backgroundColor: "#F4F6F9" }}>
@@ -189,7 +202,7 @@ function Shell({ active, onChange, children, clientName, onLogout }: {
           <span className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
             Welcome, <span style={{ fontWeight: 600 }}>{clientName}</span>
           </span>
-          <NotificationBell role="client" clientName={clientName} onNavigate={(id) => isClientDestination(id) && onChange(id)} />
+          <NotificationBell role="client" clientName={clientName} onNavigate={(id, inquiryId) => isClientDestination(id) && onChange(id, inquiryId)} />
           <button onClick={onLogout} className="font-dm" style={{ fontSize: 13, color: "#C8102E", fontWeight: 600 }}>Logout</button>
         </div>
       </header>
@@ -271,7 +284,7 @@ const FILTRATION_RATINGS = [
   { value: "custom",     label: "Custom / Other", desc: "Specify in notes" },
 ];
 
-function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void }) {
+function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void; targetInquiryId?: string }) {
   const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches } = useOrders();
   const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
@@ -288,6 +301,13 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
   const [orderSortOrder, setOrderSortOrder] = useState<"newest" | "oldest">("newest");
   const normalizedOrderSearch = orderSearch.trim().toLowerCase();
+  useEffect(() => {
+    if (!targetInquiryId) return;
+    const target = byClient(clientName).find((inquiry) => inquiry.id === targetInquiryId);
+    if (!target) return;
+    setOrderSearch(target.code);
+    setOrderStatusFilter("all");
+  }, [byClient, clientName, targetInquiryId]);
   const visibleOrders = myOrders.filter((inquiry) => {
     const matchesStatus = orderStatusFilter === "all" || clientOrderStatus(inquiry).id === orderStatusFilter;
     const searchableValues = [
@@ -438,6 +458,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
             <option value="all">All Statuses</option>
             <option value="awaitingQuotation">Awaiting Quotation</option>
             <option value="quotationSent">Quotation Sent</option>
+            <option value="revisionRequested">Revision Requested</option>
             <option value="awaitingPOVerification">Purchase Order Submitted</option>
             <option value="poReceived">Purchase Order Approved</option>
             <option value="poRejected">Purchase Order Rejected</option>
@@ -1351,8 +1372,10 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   /* Section C — revision request modal */
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [revisionNoteDraft, setRevisionNoteDraft] = useState("");
+  const revisionSubmissionLock = useRef(false);
   /* View full quotation doc */
   const [showQuotationDoc, setShowQuotationDoc] = useState(false);
+  const [historicalQuotationDoc, setHistoricalQuotationDoc] = useState<QuotationDoc | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
   /* View terms & conditions */
   const [showTerms, setShowTerms] = useState(false);
@@ -1362,16 +1385,39 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
   const poSubmissions = inquiry.poSubmissions ?? [];
   const status = clientOrderStatus(inquiry);
+  const quotationDocToView = historicalQuotationDoc ?? (showQuotationDoc ? inquiry.quotationDoc : undefined);
 
   const submitRevision = () => {
+    if (revisionSubmissionLock.current) return;
     const note = revisionNoteDraft.trim();
     if (note.length < 5) { toast.error("Please describe what you'd like changed (at least a few words)"); return; }
-    updateInquiry(inquiry.id, { revisionNote: note });
+    if (hasPendingRevisionRequest(inquiry)) {
+      toast.error("A quotation revision request is already awaiting Sales review.");
+      return;
+    }
+    revisionSubmissionLock.current = true;
+    const requestedAt = new Date().toISOString();
+    const requestId = `revision-${inquiry.id}-${Date.now()}-${(inquiry.revisionRequests?.length ?? 0) + 1}`;
+    const preview = note.length > 120 ? `${note.slice(0, 117)}...` : note;
+    updateInquiry(inquiry.id, {
+      revisionNote: note,
+      revisionRequests: [
+        ...(inquiry.revisionRequests ?? []),
+        {
+          id: requestId,
+          note,
+          requestedAt,
+          quotationNo: inquiry.quotationDoc?.quotationNo,
+          status: "pending",
+        },
+      ],
+    });
     pushNotif({
       dept: "sales",
       title: `📝 Revision request from ${inquiry.clientName}`,
-      body: `${inquiry.code} · ${note}`,
+      body: `${inquiry.code} · ${inquiry.clientName} · ${preview}`,
       link: "sales",
+      inquiryId: inquiry.id,
       recipients: ["sales"],
     });
     toast.success("Revision request sent", { description: "Sales will review and send a revised quotation soon." });
@@ -1539,18 +1585,19 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
 
               {inquiry.stage === "quotation" && (
                 <>
-                  {inquiry.revisionNote && !inquiry.quotationHistory?.length && (
-                    <div className="rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                      ⏳ Revision requested: <em>{inquiry.revisionNote}</em> — Enter-Fil will send a revised quotation soon.
-                    </div>
-                  )}
                   <div className="flex items-center gap-3">
-                    <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
-                      <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
-                    </button>
-                    <button onClick={() => setShowRevisionModal(true)} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
-                      Request Revision
-                    </button>
+                    {!hasPendingRevisionRequest(inquiry) && (
+                      <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+                        <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
+                      </button>
+                    )}
+                    {!hasPendingRevisionRequest(inquiry) ? (
+                      <button onClick={() => { revisionSubmissionLock.current = false; setShowRevisionModal(true); }} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
+                        Request Revision
+                      </button>
+                    ) : (
+                      <span className="font-dm px-3 py-2 rounded-md" style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}>Revision Requested · Awaiting Sales</span>
+                    )}
                   </div>
                 </>
               )}
@@ -1606,6 +1653,41 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               )}
 
             </div>
+          )}
+
+          {((inquiry.revisionRequests?.length ?? 0) > 0 || inquiry.revisionNote || (inquiry.quotationHistory?.length ?? 0) > 0) && (
+            <section className="mt-4 rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+              <div className="mb-2" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase" }}>Quotation Revision &amp; Document History</div>
+              {(inquiry.revisionRequests?.length
+                ? inquiry.revisionRequests
+                : inquiry.revisionNote
+                  ? [{ id: "legacy-revision", note: inquiry.revisionNote, requestedAt: "", quotationNo: inquiry.quotationDoc?.quotationNo, status: "pending" as const }]
+                  : []
+              ).map((request, index) => (
+                <div key={request.id} className={index ? "mt-2 border-t border-amber-200 pt-2" : ""}>
+                  <div>{request.status === "pending" ? "Awaiting Sales review" : "Processed"} · {request.quotationNo ?? "Quotation"} · {request.requestedAt ? new Date(request.requestedAt).toLocaleString() : "Date unavailable"}</div>
+                  <div className="mt-1"><em>{request.note}</em></div>
+                </div>
+              ))}
+              {!!inquiry.quotationHistory?.length && (
+                <div className="mt-3 border-t border-amber-200 pt-2">
+                  <div className="mb-2" style={{ fontSize: 11, fontWeight: 800 }}>Previous Quotation Documents</div>
+                  <div className="flex flex-wrap gap-2">
+                    {inquiry.quotationHistory.map((doc) => (
+                      <button
+                        key={doc.quotationNo}
+                        type="button"
+                        onClick={() => { setShowQuotationDoc(false); setHistoricalQuotationDoc(doc); }}
+                        className="rounded border border-amber-300 bg-white px-2.5 py-1.5 font-dm hover:bg-amber-100"
+                        style={{ fontSize: 11, fontWeight: 700 }}
+                      >
+                        View {doc.quotationNo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
           )}
 
           {/* Cancel — pending approval */}
@@ -1684,14 +1766,14 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
       )}
 
       {/* Full Quotation Document Modal */}
-      {showQuotationDoc && inquiry.quotationDoc && (
+      {quotationDocToView && (
         <QuotationPreviewModal
           inquiry={inquiry}
-          doc={inquiry.quotationDoc}
+          doc={quotationDocToView}
           vatLabel={quotationVatLabel(inquiry)}
-          total={inquiry.quotationDoc.total ?? inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
-          preparedBy={inquiry.quotationDoc.preparedBy ?? "Enter-Fil"}
-          onClose={() => setShowQuotationDoc(false)}
+          total={quotationDocToView.total ?? quotationDocToView.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
+          preparedBy={quotationDocToView.preparedBy ?? "Enter-Fil"}
+          onClose={() => { setShowQuotationDoc(false); setHistoricalQuotationDoc(null); }}
         />
       )}
 
@@ -1927,7 +2009,7 @@ function StatusTab({ clientName }: { clientName: string }) {
   const [showJO, setShowJO] = useState(false);
   const [searchOrders, setSearchOrders] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "awaitingQuotation" | "poSubmitted" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
+    "all" | "awaitingQuotation" | "revisionRequested" | "poSubmitted" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
   >("all");
 
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
@@ -1955,7 +2037,9 @@ function StatusTab({ clientName }: { clientName: string }) {
         order.product,
       ].some((value) => value?.toLowerCase().includes(query));
       const matchesStatus = statusFilter === "all"
-        || inquiry.stage === statusStages[statusFilter];
+        || (statusFilter === "revisionRequested"
+          ? inquiry.stage === "quotation" && hasPendingRevisionRequest(inquiry)
+          : inquiry.stage === statusStages[statusFilter]);
       return matchesSearch && matchesStatus;
     });
 
@@ -1990,6 +2074,7 @@ function StatusTab({ clientName }: { clientName: string }) {
         >
           <option value="all">All Statuses</option>
           <option value="awaitingQuotation">Awaiting Quotation</option>
+          <option value="revisionRequested">Revision Requested</option>
           <option value="poSubmitted">PO Submitted</option>
           <option value="inProduction">In Production</option>
           <option value="readyForDispatch">Ready for Dispatch</option>
@@ -3715,9 +3800,15 @@ function Txt({ v, onChange }: { v: string; onChange: (v: string) => void }) {
 export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLogout?: () => void; clientName?: string } = {}) {
   const [tab, setTab] = useState<Tab>("orders");
   const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
+  const [targetInquiryId, setTargetInquiryId] = useState<string | undefined>();
+  const navigateFromNotification = (id: string, inquiryId?: string) => {
+    if (!isClientDestination(id)) return;
+    setTargetInquiryId(inquiryId);
+    setTab(id);
+  };
   return (
-    <Shell active={tab} onChange={setTab} clientName={clientName} onLogout={onLogout}>
-      {tab === "orders" && <OrdersTab clientName={clientName} onSubmitted={() => setTab("status")} onPayInvoice={(id) => { setPaymentInvoiceId(id); setTab("accounting"); }} />}
+    <Shell active={tab} onChange={navigateFromNotification} clientName={clientName} onLogout={onLogout}>
+      {tab === "orders" && <OrdersTab clientName={clientName} targetInquiryId={targetInquiryId} onSubmitted={() => setTab("status")} onPayInvoice={(id) => { setPaymentInvoiceId(id); setTab("accounting"); }} />}
       {tab === "status" && <StatusTab clientName={clientName} />}
       {tab === "logistics" && <LogisticsTab clientName={clientName} />}
       {tab === "accounting" && <ClientAccountingTab clientName={clientName} focusInvoiceId={paymentInvoiceId} />}
@@ -3725,7 +3816,7 @@ export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLo
         <NotificationsCenter
           role="client"
           clientName={clientName}
-          onNavigate={(id) => isClientDestination(id) && setTab(id)}
+          onNavigate={navigateFromNotification}
         />
       )}
       {tab === "settings" && <SettingsTab clientName={clientName} />}

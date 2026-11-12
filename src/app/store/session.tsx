@@ -4,7 +4,7 @@ import type { Role } from "../components/Login";
 interface SessionCtx {
   role: Role;
   name: string;
-  navigate?: (id: string) => void;
+  navigate?: (id: string, inquiryId?: string) => void;
 }
 
 const SessionContext = createContext<SessionCtx | null>(null);

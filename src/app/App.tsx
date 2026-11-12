@@ -47,6 +47,7 @@ interface Session { role: Role; name: string }
 function Shell() {
   const [session, setSession] = useState<Session | null>(null);
   const [active, setActive] = useState("dashboard");
+  const [targetInquiryId, setTargetInquiryId] = useState<string | undefined>();
   const { inquiries } = useOrders();
   const { unreadFor, isReadFor } = useNotifications();
 
@@ -58,6 +59,12 @@ function Shell() {
   const logout = () => {
     setSession(null);
     setActive("dashboard");
+    setTargetInquiryId(undefined);
+  };
+
+  const navigate = (id: string, inquiryId?: string) => {
+    setTargetInquiryId(inquiryId);
+    setActive(id);
   };
 
   if (!session) return <Login onLogin={login} />;
@@ -78,7 +85,7 @@ function Shell() {
   const badges: Record<string, number> = { sales: poCount + inquiryCount };
 
   const screen = !isAllowed ? <Unauthorized /> :
-    active === "sales" ? <SalesOrders /> :
+    active === "sales" ? <SalesOrders targetInquiryId={targetInquiryId} /> :
     active === "production" && role === "operations" ? <OperationsProductionFloor /> :
     active === "production" ? <ProductionFloor /> :
     active === "inventory" || active === "inventory-finished"
@@ -99,12 +106,12 @@ function Shell() {
     active === "notifications" ? <NotificationsCenter /> :
     active === "analytics" ? <AnalyticsFullView /> :
     active === "settings" ? <Settings /> :
-    <Dashboard variant={role} onNavigate={setActive} />;
+    <Dashboard variant={role} onNavigate={navigate} />;
 
   return (
-    <SessionProvider role={role} name={session.name} navigate={setActive}>
+    <SessionProvider role={role} name={session.name} navigate={navigate}>
       <div className="size-full flex font-dm" style={{ backgroundColor: "#F4F6F9" }}>
-        <Sidebar role={role} active={active === "inventory-finished" ? "inventory" : isLogisticsActiveJobs ? "dashboard" : active} onNavigate={setActive} onLogout={logout} badges={badges} unreadNotif={role === "production" && active === "dashboard" ? 0 : unreadCount} />
+        <Sidebar role={role} active={active === "inventory-finished" ? "inventory" : isLogisticsActiveJobs ? "dashboard" : active} onNavigate={navigate} onLogout={logout} badges={badges} unreadNotif={role === "production" && active === "dashboard" ? 0 : unreadCount} />
         {screen}
       </div>
     </SessionProvider>

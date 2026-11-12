@@ -351,6 +351,15 @@ export interface Inquiry {
   fulfillmentCompletedAt?: string;
   /* — quotation revision flow (client requests, sales reviews, version history) — */
   revisionNote?: string;
+  revisionRequests?: {
+    id: string;
+    note: string;
+    requestedAt: string;
+    quotationNo?: string;
+    status: "pending" | "processed";
+    processedAt?: string;
+    responseQuotationNo?: string;
+  }[];
   quotationHistory?: QuotationDoc[];
   /* — urgent upgrade two-way comm — */
   urgentUpgradeRequested?: boolean;

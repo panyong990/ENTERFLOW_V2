@@ -13,6 +13,7 @@ export interface Notification {
   link?: string;       /* module id to navigate to */
   recipients: Role[];  /* which roles see this */
   clientName?: string;
+  inquiryId?: string;
   resourceType?: "official-receipt";
   resourceId?: string;
   clientLink?: string;

@@ -143,7 +143,7 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
     }
     return {
       id: "awaitingPOVerification",
-      label: "PENDING SALES REVIEW",
+      label: "PURCHASE ORDER SUBMITTED",
       bg: "#DBEAFE",
       fg: "#1D4ED8",
       message: "Purchase order submitted — awaiting Sales review.",
@@ -427,13 +427,13 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
             <option value="all">All Statuses</option>
             <option value="awaitingQuotation">Awaiting Quotation</option>
             <option value="quotationSent">Quotation Sent</option>
-            <option value="awaitingPOVerification">Pending Sales PO Review</option>
-            <option value="poRejected">PO Rejected · Resubmission Required</option>
-            <option value="poReceived">PO Approved</option>
-            <option value="invoiceSent">Invoice Sent</option>
+            <option value="awaitingPOVerification">Purchase Order Submitted</option>
+            <option value="poReceived">Purchase Order Approved</option>
+            <option value="poRejected">Purchase Order Rejected</option>
             <option value="awaitingPaymentVerification">Awaiting Payment Verification</option>
-            <option value="fullPaymentVerified">Full Payment Verified</option>
             <option value="downpaymentVerified">Downpayment Verified</option>
+            <option value="invoiceSent">Invoice Sent</option>
+            <option value="fullPaymentVerified">Paid / Completed</option>
           </select>
         </div>
       )}

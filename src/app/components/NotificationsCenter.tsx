@@ -65,7 +65,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
 
-      <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-start justify-between">
+      <header className={`bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 ${role === "client" ? "" : "flex items-start justify-between"}`}>
         <div>
           <h1 className="font-syne flex items-center gap-3" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
             <Bell size={26} style={{ color: "#C8102E" }} /> Notifications
@@ -74,7 +74,9 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
             All in-app notifications for your role · Filtered for {role}
           </p>
         </div>
-        <NotificationBell role={role} clientName={notificationClient} onNavigate={navigate} />
+        {role !== "client" && (
+          <NotificationBell role={role} clientName={notificationClient} onNavigate={navigate} />
+        )}
       </header>
 
       <div className="px-8 py-8 flex flex-col gap-5">

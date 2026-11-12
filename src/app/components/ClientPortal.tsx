@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  ClipboardList, MapPin, Truck, CreditCard, Bell, Upload, CheckCircle2, Circle,
+  ClipboardList, MapPin, Truck, CreditCard, Upload, CheckCircle2, Circle,
   Building2, User as UserIcon, Info, Camera, Send, Plus, Trash2, ChevronDown,
   ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw, Printer,
 } from "lucide-react";
@@ -56,9 +56,11 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "status", label: "Status", icon: MapPin },
   { id: "logistics", label: "Logistics", icon: Truck },
   { id: "accounting", label: "Accounting", icon: CreditCard },
-  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "settings", label: "Settings", icon: Settings },
 ];
+
+const isClientDestination = (id: string): id is Tab =>
+  id === "notifications" || tabs.some((tab) => tab.id === id);
 
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
 
@@ -187,7 +189,7 @@ function Shell({ active, onChange, children, clientName, onLogout }: {
           <span className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
             Welcome, <span style={{ fontWeight: 600 }}>{clientName}</span>
           </span>
-          <NotificationBell role="client" clientName={clientName} onNavigate={(id) => tabs.some((tab) => tab.id === id) && onChange(id as Tab)} />
+          <NotificationBell role="client" clientName={clientName} onNavigate={(id) => isClientDestination(id) && onChange(id)} />
           <button onClick={onLogout} className="font-dm" style={{ fontSize: 13, color: "#C8102E", fontWeight: 600 }}>Logout</button>
         </div>
       </header>
@@ -1823,6 +1825,8 @@ interface ActiveOrder {
 function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
   const downstreamOfJO = ["in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"];
   const payment = paymentState(inq);
+  const invoiceSent = Boolean(inq.invoiceSentAt && inq.invoiceNo);
+  const paymentCleared = invoiceSent && payment.invoiceTotal > 0 && payment.state === "FULLY_PAID";
   const requiredPaymentVerified = payment.state === "FULLY_PAID"
     || (payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE");
   const poReference = poNumberForDisplay(inq);
@@ -1840,10 +1844,14 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
       detailFn: (i) => hasPORecord(i)
         ? `${poNumberForDisplay(i) ?? "PO document"} · ${poReviewStatus(i) ?? "Pending Sales Review"}`
         : "Upload signed PO to proceed" },
-    { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
+    { key: "invoiced",   label: "Invoiced",               matches: (i) => i.invoiceSentAt && i.invoiceNo ? "done" : "pending",
       detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.paymentCycleStartedAt && i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
-    { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
-      detailFn: () => payment.state === "FULLY_PAID" ? "Full payment verified" : requiredPaymentVerified ? `Required downpayment verified · ${peso(payment.verifiedDownpaymentAmount)}` : "Awaiting required payment verification" },
+    { key: "paid",       label: "Payment Cleared",        matches: () => paymentCleared ? "done" : invoiceSent ? "current" : "pending",
+      detailFn: () => paymentCleared
+        ? "Full payment verified"
+        : invoiceSent && payment.totalVerifiedPayments > 0
+          ? `Verified ${peso(payment.totalVerifiedPayments)} · ${peso(payment.remainingInvoiceBalance)} balance remaining`
+          : invoiceSent ? "Awaiting required payment verification" : "Awaiting invoice" },
     { key: "jo",         label: "Job Order Created",      matches: (i) => {
         if (!i.invoiceSentAt || !requiredPaymentVerified) return "pending";
         return i.stage === "jo" ? "current" : downstreamOfJO.includes(i.stage) ? "done" : "pending";
@@ -3698,7 +3706,7 @@ export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLo
         <NotificationsCenter
           role="client"
           clientName={clientName}
-          onNavigate={(id) => tabs.some((item) => item.id === id) && setTab(id as Tab)}
+          onNavigate={(id) => isClientDestination(id) && setTab(id)}
         />
       )}
       {tab === "settings" && <SettingsTab clientName={clientName} />}

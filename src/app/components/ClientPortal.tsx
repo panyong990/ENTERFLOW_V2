@@ -17,6 +17,7 @@ import {
   exactDownpaymentValidationMessage,
   invoiceTotal,
   poNumberForDisplay,
+  poReviewStatus,
   stageLabel,
   fromMoneyCents,
   toMoneyCents,
@@ -66,6 +67,7 @@ type ClientOrderStatusId =
   | "quotationSent"
   | "awaitingPOVerification"
   | "poReceived"
+  | "poRejected"
   | "invoiceSent"
   | "awaitingPaymentVerification"
   | "fullPaymentVerified"
@@ -119,6 +121,34 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
       message: "Invoice sent — awaiting required payment.",
     };
   }
+  if (inquiry.stage === "po" && inquiry.poFileName) {
+    const poStatus = poReviewStatus(inquiry);
+    if (poStatus === "Rejected") {
+      return {
+        id: "poRejected",
+        label: "PO REJECTED · RESUBMISSION REQUIRED",
+        bg: "#FEE2E2",
+        fg: "#991B1B",
+        message: "Your PO was rejected. Review the reason below and upload a revised PO.",
+      };
+    }
+    if (poStatus === "Approved") {
+      return {
+        id: "poReceived",
+        label: "PO APPROVED",
+        bg: "#DCFCE7",
+        fg: "#166534",
+        message: "Purchase order approved — the order can proceed to invoice and payment.",
+      };
+    }
+    return {
+      id: "awaitingPOVerification",
+      label: "PENDING SALES REVIEW",
+      bg: "#DBEAFE",
+      fg: "#1D4ED8",
+      message: "Purchase order submitted — awaiting Sales review.",
+    };
+  }
   if (inquiry.stage === "quotation") {
     return {
       id: "quotationSent",
@@ -126,28 +156,6 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
       bg: "#DBEAFE",
       fg: "#1D4ED8",
       message: "Quotation sent — awaiting client purchase order.",
-    };
-  }
-  if (
-    (inquiry.quotationDoc?.quotationNo || inquiry.quotation)
-    && inquiry.stage === "po"
-    && inquiry.poFileName
-  ) {
-    if (inquiry.poReceived) {
-      return {
-        id: "poReceived",
-        label: "PO SUBMITTED",
-        bg: "#FEF3C7",
-        fg: "#B45309",
-        message: "Purchase order received by Sales.",
-      };
-    }
-    return {
-      id: "awaitingPOVerification",
-      label: "AWAITING PO VERIFICATION",
-      bg: "#DBEAFE",
-      fg: "#1D4ED8",
-      message: "Purchase order submitted — awaiting verification.",
     };
   }
   return {
@@ -298,6 +306,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   const [showJobs, setShowJobs] = useState(false);
   const [showCreateOptions, setShowCreateOptions] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
+  const poForInquiry = poForId ? myOrders.find((inquiry) => inquiry.id === poForId) : undefined;
 
   const createReorderInquiry = async (source: Inquiry, quantities: Record<string, number>): Promise<boolean> => {
     try {
@@ -418,7 +427,9 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
             <option value="all">All Statuses</option>
             <option value="awaitingQuotation">Awaiting Quotation</option>
             <option value="quotationSent">Quotation Sent</option>
-            <option value="poReceived">PO SUBMITTED</option>
+            <option value="awaitingPOVerification">Pending Sales PO Review</option>
+            <option value="poRejected">PO Rejected · Resubmission Required</option>
+            <option value="poReceived">PO Approved</option>
             <option value="invoiceSent">Invoice Sent</option>
             <option value="awaitingPaymentVerification">Awaiting Payment Verification</option>
             <option value="fullPaymentVerified">Full Payment Verified</option>
@@ -497,8 +508,35 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
 
       {poForId && (
         <POUploadOverlay
+          isResubmission={Boolean(poForInquiry && poReviewStatus(poForInquiry) === "Rejected")}
           onClose={() => setPoForId(null)}
-          onSubmit={({ fileName, fileDataUrl, poNumber }) => { uploadPO(poForId, fileName, fileDataUrl, poNumber); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
+          onSubmit={({ fileName, fileDataUrl, poNumber }) => {
+            const inquiry = poForInquiry;
+            if (!inquiry || !uploadPO(inquiry.id, fileName, fileDataUrl, poNumber)) {
+              toast.error("This order is not currently eligible for a PO submission");
+              return false;
+            }
+            const revised = poReviewStatus(inquiry) === "Rejected";
+            pushNotif({
+              dept: "sales",
+              title: revised ? `Revised Purchase Order submitted: ${inquiry.code}` : `Purchase Order submitted: ${inquiry.code}`,
+              body: `${clientName} · ${poNumber} · awaiting Sales review`,
+              link: "sales",
+              recipients: ["owner", "operations", "sales"],
+            });
+            pushNotif({
+              dept: "sales",
+              title: "Purchase Order received",
+              body: `${inquiry.code} · ${poNumber} · awaiting Sales review`,
+              link: "orders",
+              clientLink: "orders",
+              clientName,
+              recipients: ["client"],
+            });
+            setPoForId(null);
+            toast.success(revised ? "Revised Purchase Order submitted" : "Purchase Order submitted", { description: "Sales has been notified and your PO is awaiting review." });
+            return true;
+          }}
         />
       )}
       {showJobs && (
@@ -1286,7 +1324,7 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
 function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void; onPayInvoice: () => void }) {
   const { updateInquiry } = useOrders();
   const { push: pushNotif } = useNotifications();
-  const [open, setOpen] = useState(inquiry.stage === "quotation");
+  const [open, setOpen] = useState(inquiry.stage === "quotation" || poReviewStatus(inquiry) === "Rejected");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   /* Section C — revision request modal */
@@ -1301,6 +1339,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const invoicePayment = paymentState(inquiry);
   const submittedPayments = paymentRecords(inquiry);
   const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
+  const poSubmissions = inquiry.poSubmissions ?? [];
   const status = clientOrderStatus(inquiry);
 
   const submitRevision = () => {
@@ -1366,6 +1405,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                 {invoicePayment.currentPaymentType
                   && status.id !== "downpaymentVerified"
                   && status.id !== "fullPaymentVerified"
+                  && status.id !== "awaitingPaymentVerification"
                   && <button onClick={onPayInvoice} className="rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
               </div>
             </section>
@@ -1494,9 +1534,54 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                 </>
               )}
               {inquiry.stage === "po" && inquiry.poFileName && (
-                <div className="rounded-md p-3 font-dm" style={{ backgroundColor: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 13, color: "#166534" }}>
-                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span>
+                <div className="rounded-md p-3 font-dm" style={{
+                  backgroundColor: status.id === "poRejected" ? "#FEF2F2" : status.id === "poReceived" ? "#F0FDF4" : "#EFF6FF",
+                  border: `1px solid ${status.id === "poRejected" ? "#FECACA" : status.id === "poReceived" ? "#86EFAC" : "#BFDBFE"}`,
+                  fontSize: 12,
+                  color: status.fg,
+                }}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span><strong>{status.label}</strong> · {inquiry.poFileName}</span>
+                    <span>Submitted {inquiry.poUploadedAt ? new Date(inquiry.poUploadedAt).toLocaleString() : "date unavailable"}</span>
+                    {inquiry.poFileDataUrl && (
+                      <a
+                        href={inquiry.poFileDataUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        download={inquiry.poFileName}
+                        className="rounded border border-current px-2 py-1 font-dm"
+                        style={{ fontSize: 11, fontWeight: 700 }}
+                      >View / Download latest PO</a>
+                    )}
+                  </div>
+                  {status.id === "poRejected" && poSubmissions[poSubmissions.length - 1]?.rejectionReason && (
+                    <div className="mt-2 rounded border border-red-200 bg-white p-2" style={{ color: "#991B1B" }}>
+                      <strong>Rejection reason:</strong> {poSubmissions[poSubmissions.length - 1].rejectionReason}
+                    </div>
+                  )}
+                  {poSubmissions.length > 0 && (
+                    <div className="mt-3 border-t border-current/20 pt-2">
+                      <div className="mb-1 font-dm" style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" }}>Submission History</div>
+                      <div className="flex flex-col gap-2">
+                        {poSubmissions.map((submission, index) => (
+                          <div key={submission.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span>#{index + 1}{index === poSubmissions.length - 1 ? " · Latest" : ""} · {submission.fileName} · {new Date(submission.submittedAt).toLocaleString()} · <strong>{submission.status}</strong></span>
+                            {submission.fileDataUrl && (
+                              <a href={submission.fileDataUrl} target="_blank" rel="noreferrer" download={submission.fileName} className="underline" style={{ fontWeight: 700 }}>View / Download</a>
+                            )}
+                            {submission.rejectionReason && <span className="w-full" style={{ color: "#991B1B" }}>Rejection reason: {submission.rejectionReason}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+              {inquiry.stage === "po" && poReviewStatus(inquiry) === "Rejected" && (
+                <button onClick={onUploadPO} className="flex w-full items-center justify-center gap-2 rounded-md py-3 font-dm text-white hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+                  <FileCheck size={15} strokeWidth={2.5} />
+                  RESUBMIT PO
+                </button>
               )}
 
             </div>
@@ -1634,11 +1719,12 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   );
 }
 
-function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string }) => void }) {
+function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string }) => boolean; isResubmission: boolean }) {
   const { generatePONumber } = useOrders();
   const [file, setFile] = useState<File | null>(null);
   const [fileDataUrl, setFileDataUrl] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
   /* Section J — auto-generated PO reference shown to the client; on submit, prefer the uploaded filename, but fall back to this reference. */
   const [autoRef] = useState(() => generatePONumber());
   const readPOFile = (nextFile: File) => {
@@ -1671,11 +1757,29 @@ function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit:
             <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
           </div>
           {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
-          <button onClick={() => file && fileDataUrl && onSubmit({ fileName: file.name, fileDataUrl, poNumber: autoRef })} disabled={!file || !fileDataUrl} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-            SUBMIT PURCHASE ORDER ({autoRef})
+          <button onClick={() => setConfirmSubmit(true)} disabled={!file || !fileDataUrl} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+            {isResubmission ? "REVIEW REVISED PURCHASE ORDER" : "REVIEW PURCHASE ORDER"} ({autoRef})
           </button>
         </div>
       </div>
+      <AlertDialog open={confirmSubmit} onOpenChange={setConfirmSubmit}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-syne text-[#1A2B4A]">{isResubmission ? "SUBMIT REVISED PURCHASE ORDER?" : "SUBMIT PURCHASE ORDER?"}</AlertDialogTitle>
+            <AlertDialogDescription className="font-dm text-slate-600">
+              {file?.name} will be sent to Sales for review. {isResubmission ? "The rejected submission and its history will be preserved." : "You cannot replace this PO unless Sales rejects it."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-dm">CANCEL</AlertDialogCancel>
+            <AlertDialogAction className="font-dm bg-[#C8102E] hover:bg-[#A00D25]" onClick={(event) => {
+              event.preventDefault();
+              if (!file || !fileDataUrl) return;
+              if (onSubmit({ fileName: file.name, fileDataUrl, poNumber: autoRef })) setConfirmSubmit(false);
+            }}>CONFIRM SUBMISSION</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1728,8 +1832,14 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
       detailFn: (i) => `Submitted ${i.submittedDate}${i.inquirySketch ? " · sketch attached" : ""}` },
     { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
-    { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
-      detailFn: (i) => hasPORecord(i) ? `${poNumberForDisplay(i) ?? "PO document"} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
+    { key: "po",         label: "PO Validation", matches: (i) => {
+        if (!hasPORecord(i)) return "pending";
+        const status = poReviewStatus(i);
+        return status === "Approved" || downstreamOfJO.includes(i.stage) ? "done" : "current";
+      },
+      detailFn: (i) => hasPORecord(i)
+        ? `${poNumberForDisplay(i) ?? "PO document"} · ${poReviewStatus(i) ?? "Pending Sales Review"}`
+        : "Upload signed PO to proceed" },
     { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
       detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.paymentCycleStartedAt && i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
     { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
@@ -3251,7 +3361,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                     : state.currentPaymentType === "BALANCE_PAYMENT" && !r.paymentCycleActive
                                       ? "Balance payment is unavailable until the signed Delivery Receipt is received."
                                       : pendingPayments.length > 0
-                                        ? "Your submitted amount is awaiting verification. Any remaining available amount is shown after pending submissions."
+                                        ? "Your submitted payment is awaiting Accountant verification. Submit another payment after the pending submission is reviewed."
                                         : "No payment is currently available for submission."}
                               </div>
                             )}

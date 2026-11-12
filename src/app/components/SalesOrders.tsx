@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, SlidersHorizontal, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, isValidProductionDueDate, resolveProductBOM, poNumberForDisplay, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, isValidProductionDueDate, resolveProductBOM, poNumberForDisplay, poReviewStatus, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -16,6 +16,16 @@ import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModa
 import { useSession } from "../store/session";
 import { loadProductSketchAttachment, type ProductSketchAttachment } from "../store/attachments";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 
 const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -112,7 +122,11 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
         );
         const matchesFollowUpStatus = followUpStatus === "all"
           || (followUpStatus === "awaitingQuotation" && inquiry.stage === "inquiry")
-          || (followUpStatus === "poReceived" && inquiry.stage === "po");
+          || (inquiry.stage === "po" && (
+            (followUpStatus === "poPending" && poReviewStatus(inquiry) === "Pending Sales Review")
+            || (followUpStatus === "poRejected" && poReviewStatus(inquiry) === "Rejected")
+            || (followUpStatus === "poReceived" && poReviewStatus(inquiry) === "Approved")
+          ));
 
         return matchesQuery && matchesDate && matchesFollowUpStatus;
       })
@@ -295,7 +309,9 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
                       >
                         <option value="all">All Pipeline Records</option>
                         <option value="awaitingQuotation">Awaiting Quotation</option>
-                        <option value="poReceived">PO Received</option>
+                        <option value="poPending">Pending PO Review</option>
+                        <option value="poRejected">PO Rejected · Resubmission Required</option>
+                        <option value="poReceived">PO Approved</option>
                       </select>
                     </label>
                     <div className="flex justify-between gap-2 border-t border-slate-100 pt-3">
@@ -840,7 +856,7 @@ function productDetails(product: ProductLine) {
 }
 
 export function SalesOrders() {
-  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
+  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, reviewPO, inquiriesByStage } = useOrders();
   const { validateGeneratedJOs, deductForGeneratedJOs, rawMaterials, findBOMTemplate } = useMaterials();
   const { requests: stockRequests } = useStockRequests();
   const { push: pushNotif } = useNotifications();
@@ -856,6 +872,9 @@ export function SalesOrders() {
   const [generateId, setGenerateId] = useState<string | null>(null);
   const [generateJoId, setGenerateJoId] = useState<string | null>(null);
   const [viewInvoiceId, setViewInvoiceId] = useState<string | null>(null);
+  const [approvePOId, setApprovePOId] = useState<string | null>(null);
+  const [rejectPOId, setRejectPOId] = useState<string | null>(null);
+  const [poRejectionReason, setPORejectionReason] = useState("");
   const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [showStockRequests, setShowStockRequests] = useState(false);
   const [expandedCards, setExpandedCards] = useState<{ quotation: string | null; readyForJobOrder: string | null }>({
@@ -880,6 +899,53 @@ export function SalesOrders() {
   const generating = inquiries.find((i) => i.id === generateId);
   const generatingJO = inquiries.find((i) => i.id === generateJoId);
   const viewingInvoice = inquiries.find((i) => i.id === viewInvoiceId);
+  const approvingPO = inquiries.find((i) => i.id === approvePOId);
+  const rejectingPO = inquiries.find((i) => i.id === rejectPOId);
+
+  const approvePurchaseOrder = (inquiry: Inquiry) => {
+    if (!reviewPO(inquiry.id, "Approved", session.name)) {
+      toast.error("This PO is no longer awaiting review");
+      setApprovePOId(null);
+      return;
+    }
+    pushNotif({
+      dept: "sales",
+      title: `Purchase Order approved: ${inquiry.code}`,
+      body: `${inquiry.clientName} · ${poNumberForDisplay(inquiry) ?? inquiry.code}`,
+      link: "sales",
+      clientLink: "orders",
+      clientName: inquiry.clientName,
+      recipients: ["client"],
+    });
+    toast.success("Purchase Order approved", { description: `${inquiry.code} · client notified` });
+    setApprovePOId(null);
+  };
+
+  const rejectPurchaseOrder = () => {
+    if (!rejectingPO) return;
+    const reason = poRejectionReason.trim();
+    if (!reason) {
+      toast.error("Enter a reason for rejecting this PO");
+      return;
+    }
+    if (!reviewPO(rejectingPO.id, "Rejected", session.name, reason)) {
+      toast.error("This PO is no longer awaiting review");
+      setRejectPOId(null);
+      return;
+    }
+    pushNotif({
+      dept: "sales",
+      title: `Purchase Order rejected: ${rejectingPO.code}`,
+      body: `${rejectingPO.clientName} · ${poNumberForDisplay(rejectingPO) ?? rejectingPO.code} · Reason: ${reason}`,
+      link: "sales",
+      clientLink: "orders",
+      clientName: rejectingPO.clientName,
+      recipients: ["client"],
+    });
+    toast.success("Purchase Order rejected", { description: `${rejectingPO.code} · client notified` });
+    setRejectPOId(null);
+    setPORejectionReason("");
+  };
 
   const sendInvoiceToClient = (invoice: Inquiry, closePreview: () => void) => {
     if (!sendInvoice(invoice.id)) return;
@@ -1015,11 +1081,8 @@ export function SalesOrders() {
                       onReview={() => setReviewId(c.id)}
                       onViewQuote={() => setViewQuoteId(c.id)}
                       onViewPO={() => setPoViewId(c.id)}
-                      onMarkPOReceived={() => {
-                        if (!hasPORecord(c)) return;
-                        updateInquiry(c.id, { poReceived: true });
-                        toast.success("PO marked received", { description: `${c.code} · ${poNumberForDisplay(c) ?? c.code}` });
-                      }}
+                      onApprovePO={() => setApprovePOId(c.id)}
+                      onRejectPO={() => { setRejectPOId(c.id); setPORejectionReason(""); }}
                       onGenerateJO={() => {
                         const existingJO = completedJOs.find((job) => job.id === c.id || job.parentInquiryId === c.id);
                         if (c.joNumber || existingJO) {
@@ -1151,6 +1214,47 @@ export function SalesOrders() {
       {poViewing && (
         <POViewerModal inquiry={poViewing} onClose={() => setPoViewId(null)} />
       )}
+      <AlertDialog open={Boolean(approvingPO)} onOpenChange={(open) => { if (!open) setApprovePOId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-syne text-[#1A2B4A]">APPROVE PURCHASE ORDER?</AlertDialogTitle>
+            <AlertDialogDescription className="font-dm text-slate-600">
+              Approve the latest PO from {approvingPO?.clientName ?? "this client"}? Existing invoice, payment verification, and Job Order requirements will remain in place.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-dm">CANCEL</AlertDialogCancel>
+            <AlertDialogAction className="font-dm bg-[#16A34A] hover:bg-[#15803D]" onClick={(event) => {
+              event.preventDefault();
+              if (approvingPO) approvePurchaseOrder(approvingPO);
+            }}>APPROVE PO</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {rejectingPO && (
+        <ModalShell
+          title={`Reject Purchase Order · ${rejectingPO.code}`}
+          subtitle={`${rejectingPO.clientName} · ${poNumberForDisplay(rejectingPO) ?? rejectingPO.code}`}
+          onClose={() => { setRejectPOId(null); setPORejectionReason(""); }}
+        >
+          <label className="font-dm mb-2 block" htmlFor="po-rejection-reason" style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+            Rejection reason (required)
+          </label>
+          <textarea
+            id="po-rejection-reason"
+            value={poRejectionReason}
+            onChange={(event) => setPORejectionReason(event.target.value)}
+            rows={4}
+            className="form-input"
+            placeholder="Explain what needs to be corrected in the revised PO."
+            required
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => { setRejectPOId(null); setPORejectionReason(""); }} className="rounded-md border border-slate-300 px-4 py-2 font-dm text-slate-700" style={{ fontSize: 12, fontWeight: 700 }}>CANCEL</button>
+            <button type="button" disabled={!poRejectionReason.trim()} onClick={rejectPurchaseOrder} className="rounded-md px-4 py-2 font-dm text-white disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>REJECT PO</button>
+          </div>
+        </ModalShell>
+      )}
 
       {generating && (
         <InvoicePreviewModal
@@ -1252,8 +1356,8 @@ export function SalesOrders() {
 }
 
 /* ---- Inquiry Card with collapsible product list ---- */
-function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded, onToggle, onReview, onViewQuote, onViewPO, onMarkPOReceived, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
-  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; collapsible: boolean; expanded: boolean; onToggle: () => void; onReview: () => void; onViewQuote: () => void; onViewPO: () => void; onMarkPOReceived: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
+function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded, onToggle, onReview, onViewQuote, onViewPO, onApprovePO, onRejectPO, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
+  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; collapsible: boolean; expanded: boolean; onToggle: () => void; onReview: () => void; onViewQuote: () => void; onViewPO: () => void; onApprovePO: () => void; onRejectPO: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
@@ -1349,6 +1453,14 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
             {isReadyForJobOrder && (
               <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#15803D", backgroundColor: "#F0FDF4" }}>PAYMENT VERIFIED</span>
             )}
+            {inquiry.stage === "po" && hasPORecord(inquiry) && (
+              <span className="font-dm px-2 py-1 rounded-full" style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: poReviewStatus(inquiry) === "Approved" ? "#166534" : poReviewStatus(inquiry) === "Rejected" ? "#991B1B" : "#1D4ED8",
+                backgroundColor: poReviewStatus(inquiry) === "Approved" ? "#DCFCE7" : poReviewStatus(inquiry) === "Rejected" ? "#FEE2E2" : "#DBEAFE",
+              }}>PO {poReviewStatus(inquiry)?.toUpperCase()}</span>
+            )}
             {!isReadyForJobOrder && inquiry.stage === "po" && inquiry.poReceived && inquiry.invoiceNo && inquiry.invoiceSentAt && (
               <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", backgroundColor: "#FFFBEB" }}>INVOICE SENT · AWAITING CLIENT PAYMENT</span>
             )}
@@ -1435,18 +1547,47 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           QUOTATION SENT · AWAITING CLIENT PO
         </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && !inquiry.poReceived && (
-        <button
-          onClick={onMarkPOReceived}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md font-dm border border-slate-300 hover:bg-slate-50"
-          style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
-        >
-          <Upload size={13} /> MARK PO RECEIVED
-        </button>
+      {inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Pending Sales Review" && (
+        <div className="flex gap-2">
+          <button onClick={onApprovePO} className="flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 font-dm text-white hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700 }}>
+            <CheckCircle2 size={13} /> APPROVE PO
+          </button>
+          <button onClick={onRejectPO} className="flex-1 flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 font-dm hover:bg-red-50" style={{ color: "#C8102E", fontSize: 12, fontWeight: 700 }}>
+            <X size={13} /> REJECT PO
+          </button>
+        </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poReceived && (
+      {inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Rejected" && (
+        <div className="w-full mb-3 rounded-md px-3 py-2.5" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", color: "#991B1B", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
+          PO REJECTED · RESUBMISSION REQUIRED
+        </div>
+      )}
+      {inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Approved" && (
         <div className="w-full mb-3 rounded-md px-3 py-2.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", color: "#15803D", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
-          ✓ PO RECEIVED
+          ✓ PO APPROVED
+        </div>
+      )}
+      {(inquiry.poSubmissions?.length ?? 0) > 0 && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>PO Submission History</div>
+          <div className="flex flex-col gap-2">
+            {inquiry.poSubmissions?.map((submission, index) => (
+              <div key={submission.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 font-dm" style={{ fontSize: 11, color: "#475569" }}>
+                <span style={{ fontWeight: 700 }}>#{index + 1}{index === (inquiry.poSubmissions?.length ?? 0) - 1 ? " · Latest" : ""} · {submission.fileName}</span>
+                <span>{new Date(submission.submittedAt).toLocaleString()}</span>
+                <span className="rounded-full px-2 py-0.5" style={{
+                  backgroundColor: submission.status === "Approved" ? "#DCFCE7" : submission.status === "Rejected" ? "#FEE2E2" : "#DBEAFE",
+                  color: submission.status === "Approved" ? "#166534" : submission.status === "Rejected" ? "#991B1B" : "#1D4ED8",
+                  fontSize: 10,
+                  fontWeight: 800,
+                }}>{submission.status}</span>
+                {submission.fileDataUrl && (
+                  <a href={submission.fileDataUrl} target="_blank" rel="noreferrer" download={submission.fileName} className="font-dm underline" style={{ color: "#1A2B4A", fontWeight: 700 }}>View / Download</a>
+                )}
+                {submission.rejectionReason && <span className="w-full" style={{ color: "#991B1B" }}>Reason: {submission.rejectionReason}</span>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {isReadyForJobOrder && (

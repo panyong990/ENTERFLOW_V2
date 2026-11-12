@@ -82,7 +82,7 @@ export type Stage =
 export const stageLabel: Record<Stage, string> = {
   inquiry: "New Inquiry",
   quotation: "Quotation Sent",
-  po: "PO Received",
+  po: "PO Validation",
   jo: "JO Created",
   in_production: "In Production",
   quality_inspection: "Quality Inspection",
@@ -274,6 +274,8 @@ export interface Inquiry {
   poUploadedAt?: string;
   /** Sales confirmation state for a client-uploaded PO. */
   poReceived?: boolean;
+  poStatus?: "Pending Sales Review" | "Approved" | "Rejected";
+  poSubmissions?: POSubmission[];
   urgent?: boolean;
   dueDate?: string;
   productionDueDate?: string;
@@ -392,6 +394,32 @@ export interface Inquiry {
   /* — This inquiry is itself a replacement JO — */
   isReplacement?: boolean;
   replacementParentId?: string;   // id of the original inquiry
+}
+
+export interface POSubmission {
+  id: string;
+  fileName: string;
+  poNumber: string;
+  submittedAt: string;
+  status: "Pending Sales Review" | "Approved" | "Rejected";
+  fileDataUrl?: string;
+  rejectionReason?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
+
+export function latestPOSubmission(inquiry: Inquiry): POSubmission | undefined {
+  return inquiry.poSubmissions?.[inquiry.poSubmissions.length - 1];
+}
+
+export function poReviewStatus(inquiry: Inquiry): POSubmission["status"] | undefined {
+  return inquiry.poStatus
+    ?? latestPOSubmission(inquiry)?.status
+    ?? (inquiry.poReceived
+      ? "Approved"
+      : inquiry.poFileName && (inquiry.poUploaded || inquiry.poFileDataUrl)
+        ? "Pending Sales Review"
+        : undefined);
 }
 
 function paymentDueDate(paymentTerms: Inquiry["paymentTerms"], receiptAt: string): string | undefined {
@@ -588,9 +616,9 @@ export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: Payment
   if (!paymentType || inq.stage === "paid") return { paymentType: null, maxAmount: 0 };
 
   const records = paymentRecords(inq);
-  if (paymentType === "DOWNPAYMENT" && records.some((payment) =>
-    payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
-  )) return { paymentType: null, maxAmount: 0 };
+  if (records.some((payment) => payment.verificationStatus === "pending")) {
+    return { paymentType: null, maxAmount: 0 };
+  }
 
   if (
     paymentType === "BALANCE_PAYMENT"
@@ -818,7 +846,8 @@ interface Ctx {
     sketches: Record<string, File>,
   ) => Promise<string>;
   sendQuotation: (id: string, q: Quotation) => void;
-  uploadPO: (id: string, fileName: string, fileDataUrl: string, poNumber: string) => void;
+  uploadPO: (id: string, fileName: string, fileDataUrl: string, poNumber: string) => boolean;
+  reviewPO: (id: string, status: "Approved" | "Rejected", reviewedBy: string, rejectionReason?: string) => boolean;
   finalizeJO: (id: string, data: FinalizeJOData) => void;
   rejectInquiry: (id: string, reason?: string) => void;
   cancelInquiry: (id: string, reason?: string) => void;
@@ -897,8 +926,9 @@ interface PersistedOrdersState {
 }
 
 function businessState(inquiries: Inquiry[]): Inquiry[] {
-  return inquiries.map(({ poFileDataUrl, pendingSignedDeliveryReceiptDataUrl, signedDeliveryReceiptDataUrl, payments, ...inquiry }) => ({
+  return inquiries.map(({ poFileDataUrl, poSubmissions, pendingSignedDeliveryReceiptDataUrl, signedDeliveryReceiptDataUrl, payments, ...inquiry }) => ({
     ...inquiry,
+    poSubmissions: poSubmissions?.map(({ fileDataUrl, ...submission }) => submission),
     payments: payments?.map(({ receiptDataUrl, ...payment }) => payment),
   }));
 }
@@ -957,6 +987,11 @@ function repairPersistedDemoOilfilBom(inquiries: Inquiry[]): { inquiries: Inquir
 function attachmentState(inquiry: Inquiry) {
   return {
     poFileDataUrl: inquiry.poFileDataUrl,
+    poSubmissionDataUrls: Object.fromEntries(
+      (inquiry.poSubmissions ?? [])
+        .filter((submission): submission is POSubmission & { fileDataUrl: string } => Boolean(submission.fileDataUrl))
+        .map((submission) => [submission.id, submission.fileDataUrl]),
+    ),
     pendingSignedDeliveryReceiptDataUrl: inquiry.pendingSignedDeliveryReceiptDataUrl,
     signedDeliveryReceiptDataUrl: inquiry.signedDeliveryReceiptDataUrl,
     paymentReceiptDataUrls: Object.fromEntries(
@@ -1064,6 +1099,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           return {
             ...inquiry,
             poFileDataUrl: entry.attachments.poFileDataUrl ?? inquiry.poFileDataUrl,
+            poSubmissions: inquiry.poSubmissions?.map((submission) => ({
+              ...submission,
+              fileDataUrl: submission.fileDataUrl ?? entry.attachments.poSubmissionDataUrls?.[submission.id],
+            })),
             pendingSignedDeliveryReceiptDataUrl: entry.attachments.pendingSignedDeliveryReceiptDataUrl ?? inquiry.pendingSignedDeliveryReceiptDataUrl,
             signedDeliveryReceiptDataUrl: entry.attachments.signedDeliveryReceiptDataUrl ?? inquiry.signedDeliveryReceiptDataUrl,
             payments: inquiry.payments?.map((payment) => ({
@@ -1151,16 +1190,81 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   };
 
   const uploadPO: Ctx["uploadPO"] = (id, fileName, fileDataUrl, poNumber) => {
-    setAllInquiries((prev) => prev.map((x) => (x.id === id ? {
-      ...x,
+    const inquiry = allInquiries.find((item) => item.id === id);
+    if (!inquiry || !fileName.trim() || !fileDataUrl.trim() || !poNumber.trim()) return false;
+    const currentStatus = poReviewStatus(inquiry);
+    const hasExistingPO = Boolean(inquiry.poUploaded || inquiry.poFileName || inquiry.poFileDataUrl);
+    if (hasExistingPO && (currentStatus !== "Rejected" || inquiry.stage !== "po")) return false;
+    if (!hasExistingPO && inquiry.stage !== "quotation") return false;
+
+    const submittedAt = new Date().toISOString();
+    const submission: POSubmission = {
+      id: `${id}-po-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      fileName,
+      poNumber,
+      submittedAt,
+      status: "Pending Sales Review",
+      fileDataUrl,
+    };
+    setAllInquiries((prev) => prev.map((item) => item.id === id ? {
+      ...item,
       stage: "po",
       poUploaded: true,
       poFileName: fileName,
       poNumber,
       poFileDataUrl: fileDataUrl,
-      poUploadedAt: new Date().toISOString(),
+      poUploadedAt: submittedAt,
       poReceived: false,
-    } : x)));
+      poStatus: "Pending Sales Review",
+      poSubmissions: [...(item.poSubmissions ?? []), submission],
+    } : item));
+    return true;
+  };
+
+  const reviewPO: Ctx["reviewPO"] = (id, status, reviewedBy, rejectionReason) => {
+    const reason = rejectionReason?.trim();
+    const inquiry = allInquiries.find((item) => item.id === id);
+    if (
+      !inquiry
+      || inquiry.stage !== "po"
+      || poReviewStatus(inquiry) !== "Pending Sales Review"
+      || !reviewedBy.trim()
+    ) return false;
+    if (status === "Rejected" && !reason) return false;
+
+    const existingSubmission = latestPOSubmission(inquiry);
+    const poNumber = poNumberForDisplay(inquiry);
+    const submission: POSubmission | undefined = existingSubmission ?? (
+      inquiry.poFileName && poNumber
+        ? {
+            id: `${id}-legacy-po`,
+            fileName: inquiry.poFileName,
+            poNumber,
+            submittedAt: inquiry.poUploadedAt ?? new Date().toISOString(),
+            status: "Pending Sales Review",
+            fileDataUrl: inquiry.poFileDataUrl,
+          }
+        : undefined
+    );
+    if (!submission || submission.status !== "Pending Sales Review") return false;
+
+    const reviewedAt = new Date().toISOString();
+    const reviewedSubmission: POSubmission = {
+      ...submission,
+      status,
+      reviewedAt,
+      reviewedBy: reviewedBy.trim(),
+      rejectionReason: status === "Rejected" ? reason : undefined,
+    };
+    setAllInquiries((prev) => prev.map((item) => item.id === id ? {
+      ...item,
+      poStatus: status,
+      poReceived: status === "Approved",
+      poSubmissions: item.poSubmissions?.length
+        ? item.poSubmissions.map((entry) => entry.id === submission.id ? reviewedSubmission : entry)
+        : [reviewedSubmission],
+    } : item));
+    return true;
   };
 
   const finalizeJO: Ctx["finalizeJO"] = (id, data) => {
@@ -1958,7 +2062,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   return (
     <OrdersContext.Provider value={{
       inquiries, archivedInquiries, completedJOs, clearedPOs,
-      addInquiry, addInquiryWithProductSketches, sendQuotation, uploadPO, finalizeJO,
+      addInquiry, addInquiryWithProductSketches, sendQuotation, uploadPO, reviewPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
       requestCancellation, approveCancellation, declineCancellation,
       confirmClientPayment, submitPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt,

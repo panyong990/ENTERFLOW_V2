@@ -1,0 +1,36 @@
+# Proposed permanent local database. Do not start until Phase 5 approval.
+name: enterflow-dev
+
+services:
+  mysql:
+    image: mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902
+    pull_policy: never
+    container_name: enterflow-mysql-dev
+    restart: unless-stopped
+    network_mode: bridge
+    ports:
+      - "127.0.0.1:3308:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set a generated root password in database/.env.dev}
+      MYSQL_DATABASE: enterflow_db
+    volumes:
+      - mysql-dev-data:/var/lib/mysql
+    cpus: 2
+    mem_limit: 2g
+    stop_grace_period: 60s
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysql --protocol=socket --user=root --batch --skip-column-names --execute="SELECT 1" >/dev/null'
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    labels:
+      enterflow.role: development
+
+volumes:
+  mysql-dev-data:
+    name: enterflow-mysql-dev-data
+    labels:
+      enterflow.role: development

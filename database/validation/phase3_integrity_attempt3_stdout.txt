@@ -1,0 +1,2 @@
+{"fixture_clients": "2", "accepted_drs": "3", "pending_copies": "2", "unicode_name": "T3 Client A — 測試", "decimal_price": "1.2345"}
+{"rolled_back_clients": 0, "rolled_back_payments": 0}

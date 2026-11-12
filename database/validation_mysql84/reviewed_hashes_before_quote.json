@@ -1,0 +1,66 @@
+{
+  "status": "passed_offline_only",
+  "tables": 70,
+  "columns": 562,
+  "foreign_keys": 141,
+  "named_checks": 26,
+  "ownership_guard_regressions": 24,
+  "receipt_states": [
+    [
+      false,
+      false,
+      null
+    ],
+    [
+      false,
+      true,
+      null
+    ],
+    [
+      true,
+      false,
+      1
+    ]
+  ],
+  "seed_rows": {
+    "schema_migrations": 5,
+    "roles": 9,
+    "modules": 18,
+    "role_modules": 40,
+    "payment_terms": 2,
+    "filter_types": 16,
+    "material_categories": 8,
+    "units": 8,
+    "delivery_methods": 5,
+    "order_stages": 11,
+    "production_stages": 9
+  },
+  "files": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "tables": 16,
+      "sha256": "67250301f630f03b8c5eece710b3778e24ec917f7548b8c19de67f62f4b219f9"
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "tables": 14,
+      "sha256": "500d976949043b5b40ea70b35f824be9f1895bd7bd0e13930229dc04d1e98ef4"
+    },
+    {
+      "file": "migrations/003_operations_billing.sql",
+      "tables": 29,
+      "sha256": "f996bad2b74950cdd92657dd441ca04d18f310a3300e5a792da305acfbc4a637"
+    },
+    {
+      "file": "migrations/004_attachments_audit.sql",
+      "tables": 11,
+      "sha256": "2e96f134b1f54b80104fe72c96f5970d3a8cd55764c97a983bdaa18d404ce12e"
+    },
+    {
+      "file": "seeds/001_reference_data.sql",
+      "tables": 0,
+      "sha256": "49f407b92fc4a2324133d6b06c8f17473742abbfde9a60822c3c5a802e5e8c34"
+    }
+  ],
+  "limits": "No SQL parser, database connection, engine enforcement or concurrency test."
+}

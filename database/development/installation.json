@@ -1,0 +1,2645 @@
+{
+  "target": "enterflow_db",
+  "container_name": "enterflow-mysql-dev",
+  "volume": "enterflow-mysql-dev-data",
+  "image_id": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "image_digest": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "endpoint": "127.0.0.1:3308",
+  "status": "development_database_ready",
+  "database_created": true,
+  "reviewed_files": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "tables": 16,
+      "sha256": "67250301f630f03b8c5eece710b3778e24ec917f7548b8c19de67f62f4b219f9"
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "tables": 14,
+      "sha256": "7b9679ec06eb3cc391a78d63233f0addfb3f179a917988eb2e3da3924f50c217"
+    },
+    {
+      "file": "migrations/003_operations_billing.sql",
+      "tables": 29,
+      "sha256": "f996bad2b74950cdd92657dd441ca04d18f310a3300e5a792da305acfbc4a637"
+    },
+    {
+      "file": "migrations/004_attachments_audit.sql",
+      "tables": 11,
+      "sha256": "2e96f134b1f54b80104fe72c96f5970d3a8cd55764c97a983bdaa18d404ce12e"
+    },
+    {
+      "file": "seeds/001_reference_data.sql",
+      "tables": 0,
+      "sha256": "49f407b92fc4a2324133d6b06c8f17473742abbfde9a60822c3c5a802e5e8c34"
+    }
+  ],
+  "migrations": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "file": "migrations/003_operations_billing.sql",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "file": "migrations/004_attachments_audit.sql",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "file": "seeds/001_reference_data.sql",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "main_catalog_before": [],
+  "protected_validation_before": {
+    "id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+    "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+    "running": true,
+    "started_at": "2026-11-11T12:13:23.361481953Z",
+    "binding": {
+      "3306/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "3307"
+        }
+      ]
+    },
+    "mounts": [
+      {
+        "type": "volume",
+        "name": "enterflow_mysql84_validation_data",
+        "destination": "/var/lib/mysql"
+      }
+    ]
+  },
+  "container_id": "9a61d013b545bc2a5ea4e33188763a153298a4cf3536fbec63c7ce247414c4ce",
+  "server_uuid": "48ff3abc-ddd0-11f1-bad9-f6054d80f334",
+  "environment": {
+    "uuid": "48ff3abc-ddd0-11f1-bad9-f6054d80f334",
+    "version": "8.4.13",
+    "database": "enterflow_db",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "unique_checks": 1,
+    "foreign_key_checks": 1,
+    "restrict_fk_on_non_standard_key": 1
+  },
+  "verification": {
+    "tables": 70,
+    "columns": 562,
+    "foreign_keys": 141,
+    "primary_and_unique_constraints": 123,
+    "named_checks": 26,
+    "metadata_differences": [],
+    "seed_differences": [],
+    "row_counts": {
+      "schema_migrations": 5,
+      "roles": 9,
+      "modules": 18,
+      "role_modules": 40,
+      "payment_terms": 2,
+      "clients": 0,
+      "users": 0,
+      "client_applications": 0,
+      "filter_types": 16,
+      "product_specifications": 0,
+      "material_categories": 8,
+      "units": 8,
+      "materials": 0,
+      "bom_templates": 0,
+      "bom_template_lines": 0,
+      "files": 0,
+      "order_stages": 11,
+      "delivery_methods": 5,
+      "orders": 0,
+      "order_items": 0,
+      "quotation_references": 0,
+      "quotations": 0,
+      "quotation_lines": 0,
+      "quotation_costing": 0,
+      "quotation_bom_lines": 0,
+      "quotation_discounts": 0,
+      "quotation_addons": 0,
+      "purchase_orders": 0,
+      "order_requests": 0,
+      "document_sequences": 0,
+      "production_stages": 9,
+      "replacement_requests": 0,
+      "job_orders": 0,
+      "job_bom_lines": 0,
+      "production_events": 0,
+      "material_movements": 0,
+      "material_changes": 0,
+      "finished_goods": 0,
+      "finished_good_movements": 0,
+      "finished_good_order_items": 0,
+      "stock_requests": 0,
+      "stock_request_lines": 0,
+      "stock_responses": 0,
+      "stock_response_lines": 0,
+      "quotation_stock_responses": 0,
+      "shipments": 0,
+      "waybills": 0,
+      "shipment_events": 0,
+      "delivery_receipts": 0,
+      "signed_delivery_receipts": 0,
+      "invoices": 0,
+      "invoice_delivery_receipts": 0,
+      "payments": 0,
+      "payment_instructions": 0,
+      "company_settings": 0,
+      "company_payment_methods": 0,
+      "notifications": 0,
+      "notification_roles": 0,
+      "notification_recipients": 0,
+      "order_files": 0,
+      "specification_files": 0,
+      "quotation_files": 0,
+      "purchase_order_files": 0,
+      "job_order_files": 0,
+      "payment_files": 0,
+      "invoice_files": 0,
+      "waybill_files": 0,
+      "delivery_receipt_files": 0,
+      "replacement_request_files": 0,
+      "audit_events": 0
+    },
+    "implicit_fk_indexes": [
+      "role_modules.module_code",
+      "clients.payment_term_code",
+      "users.client_id",
+      "users.role_code",
+      "client_applications.approved_client_id",
+      "client_applications.decided_by",
+      "product_specifications.client_id",
+      "product_specifications.filter_type_code",
+      "materials.unit_code",
+      "bom_templates.created_by",
+      "bom_templates.filter_type_code",
+      "bom_template_lines.material_id",
+      "files.uploaded_by",
+      "orders.archived_by",
+      "orders.created_by",
+      "orders.delivery_method_code",
+      "orders.payment_term_code",
+      "orders.reorder_source_id",
+      "order_items.order_id",
+      "order_items.specification_id",
+      "quotation_references.order_id",
+      "quotations.payment_term_code",
+      "quotations.prepared_by",
+      "quotations.reference",
+      "quotations.sent_by",
+      "quotation_lines.order_item_id",
+      "quotation_lines.quotation_id",
+      "quotation_costing.order_item_id",
+      "quotation_costing.quotation_id",
+      "quotation_bom_lines.material_id",
+      "quotation_addons.material_id",
+      "purchase_orders.accepted_quotation_id",
+      "purchase_orders.cleared_by",
+      "purchase_orders.received_by",
+      "purchase_orders.uploaded_by",
+      "order_requests.decided_by",
+      "order_requests.order_id",
+      "order_requests.requested_by",
+      "replacement_requests.order_id",
+      "replacement_requests.requested_by",
+      "replacement_requests.resolved_by",
+      "job_orders.costing_id",
+      "job_orders.created_by",
+      "job_orders.order_item_id",
+      "job_orders.replacement_request_id",
+      "job_orders.specification_id",
+      "job_bom_lines.material_id",
+      "production_events.performed_by",
+      "production_events.stage_position",
+      "material_movements.job_order_id",
+      "material_movements.performed_by",
+      "material_changes.performed_by",
+      "finished_goods.specification_id",
+      "finished_goods.updated_by",
+      "finished_good_movements.finished_good_id",
+      "finished_good_movements.job_order_id",
+      "finished_good_movements.performed_by",
+      "finished_good_order_items.finished_good_id",
+      "finished_good_order_items.order_item_id",
+      "stock_requests.order_id",
+      "stock_requests.requested_by",
+      "stock_request_lines.material_id",
+      "stock_responses.responded_by",
+      "stock_responses.stock_request_id",
+      "stock_response_lines.stock_request_line_id",
+      "stock_response_lines.stock_response_id",
+      "quotation_stock_responses.quotation_id",
+      "quotation_stock_responses.stock_response_id",
+      "shipments.delivery_method_code",
+      "shipments.job_order_id",
+      "shipments.updated_by",
+      "waybills.printed_by",
+      "shipment_events.performed_by",
+      "delivery_receipts.generated_by",
+      "delivery_receipts.sent_to_client_by",
+      "delivery_receipts.sent_to_logistics_by",
+      "delivery_receipts.shipment_id",
+      "signed_delivery_receipts.delivery_receipt_id",
+      "signed_delivery_receipts.submitted_by",
+      "invoices.created_by",
+      "invoices.payment_term_code",
+      "invoices.sent_by",
+      "invoice_delivery_receipts.invoice_id",
+      "invoice_delivery_receipts.signed_delivery_receipt_id",
+      "payments.invoice_id",
+      "payments.reviewed_by",
+      "payments.submitted_by",
+      "payment_instructions.order_id",
+      "payment_instructions.sent_by",
+      "company_settings.updated_by",
+      "company_payment_methods.company_settings_id",
+      "notifications.client_id",
+      "notifications.created_by",
+      "notifications.module_code",
+      "notifications.order_id",
+      "notifications.reply_to_id",
+      "notification_roles.role_code",
+      "order_files.file_id",
+      "specification_files.file_id",
+      "quotation_files.file_id",
+      "purchase_order_files.file_id",
+      "job_order_files.file_id",
+      "payment_files.file_id",
+      "invoice_files.file_id",
+      "waybill_files.file_id",
+      "delivery_receipt_files.file_id",
+      "replacement_request_files.file_id"
+    ],
+    "orphan_checks": [
+      {
+        "table": "role_modules",
+        "columns": [
+          "role_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "role_modules",
+        "columns": [
+          "module_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "clients",
+        "columns": [
+          "payment_term_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "users",
+        "columns": [
+          "role_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "users",
+        "columns": [
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "client_applications",
+        "columns": [
+          "decided_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "client_applications",
+        "columns": [
+          "approved_client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "product_specifications",
+        "columns": [
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "product_specifications",
+        "columns": [
+          "filter_type_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "materials",
+        "columns": [
+          "category_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "materials",
+        "columns": [
+          "unit_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "bom_templates",
+        "columns": [
+          "filter_type_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "bom_templates",
+        "columns": [
+          "created_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "bom_template_lines",
+        "columns": [
+          "template_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "bom_template_lines",
+        "columns": [
+          "material_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "files",
+        "columns": [
+          "uploaded_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "orders",
+        "columns": [
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "orders",
+        "columns": [
+          "stage_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "orders",
+        "columns": [
+          "payment_term_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "orders",
+        "columns": [
+          "delivery_method_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "orders",
+        "columns": [
+          "created_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "orders",
+        "columns": [
+          "archived_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "orders",
+        "columns": [
+          "reorder_source_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "order_items",
+        "columns": [
+          "order_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "order_items",
+        "columns": [
+          "specification_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_references",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotations",
+        "columns": [
+          "reference",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotations",
+        "columns": [
+          "payment_term_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotations",
+        "columns": [
+          "prepared_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotations",
+        "columns": [
+          "sent_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_lines",
+        "columns": [
+          "quotation_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_lines",
+        "columns": [
+          "order_item_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_costing",
+        "columns": [
+          "quotation_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_costing",
+        "columns": [
+          "order_item_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_bom_lines",
+        "columns": [
+          "costing_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_bom_lines",
+        "columns": [
+          "material_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_discounts",
+        "columns": [
+          "quotation_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_addons",
+        "columns": [
+          "quotation_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_addons",
+        "columns": [
+          "material_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "purchase_orders",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "purchase_orders",
+        "columns": [
+          "accepted_quotation_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "purchase_orders",
+        "columns": [
+          "uploaded_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "purchase_orders",
+        "columns": [
+          "received_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "purchase_orders",
+        "columns": [
+          "cleared_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "order_requests",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "order_requests",
+        "columns": [
+          "requested_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "order_requests",
+        "columns": [
+          "decided_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "replacement_requests",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "replacement_requests",
+        "columns": [
+          "requested_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "replacement_requests",
+        "columns": [
+          "resolved_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_orders",
+        "columns": [
+          "order_item_id",
+          "order_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_orders",
+        "columns": [
+          "specification_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_orders",
+        "columns": [
+          "replacement_request_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_orders",
+        "columns": [
+          "costing_id",
+          "order_item_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_orders",
+        "columns": [
+          "created_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_bom_lines",
+        "columns": [
+          "job_order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_bom_lines",
+        "columns": [
+          "material_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "production_events",
+        "columns": [
+          "job_order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "production_events",
+        "columns": [
+          "stage_position"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "production_events",
+        "columns": [
+          "performed_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "material_movements",
+        "columns": [
+          "material_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "material_movements",
+        "columns": [
+          "job_order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "material_movements",
+        "columns": [
+          "performed_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "material_changes",
+        "columns": [
+          "material_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "material_changes",
+        "columns": [
+          "performed_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_goods",
+        "columns": [
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_goods",
+        "columns": [
+          "specification_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_goods",
+        "columns": [
+          "updated_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_good_movements",
+        "columns": [
+          "finished_good_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_good_movements",
+        "columns": [
+          "job_order_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_good_movements",
+        "columns": [
+          "performed_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_good_order_items",
+        "columns": [
+          "finished_good_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "finished_good_order_items",
+        "columns": [
+          "order_item_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_requests",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_requests",
+        "columns": [
+          "requested_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_request_lines",
+        "columns": [
+          "stock_request_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_request_lines",
+        "columns": [
+          "material_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_responses",
+        "columns": [
+          "stock_request_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_responses",
+        "columns": [
+          "responded_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_response_lines",
+        "columns": [
+          "stock_response_id",
+          "stock_request_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "stock_response_lines",
+        "columns": [
+          "stock_request_line_id",
+          "stock_request_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_stock_responses",
+        "columns": [
+          "quotation_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_stock_responses",
+        "columns": [
+          "stock_response_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "shipments",
+        "columns": [
+          "job_order_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "shipments",
+        "columns": [
+          "delivery_method_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "shipments",
+        "columns": [
+          "updated_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "waybills",
+        "columns": [
+          "shipment_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "waybills",
+        "columns": [
+          "printed_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "shipment_events",
+        "columns": [
+          "shipment_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "shipment_events",
+        "columns": [
+          "performed_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "delivery_receipts",
+        "columns": [
+          "shipment_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "delivery_receipts",
+        "columns": [
+          "generated_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "delivery_receipts",
+        "columns": [
+          "sent_to_logistics_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "delivery_receipts",
+        "columns": [
+          "sent_to_client_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "signed_delivery_receipts",
+        "columns": [
+          "delivery_receipt_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "signed_delivery_receipts",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "signed_delivery_receipts",
+        "columns": [
+          "submitted_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoices",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoices",
+        "columns": [
+          "payment_term_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoices",
+        "columns": [
+          "created_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoices",
+        "columns": [
+          "sent_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoice_delivery_receipts",
+        "columns": [
+          "invoice_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoice_delivery_receipts",
+        "columns": [
+          "signed_delivery_receipt_id",
+          "order_id",
+          "accepted_slot"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payments",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payments",
+        "columns": [
+          "invoice_id",
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payments",
+        "columns": [
+          "submitted_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payments",
+        "columns": [
+          "reviewed_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payment_instructions",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payment_instructions",
+        "columns": [
+          "sent_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "company_settings",
+        "columns": [
+          "updated_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "company_payment_methods",
+        "columns": [
+          "company_settings_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notifications",
+        "columns": [
+          "module_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notifications",
+        "columns": [
+          "order_id",
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notifications",
+        "columns": [
+          "client_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notifications",
+        "columns": [
+          "reply_to_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notifications",
+        "columns": [
+          "created_by"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notification_roles",
+        "columns": [
+          "notification_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notification_roles",
+        "columns": [
+          "role_code"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notification_recipients",
+        "columns": [
+          "notification_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "notification_recipients",
+        "columns": [
+          "user_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "order_files",
+        "columns": [
+          "order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "order_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "specification_files",
+        "columns": [
+          "specification_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "specification_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_files",
+        "columns": [
+          "quotation_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "quotation_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "purchase_order_files",
+        "columns": [
+          "purchase_order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "purchase_order_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_order_files",
+        "columns": [
+          "job_order_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "job_order_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payment_files",
+        "columns": [
+          "payment_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "payment_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoice_files",
+        "columns": [
+          "invoice_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "invoice_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "waybill_files",
+        "columns": [
+          "waybill_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "waybill_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "delivery_receipt_files",
+        "columns": [
+          "delivery_receipt_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "delivery_receipt_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "replacement_request_files",
+        "columns": [
+          "replacement_request_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "replacement_request_files",
+        "columns": [
+          "file_id"
+        ],
+        "orphans": 0
+      },
+      {
+        "table": "audit_events",
+        "columns": [
+          "actor_id"
+        ],
+        "orphans": 0
+      }
+    ]
+  },
+  "main_catalog_after": [],
+  "app_connection": {
+    "published_endpoint_authentication": {
+      "uuid": "48ff3abc-ddd0-11f1-bad9-f6054d80f334",
+      "ledger": 5,
+      "tables": 70,
+      "account": "enterflow_app@%",
+      "database": "enterflow_db"
+    },
+    "schema_privileges": [
+      {
+        "grantable": "NO",
+        "privilege": "SELECT"
+      },
+      {
+        "grantable": "NO",
+        "privilege": "INSERT"
+      },
+      {
+        "grantable": "NO",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantable": "NO",
+        "privilege": "DELETE"
+      }
+    ],
+    "global_privileges": [
+      {
+        "privilege": "USAGE"
+      }
+    ],
+    "roles": {
+      "roles": 0
+    }
+  },
+  "verification_history": [
+    {
+      "tables": 70,
+      "columns": 562,
+      "foreign_keys": 141,
+      "primary_and_unique_constraints": 123,
+      "named_checks": 26,
+      "metadata_differences": [],
+      "seed_differences": [],
+      "row_counts": {
+        "schema_migrations": 5,
+        "roles": 9,
+        "modules": 18,
+        "role_modules": 40,
+        "payment_terms": 2,
+        "clients": 0,
+        "users": 0,
+        "client_applications": 0,
+        "filter_types": 16,
+        "product_specifications": 0,
+        "material_categories": 8,
+        "units": 8,
+        "materials": 0,
+        "bom_templates": 0,
+        "bom_template_lines": 0,
+        "files": 0,
+        "order_stages": 11,
+        "delivery_methods": 5,
+        "orders": 0,
+        "order_items": 0,
+        "quotation_references": 0,
+        "quotations": 0,
+        "quotation_lines": 0,
+        "quotation_costing": 0,
+        "quotation_bom_lines": 0,
+        "quotation_discounts": 0,
+        "quotation_addons": 0,
+        "purchase_orders": 0,
+        "order_requests": 0,
+        "document_sequences": 0,
+        "production_stages": 9,
+        "replacement_requests": 0,
+        "job_orders": 0,
+        "job_bom_lines": 0,
+        "production_events": 0,
+        "material_movements": 0,
+        "material_changes": 0,
+        "finished_goods": 0,
+        "finished_good_movements": 0,
+        "finished_good_order_items": 0,
+        "stock_requests": 0,
+        "stock_request_lines": 0,
+        "stock_responses": 0,
+        "stock_response_lines": 0,
+        "quotation_stock_responses": 0,
+        "shipments": 0,
+        "waybills": 0,
+        "shipment_events": 0,
+        "delivery_receipts": 0,
+        "signed_delivery_receipts": 0,
+        "invoices": 0,
+        "invoice_delivery_receipts": 0,
+        "payments": 0,
+        "payment_instructions": 0,
+        "company_settings": 0,
+        "company_payment_methods": 0,
+        "notifications": 0,
+        "notification_roles": 0,
+        "notification_recipients": 0,
+        "order_files": 0,
+        "specification_files": 0,
+        "quotation_files": 0,
+        "purchase_order_files": 0,
+        "job_order_files": 0,
+        "payment_files": 0,
+        "invoice_files": 0,
+        "waybill_files": 0,
+        "delivery_receipt_files": 0,
+        "replacement_request_files": 0,
+        "audit_events": 0
+      },
+      "implicit_fk_indexes": [
+        "role_modules.module_code",
+        "clients.payment_term_code",
+        "users.client_id",
+        "users.role_code",
+        "client_applications.approved_client_id",
+        "client_applications.decided_by",
+        "product_specifications.client_id",
+        "product_specifications.filter_type_code",
+        "materials.unit_code",
+        "bom_templates.created_by",
+        "bom_templates.filter_type_code",
+        "bom_template_lines.material_id",
+        "files.uploaded_by",
+        "orders.archived_by",
+        "orders.created_by",
+        "orders.delivery_method_code",
+        "orders.payment_term_code",
+        "orders.reorder_source_id",
+        "order_items.order_id",
+        "order_items.specification_id",
+        "quotation_references.order_id",
+        "quotations.payment_term_code",
+        "quotations.prepared_by",
+        "quotations.reference",
+        "quotations.sent_by",
+        "quotation_lines.order_item_id",
+        "quotation_lines.quotation_id",
+        "quotation_costing.order_item_id",
+        "quotation_costing.quotation_id",
+        "quotation_bom_lines.material_id",
+        "quotation_addons.material_id",
+        "purchase_orders.accepted_quotation_id",
+        "purchase_orders.cleared_by",
+        "purchase_orders.received_by",
+        "purchase_orders.uploaded_by",
+        "order_requests.decided_by",
+        "order_requests.order_id",
+        "order_requests.requested_by",
+        "replacement_requests.order_id",
+        "replacement_requests.requested_by",
+        "replacement_requests.resolved_by",
+        "job_orders.costing_id",
+        "job_orders.created_by",
+        "job_orders.order_item_id",
+        "job_orders.replacement_request_id",
+        "job_orders.specification_id",
+        "job_bom_lines.material_id",
+        "production_events.performed_by",
+        "production_events.stage_position",
+        "material_movements.job_order_id",
+        "material_movements.performed_by",
+        "material_changes.performed_by",
+        "finished_goods.specification_id",
+        "finished_goods.updated_by",
+        "finished_good_movements.finished_good_id",
+        "finished_good_movements.job_order_id",
+        "finished_good_movements.performed_by",
+        "finished_good_order_items.finished_good_id",
+        "finished_good_order_items.order_item_id",
+        "stock_requests.order_id",
+        "stock_requests.requested_by",
+        "stock_request_lines.material_id",
+        "stock_responses.responded_by",
+        "stock_responses.stock_request_id",
+        "stock_response_lines.stock_request_line_id",
+        "stock_response_lines.stock_response_id",
+        "quotation_stock_responses.quotation_id",
+        "quotation_stock_responses.stock_response_id",
+        "shipments.delivery_method_code",
+        "shipments.job_order_id",
+        "shipments.updated_by",
+        "waybills.printed_by",
+        "shipment_events.performed_by",
+        "delivery_receipts.generated_by",
+        "delivery_receipts.sent_to_client_by",
+        "delivery_receipts.sent_to_logistics_by",
+        "delivery_receipts.shipment_id",
+        "signed_delivery_receipts.delivery_receipt_id",
+        "signed_delivery_receipts.submitted_by",
+        "invoices.created_by",
+        "invoices.payment_term_code",
+        "invoices.sent_by",
+        "invoice_delivery_receipts.invoice_id",
+        "invoice_delivery_receipts.signed_delivery_receipt_id",
+        "payments.invoice_id",
+        "payments.reviewed_by",
+        "payments.submitted_by",
+        "payment_instructions.order_id",
+        "payment_instructions.sent_by",
+        "company_settings.updated_by",
+        "company_payment_methods.company_settings_id",
+        "notifications.client_id",
+        "notifications.created_by",
+        "notifications.module_code",
+        "notifications.order_id",
+        "notifications.reply_to_id",
+        "notification_roles.role_code",
+        "order_files.file_id",
+        "specification_files.file_id",
+        "quotation_files.file_id",
+        "purchase_order_files.file_id",
+        "job_order_files.file_id",
+        "payment_files.file_id",
+        "invoice_files.file_id",
+        "waybill_files.file_id",
+        "delivery_receipt_files.file_id",
+        "replacement_request_files.file_id"
+      ],
+      "orphan_checks": [
+        {
+          "table": "role_modules",
+          "columns": [
+            "role_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "role_modules",
+          "columns": [
+            "module_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "clients",
+          "columns": [
+            "payment_term_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "users",
+          "columns": [
+            "role_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "users",
+          "columns": [
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "client_applications",
+          "columns": [
+            "decided_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "client_applications",
+          "columns": [
+            "approved_client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "product_specifications",
+          "columns": [
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "product_specifications",
+          "columns": [
+            "filter_type_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "materials",
+          "columns": [
+            "category_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "materials",
+          "columns": [
+            "unit_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "bom_templates",
+          "columns": [
+            "filter_type_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "bom_templates",
+          "columns": [
+            "created_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "bom_template_lines",
+          "columns": [
+            "template_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "bom_template_lines",
+          "columns": [
+            "material_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "files",
+          "columns": [
+            "uploaded_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "orders",
+          "columns": [
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "orders",
+          "columns": [
+            "stage_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "orders",
+          "columns": [
+            "payment_term_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "orders",
+          "columns": [
+            "delivery_method_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "orders",
+          "columns": [
+            "created_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "orders",
+          "columns": [
+            "archived_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "orders",
+          "columns": [
+            "reorder_source_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "order_items",
+          "columns": [
+            "order_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "order_items",
+          "columns": [
+            "specification_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_references",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotations",
+          "columns": [
+            "reference",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotations",
+          "columns": [
+            "payment_term_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotations",
+          "columns": [
+            "prepared_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotations",
+          "columns": [
+            "sent_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_lines",
+          "columns": [
+            "quotation_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_lines",
+          "columns": [
+            "order_item_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_costing",
+          "columns": [
+            "quotation_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_costing",
+          "columns": [
+            "order_item_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_bom_lines",
+          "columns": [
+            "costing_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_bom_lines",
+          "columns": [
+            "material_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_discounts",
+          "columns": [
+            "quotation_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_addons",
+          "columns": [
+            "quotation_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_addons",
+          "columns": [
+            "material_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "purchase_orders",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "purchase_orders",
+          "columns": [
+            "accepted_quotation_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "purchase_orders",
+          "columns": [
+            "uploaded_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "purchase_orders",
+          "columns": [
+            "received_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "purchase_orders",
+          "columns": [
+            "cleared_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "order_requests",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "order_requests",
+          "columns": [
+            "requested_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "order_requests",
+          "columns": [
+            "decided_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "replacement_requests",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "replacement_requests",
+          "columns": [
+            "requested_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "replacement_requests",
+          "columns": [
+            "resolved_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_orders",
+          "columns": [
+            "order_item_id",
+            "order_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_orders",
+          "columns": [
+            "specification_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_orders",
+          "columns": [
+            "replacement_request_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_orders",
+          "columns": [
+            "costing_id",
+            "order_item_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_orders",
+          "columns": [
+            "created_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_bom_lines",
+          "columns": [
+            "job_order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_bom_lines",
+          "columns": [
+            "material_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "production_events",
+          "columns": [
+            "job_order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "production_events",
+          "columns": [
+            "stage_position"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "production_events",
+          "columns": [
+            "performed_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "material_movements",
+          "columns": [
+            "material_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "material_movements",
+          "columns": [
+            "job_order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "material_movements",
+          "columns": [
+            "performed_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "material_changes",
+          "columns": [
+            "material_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "material_changes",
+          "columns": [
+            "performed_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_goods",
+          "columns": [
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_goods",
+          "columns": [
+            "specification_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_goods",
+          "columns": [
+            "updated_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_good_movements",
+          "columns": [
+            "finished_good_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_good_movements",
+          "columns": [
+            "job_order_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_good_movements",
+          "columns": [
+            "performed_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_good_order_items",
+          "columns": [
+            "finished_good_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "finished_good_order_items",
+          "columns": [
+            "order_item_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_requests",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_requests",
+          "columns": [
+            "requested_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_request_lines",
+          "columns": [
+            "stock_request_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_request_lines",
+          "columns": [
+            "material_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_responses",
+          "columns": [
+            "stock_request_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_responses",
+          "columns": [
+            "responded_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_response_lines",
+          "columns": [
+            "stock_response_id",
+            "stock_request_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "stock_response_lines",
+          "columns": [
+            "stock_request_line_id",
+            "stock_request_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_stock_responses",
+          "columns": [
+            "quotation_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_stock_responses",
+          "columns": [
+            "stock_response_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "shipments",
+          "columns": [
+            "job_order_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "shipments",
+          "columns": [
+            "delivery_method_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "shipments",
+          "columns": [
+            "updated_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "waybills",
+          "columns": [
+            "shipment_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "waybills",
+          "columns": [
+            "printed_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "shipment_events",
+          "columns": [
+            "shipment_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "shipment_events",
+          "columns": [
+            "performed_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "delivery_receipts",
+          "columns": [
+            "shipment_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "delivery_receipts",
+          "columns": [
+            "generated_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "delivery_receipts",
+          "columns": [
+            "sent_to_logistics_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "delivery_receipts",
+          "columns": [
+            "sent_to_client_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "signed_delivery_receipts",
+          "columns": [
+            "delivery_receipt_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "signed_delivery_receipts",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "signed_delivery_receipts",
+          "columns": [
+            "submitted_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoices",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoices",
+          "columns": [
+            "payment_term_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoices",
+          "columns": [
+            "created_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoices",
+          "columns": [
+            "sent_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoice_delivery_receipts",
+          "columns": [
+            "invoice_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoice_delivery_receipts",
+          "columns": [
+            "signed_delivery_receipt_id",
+            "order_id",
+            "accepted_slot"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payments",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payments",
+          "columns": [
+            "invoice_id",
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payments",
+          "columns": [
+            "submitted_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payments",
+          "columns": [
+            "reviewed_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payment_instructions",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payment_instructions",
+          "columns": [
+            "sent_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "company_settings",
+          "columns": [
+            "updated_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "company_payment_methods",
+          "columns": [
+            "company_settings_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notifications",
+          "columns": [
+            "module_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notifications",
+          "columns": [
+            "order_id",
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notifications",
+          "columns": [
+            "client_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notifications",
+          "columns": [
+            "reply_to_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notifications",
+          "columns": [
+            "created_by"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notification_roles",
+          "columns": [
+            "notification_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notification_roles",
+          "columns": [
+            "role_code"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notification_recipients",
+          "columns": [
+            "notification_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "notification_recipients",
+          "columns": [
+            "user_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "order_files",
+          "columns": [
+            "order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "order_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "specification_files",
+          "columns": [
+            "specification_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "specification_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_files",
+          "columns": [
+            "quotation_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "quotation_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "purchase_order_files",
+          "columns": [
+            "purchase_order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "purchase_order_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_order_files",
+          "columns": [
+            "job_order_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "job_order_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payment_files",
+          "columns": [
+            "payment_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "payment_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoice_files",
+          "columns": [
+            "invoice_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "invoice_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "waybill_files",
+          "columns": [
+            "waybill_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "waybill_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "delivery_receipt_files",
+          "columns": [
+            "delivery_receipt_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "delivery_receipt_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "replacement_request_files",
+          "columns": [
+            "replacement_request_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "replacement_request_files",
+          "columns": [
+            "file_id"
+          ],
+          "orphans": 0
+        },
+        {
+          "table": "audit_events",
+          "columns": [
+            "actor_id"
+          ],
+          "orphans": 0
+        }
+      ]
+    }
+  ],
+  "app_connection_after_restart": {
+    "published_endpoint_authentication": {
+      "uuid": "48ff3abc-ddd0-11f1-bad9-f6054d80f334",
+      "ledger": 5,
+      "tables": 70,
+      "account": "enterflow_app@%",
+      "database": "enterflow_db"
+    },
+    "schema_privileges": [
+      {
+        "grantable": "NO",
+        "privilege": "SELECT"
+      },
+      {
+        "grantable": "NO",
+        "privilege": "INSERT"
+      },
+      {
+        "grantable": "NO",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantable": "NO",
+        "privilege": "DELETE"
+      }
+    ],
+    "global_privileges": [
+      {
+        "privilege": "USAGE"
+      }
+    ],
+    "roles": {
+      "roles": 0
+    }
+  },
+  "protected_validation_after": {
+    "id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+    "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+    "running": true,
+    "started_at": "2026-11-11T12:13:23.361481953Z",
+    "binding": {
+      "3306/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "3307"
+        }
+      ]
+    },
+    "mounts": [
+      {
+        "type": "volume",
+        "name": "enterflow_mysql84_validation_data",
+        "destination": "/var/lib/mysql"
+      }
+    ]
+  },
+  "persistence": {
+    "passed": true,
+    "container_id": "9a61d013b545bc2a5ea4e33188763a153298a4cf3536fbec63c7ce247414c4ce",
+    "same_uuid": "48ff3abc-ddd0-11f1-bad9-f6054d80f334",
+    "same_volume": "enterflow-mysql-dev-data",
+    "started_before": "2026-11-11T13:03:26.39595003Z",
+    "started_after": "2026-11-11T13:04:17.888036546Z",
+    "schema_and_seeds_reverified": true
+  },
+  "final_container": {
+    "running": true,
+    "health": "healthy",
+    "binding": {
+      "3306/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "3308"
+        }
+      ]
+    },
+    "restart_policy": {
+      "Name": "unless-stopped",
+      "MaximumRetryCount": 0
+    }
+  }
+}

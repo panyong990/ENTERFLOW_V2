@@ -1,0 +1,279 @@
+{
+  "target": "enterflow_mysql84_test_db",
+  "docker_context": "desktop-linux",
+  "status": "migration_failed",
+  "database_created": true,
+  "reviewed_files": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "tables": 16,
+      "sha256": "67250301f630f03b8c5eece710b3778e24ec917f7548b8c19de67f62f4b219f9"
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "tables": 14,
+      "sha256": "500d976949043b5b40ea70b35f824be9f1895bd7bd0e13930229dc04d1e98ef4"
+    },
+    {
+      "file": "migrations/003_operations_billing.sql",
+      "tables": 29,
+      "sha256": "f996bad2b74950cdd92657dd441ca04d18f310a3300e5a792da305acfbc4a637"
+    },
+    {
+      "file": "migrations/004_attachments_audit.sql",
+      "tables": 11,
+      "sha256": "2e96f134b1f54b80104fe72c96f5970d3a8cd55764c97a983bdaa18d404ce12e"
+    },
+    {
+      "file": "seeds/001_reference_data.sql",
+      "tables": 0,
+      "sha256": "49f407b92fc4a2324133d6b06c8f17473742abbfde9a60822c3c5a802e5e8c34"
+    }
+  ],
+  "migrations": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "ERROR 1064 (42000) at line 225: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'last_value BIGINT UNSIGNED NOT NULL DEFAULT 0,\n  PRIMARY KEY (document_type, doc' at line 4\n"
+    }
+  ],
+  "main_catalog_before": [],
+  "xampp_access": "No XAMPP SQL or data access; all SQL routes through the named container.",
+  "docker": {
+    "version": "29.9.2",
+    "os": "linux",
+    "cpus": 12,
+    "memory": 8141942784
+  },
+  "precreation_pull_issue": "error getting credentials - err: exec: \"docker-credential-desktop\": executable file not found in %PATH%, out: ``\n",
+  "image_id": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "image_digest": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "image_architecture": "amd64",
+  "container_id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+  "volume": "enterflow_mysql84_validation_data",
+  "host_binding": "127.0.0.1:3307",
+  "previous_runner_diagnostics": [
+    "MySQL readiness timeout; container retained",
+    "unexpected indent (<mysql84 metadata adapter>, line 1)",
+    "XAMPP schema name prohibited"
+  ],
+  "startup_harness_correction": "Pass stdin as UTF-8 bytes to avoid Windows CRLF changing the Linux password line.",
+  "environment": {
+    "port": 3306,
+    "uuid": "4b161bd2-ddc9-11f1-94e5-82f2ef5d7a8b",
+    "charset": "utf8mb4",
+    "comment": "MySQL Community Server - GPL",
+    "version": "8.4.13",
+    "database": null,
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "collation": "utf8mb4_0900_ai_ci",
+    "unique_checks": 1,
+    "foreign_key_checks": 1,
+    "restrict_fk_on_non_standard_key": 1
+  },
+  "server_uuid": "4b161bd2-ddc9-11f1-94e5-82f2ef5d7a8b",
+  "runner_error": "STOP: MySQL migration failed. Drafts unchanged. ERROR 1064 (42000) at line 225: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'last_value BIGINT UNSIGNED NOT NULL DEFAULT 0,\n  PRIMARY KEY (document_type, doc' at line 4\n",
+  "failure_diagnostics": {
+    "table_count": 29,
+    "tables": [
+      {
+        "table": "bom_template_lines",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "bom_templates",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "client_applications",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "clients",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "delivery_methods",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "files",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "filter_types",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "material_categories",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "materials",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "modules",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "order_items",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "order_requests",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "order_stages",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "orders",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "payment_terms",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "product_specifications",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "purchase_orders",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "quotation_addons",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "quotation_bom_lines",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "quotation_costing",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "quotation_discounts",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "quotation_lines",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "quotation_references",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "quotations",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "role_modules",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "roles",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "schema_migrations",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "units",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      },
+      {
+        "table": "users",
+        "engine": "InnoDB",
+        "collation": "utf8mb4_unicode_ci"
+      }
+    ],
+    "ledger": [
+      {
+        "version": "001_identity_catalog",
+        "applied_at": "2026-11-11 12:23:31.434000"
+      }
+    ],
+    "reserved_identifier_collisions": [
+      {
+        "kind": "column",
+        "table": "document_sequences",
+        "name": "last_value"
+      }
+    ],
+    "application_schemas": [
+      {
+        "schema": "enterflow_mysql84_test_db"
+      }
+    ],
+    "role_seed_rows": 0
+  },
+  "final_environment": {
+    "port": 3306,
+    "uuid": "4b161bd2-ddc9-11f1-94e5-82f2ef5d7a8b",
+    "charset": "utf8mb4",
+    "comment": "MySQL Community Server - GPL",
+    "version": "8.4.13",
+    "database": null,
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "collation": "utf8mb4_0900_ai_ci",
+    "unique_checks": 1,
+    "foreign_key_checks": 1,
+    "restrict_fk_on_non_standard_key": 1
+  },
+  "final_container_state": {
+    "running": true,
+    "id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+    "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+    "binding": {
+      "3306/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "3307"
+        }
+      ]
+    }
+  },
+  "reviewed_hashes_still_match": true
+}

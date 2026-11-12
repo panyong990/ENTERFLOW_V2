@@ -1,0 +1,73 @@
+ERROR 4025 (23000) at line 84: CONSTRAINT `ck_user_identity` failed for `enterflow_test_db`.`users`
+ERROR 4025 (23000) at line 88: CONSTRAINT `ck_material_values` failed for `enterflow_test_db`.`materials`
+ERROR 4025 (23000) at line 92: CONSTRAINT `ck_template_cost` failed for `enterflow_test_db`.`bom_templates`
+ERROR 4025 (23000) at line 96: CONSTRAINT `ck_template_qty` failed for `enterflow_test_db`.`bom_template_lines`
+ERROR 4025 (23000) at line 100: CONSTRAINT `ck_order_item_qty` failed for `enterflow_test_db`.`order_items`
+ERROR 4025 (23000) at line 104: CONSTRAINT `ck_quote_amounts` failed for `enterflow_test_db`.`quotations`
+ERROR 4025 (23000) at line 108: CONSTRAINT `ck_quote_dates` failed for `enterflow_test_db`.`quotations`
+ERROR 4025 (23000) at line 112: CONSTRAINT `ck_quote_line_values` failed for `enterflow_test_db`.`quotation_lines`
+ERROR 4025 (23000) at line 116: CONSTRAINT `ck_costing_values` failed for `enterflow_test_db`.`quotation_costing`
+ERROR 4025 (23000) at line 120: CONSTRAINT `ck_quote_bom_values` failed for `enterflow_test_db`.`quotation_bom_lines`
+ERROR 4025 (23000) at line 124: CONSTRAINT `ck_quote_discount` failed for `enterflow_test_db`.`quotation_discounts`
+ERROR 4025 (23000) at line 128: CONSTRAINT `ck_addon_values` failed for `enterflow_test_db`.`quotation_addons`
+ERROR 4025 (23000) at line 132: CONSTRAINT `ck_production_position` failed for `enterflow_test_db`.`production_stages`
+ERROR 4025 (23000) at line 136: CONSTRAINT `ck_replacement_qty` failed for `enterflow_test_db`.`replacement_requests`
+ERROR 4025 (23000) at line 140: CONSTRAINT `ck_jo_values` failed for `enterflow_test_db`.`job_orders`
+ERROR 4025 (23000) at line 144: CONSTRAINT `ck_job_bom_values` failed for `enterflow_test_db`.`job_bom_lines`
+ERROR 4025 (23000) at line 148: CONSTRAINT `ck_material_movement` failed for `enterflow_test_db`.`material_movements`
+ERROR 4025 (23000) at line 152: CONSTRAINT `ck_stock_request_values` failed for `enterflow_test_db`.`stock_request_lines`
+ERROR 4025 (23000) at line 156: CONSTRAINT `ck_stock_response_values` failed for `enterflow_test_db`.`stock_response_lines`
+ERROR 4025 (23000) at line 160: CONSTRAINT `ck_signed_dr_state` failed for `enterflow_test_db`.`signed_delivery_receipts`
+ERROR 4025 (23000) at line 164: CONSTRAINT `ck_invoice_amount` failed for `enterflow_test_db`.`invoices`
+ERROR 4025 (23000) at line 168: CONSTRAINT `ck_invoice_receipt_accepted` failed for `enterflow_test_db`.`invoice_delivery_receipts`
+ERROR 4025 (23000) at line 172: CONSTRAINT `ck_payment_amount` failed for `enterflow_test_db`.`payments`
+ERROR 4025 (23000) at line 176: CONSTRAINT `ck_payment_review` failed for `enterflow_test_db`.`payments`
+ERROR 4025 (23000) at line 180: CONSTRAINT `ck_company_singleton` failed for `enterflow_test_db`.`company_settings`
+ERROR 4025 (23000) at line 184: CONSTRAINT `ck_notification_order_scope` failed for `enterflow_test_db`.`notifications`
+ERROR 1452 (23000) at line 188: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`order_items`, CONSTRAINT `order_items_ibfk_1` FOREIGN KEY (`order_id`, `client_id`) REFERENCES `orders` (`id`, `client_id`))
+ERROR 1452 (23000) at line 192: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`order_items`, CONSTRAINT `order_items_ibfk_2` FOREIGN KEY (`specification_id`, `client_id`) REFERENCES `product_specifications` (`id`, `client_id`))
+ERROR 1452 (23000) at line 196: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`quotations`, CONSTRAINT `quotations_ibfk_1` FOREIGN KEY (`reference`, `order_id`) REFERENCES `quotation_references` (`reference`, `order_id`))
+ERROR 1452 (23000) at line 200: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`quotation_lines`, CONSTRAINT `quotation_lines_ibfk_2` FOREIGN KEY (`order_item_id`, `order_id`) REFERENCES `order_items` (`id`, `order_id`))
+ERROR 1452 (23000) at line 204: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`quotation_costing`, CONSTRAINT `quotation_costing_ibfk_2` FOREIGN KEY (`order_item_id`, `order_id`) REFERENCES `order_items` (`id`, `order_id`))
+ERROR 1452 (23000) at line 208: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`purchase_orders`, CONSTRAINT `purchase_orders_ibfk_2` FOREIGN KEY (`accepted_quotation_id`, `order_id`) REFERENCES `quotations` (`id`, `order_id`))
+ERROR 1452 (23000) at line 212: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`job_orders`, CONSTRAINT `job_orders_ibfk_1` FOREIGN KEY (`order_item_id`, `order_id`, `client_id`) REFERENCES `order_items` (`id`, `order_id`, `client_id`))
+ERROR 1452 (23000) at line 216: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`job_orders`, CONSTRAINT `job_orders_ibfk_2` FOREIGN KEY (`specification_id`, `client_id`) REFERENCES `product_specifications` (`id`, `client_id`))
+ERROR 1452 (23000) at line 220: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`finished_goods`, CONSTRAINT `finished_goods_ibfk_2` FOREIGN KEY (`specification_id`, `client_id`) REFERENCES `product_specifications` (`id`, `client_id`))
+ERROR 1452 (23000) at line 224: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`finished_good_order_items`, CONSTRAINT `finished_good_order_items_ibfk_1` FOREIGN KEY (`finished_good_id`, `client_id`) REFERENCES `finished_goods` (`id`, `client_id`))
+ERROR 1452 (23000) at line 228: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`finished_good_order_items`, CONSTRAINT `finished_good_order_items_ibfk_2` FOREIGN KEY (`order_item_id`, `client_id`) REFERENCES `order_items` (`id`, `client_id`))
+ERROR 1452 (23000) at line 232: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`finished_good_movements`, CONSTRAINT `finished_good_movements_ibfk_1` FOREIGN KEY (`finished_good_id`, `client_id`) REFERENCES `finished_goods` (`id`, `client_id`))
+ERROR 1452 (23000) at line 236: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`finished_good_movements`, CONSTRAINT `finished_good_movements_ibfk_2` FOREIGN KEY (`job_order_id`, `client_id`) REFERENCES `job_orders` (`id`, `client_id`))
+ERROR 1452 (23000) at line 240: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`stock_responses`, CONSTRAINT `stock_responses_ibfk_1` FOREIGN KEY (`stock_request_id`, `order_id`) REFERENCES `stock_requests` (`id`, `order_id`))
+ERROR 1452 (23000) at line 244: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`quotation_stock_responses`, CONSTRAINT `quotation_stock_responses_ibfk_1` FOREIGN KEY (`quotation_id`, `order_id`) REFERENCES `quotations` (`id`, `order_id`))
+ERROR 1452 (23000) at line 248: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`quotation_stock_responses`, CONSTRAINT `quotation_stock_responses_ibfk_2` FOREIGN KEY (`stock_response_id`, `order_id`) REFERENCES `stock_responses` (`id`, `order_id`))
+ERROR 1062 (23000) at line 252: Duplicate entry '1004' for key 'uq_shipment_job'
+ERROR 1452 (23000) at line 256: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`delivery_receipts`, CONSTRAINT `delivery_receipts_ibfk_1` FOREIGN KEY (`shipment_id`, `order_id`) REFERENCES `shipments` (`id`, `order_id`))
+ERROR 1452 (23000) at line 260: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`signed_delivery_receipts`, CONSTRAINT `signed_delivery_receipts_ibfk_1` FOREIGN KEY (`delivery_receipt_id`, `order_id`) REFERENCES `delivery_receipts` (`id`, `order_id`))
+ERROR 1452 (23000) at line 264: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`invoice_delivery_receipts`, CONSTRAINT `invoice_delivery_receipts_ibfk_1` FOREIGN KEY (`invoice_id`, `order_id`) REFERENCES `invoices` (`id`, `order_id`))
+ERROR 1452 (23000) at line 268: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`invoice_delivery_receipts`, CONSTRAINT `invoice_delivery_receipts_ibfk_2` FOREIGN KEY (`signed_delivery_receipt_id`, `order_id`, `accepted_slot`) REFERENCES `signed_delive)
+ERROR 1452 (23000) at line 272: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`payments`, CONSTRAINT `payments_ibfk_2` FOREIGN KEY (`invoice_id`, `order_id`) REFERENCES `invoices` (`id`, `order_id`))
+ERROR 1452 (23000) at line 276: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`orders`, CONSTRAINT `orders_ibfk_7` FOREIGN KEY (`reorder_source_id`, `client_id`) REFERENCES `orders` (`id`, `client_id`))
+ERROR 1452 (23000) at line 280: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`notifications`, CONSTRAINT `notifications_ibfk_2` FOREIGN KEY (`order_id`, `client_id`) REFERENCES `orders` (`id`, `client_id`))
+ERROR 1452 (23000) at line 284: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`job_orders`, CONSTRAINT `job_orders_ibfk_3` FOREIGN KEY (`replacement_request_id`, `order_id`) REFERENCES `replacement_requests` (`id`, `order_id`))
+ERROR 1452 (23000) at line 288: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`job_orders`, CONSTRAINT `job_orders_ibfk_4` FOREIGN KEY (`costing_id`, `order_item_id`, `order_id`) REFERENCES `quotation_costing` (`id`, `order_item_id`, `order_id`))
+ERROR 1452 (23000) at line 292: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`stock_response_lines`, CONSTRAINT `stock_response_lines_ibfk_2` FOREIGN KEY (`stock_request_line_id`, `stock_request_id`) REFERENCES `stock_request_lines` (`id`, `stock_re)
+ERROR 1452 (23000) at line 296: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`invoice_delivery_receipts`, CONSTRAINT `invoice_delivery_receipts_ibfk_2` FOREIGN KEY (`signed_delivery_receipt_id`, `order_id`, `accepted_slot`) REFERENCES `signed_delive)
+ERROR 1452 (23000) at line 300: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`invoice_delivery_receipts`, CONSTRAINT `invoice_delivery_receipts_ibfk_2` FOREIGN KEY (`signed_delivery_receipt_id`, `order_id`, `accepted_slot`) REFERENCES `signed_delive)
+ERROR 1451 (23000) at line 304: Cannot delete or update a parent row: a foreign key constraint fails (`enterflow_test_db`.`finished_goods`, CONSTRAINT `finished_goods_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`))
+ERROR 1451 (23000) at line 308: Cannot delete or update a parent row: a foreign key constraint fails (`enterflow_test_db`.`invoice_delivery_receipts`, CONSTRAINT `invoice_delivery_receipts_ibfk_2` FOREIGN KEY (`signed_delivery_receipt_id`, `order_id`, `accepted_slot`) REFERENCES `signed_delive)
+ERROR 1062 (23000) at line 312: Duplicate entry '1001-1' for key 'uq_one_accepted_signed_dr'
+ERROR 1062 (23000) at line 316: Duplicate entry '1001' for key 'uq_signed_dr_file'
+ERROR 1062 (23000) at line 320: Duplicate entry 'phase3-fixture-no-real-bucket-phase3/1001.pdf' for key 'uq_storage_object'
+ERROR 1062 (23000) at line 324: Duplicate entry 'phase3-staff' for key 'uq_user_username'
+ERROR 1062 (23000) at line 328: Duplicate entry 'phase3-staff@example.invalid' for key 'uq_user_email'
+ERROR 1062 (23000) at line 332: Duplicate entry 'T3-FG-1001' for key 'uq_finished_item_code'
+ERROR 1062 (23000) at line 336: Duplicate entry 'T3-Q-1001' for key 'PRIMARY'
+ERROR 1062 (23000) at line 340: Duplicate entry 'T3-JO-1001' for key 'uq_jo_reference'
+ERROR 1062 (23000) at line 344: Duplicate entry 'T3-SI-1001' for key 'uq_invoice_reference'
+ERROR 1062 (23000) at line 348: Duplicate entry 'T3-MOVE-1001' for key 'uq_material_operation'
+ERROR 1062 (23000) at line 352: Duplicate entry 'T3-PAY-1001' for key 'uq_payment_operation'
+ERROR 1062 (23000) at line 356: Duplicate entry '1001-1' for key 'uq_quote_revision'
+ERROR 4025 (23000) at line 360: CONSTRAINT `ck_signed_dr_state` failed for `enterflow_test_db`.`signed_delivery_receipts`
+ERROR 4025 (23000) at line 364: CONSTRAINT `ck_signed_dr_state` failed for `enterflow_test_db`.`signed_delivery_receipts`
+ERROR 4025 (23000) at line 368: CONSTRAINT `ck_signed_dr_state` failed for `enterflow_test_db`.`signed_delivery_receipts`
+ERROR 1452 (23000) at line 372: Cannot add or update a child row: a foreign key constraint fails (`enterflow_test_db`.`signed_delivery_receipts`, CONSTRAINT `signed_delivery_receipts_ibfk_1` FOREIGN KEY (`delivery_receipt_id`, `order_id`) REFERENCES `delivery_receipts` (`id`, `order_id`))

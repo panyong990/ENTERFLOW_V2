@@ -286,6 +286,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
   );
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
+  const [orderSortOrder, setOrderSortOrder] = useState<"newest" | "oldest">("newest");
   const normalizedOrderSearch = orderSearch.trim().toLowerCase();
   const visibleOrders = myOrders.filter((inquiry) => {
     const matchesStatus = orderStatusFilter === "all" || clientOrderStatus(inquiry).id === orderStatusFilter;
@@ -302,6 +303,14 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
     ];
     const matchesSearch = !normalizedOrderSearch || searchableValues.some((value) => value?.toLowerCase().includes(normalizedOrderSearch));
     return matchesStatus && matchesSearch;
+  }).sort((left, right) => {
+    const leftDate = Date.parse(left.submittedDate);
+    const rightDate = Date.parse(right.submittedDate);
+    const leftSubmittedAt = Number.isNaN(leftDate) ? 0 : leftDate;
+    const rightSubmittedAt = Number.isNaN(rightDate) ? 0 : rightDate;
+    return orderSortOrder === "newest"
+      ? rightSubmittedAt - leftSubmittedAt
+      : leftSubmittedAt - rightSubmittedAt;
   });
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
@@ -436,6 +445,16 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
             <option value="downpaymentVerified">Downpayment Verified</option>
             <option value="invoiceSent">Invoice Sent</option>
             <option value="fullPaymentVerified">Paid / Completed</option>
+          </select>
+          <select
+            value={orderSortOrder}
+            onChange={(event) => setOrderSortOrder(event.target.value as "newest" | "oldest")}
+            aria-label="Sort My Orders by submission date"
+            className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#475569" }}
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
           </select>
         </div>
       )}

@@ -2,4 +2,5 @@ __pycache__/
 .env
 .env.*
 !.env.dev.example
+!.env.migrations.example
 backups/

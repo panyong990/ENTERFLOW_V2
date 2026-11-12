@@ -5,6 +5,7 @@ Use [DEVELOPMENT.md](DEVELOPMENT.md) for current connection and management comma
 
 ## Review package
 
+- [Team SQL migration workflow: existing baseline, fresh installs and GitHub collaboration](TEAM_MIGRATIONS.md)
 - [Permanent local Docker database — installed, connection and management guide](DEVELOPMENT.md)
 - [Phase 5 permanent Docker development setup plan — awaiting approval](DEVELOPMENT_SETUP_PLAN.md)
 - [Phase 3 executed validation report and readiness](PHASE3_VALIDATION.md)

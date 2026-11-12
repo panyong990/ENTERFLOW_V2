@@ -89,6 +89,8 @@ Do not add --force. After restore, validate schema/ledger, row counts, financial
 
 ## Future migrations
 
+**Team workflow:** use [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md). Existing databases must pass the verified `npm run db:baseline` procedure once; subsequent changes use `npm run db:migrate`, `npm run db:seed` and `npm run db:status`. The checksum history adds one infrastructure table alongside the original 70. The old seed-only `dev_mysql.py verify` does not account for this extra table or later business data. The manual-import guidance below is historical and is superseded by the team runner after adoption.
+
 Create a new ordered migration; never rewrite/reimport migrations already applied here. Review it, back up the development target, check schema_migrations and apply only the next unapplied file with the administrative identity, using the same target-checked, stop-on-error import pattern in DEVELOPMENT_SETUP_PLAN.md. Include a unique completion marker only after its statements succeed. Do not run DDL with enterflow_app. DDL can commit partially; report failures and plan recovery before retrying. Validate schema changes in an authorized isolated environment before production deployment.
 
 ## Persistence evidence

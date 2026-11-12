@@ -1,0 +1,27 @@
+{
+  "container": "enterflow-migrations-workflow-test",
+  "volume": "enterflow-migrations-workflow-test-data",
+  "endpoint": "127.0.0.1:3309",
+  "checks": [
+    "Fresh 001-004 + reference seeds: exact 70-table validated schema and required seed values",
+    "Repeated migrate/seed/status leave applied history unchanged",
+    "Real CLI/env-file/TLS connection succeeds with database-scoped migration account",
+    "CRLF checkout checksums accepted",
+    "Modified applied migration blocked",
+    "Future 005 migration runs once after baseline files",
+    "Missing applied file blocked",
+    "Earlier newly inserted migration blocked",
+    "Existing manually applied schema baselined without replay; business sentinel preserved",
+    "Concurrent runner blocked by advisory lock",
+    "Schema drift rejects baseline before creating history",
+    "Unseeded manual baseline followed by reference seeds succeeds",
+    "Partial unmarked reference seeds refuse baseline",
+    "Failed transactional seed rolls back reference data and blocks retries",
+    "Partial DDL failure recorded; later files and automatic retry blocked",
+    "Development/validation container identities, starts, ports and mounts unchanged"
+  ],
+  "preserved": true,
+  "containerId": "3d361e7fdd25cc8b3aa71ec5baa3742aa73587ad3c99838eca2f84325e3772ff",
+  "runId": "1c6cd74c",
+  "status": "passed"
+}

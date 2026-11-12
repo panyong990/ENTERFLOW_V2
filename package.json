@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "db:migrate": "node database/migrate.mjs migrate",
+    "db:status": "node database/migrate.mjs status",
+    "db:baseline": "node database/migrate.mjs baseline",
+    "db:seed": "node database/migrate.mjs seed",
+    "db:test": "node --test database/migration-core.test.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -70,6 +75,7 @@
     "@tailwindcss/vite": "4.1.12",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-react": "4.7.0",
+    "mysql2": "^3.24.6",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5"
   },

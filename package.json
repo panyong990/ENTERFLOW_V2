@@ -10,7 +10,8 @@
     "db:status": "node database/migrate.mjs status",
     "db:baseline": "node database/migrate.mjs baseline",
     "db:seed": "node database/migrate.mjs seed",
-    "db:test": "node --test database/migration-core.test.mjs"
+    "db:test": "node --test database/migration-core.test.mjs",
+    "server": "node backend/src/server.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -50,10 +51,13 @@
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "date-fns": "3.6.0",
+    "dotenv": "^18.0.10",
     "embla-carousel-react": "8.6.0",
+    "express": "^5.3.0",
     "input-otp": "1.4.2",
     "lucide-react": "0.487.0",
     "motion": "12.23.24",
+    "mysql2": "^3.24.6",
     "next-themes": "0.4.6",
     "qrcode": "^1.5.4",
     "react-day-picker": "8.10.1",
@@ -75,7 +79,6 @@
     "@tailwindcss/vite": "4.1.12",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-react": "4.7.0",
-    "mysql2": "^3.24.6",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5"
   },

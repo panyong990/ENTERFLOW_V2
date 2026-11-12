@@ -1385,6 +1385,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
   const poSubmissions = inquiry.poSubmissions ?? [];
   const status = clientOrderStatus(inquiry);
+  const isInvoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
   const quotationDocToView = historicalQuotationDoc ?? (showQuotationDoc ? inquiry.quotationDoc : undefined);
 
   const submitRevision = () => {
@@ -1601,7 +1602,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                   </div>
                 </>
               )}
-              {inquiry.stage === "po" && inquiry.poFileName && (
+              {inquiry.stage === "po" && inquiry.poFileName && !isInvoiceSent && (
                 <div className="rounded-md p-3 font-dm" style={{
                   backgroundColor: status.id === "poRejected" ? "#FEF2F2" : status.id === "poReceived" ? "#F0FDF4" : "#EFF6FF",
                   border: `1px solid ${status.id === "poRejected" ? "#FECACA" : status.id === "poReceived" ? "#86EFAC" : "#BFDBFE"}`,

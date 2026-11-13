@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { BOMLine, CostConfig } from "./materials";
 import { createDemoInquiries } from "./demoOrders";
 import { discardPendingSignedDeliveryReceiptAttachment, loadInquiryAttachments, promotePendingSignedDeliveryReceipt, readFileAsDataUrl, saveInquiryAttachments, saveProductSketchAttachments } from "./attachments";
+import { calculateProductionDeadline } from "./productionDeadline";
 
 /* Quotation document — what the client sees */
 export interface QuotationLineItem {
@@ -1481,13 +1482,18 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const finalizeProductJOs: Ctx["finalizeProductJOs"] = (id, data) => {
     const src = allInquiries.find((i) => i.id === id);
-    const productionDueDate = data[0]?.productionDueDate;
+    const calculation = src
+      ? calculateProductionDeadline(
+        src.quotationDoc?.timeOfDelivery,
+        src.quotationDoc?.shipping?.label,
+      )
+      : undefined;
+    const productionDueDate = calculation?.productionDueDate;
     if (
       !productionDueDate
       || !isValidProductionDueDate(productionDueDate)
-      || data.some((job) => job.productionDueDate !== productionDueDate)
     ) {
-      console.error("Cannot generate Job Order: a valid shared production due date is required.");
+      console.error("Cannot generate Job Order: the automatic production deadline could not be calculated or verified.");
       return [];
     }
     if (!src || src.stage !== "po" || src.joNumber || allInquiries.some((i) => i.parentInquiryId === id && i.stage === "jo")) return [];
@@ -1509,7 +1515,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           parentInquiryId,
           stage: "jo" as Stage,
           joNumber: jo.joNumber,
-          productionDueDate: jo.productionDueDate,
+          productionDueDate,
           joSpecs: jo.joSpecs,
           joSketch: jo.joSketch,
           dpReceiptFile: jo.dpReceiptFile,

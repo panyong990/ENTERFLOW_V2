@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, SlidersHorizontal, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, isValidProductionDueDate, resolveProductBOM, poNumberForDisplay, poReviewStatus, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, poReviewStatus, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { calculateProductionDeadline, DELIVERY_TRANSIT_ESTIMATE_NOTICE } from "../store/productionDeadline";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -2517,8 +2518,6 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   const [otherDocs, setOtherDocs] = useState<UploadedDoc[]>([]);
   const [otherLabel, setOtherLabel] = useState("");
   const [checks, setChecks] = useState({ verified: false, matches: false, terms: false, dpConfirmed: false });
-  const [productionDueDate, setProductionDueDate] = useState("");
-  const [productionDueDateError, setProductionDueDateError] = useState("");
   const [poFullscreen, setPoFullscreen] = useState(false);
   const [showSpecs, setShowSpecs] = useState(true);
   /* Active product tab for multi-product JO editing */
@@ -2575,7 +2574,12 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   /* Payment terms (set by Enter-Fil during quotation, can be edited here after negotiation) */
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(inquiry.paymentTerms);
   /* Delivery method (Enter-Fil's final say) */
-  const [deliveryMethod, setDeliveryMethod] = useState<"Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up">("Company Vehicle");
+  const [deliveryMethod, setDeliveryMethod] = useState<"Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up">(() => {
+    const quotationMethod = inquiry.quotationDoc?.shipping?.label;
+    return ["Lalamove", "AP Cargo", "Fast Cargo", "Company Vehicle", "Client Pick-up"].includes(quotationMethod ?? "")
+      ? quotationMethod as "Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up"
+      : "Company Vehicle";
+  });
   /* Sales-invoice issuance — some orders skip SI */
   const [issueSI, setIssueSI] = useState(true);
 
@@ -2597,22 +2601,25 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
     setOtherDocs((prev) => [...prev, doc]);
   };
 
+  const productionDeadline = calculateProductionDeadline(
+    inquiry.quotationDoc?.timeOfDelivery,
+    inquiry.quotationDoc?.shipping?.label,
+  );
+
   const buildFinalizePayload = (): FinalizeJOData[] =>
     inquiry.products.map((_, idx) => ({
       joNumber: joNumbers[idx] ?? `${joNumbers[0]}-${idx + 1}`,
-      productionDueDate,
+      productionDueDate: productionDeadline?.productionDueDate ?? "",
       joSpecs: { ...productSpecs[idx], oem: enterFilPNs[idx] || productSpecs[idx]?.oem },
       joSketch: productSketches[idx]?.[0]?.name,
     }));
 
   const handleConfirm = () => {
-    if (!isValidProductionDueDate(productionDueDate)) {
-      const message = productionDueDate ? "Enter a valid production due date." : "Production due date is required.";
-      setProductionDueDateError(message);
+    if (!productionDeadline) {
+      const message = "Cannot calculate the production deadline. Confirm the quotation delivery timeframe and selected delivery method, and verify the transit-time configuration.";
       toast.error(message);
       return;
     }
-    setProductionDueDateError("");
     onConfirm(buildFinalizePayload());
   };
 
@@ -2627,7 +2634,6 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
     : "Not recorded";
   const clientDeliveryDate = inquiry.dueDate || "Not provided";
   const quotedDeliveryTerm = inquiry.quotationDoc?.timeOfDelivery || "Not recorded";
-  const quotedLeadTime = inquiry.quotation?.leadTimeDays;
 
   const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
   const summary = inquiry.products.map((p) => `${p.type}${p.od1 ? ` ${p.od1}×${p.id1}×${p.height}mm` : ""} · Qty ${p.qty}`).join(" · ");
@@ -2889,35 +2895,24 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           </div>
         </div>
         <div className="font-dm mb-3" style={{ fontSize: 12, color: "#64748B" }}>
-          Quotation delivery term: {quotedDeliveryTerm}
-          {quotedLeadTime ? ` · Quoted lead time: ${quotedLeadTime} days` : ""}
-          . Choose the production completion deadline manually; no automatic calendar calculation is configured.
+          Quotation delivery term: {quotedDeliveryTerm} · Quotation delivery method: {inquiry.quotationDoc?.shipping?.label || "Not recorded"}.
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="production-due-date" className="font-dm flex items-center gap-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
-            Production Due Date
-            <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 8, fontWeight: 800, backgroundColor: "#C8102E", color: "white" }}>REQUIRED</span>
-          </label>
-          <input
-            id="production-due-date"
-            type="date"
-            required
-            value={productionDueDate}
-            onChange={(event) => {
-              setProductionDueDate(event.target.value);
-              setProductionDueDateError("");
-            }}
-            onBlur={() => {
-              if (!productionDueDate) setProductionDueDateError("Production due date is required.");
-            }}
-            aria-invalid={Boolean(productionDueDateError)}
-            aria-describedby={productionDueDateError ? "production-due-date-error" : undefined}
-            className="form-input max-w-xs"
-          />
-          {productionDueDateError && (
-            <p id="production-due-date-error" role="alert" className="font-dm" style={{ fontSize: 12, color: "#B91C1C" }}>{productionDueDateError}</p>
-          )}
-        </div>
+        {productionDeadline ? (
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+            <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase" }}>Automatically calculated production deadline</div>
+            <div className="font-dm mt-1" style={{ fontSize: 16, fontWeight: 700, color: "#1E3A8A" }}>
+              {new Date(`${productionDeadline.productionDueDate}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            </div>
+            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#1E40AF" }}>
+              {productionDeadline.quotationCalendarDays} calendar days − {productionDeadline.maximumTransitCalendarDays} calendar days transit = {productionDeadline.productionWorkingDays} working days
+            </div>
+            <div className="font-dm mt-1" style={{ fontSize: 10, color: "#92400E" }}>{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div>
+          </div>
+        ) : (
+          <p role="alert" className="font-dm rounded-md border border-amber-200 bg-amber-50 p-3" style={{ fontSize: 12, color: "#92400E" }}>
+            Deadline unavailable: a valid quotation timeframe and supported quotation delivery method with a valid transit estimate are required. No deadline will be saved until the configuration is corrected.
+          </p>
+        )}
       </div>
 
       {/* ── Other Documents (optional) ── */}

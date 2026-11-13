@@ -2,26 +2,46 @@ import type { Inquiry } from "./orders";
 
 type DeliveryMethod = NonNullable<Inquiry["deliveryMethod"]>;
 
-interface TransitTimeEstimate {
+export interface TransitTimeEstimate {
   minCalendarDays: number;
   maxCalendarDays: number;
+  isPlaceholder: boolean;
 }
 
 export const DELIVERY_TRANSIT_TIME_ESTIMATES: Record<DeliveryMethod, TransitTimeEstimate> = {
-  "Company Vehicle": { minCalendarDays: 1, maxCalendarDays: 2 },
-  Lalamove: { minCalendarDays: 0, maxCalendarDays: 1 },
-  "AP Cargo": { minCalendarDays: 2, maxCalendarDays: 3 },
-  "Fast Cargo": { minCalendarDays: 3, maxCalendarDays: 5 },
-  "Client Pick-up": { minCalendarDays: 0, maxCalendarDays: 0 },
+  "Company Vehicle": { minCalendarDays: 1, maxCalendarDays: 2, isPlaceholder: true },
+  Lalamove: { minCalendarDays: 0, maxCalendarDays: 1, isPlaceholder: true },
+  "AP Cargo": { minCalendarDays: 3, maxCalendarDays: 5, isPlaceholder: true },
+  "Fast Cargo": { minCalendarDays: 3, maxCalendarDays: 5, isPlaceholder: true },
+  "Client Pick-up": { minCalendarDays: 0, maxCalendarDays: 0, isPlaceholder: false },
 };
 
 export const DELIVERY_TRANSIT_ESTIMATE_NOTICE =
   "Temporary placeholder estimates only; Enter-Fil has not confirmed these transit times.";
 
+export function getDeliveryTransitEstimate(deliveryMethod?: string): TransitTimeEstimate | undefined {
+  if (!deliveryMethod) return undefined;
+  return Object.entries(DELIVERY_TRANSIT_TIME_ESTIMATES)
+    .find(([method]) => method === deliveryMethod)?.[1];
+}
+
+export function formatTransitTimeEstimate(estimate?: TransitTimeEstimate, deliveryMethod?: string): string | undefined {
+  if (!estimate) return undefined;
+  if (deliveryMethod === "Client Pick-up") return "No transit period (client pick-up)";
+  if (estimate.minCalendarDays === estimate.maxCalendarDays) {
+    return `${estimate.maxCalendarDays} calendar ${estimate.maxCalendarDays === 1 ? "day" : "days"}`;
+  }
+  return `${estimate.minCalendarDays}–${estimate.maxCalendarDays} calendar days`;
+}
+
+export function formatDeliveryTransitEstimate(deliveryMethod?: string): string | undefined {
+  return formatTransitTimeEstimate(getDeliveryTransitEstimate(deliveryMethod), deliveryMethod);
+}
+
 export interface ProductionDeadlineCalculation {
   quotationCalendarDays: number;
   maximumTransitCalendarDays: number;
-  productionWorkingDays: number;
+  productionCalendarDays: number;
   productionDueDate: string;
 }
 
@@ -57,7 +77,7 @@ export function calculateProductionDeadline(
   if (!quotationTimeframe || !deliveryMethod || !isValidDate(generatedAt)) return undefined;
 
   const quotationCalendarDays = parseQuotationTimeframeCalendarDays(quotationTimeframe);
-  const transitEstimate = DELIVERY_TRANSIT_TIME_ESTIMATES[deliveryMethod as DeliveryMethod];
+  const transitEstimate = getDeliveryTransitEstimate(deliveryMethod);
   if (
     quotationCalendarDays === undefined
     || !transitEstimate
@@ -69,8 +89,8 @@ export function calculateProductionDeadline(
     return undefined;
   }
 
-  const productionWorkingDays = quotationCalendarDays - transitEstimate.maxCalendarDays;
-  if (productionWorkingDays <= 0) return undefined;
+  const productionCalendarDays = quotationCalendarDays - transitEstimate.maxCalendarDays;
+  if (productionCalendarDays <= 0) return undefined;
 
   const deadline = new Date(Date.UTC(
     generatedAt.getFullYear(),
@@ -83,9 +103,9 @@ export function calculateProductionDeadline(
   }
 
   let productionDaysCounted = 0;
-  while (productionDaysCounted < productionWorkingDays) {
+  while (productionDaysCounted < productionCalendarDays) {
     productionDaysCounted += 1;
-    if (productionDaysCounted < productionWorkingDays) {
+    if (productionDaysCounted < productionCalendarDays) {
       deadline.setUTCDate(deadline.getUTCDate() + 1);
       while (deadline.getUTCDay() === 0 || deadline.getUTCDay() === 6) {
         deadline.setUTCDate(deadline.getUTCDate() + 1);
@@ -96,7 +116,7 @@ export function calculateProductionDeadline(
   return {
     quotationCalendarDays,
     maximumTransitCalendarDays: transitEstimate.maxCalendarDays,
-    productionWorkingDays,
+    productionCalendarDays,
     productionDueDate: formatUTCDate(deadline),
   };
 }

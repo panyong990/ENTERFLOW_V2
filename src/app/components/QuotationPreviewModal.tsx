@@ -1,5 +1,6 @@
 import { X, Printer, Download } from "lucide-react";
 import type { Inquiry, QuotationDoc } from "../store/orders";
+import { DELIVERY_TRANSIT_ESTIMATE_NOTICE, formatTransitTimeEstimate, getDeliveryTransitEstimate } from "../store/productionDeadline";
 
 interface Props {
   inquiry: Inquiry;
@@ -29,6 +30,8 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
       ? `${savedLeadTimeDays} ${savedLeadTimeDays === 1 ? "day" : "days"}`
       : "—"
   );
+  const transitEstimateValue = doc.shipping?.transitEstimate ?? getDeliveryTransitEstimate(doc.shipping?.label);
+  const transitEstimate = formatTransitTimeEstimate(transitEstimateValue, doc.shipping?.label);
 
   return (
     <div className="quotation-preview-print-root fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.7)" }} onClick={onClose}>
@@ -189,6 +192,17 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
                         ? `${doc.shipping.label} · ₱${doc.shipping.amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} included in unit price`
                         : doc.shipping.label}
                     />
+                  )}
+                  {transitEstimate && (
+                    <>
+                      <Term
+                        label={transitEstimateValue?.isPlaceholder ? "Estimated transit (temporary)" : "Estimated transit"}
+                        value={transitEstimate}
+                      />
+                      {transitEstimateValue?.isPlaceholder && (
+                        <div className="font-dm mt-1" style={{ fontSize: 9, color: "#92400E" }}>{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div>
+                      )}
+                    </>
                   )}
                   <Term label="Validity" value={doc.validUntil || "—"} />
                 </div>

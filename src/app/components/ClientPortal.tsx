@@ -845,6 +845,15 @@ function TransactionsTab({ clientName }: { clientName: string }) {
 }
 
 /* ─────────── NewOrderWizardModal — multi-product wizard with dynamic dimensions ─────────── */
+function formatRequestedDeliveryDate(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onClose, onSubmitted }: {
   clientName: string;
   reorderSource?: Inquiry;
@@ -858,6 +867,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   const [step, setStep] = useState(1);
   const [contactPerson, setContactPerson] = useState(reorderSource?.contactPerson ?? "");
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(reorderSource?.paymentTerms ?? "30-Day Terms");
+  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [generalNotes, setGeneralNotes] = useState(reorderSource ? `Reorder of ${reorderSource.joNumber ?? reorderSource.code}` : "");
   /* Multi-product state — clients can add multiple filters per inquiry. */
   const [products, setProducts] = useState<ProductLine[]>(reorderSource
@@ -961,6 +971,9 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
 
     const inquiryData = {
       clientName, contactPerson, paymentTerms, generalNotes,
+      dueDate: requestedDeliveryDate
+        ? formatRequestedDeliveryDate(requestedDeliveryDate)
+        : undefined,
       products: finalProducts,
       /* Legacy single-sketch field — show comma-joined list for multi-product */
       inquirySketch: finalProducts.map((p) => p.sketchFileName).filter(Boolean).join(", ") || undefined,
@@ -1085,6 +1098,15 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
                   <option>15-Day Terms</option><option>30-Day Terms</option>
                 </select>
               </Field>
+              <Field label="Client Requested Delivery Date (optional)">
+                <input
+                  type="date"
+                  value={requestedDeliveryDate}
+                  onChange={(e) => setRequestedDeliveryDate(e.target.value)}
+                  className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+                  style={{ fontSize: 13 }}
+                />
+              </Field>
               <div className="col-span-2 flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Notes <span style={{ color: "#94A3B8", fontWeight: 400 }}>(optional)</span></label>
                 <textarea value={generalNotes} onChange={(e) => setGeneralNotes(e.target.value)} placeholder="Special instructions, brand references..." rows={2} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none" style={{ fontSize: 13 }} />
@@ -1199,6 +1221,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
               ))}
               <div className="rounded-lg p-4 grid grid-cols-2 gap-y-2 gap-x-4" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A" }}>
                 <ReviewLine label="Payment Terms" value={paymentTerms} />
+                <ReviewLine label="Requested Date" value={requestedDeliveryDate ? formatRequestedDeliveryDate(requestedDeliveryDate) : "Not provided"} />
               </div>
               {/* Per-product filtration + sketch summary */}
               {products.map((p, i) => (
@@ -1656,7 +1679,8 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             </div>
           )}
 
-          {((inquiry.revisionRequests?.length ?? 0) > 0 || inquiry.revisionNote || (inquiry.quotationHistory?.length ?? 0) > 0) && (
+          {poReviewStatus(inquiry) !== "Approved"
+            && ((inquiry.revisionRequests?.length ?? 0) > 0 || inquiry.revisionNote || (inquiry.quotationHistory?.length ?? 0) > 0) && (
             <section className="mt-4 rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
               <div className="mb-2" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase" }}>Quotation Revision &amp; Document History</div>
               {(inquiry.revisionRequests?.length

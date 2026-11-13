@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, SlidersHorizontal, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, poReviewStatus, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
-import { calculateProductionDeadline, DELIVERY_TRANSIT_ESTIMATE_NOTICE } from "../store/productionDeadline";
+import { calculateProductionDeadline, DELIVERY_TRANSIT_ESTIMATE_NOTICE, formatDeliveryTransitEstimate, getDeliveryTransitEstimate } from "../store/productionDeadline";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -2574,10 +2574,10 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   /* Payment terms (set by Enter-Fil during quotation, can be edited here after negotiation) */
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(inquiry.paymentTerms);
   /* Delivery method (Enter-Fil's final say) */
-  const [deliveryMethod, setDeliveryMethod] = useState<"Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up">(() => {
+  const [deliveryMethod, setDeliveryMethod] = useState<NonNullable<Inquiry["deliveryMethod"]>>(() => {
     const quotationMethod = inquiry.quotationDoc?.shipping?.label;
     return ["Lalamove", "AP Cargo", "Fast Cargo", "Company Vehicle", "Client Pick-up"].includes(quotationMethod ?? "")
-      ? quotationMethod as "Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up"
+      ? quotationMethod as NonNullable<Inquiry["deliveryMethod"]>
       : "Company Vehicle";
   });
   /* Sales-invoice issuance — some orders skip SI */
@@ -2603,13 +2603,15 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
 
   const productionDeadline = calculateProductionDeadline(
     inquiry.quotationDoc?.timeOfDelivery,
-    inquiry.quotationDoc?.shipping?.label,
+    deliveryMethod,
   );
+  const deliveryTransitEstimate = getDeliveryTransitEstimate(deliveryMethod);
 
   const buildFinalizePayload = (): FinalizeJOData[] =>
     inquiry.products.map((_, idx) => ({
       joNumber: joNumbers[idx] ?? `${joNumbers[0]}-${idx + 1}`,
       productionDueDate: productionDeadline?.productionDueDate ?? "",
+      deliveryMethod,
       joSpecs: { ...productSpecs[idx], oem: enterFilPNs[idx] || productSpecs[idx]?.oem },
       joSketch: productSketches[idx]?.[0]?.name,
     }));
@@ -2864,13 +2866,21 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
             </select>
           </Field>
           <Field label="Delivery Method (Enter-Fil's final say)">
-            <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as any)} className="form-input">
+            <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as NonNullable<Inquiry["deliveryMethod"]>)} className="form-input">
               <option value="Company Vehicle">Company Vehicle — Batangas / Laguna / nearby</option>
               <option value="Lalamove">Lalamove — local, urgent</option>
               <option value="AP Cargo">AP Cargo — Cagayan / Isabela / north</option>
               <option value="Fast Cargo">Fast Cargo — Davao / Mindanao / south</option>
               <option value="Client Pick-up">Client Pick-up</option>
             </select>
+            <div className="font-dm mt-1.5" style={{ fontSize: 11, color: "#92400E" }}>
+              {deliveryMethod === "Client Pick-up"
+                ? "No transit days are deducted for client pick-up."
+                : `Estimated transit: ${formatDeliveryTransitEstimate(deliveryMethod)}.`}
+              {deliveryTransitEstimate?.isPlaceholder && (
+                <div className="mt-0.5" style={{ fontSize: 10 }}>{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div>
+              )}
+            </div>
           </Field>
         </div>
         <label className="flex items-start gap-2 mt-3 p-2 rounded-md cursor-pointer hover:bg-white" style={{ backgroundColor: issueSI ? "transparent" : "#FFFBEB" }}>
@@ -2895,7 +2905,9 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           </div>
         </div>
         <div className="font-dm mb-3" style={{ fontSize: 12, color: "#64748B" }}>
-          Quotation delivery term: {quotedDeliveryTerm} · Quotation delivery method: {inquiry.quotationDoc?.shipping?.label || "Not recorded"}.
+          Original quotation timeframe: {quotedDeliveryTerm} · Quotation method: {inquiry.quotationDoc?.shipping?.label || "Not recorded"}.
+          <br />
+          Final JO method: {deliveryMethod} · Transit estimate: {formatDeliveryTransitEstimate(deliveryMethod) ?? "Not configured"}.
         </div>
         {productionDeadline ? (
           <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
@@ -2904,13 +2916,15 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
               {new Date(`${productionDeadline.productionDueDate}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             </div>
             <div className="font-dm mt-1" style={{ fontSize: 11, color: "#1E40AF" }}>
-              {productionDeadline.quotationCalendarDays} calendar days − {productionDeadline.maximumTransitCalendarDays} calendar days transit = {productionDeadline.productionWorkingDays} working days
+              {productionDeadline.quotationCalendarDays} calendar days (quotation timeframe) − {productionDeadline.maximumTransitCalendarDays} calendar days (maximum final JO transit) = {productionDeadline.productionCalendarDays} calendar days of production, counted as working days excluding Saturdays and Sundays.
             </div>
-            <div className="font-dm mt-1" style={{ fontSize: 10, color: "#92400E" }}>{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div>
+            {deliveryTransitEstimate?.isPlaceholder && (
+              <div className="font-dm mt-1" style={{ fontSize: 10, color: "#92400E" }}>{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div>
+            )}
           </div>
         ) : (
           <p role="alert" className="font-dm rounded-md border border-amber-200 bg-amber-50 p-3" style={{ fontSize: 12, color: "#92400E" }}>
-            Deadline unavailable: a valid quotation timeframe and supported quotation delivery method with a valid transit estimate are required. No deadline will be saved until the configuration is corrected.
+            Deadline unavailable: a valid quotation timeframe and supported final JO delivery method with a valid transit estimate are required. No deadline will be saved until the configuration is corrected.
           </p>
         )}
       </div>
@@ -3189,13 +3203,6 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
   const [isRush, setIsRush] = useState(false);
   const [rushDate, setRushDate] = useState("");
 
-  /* Auto-due-date when NOT rush: today + 14 days */
-  const autoDueDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  };
-
   const group = groupForType(filterType);
   const dimensionList = GROUP_TEMPLATES[group].dimensions;
 
@@ -3206,12 +3213,11 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
     if (qty < 10) { toast.error("Minimum order quantity is 10 pcs"); return; }
     if (isRush && !rushDate.trim()) { toast.error("Required delivery date needed for rush order"); return; }
     const product: ProductLine = { id: "p1", type: filterType, filterName: filterName.trim(), ...dims, media, innerCore, oem, qty };
-    const finalDueDate = isRush ? rushDate : autoDueDate();
     onSubmit({
       clientName, contactPerson, paymentTerms, generalNotes,
       products: [product],
       urgent: isRush,
-      dueDate: finalDueDate,
+      dueDate: isRush ? rushDate : undefined,
       inquirySketch: sketchFile ?? undefined,
     });
   };
@@ -3336,7 +3342,7 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
               </div>
             ) : (
               <div className="mt-3 rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#64748B", backgroundColor: "white", border: "1px solid #E2E8F0" }}>
-                ℹ️ Auto-set due date: <span style={{ color: "#0F172A", fontWeight: 700 }}>{autoDueDate()}</span> (today + 14 days, standard 1–2 week production norm)
+                No client-requested delivery date is recorded unless one is entered for a rush order.
               </div>
             )}
           </div>

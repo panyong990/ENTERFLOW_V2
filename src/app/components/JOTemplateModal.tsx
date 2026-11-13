@@ -37,6 +37,7 @@ export interface JOTemplateData {
   sketch?: string;
   urgent?: boolean;
   dueDate?: string;
+  deliveryMethod?: string;
   productionDueDate?: string;
 }
 
@@ -126,11 +127,6 @@ export function JOTemplateModal({ data, onClose }: Props) {
               <span style={{ fontSize: 13, fontWeight: 800, color: "#C8102E", letterSpacing: 0.5 }}>
                 🚨 RUSH ORDER
               </span>
-              {data.dueDate && (
-                <span style={{ ...D, fontSize: 12, color: "#991B1B", fontWeight: 600 }}>
-                  Client delivery date: {data.dueDate}
-                </span>
-              )}
             </div>
           )}
 
@@ -152,6 +148,8 @@ export function JOTemplateModal({ data, onClose }: Props) {
                 {data.poRef && <HeaderRow label="PO REFERENCE" value={data.poRef} />}
                 <HeaderRow label="COMPANY NAME" value={data.client.toUpperCase()} bold />
                 <HeaderRow label="QUANTITY" value={String(data.qty)} />
+                {data.dueDate && <HeaderRow label="CLIENT REQUESTED DELIVERY" value={data.dueDate} />}
+                {data.deliveryMethod && <HeaderRow label="FINAL DELIVERY METHOD" value={data.deliveryMethod} />}
                 {data.productionDueDate && <HeaderRow label="PRODUCTION DUE" value={data.productionDueDate} bold />}
               </div>
             </div>

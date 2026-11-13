@@ -51,7 +51,16 @@ export interface QuotationDoc {
   /* Packaging add-on */
   packaging?: { materialId: string; materialName: string; qty: number; unitPrice: number; includeInUnit: boolean };
   /* Shipping add-on */
-  shipping?: { label: string; amount: number; includeInUnit: boolean };
+  shipping?: {
+    label: string;
+    amount: number;
+    includeInUnit: boolean;
+    transitEstimate?: {
+      minCalendarDays: number;
+      maxCalendarDays: number;
+      isPlaceholder: boolean;
+    };
+  };
   /* Terms */
   termsOfPayment: "15-Day Terms" | "30-Day Terms";
   timeOfDelivery: string;    // "3–4 working weeks upon receipt of P.O."
@@ -482,6 +491,7 @@ export function poNumberForDisplay(inquiry: Pick<Inquiry, "poNumber" | "poFileNa
 export interface FinalizeJOData {
   joNumber: string;
   productionDueDate: string;
+  deliveryMethod: NonNullable<Inquiry["deliveryMethod"]>;
   joSpecs?: JOSpecs;
   joSketch?: string;
   dpReceiptFile?: string;
@@ -1285,6 +1295,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
               ...x,
               stage: "jo",
               joNumber: data.joNumber,
+              productionDueDate: data.productionDueDate,
+              deliveryMethod: data.deliveryMethod,
               joSpecs: data.joSpecs,
               joSketch: data.joSketch,
               dpReceiptFile: data.dpReceiptFile,
@@ -1482,10 +1494,15 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const finalizeProductJOs: Ctx["finalizeProductJOs"] = (id, data) => {
     const src = allInquiries.find((i) => i.id === id);
+    const deliveryMethod = data[0]?.deliveryMethod;
+    if (!deliveryMethod || data.some((job) => job.deliveryMethod !== deliveryMethod)) {
+      console.error("Cannot generate Job Order: all products must use the selected final delivery method.");
+      return [];
+    }
     const calculation = src
       ? calculateProductionDeadline(
         src.quotationDoc?.timeOfDelivery,
-        src.quotationDoc?.shipping?.label,
+        deliveryMethod,
       )
       : undefined;
     const productionDueDate = calculation?.productionDueDate;
@@ -1516,6 +1533,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           stage: "jo" as Stage,
           joNumber: jo.joNumber,
           productionDueDate,
+          deliveryMethod: jo.deliveryMethod,
           joSpecs: jo.joSpecs,
           joSketch: jo.joSketch,
           dpReceiptFile: jo.dpReceiptFile,

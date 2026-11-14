@@ -2,23 +2,27 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { pool } from '../config/database.js';
 
-const IDLE_TIMEOUT_MINUTES = Number(
-  process.env.SESSION_IDLE_TIMEOUT_MINUTES
-);
-
-const ABSOLUTE_TIMEOUT_HOURS = Number(
-  process.env.SESSION_ABSOLUTE_TIMEOUT_HOURS
-);
-
-function validateSessionConfiguration() {
+function validateSessionConfiguration(idleTimeoutMinutes, absoluteTimeoutHours) {
   if (
-    !Number.isInteger(IDLE_TIMEOUT_MINUTES) ||
-    IDLE_TIMEOUT_MINUTES <= 0 ||
-    !Number.isInteger(ABSOLUTE_TIMEOUT_HOURS) ||
-    ABSOLUTE_TIMEOUT_HOURS <= 0
+    !Number.isSafeInteger(idleTimeoutMinutes) ||
+    idleTimeoutMinutes <= 0 ||
+    !Number.isSafeInteger(absoluteTimeoutHours) ||
+    absoluteTimeoutHours <= 0
   ) {
     throw new Error('Invalid session timeout configuration.');
   }
+}
+
+function validateUserId(userId) {
+  if (
+    (typeof userId !== 'string' &&
+      (typeof userId !== 'number' || !Number.isSafeInteger(userId))) ||
+    !/^[1-9]\d*$/.test(String(userId))
+  ) {
+    throw new Error('A valid user ID is required.');
+  }
+
+  return String(userId);
 }
 
 export function generateSessionToken() {
@@ -38,120 +42,134 @@ export function hashSessionToken(token) {
     .digest('hex');
 }
 
-export async function createSession(userId) {
-  validateSessionConfiguration();
-
-  if (
-    typeof userId !== 'string' &&
-    (typeof userId !== 'number' || !Number.isSafeInteger(userId))
-  ) {
-    throw new Error('A valid user ID is required.');
+export function createSessionService({
+  db,
+  idleTimeoutMinutes,
+  absoluteTimeoutHours
+}) {
+  if (!db || typeof db.execute !== 'function') {
+    throw new Error('A valid database connection is required.');
   }
 
-  if (String(userId).length === 0 || !/^[1-9]\d*$/.test(String(userId))) {
-    throw new Error('A valid user ID is required.');
-  }
+  validateSessionConfiguration(idleTimeoutMinutes, absoluteTimeoutHours);
 
-  const token = generateSessionToken();
-  const tokenHash = hashSessionToken(token);
+  async function createSession(userId) {
+    const validUserId = validateUserId(userId);
 
-  const [result] = await pool.execute(
-    `INSERT INTO user_sessions (
-      user_id,
-      token_hash,
-      expires_at
-    )
-    SELECT
-      id,
-      ?,
-      DATE_ADD(
-        UTC_TIMESTAMP(3),
-        INTERVAL ? HOUR
+    const token = generateSessionToken();
+    const tokenHash = hashSessionToken(token);
+
+    const [result] = await db.execute(
+      `INSERT INTO user_sessions (
+        user_id,
+        token_hash,
+        expires_at
       )
-    FROM users
-    WHERE id = ?
-      AND active = TRUE`,
-    [
-      tokenHash,
-      ABSOLUTE_TIMEOUT_HOURS,
-      String(userId)
-    ]
-  );
+      SELECT
+        id,
+        ?,
+        DATE_ADD(
+          UTC_TIMESTAMP(3),
+          INTERVAL ? HOUR
+        )
+      FROM users
+      WHERE id = ?
+        AND active = TRUE`,
+      [tokenHash, absoluteTimeoutHours, validUserId]
+    );
 
-  if (result.affectedRows !== 1) {
-    throw new Error('Unable to create session for this account.');
+    if (result.affectedRows !== 1) {
+      throw new Error('Unable to create session for this account.');
+    }
+
+    return { token };
   }
 
-  return { token };
+  async function validateSession(token) {
+    const tokenHash = hashSessionToken(token);
+
+    const [rows] = await db.execute(
+      `SELECT
+        s.id AS sessionId,
+        s.user_id AS userId,
+        s.expires_at AS expiresAt,
+        s.last_activity_at AS lastActivityAt,
+        u.role_code AS roleCode,
+        u.account_type AS accountType,
+        u.client_id AS clientId,
+        u.display_name AS displayName,
+        u.active AS active
+      FROM user_sessions s
+      INNER JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = ?
+        AND s.revoked_at IS NULL
+        AND s.expires_at > UTC_TIMESTAMP(3)
+        AND s.last_activity_at >
+          DATE_SUB(
+            UTC_TIMESTAMP(3),
+            INTERVAL ? MINUTE
+          )
+        AND u.active = TRUE
+      LIMIT 1`,
+      [tokenHash, idleTimeoutMinutes]
+    );
+
+    return rows.length === 1 ? rows[0] : null;
+  }
+
+  async function updateSessionActivity(token) {
+    const tokenHash = hashSessionToken(token);
+
+    const [result] = await db.execute(
+      `UPDATE user_sessions s
+      INNER JOIN users u ON u.id = s.user_id
+      SET s.last_activity_at = UTC_TIMESTAMP(3)
+      WHERE s.token_hash = ?
+        AND s.revoked_at IS NULL
+        AND s.expires_at > UTC_TIMESTAMP(3)
+        AND s.last_activity_at >
+          DATE_SUB(
+            UTC_TIMESTAMP(3),
+            INTERVAL ? MINUTE
+          )
+        AND u.active = TRUE`,
+      [tokenHash, idleTimeoutMinutes]
+    );
+
+    return result.affectedRows === 1;
+  }
+
+  async function revokeSession(token) {
+    const tokenHash = hashSessionToken(token);
+
+    const [result] = await db.execute(
+      `UPDATE user_sessions
+      SET revoked_at = UTC_TIMESTAMP(3)
+      WHERE token_hash = ?
+        AND revoked_at IS NULL`,
+      [tokenHash]
+    );
+
+    return result.affectedRows === 1;
+  }
+
+  return {
+    createSession,
+    validateSession,
+    updateSessionActivity,
+    revokeSession
+  };
 }
 
-export async function validateSession(token) {
-  validateSessionConfiguration();
+const defaultSessionService = createSessionService({
+  db: pool,
+  idleTimeoutMinutes: Number(process.env.SESSION_IDLE_TIMEOUT_MINUTES),
+  absoluteTimeoutHours: Number(process.env.SESSION_ABSOLUTE_TIMEOUT_HOURS)
+});
 
-  const tokenHash = hashSessionToken(token);
-
-  const [rows] = await pool.execute(
-    `SELECT
-      s.id AS sessionId,
-      s.user_id AS userId,
-      s.expires_at AS expiresAt,
-      s.last_activity_at AS lastActivityAt,
-      u.role_code AS roleCode,
-      u.account_type AS accountType,
-      u.display_name AS displayName,
-      u.active AS active
-    FROM user_sessions s
-    INNER JOIN users u ON u.id = s.user_id
-    WHERE s.token_hash = ?
-      AND s.revoked_at IS NULL
-      AND s.expires_at > UTC_TIMESTAMP(3)
-      AND s.last_activity_at >
-        DATE_SUB(
-          UTC_TIMESTAMP(3),
-          INTERVAL ? MINUTE
-        )
-      AND u.active = TRUE
-    LIMIT 1`,
-    [tokenHash, IDLE_TIMEOUT_MINUTES]
-  );
-
-  return rows.length === 1 ? rows[0] : null;
-}
-
-export async function updateSessionActivity(token) {
-  validateSessionConfiguration();
-
-  const tokenHash = hashSessionToken(token);
-
-  const [result] = await pool.execute(
-    `UPDATE user_sessions s
-    INNER JOIN users u ON u.id = s.user_id
-    SET s.last_activity_at = UTC_TIMESTAMP(3)
-    WHERE s.token_hash = ?
-      AND s.revoked_at IS NULL
-      AND s.expires_at > UTC_TIMESTAMP(3)
-      AND s.last_activity_at >
-        DATE_SUB(
-          UTC_TIMESTAMP(3),
-          INTERVAL ? MINUTE
-        )
-      AND u.active = TRUE`,
-    [tokenHash, IDLE_TIMEOUT_MINUTES]
-  );
-
-  return result.affectedRows === 1;
-}
-
-export async function revokeSession(token) {
-  const tokenHash = hashSessionToken(token);
-
-  const [result] = await pool.execute(
-    `UPDATE user_sessions
-    SET revoked_at = UTC_TIMESTAMP(3)
-    WHERE token_hash = ?
-      AND revoked_at IS NULL`,
-    [tokenHash]
-  );
-
-  return result.affectedRows === 1;
-}
+export const {
+  createSession,
+  validateSession,
+  updateSessionActivity,
+  revokeSession
+} = defaultSessionService;

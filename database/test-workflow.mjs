@@ -10,12 +10,12 @@ import assert from 'node:assert/strict';
 import mysql from 'mysql2/promise';
 import { run, filesAt, verifyBaseline, root, history } from './migration-core.mjs';
 
-const dockerPath = process.env.DOCKER_EXE ?? String.raw`C:\Users\Stephanie\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe`;
+const dockerPath = process.env.DOCKER_EXE ?? 'docker';
 const name = 'enterflow-migrations-workflow-test';
 const volume = 'enterflow-migrations-workflow-test-data';
 const image = 'mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902';
 let password = randomBytes(32).toString('hex');
-const env = { ...process.env, PATH: path.dirname(dockerPath) + path.delimiter + process.env.PATH, MYSQL_ROOT_PASSWORD: password };
+const env = { ...process.env, MYSQL_ROOT_PASSWORD: password };
 const report = { container: name, volume, endpoint: '127.0.0.1:3309', checks: [], preserved: true };
 function docker(args, allowFailure = false) {
   const r = spawnSync(dockerPath, ['--context', 'desktop-linux', ...args], { env, encoding: 'utf8', timeout: 120000 });

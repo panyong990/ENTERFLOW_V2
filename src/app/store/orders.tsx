@@ -266,6 +266,14 @@ export const PRODUCTION_STAGES = [
   "Quality / Product Inspection",
 ] as const;
 
+export interface CancellationRequestHistory {
+  reason: string;
+  requestedAt: string;
+  requestedBy: "client" | "management";
+  resolution: "pending" | "approved" | "declined";
+  resolvedAt?: string;
+}
+
 export interface Inquiry {
   id: string;
   code: string;
@@ -322,6 +330,7 @@ export interface Inquiry {
   officialReceipt?: OfficialReceipt;
   /* — cancellation approval flow — */
   pendingCancellation?: { reason: string; requestedAt: string; requestedBy: "client" | "management" };
+  cancellationHistory?: CancellationRequestHistory[];
   /* — bill of materials + cost config (set during quotation, carried into JO) — */
   billOfMaterials?: BOMLine[];
   costConfig?: CostConfig;
@@ -1325,19 +1334,56 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   /* Cancellation approval workflow — both sides go through this */
   const requestCancellation: Ctx["requestCancellation"] = (id, reason, requestedBy) => {
     const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, pendingCancellation: { reason, requestedAt: now, requestedBy } } : x));
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== id || x.pendingCancellation || x.archived) return x;
+      const request = { reason, requestedAt: now, requestedBy };
+      return {
+        ...x,
+        pendingCancellation: request,
+        cancellationHistory: [
+          ...(x.cancellationHistory ?? []),
+          { ...request, resolution: "pending" },
+        ],
+      };
+    }));
   };
 
   const approveCancellation: Ctx["approveCancellation"] = (id) => {
     const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== id || !x.pendingCancellation) return x;
-      return { ...x, archived: true, archiveReason: "cancelled", archiveDate: now, archiveNote: x.pendingCancellation.reason, pendingCancellation: undefined };
+      const history = x.cancellationHistory ?? [];
+      const pendingIndex = history.map((request) => request.resolution).lastIndexOf("pending");
+      const cancellationHistory = pendingIndex < 0
+        ? [...history, { ...x.pendingCancellation, resolution: "approved" as const, resolvedAt: now }]
+        : history.map((request, index) => index === pendingIndex
+          ? { ...request, resolution: "approved" as const, resolvedAt: now }
+          : request);
+      return {
+        ...x,
+        archived: true,
+        archiveReason: "cancelled",
+        archiveDate: now,
+        archiveNote: x.pendingCancellation.reason,
+        pendingCancellation: undefined,
+        cancellationHistory,
+      };
     }));
   };
 
   const declineCancellation: Ctx["declineCancellation"] = (id) => {
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, pendingCancellation: undefined } : x));
+    const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== id || !x.pendingCancellation) return x;
+      const history = x.cancellationHistory ?? [];
+      const pendingIndex = history.map((request) => request.resolution).lastIndexOf("pending");
+      const cancellationHistory = pendingIndex < 0
+        ? [...history, { ...x.pendingCancellation, resolution: "declined" as const, resolvedAt: now }]
+        : history.map((request, index) => index === pendingIndex
+          ? { ...request, resolution: "declined" as const, resolvedAt: now }
+          : request);
+      return { ...x, pendingCancellation: undefined, cancellationHistory };
+    }));
   };
 
   const setBillOfMaterials: Ctx["setBillOfMaterials"] = (id, bom, costConfig, unitPrice, quotedTotal) => {

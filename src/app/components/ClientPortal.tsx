@@ -68,6 +68,8 @@ const hasPendingRevisionRequest = (inquiry: Inquiry) =>
   Boolean(inquiry.revisionNote || inquiry.revisionRequests?.some((request) => request.status === "pending"));
 
 type ClientOrderStatusId =
+  | "cancellationRequested"
+  | "cancelled"
   | "awaitingQuotation"
   | "quotationSent"
   | "revisionRequested"
@@ -88,6 +90,24 @@ type ClientOrderStatus = {
 };
 
 const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
+  if (inquiry.pendingCancellation) {
+    return {
+      id: "cancellationRequested",
+      label: "CANCELLATION REQUESTED",
+      bg: "#FEF3C7",
+      fg: "#92400E",
+      message: "Cancellation request submitted — awaiting Enter-Fil approval.",
+    };
+  }
+  if (inquiry.archived && inquiry.archiveReason === "cancelled") {
+    return {
+      id: "cancelled",
+      label: "CANCELLED",
+      bg: "#E2E8F0",
+      fg: "#475569",
+      message: "This order has been cancelled.",
+    };
+  }
   const payment = paymentState(inquiry);
   const invoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
   if (invoiceSent && payment.invoiceTotal > 0 && payment.state === "FULLY_PAID") {
@@ -289,13 +309,13 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
   const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
   const myOrders = byClient(clientName).filter((i) =>
-    !i.archived
-    && (
+    (i.archived && i.archiveReason === "cancelled")
+    || (!i.archived && (
       i.stage === "inquiry"
       || i.stage === "quotation"
       || i.stage === "po"
       || Boolean(i.invoiceNo && i.invoiceSentAt)
-    )
+    ))
   );
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
@@ -456,6 +476,8 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
             style={{ fontSize: 12, color: "#475569" }}
           >
             <option value="all">All Statuses</option>
+            <option value="cancellationRequested">Cancellation Requested</option>
+            <option value="cancelled">Cancelled</option>
             <option value="awaitingQuotation">Awaiting Quotation</option>
             <option value="quotationSent">Quotation Sent</option>
             <option value="revisionRequested">Revision Requested</option>
@@ -1728,9 +1750,23 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               </div>
             </div>
           )}
+          {inquiry.cancellationHistory?.some((request) => request.resolution !== "pending") && (
+            <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+              <div className="mb-2" style={{ fontSize: 11, fontWeight: 800, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Cancellation Request History</div>
+              {inquiry.cancellationHistory.filter((request) => request.resolution !== "pending").map((request, index) => (
+                <div key={`${request.requestedAt}-${index}`} className={index ? "mt-2 border-t border-slate-200 pt-2" : ""}>
+                  <div style={{ fontWeight: 700 }}>
+                    Cancellation {request.resolution === "approved" ? "approved" : "declined"}
+                    {request.resolvedAt ? ` · ${request.resolvedAt}` : ""}
+                  </div>
+                  <div>Requested {request.requestedAt} · Reason: {request.reason}</div>
+                </div>
+              ))}
+            </section>
+          )}
 
           {/* Cancel order — only before PO is confirmed and not already pending */}
-          {inquiry.stage !== "po" && !inquiry.pendingCancellation && (
+          {!inquiry.archived && inquiry.stage !== "po" && !inquiry.pendingCancellation && (
             <div className="pt-3 border-t border-slate-200 mt-2">
               {!confirmCancel ? (
                 <button

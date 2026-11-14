@@ -1132,6 +1132,16 @@ export function SalesOrders({ targetInquiryId }: { targetInquiryId?: string } = 
                   </div>
                   <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{i.clientName}</div>
                   <div className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>{i.submittedDate} · {i.paymentTerms}</div>
+                  {i.cancellationHistory?.map((request, index) => (
+                    <div key={`${request.requestedAt}-${index}`} className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>
+                      Cancellation {request.resolution} · requested {request.requestedAt}
+                      {request.resolvedAt ? ` · resolved ${request.resolvedAt}` : ""}
+                      <div style={{ color: "#475569" }}>Reason: {request.reason}</div>
+                    </div>
+                  ))}
+                  {i.archiveReason === "cancelled" && !i.cancellationHistory?.length && i.archiveNote && (
+                    <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Cancellation reason: {i.archiveNote}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1517,8 +1527,10 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
   const showDownpaymentPendingBadge = isDownpaymentPending
     && !(isExpandedContentVisible && hasPORecord(inquiry) && inquiry.poFileName
       && (inquiry.downpaymentPercent ?? 0) > 0 && payment.downpaymentStatus !== "COMPLETE");
-  const hasVisibleStatusBadges = showRevisionBadge || showPaymentVerifiedBadge || showPOStatusBadge
-    || showInvoiceAwaitingPaymentBadge || showQuotationAwaitingPOBadge || showDownpaymentPendingBadge;
+  const hasVisibleStatusBadges = !inquiry.pendingCancellation && (
+    showRevisionBadge || showPaymentVerifiedBadge || showPOStatusBadge
+    || showInvoiceAwaitingPaymentBadge || showQuotationAwaitingPOBadge || showDownpaymentPendingBadge
+  );
   const cardBorderColor = inquiry.pendingCancellation ? "#FBBF24"
     : inquiry.urgent ? "#FECACA"
     : isReadyForJobOrder ? "#BBF7D0"
@@ -1537,7 +1549,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
       style={{ borderColor: cardBorderColor, borderWidth: inquiry.pendingCancellation ? 2 : 1 }}
     >
       {/* Pending cancellation banner */}
-      {(!collapsible || expanded) && inquiry.pendingCancellation && (
+      {inquiry.pendingCancellation && (
         <div className="rounded-md p-3 mb-3" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
           <div className="flex items-center gap-2 mb-1">
             <span style={{ fontSize: 14 }}>⏳</span>
@@ -1732,7 +1744,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
         </section>
       )}
 
-      {inquiry.stage === "inquiry" && (
+      {!inquiry.pendingCancellation && inquiry.stage === "inquiry" && (
         <button
           onClick={onReview}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90"
@@ -1741,7 +1753,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           <Calculator size={13} /> REVIEW &amp; SEND QUOTATION <ArrowRight size={14} />
         </button>
       )}
-      {inquiry.stage === "quotation" && hasPendingRevisionRequest(inquiry) && (
+      {!inquiry.pendingCancellation && inquiry.stage === "quotation" && hasPendingRevisionRequest(inquiry) && (
         <button
           onClick={onReview}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90 mb-2"
@@ -1751,12 +1763,12 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           📝 Review Revision Request →
         </button>
       )}
-      {inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
+      {!inquiry.pendingCancellation && inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
         <div className="w-full rounded-md px-3 py-2 font-dm text-center" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", fontSize: 11, fontWeight: 700, color: "#92400E" }}>
           {hasPendingRevisionRequest(inquiry) ? "REVISION REQUESTED · AWAITING SALES REVIEW" : "QUOTATION SENT · AWAITING CLIENT PO"}
         </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Pending Sales Review" && (
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Pending Sales Review" && (
         <div className="flex gap-2">
           <button onClick={onApprovePO} className="flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 font-dm text-white hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700 }}>
             <CheckCircle2 size={13} /> APPROVE PO
@@ -1766,12 +1778,12 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           </button>
         </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Rejected" && (
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Rejected" && (
         <div className="w-full mb-3 rounded-md px-3 py-2.5" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", color: "#991B1B", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
           PO REJECTED · RESUBMISSION REQUIRED
         </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Approved" && (
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Approved" && (
         <div className="w-full mb-3 rounded-md px-3 py-2.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", color: "#15803D", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
           ✓ PO APPROVED
         </div>
@@ -1799,7 +1811,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           </div>
         </div>
       )}
-      {isReadyForJobOrder && (
+      {isReadyForJobOrder && !inquiry.pendingCancellation && (
         <div className="flex flex-col gap-3">
           <div className="rounded-md p-3.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
             <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
@@ -1824,7 +1836,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           </button>
         </div>
       )}
-      {inquiry.stage === "po" && !isReadyForJobOrder && hasPORecord(inquiry) && inquiry.poFileName && inquiry.poReceived && (
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && !isReadyForJobOrder && hasPORecord(inquiry) && inquiry.poFileName && inquiry.poReceived && (
         <>
           {/* ── Downpayment Banner ── */}
           {(inquiry.downpaymentPercent ?? 0) > 0 && (
@@ -1883,7 +1895,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
       )}
 
       {/* Reject inquiry — only on New Inquiry stage. Prominent red button with warning icon. */}
-      {inquiry.stage === "inquiry" && (
+      {!inquiry.pendingCancellation && inquiry.stage === "inquiry" && (
         <div className="mt-2 pt-2 border-t border-slate-100">
           {!confirmReject ? (
             <button

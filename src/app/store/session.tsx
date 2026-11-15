@@ -5,13 +5,15 @@ interface SessionCtx {
   role: Role;
   name: string;
   navigate?: (id: string) => void;
+  mode?: 'demo' | 'real';
+  userId?: string;
 }
 
 const SessionContext = createContext<SessionCtx | null>(null);
 
-export function SessionProvider({ role, name, navigate, children }: SessionCtx & { children: ReactNode }) {
+export function SessionProvider({ role, name, navigate, mode = 'demo', userId, children }: SessionCtx & { children: ReactNode }) {
   return (
-    <SessionContext.Provider value={{ role, name, navigate }}>
+    <SessionContext.Provider value={{ role, name, navigate, mode, userId }}>
       {children}
     </SessionContext.Provider>
   );

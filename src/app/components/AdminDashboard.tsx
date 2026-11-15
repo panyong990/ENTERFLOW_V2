@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState, type LucideIcon } from "react";
-import { AlertCircle, Building2, Clock3, ShieldCheck, UserCheck, UsersRound } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { type LucideIcon, AlertCircle, Building2, Clock3, ShieldCheck, UserCheck, UsersRound } from "lucide-react";
 import { getAccounts, subscribeToAccounts, type Account } from "../store/accounts";
 import { roleMetas } from "./Login";
 import { useSession } from "../store/session";
+import { api } from "../api/client";
 import { Unauthorized } from "./Unauthorized";
 
 interface DashboardCounts {
+  pendingApplications?: number;
+  activity?: {id:string;action:string;subjectId:string;actorName:string;occurredAt:string}[];
   employees: number;
   clients: number;
   activeEmployees: number;
@@ -39,24 +42,31 @@ export function AdminDashboard() {
 }
 
 function AdminDashboardPage() {
+  const {mode,navigate}=useSession();
+  const real=mode==='real';
+  const [refreshed,setRefreshed]=useState('');
   const [counts, setCounts] = useState<DashboardCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
+    setLoading(true);
     try {
-      setCounts(getDashboardCounts(getAccounts()));
+      setCounts(real?await api<DashboardCounts>("/api/admin/dashboard"):getDashboardCounts(getAccounts()));
+      setRefreshed(new Date().toLocaleTimeString());
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load account data.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [real]);
 
   useEffect(() => {
     refresh();
-    return subscribeToAccounts(refresh);
+    if(!real)return subscribeToAccounts(refresh);
+    window.addEventListener('enterflow:admin-changed',refresh);window.addEventListener('focus',refresh);
+    return()=>{window.removeEventListener('enterflow:admin-changed',refresh);window.removeEventListener('focus',refresh);};
   }, [refresh]);
 
   const metrics: Metric[] = counts ? [
@@ -81,6 +91,8 @@ function AdminDashboardPage() {
       </header>
 
       <section className="mx-auto max-w-[1600px] space-y-6 px-5 py-6 sm:px-8 sm:py-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600"><span>{real?'Total Clients counts companies; System Roles excludes Client.':'Demo account statistics.'} {refreshed&&`Last refreshed ${refreshed}`}{error&&' - refresh failed; previous values may be stale.'}</span><button disabled={loading} onClick={()=>void refresh()} className="rounded-lg border bg-white px-3 py-2">Refresh</button></div>
+        {real&&counts&&<button onClick={()=>navigate?.('client-requests')} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Pending Client Registrations: {counts.pendingApplications} - Review requests</button>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {loading
             ? Array.from({ length: 4 }, (_, index) => (
@@ -123,13 +135,9 @@ function AdminDashboardPage() {
             </div>
             <p className="mt-1 font-dm text-xs text-slate-500">Latest recorded administrative actions.</p>
           </div>
-          <div className="flex min-h-36 flex-col items-center justify-center px-5 py-8 text-center">
-            <AlertCircle size={22} className="text-slate-400" aria-hidden />
-            <p className="mt-3 font-dm text-sm font-semibold text-slate-700">Administrative audit history is not available.</p>
-            <p className="mt-1 max-w-xl font-dm text-xs leading-5 text-slate-500">
-              This application does not currently record administrative actions in an audit log. Activity cannot be displayed until that logging is implemented.
-            </p>
-          </div>
+          {real&&counts?.activity?.length ? <ul className="divide-y divide-slate-100">{counts.activity.map(item=><li key={item.id} className="px-5 py-4 text-sm text-slate-700"><span className="font-semibold">{item.actorName||'Recorded administrator'}</span> / {item.action.replaceAll('_',' ').replaceAll('.',' / ')} / #{item.subjectId}<time className="mt-1 block text-xs text-slate-500">{new Date(item.occurredAt).toLocaleString()}</time></li>)}</ul>:
+          <div className="flex min-h-36 flex-col items-center justify-center px-5 py-8 text-center"><AlertCircle size={22} className="text-slate-400" aria-hidden /><p className="mt-3 text-sm text-slate-600">{real?(error?'Activity could not be refreshed.':loading?'Loading activity...':'No administrative activity recorded.'):'Administrative activity is unavailable in Demo Preview.'}</p></div>}
+
         </section>
       </section>
     </main>

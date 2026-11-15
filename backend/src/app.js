@@ -3,14 +3,18 @@ import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import clientApplicationsRoutes from './routes/client-applications.routes.js';
 import { clientApplicationsJson, clientApplicationsError } from './middleware/client-applications-error.middleware.js';
+import adminRoutes from './routes/admin.routes.js';
+import { adminJson, adminError } from './middleware/admin-error.middleware.js';
 
 export function createApp({
   authenticationRoutes = authRoutes,
-  applicationReviewRoutes = clientApplicationsRoutes
+  applicationReviewRoutes = clientApplicationsRoutes,
+  administrationRoutes = adminRoutes
 } = {}) {
   const app = express();
 
   app.use('/api/client-applications', clientApplicationsJson, applicationReviewRoutes, clientApplicationsError);
+  app.use('/api/admin', adminJson, administrationRoutes, adminError);
   app.use(express.json());
 
   app.use('/api/health', healthRoutes);

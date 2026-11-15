@@ -1,3 +1,12 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Keep Admin interactions readable and honor the user's motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="dialog-content"], [data-slot="dialog-overlay"], [data-slot="sheet-content"],
+  [data-slot="sheet-overlay"], [data-slot="popover-content"], [data-slot="tooltip-content"] {
+    animation: none !important; transition: none !important;
+  }
+  .animate-pulse { animation: none !important; }
+}

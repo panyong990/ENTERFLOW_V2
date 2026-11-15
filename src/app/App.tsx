@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar, allowedFor } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { SalesOrders } from "./components/SalesOrders";
@@ -29,6 +29,7 @@ import { MaterialsProvider } from "./store/materials";
 import { NotificationsProvider, useNotifications } from "./store/notifications";
 import { StockRequestsProvider } from "./store/stockRequests";
 import { SessionProvider } from "./store/session";
+import { api, enableRealRequests, type RealIdentity } from "./api/client";
 
 const landingFor: Record<Role, string> = {
   owner: "analytics",
@@ -44,23 +45,12 @@ const landingFor: Record<Role, string> = {
 
 interface Session { role: Role; name: string }
 
-function Shell() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [active, setActive] = useState("dashboard");
+function Shell({session,onLogout}: {session:Session;onLogout:()=>void}) {
+  const [active, setActive] = useState(landingFor[session.role]);
   const { inquiries } = useOrders();
   const { unreadFor } = useNotifications();
 
-  const login = (role: Role, name: string) => {
-    setSession({ role, name });
-    setActive(landingFor[role]);
-  };
-
-  const logout = () => {
-    setSession(null);
-    setActive("dashboard");
-  };
-
-  if (!session) return <Login onLogin={login} />;
+  const logout = onLogout;
 
   if (session.role === "client") {
     return <ClientPortal onLogout={logout} clientName={session.name} />;
@@ -111,18 +101,52 @@ function Shell() {
   );
 }
 
-export default function App() {
+function DemoApp({session,onLogout}:{session:Session;onLogout:()=>void}) {
   return (
     <SettingsProvider>
       <MaterialsProvider>
         <OrdersProvider>
           <NotificationsProvider>
             <StockRequestsProvider>
-              <Shell />
+              <Shell session={session} onLogout={onLogout} />
             </StockRequestsProvider>
           </NotificationsProvider>
         </OrdersProvider>
       </MaterialsProvider>
     </SettingsProvider>
   );
+}
+
+
+export default function App() {
+  const [demo,setDemo]=useState<Session|null>(null);
+  const [identity,setIdentity]=useState<RealIdentity|null>(null);
+  const [checking,setChecking]=useState(true);
+  const [error,setError]=useState('');
+  const [active,setActive]=useState('dashboard');
+  const restore=async()=>{
+    setChecking(true); setError(''); enableRealRequests(true);
+    try {const user=await api<RealIdentity>('/api/auth/me',{public:true});
+      if(!['owner','admin','operations','sales','accounting','production','warehouse','logistics','client'].includes(user.roleCode)) throw new Error('Unsupported account role.');
+      setIdentity(user);
+    } catch(cause) {setIdentity(null); if((cause as {status?:number}).status!==401)setError(cause instanceof Error?cause.message:'Unable to verify session.');}
+    finally{setChecking(false);}
+  };
+  useEffect(()=>{void restore();
+    const expired=()=>{setIdentity(null);setError('Your session has expired. Please sign in again.');};
+    const recheck=()=>{void restore();};
+    window.addEventListener('enterflow:session-expired',expired);window.addEventListener('enterflow:session-recheck',recheck);
+    return()=>{window.removeEventListener('enterflow:session-expired',expired);window.removeEventListener('enterflow:session-recheck',recheck);};
+  },[]);
+  const logout=async()=>{setChecking(true);try{await api('/api/auth/logout',{method:'POST',body:{}});setIdentity(null);setActive('dashboard');setError('');}
+    catch(cause){setError(cause instanceof Error?cause.message:'Logout could not be confirmed.');}finally{setChecking(false);}};
+  if(demo) return <div className="h-full flex flex-col"><div className="bg-amber-50 text-amber-900 border-b px-3 py-1 text-xs text-center">Demo Preview - sample data; changes stay in this browser.</div><div className="flex-1 min-h-0"><DemoApp session={demo} onLogout={()=>{setDemo(null);enableRealRequests(true);void restore();}} /></div></div>;
+  if(checking)return <div className="h-full flex items-center justify-center" role="status">Checking authenticated session...</div>;
+  if(!identity)return <Login onLogin={(role,name)=>{if(!import.meta.env.DEV)return;enableRealRequests(false);setDemo({role,name});}} onRealLogin={async()=>{setActive('dashboard');await restore();}} sessionError={error} />;
+  if(error)return <div className="h-full flex items-center justify-center bg-slate-50"><div role="alert" className="max-w-lg rounded-xl border bg-white p-6"><p>{error}</p><button className="mt-4 rounded border p-2" onClick={()=>void logout()}>Retry sign out</button></div></div>;
+  if(identity.roleCode!=='admin'||identity.accountType!=='employee')return <div className="h-full flex items-center justify-center bg-slate-50"><section className="max-w-lg rounded-xl border bg-white p-6"><h1 className="text-xl font-bold">Workspace integration not yet available</h1><p className="mt-3 text-sm">Signed in as {identity.displayName}. This milestone connects real Admin features only. Your account and records have not been changed.</p><button className="mt-4 rounded border p-2" onClick={()=>void logout()}>Sign out</button></section></div>;
+  const screen=active==='clients'||active==='client-requests'?<ClientManagement key={active} initialTab={active==='client-requests'?'requests':'directory'} />:active==='employee-management'?<EmployeeManagement />:active==='roles'?<RolesPermissions />:<AdminDashboard />;
+  return <SessionProvider mode="real" role="admin" name={identity.displayName} userId={identity.userId} navigate={setActive}>
+    <div className="h-full flex bg-[#F5F7FB]"><Sidebar role="admin" active={active==='client-requests'?'clients':active} onNavigate={setActive} onLogout={()=>void logout()} userName={identity.displayName} />{screen}</div>
+  </SessionProvider>;
 }

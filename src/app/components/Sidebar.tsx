@@ -1,4 +1,6 @@
-import { LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt, UserRoundCog, ShieldCheck, Users } from "lucide-react";
+import { useState } from "react";
+import { Sheet,SheetContent,SheetTitle,SheetTrigger } from "./ui/sheet";
+import { Menu, LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt, UserRoundCog, ShieldCheck, Users } from "lucide-react";
 import type { Role } from "./Login";
 import { roleMetas } from "./Login";
 
@@ -52,13 +54,14 @@ interface SidebarProps {
   role: Exclude<Role, "client">;
   badges?: Partial<Record<string, number>>;
   unreadNotif?: number;
+  userName?: string;
 }
 
-export function Sidebar({ active = "dashboard", onNavigate, onLogout, role, badges = {}, unreadNotif = 0 }: SidebarProps) {
+function SidebarContent({ active = "dashboard", onNavigate, onLogout, role, badges = {}, unreadNotif = 0, userName }: SidebarProps) {
   const allowed = allowedFor[role];
   const visible = navItems.filter((n) => allowed.includes(n.id) && !(role === "accounting" && n.id === "sales"));
   const meta = roleMetas[role];
-  const sb = roleSidebar[role];
+  const sb = { ...roleSidebar[role], user: userName ?? roleSidebar[role].user };
   const initials = sb.user.split(" ").map(s => s[0]).slice(0, 2).join("");
 
   return (
@@ -172,4 +175,11 @@ export function Sidebar({ active = "dashboard", onNavigate, onLogout, role, badg
       </div>
     </aside>
   );
+}
+
+export function Sidebar(props:SidebarProps) {
+ const [open,setOpen]=useState(false);
+ if(props.role!=='admin')return <SidebarContent {...props} />;
+ return <><div className="hidden md:flex"><SidebarContent {...props} /></div><div className="md:hidden shrink-0 w-12 bg-[#1A2B4A] pt-3 text-white">
+ <Sheet open={open} onOpenChange={setOpen}><SheetTrigger className="w-12 h-10" aria-label="Open navigation"><Menu size={20} className="mx-auto" /></SheetTrigger><SheetContent side="left" className="w-[240px] p-0 gap-0 border-0 [&>button]:text-white"><SheetTitle className="sr-only">Admin navigation</SheetTitle><SidebarContent {...props} onNavigate={id=>{props.onNavigate?.(id);setOpen(false);}} /></SheetContent></Sheet></div></>;
 }

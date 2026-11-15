@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { api } from "../api/client";
 import { ArrowRight } from "lucide-react";
 import { getAccounts, getClientApplications, hashPassword, saveClientApplications, verifyPassword } from "../store/accounts";
 
@@ -50,9 +51,15 @@ const clientAccounts: { email: string; password: string; role: Role; name: strin
 
 interface Props {
   onLogin: (role: Role, name: string) => void;
+  onRealLogin?: () => Promise<void>;
+  sessionError?: string;
 }
 
-export function Login({ onLogin }: Props) {
+export function Login({ onLogin, onRealLogin, sessionError }: Props) {
+  const [mode,setMode]=useState<"real"|"demo">("real");
+  const [busy,setBusy]=useState(false);
+  const submitLocked=useRef(false);
+  const [fieldErrors,setFieldErrors]=useState<Record<string,string>>({});
   const [page, setPage] = useState<"staff" | "client">("staff");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -62,6 +69,24 @@ export function Login({ onLogin }: Props) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(busy||submitLocked.current)return;
+    setError('');setFieldErrors({});
+    if(mode==='real') {
+      submitLocked.current=true;setBusy(true);
+      try {
+        if(page==='client' && isRegistering) {
+          await api('/api/auth/register',{public:true,method:'POST',body:{companyName:registration.companyName.trim(),contactPerson:registration.contactPerson.trim(),phone:registration.phone.trim(),username:registration.username.trim(),email:email.trim(),password}});
+          setPassword('');setIsRegistering(false);setRegistration({companyName:'',contactPerson:'',phone:'',username:''});
+          setError('Application submitted. Enter-Fil staff will review your registration.');
+        } else {
+          await api('/api/auth/login',{public:true,method:'POST',body:{identifier:email.trim(),password}});
+          setPassword('');await onRealLogin?.();
+        }
+      } catch(cause) {const failure=cause as {message?:string;errors?:Record<string,string>};setError(failure.message??'Service unavailable.');setFieldErrors(failure.errors??{});}
+      finally {submitLocked.current=false;setBusy(false);}
+      return;
+    }
+    if(!import.meta.env.DEV)return;
     const normalizedEmail = email.trim().toLocaleLowerCase();
     if (page === "client" && isRegistering) {
       const companyName = registration.companyName.trim();
@@ -92,6 +117,7 @@ export function Login({ onLogin }: Props) {
         setError("An account or pending application already uses this company, email address, or username.");
         return;
       }
+      submitLocked.current=true;setBusy(true);
       try {
         const passwordHash = await hashPassword(password);
         saveClientApplications([...applications, {
@@ -112,7 +138,7 @@ export function Login({ onLogin }: Props) {
         setError("Application submitted. Enter-Fil staff will review your registration.");
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Unable to submit your application.");
-      }
+      } finally {submitLocked.current=false;setBusy(false);}
       return;
     }
     const match = getAccounts().find((account) =>
@@ -133,6 +159,7 @@ export function Login({ onLogin }: Props) {
   };
 
   const quickLogin = (acct: { email: string; password: string; role: Role; name: string }) => {
+    if(!import.meta.env.DEV||busy||submitLocked.current)return;
     const saved = getAccounts().find((account) =>
       account.email.toLocaleLowerCase() === acct.email.toLocaleLowerCase()
       && account.type === (acct.role === "client" ? "client" : "employee")
@@ -164,9 +191,12 @@ export function Login({ onLogin }: Props) {
 
           <div className="rounded-b-2xl bg-white px-6 py-5 sm:px-8 sm:py-6">
             <form onSubmit={submit} className="flex flex-col gap-4">
+              {import.meta.env.DEV && <label className="text-xs font-semibold text-slate-600">Access mode<select aria-label="Access mode" disabled={busy} value={mode} onChange={e=>{setMode(e.target.value as 'real'|'demo');setPassword('');setError('');setFieldErrors({});}} className="mt-1 block w-full rounded border p-2"><option value="real">Real authenticated access</option><option value="demo">Demo Preview ? local data only</option></select></label>}
+              {sessionError&&<p role="alert" className="text-sm text-red-700">{sessionError}</p>}
+              {Object.keys(fieldErrors).length>0&&<div role="alert" className="rounded border border-red-200 p-3 text-xs text-red-700">{Object.entries(fieldErrors).map(([key,value])=><p key={key}>{key}: {value}</p>)}</div>}
               <div className="flex flex-col gap-1.5">
-                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@enter-fil.com"
+                <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email or username</label>
+                <input aria-label="Email or username" type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@enter-fil.com"
                   className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400"
                   style={{ fontSize: 13 }} autoComplete="email" />
               </div>
@@ -181,15 +211,16 @@ export function Login({ onLogin }: Props) {
                 <div className="font-dm rounded-md px-3 py-2" style={{ fontSize: 12, color: "#991B1B", backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>{error}</div>
               )}
 
-              <button type="submit" className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 mt-1"
+              <button disabled={busy} aria-busy={busy} type="submit" className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 mt-1"
                 style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-                Sign In <ArrowRight size={15} strokeWidth={2.5} />
+                {busy?"Signing in...":"Sign In"} <ArrowRight size={15} strokeWidth={2.5} />
               </button>
 
-              <button type="button" className="font-dm text-center hover:underline" style={{ fontSize: 12, color: "#94A3B8" }}>Forgot password?</button>
+              <button type="button" onClick={()=>setError("Password recovery is not yet available. Contact an authorized administrator.")} className="font-dm text-center hover:underline" style={{ fontSize: 12, color: "#94A3B8" }}>Forgot password?</button>
             </form>
 
-            {/* Demo Accounts */}
+            {/* Demo Accounts: preview shortcuts never authenticate the backend. */}
+            {import.meta.env.DEV && (
             <div className="mt-5 pt-5 border-t border-slate-200">
               <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>
                 Demo accounts (8 staff roles)
@@ -203,6 +234,7 @@ export function Login({ onLogin }: Props) {
                   return (
                     <button
                       key={a.role}
+                      disabled={busy}
                       onClick={() => quickLogin(a)}
                       className="font-dm px-3 py-2 rounded-md border border-slate-200 hover:bg-slate-50 text-left flex items-center gap-2"
                       style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}
@@ -216,6 +248,7 @@ export function Login({ onLogin }: Props) {
               </div>
             </div>
 
+            )}
             <div className="mt-4 pt-4 border-t border-slate-200 text-center">
               <button onClick={() => switchPage("client")} className="font-dm hover:underline" style={{ fontSize: 12, color: "#64748B" }}>
                 Client? Access your portal <span style={{ color: "#C8102E", fontWeight: 600 }}>→</span>
@@ -245,6 +278,9 @@ export function Login({ onLogin }: Props) {
 
         <div className="px-8 py-6">
           <form onSubmit={submit} className="flex flex-col gap-4">
+              {import.meta.env.DEV && <label className="text-xs font-semibold text-slate-600">Access mode<select aria-label="Access mode" disabled={busy} value={mode} onChange={e=>{setMode(e.target.value as 'real'|'demo');setPassword('');setError('');setFieldErrors({});}} className="mt-1 block w-full rounded border p-2"><option value="real">Real authenticated access</option><option value="demo">Demo Preview ? local data only</option></select></label>}
+              {sessionError&&<p role="alert" className="text-sm text-red-700">{sessionError}</p>}
+              {Object.keys(fieldErrors).length>0&&<div role="alert" className="rounded border border-red-200 p-3 text-xs text-red-700">{Object.entries(fieldErrors).map(([key,value])=><p key={key}>{key}: {value}</p>)}</div>}
             {isRegistering && (
               <>
                 <div className="flex flex-col gap-1.5">
@@ -271,12 +307,12 @@ export function Login({ onLogin }: Props) {
             )}
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email</label>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com"
+              <input aria-label="Email or username" type={isRegistering?"email":"text"} required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com"
                 className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{isRegistering ? "Set password" : "Password"}</label>
-              <input type="password" required minLength={isRegistering ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)}
+              <input type="password" autoComplete={isRegistering?"new-password":"current-password"} required minLength={isRegistering ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)}
                 className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
             </div>
 
@@ -284,13 +320,13 @@ export function Login({ onLogin }: Props) {
               <div role="status" className="font-dm rounded-md px-3 py-2" style={{ fontSize: 12, color: error.startsWith("Application submitted") ? "#166534" : "#991B1B", backgroundColor: error.startsWith("Application submitted") ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${error.startsWith("Application submitted") ? "#BBF7D0" : "#FECACA"}` }}>{error}</div>
             )}
 
-            <button type="submit" className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 mt-1"
+            <button disabled={busy} aria-busy={busy} type="submit" className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 mt-1"
               style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-              {isRegistering ? "Submit registration" : "Access Portal"} <ArrowRight size={15} strokeWidth={2.5} />
+              {busy?"Submitting...":isRegistering ? "Submit registration" : "Access Portal"} <ArrowRight size={15} strokeWidth={2.5} />
             </button>
           </form>
 
-          {!isRegistering && <div className="mt-5 pt-5 border-t border-slate-200">
+          {import.meta.env.DEV && !isRegistering && <div className="mt-5 pt-5 border-t border-slate-200">
             <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Demo account</div>
             <div className="flex flex-col gap-2">
               {clientAccounts.map((a) => (

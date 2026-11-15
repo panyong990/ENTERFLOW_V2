@@ -26,6 +26,9 @@ export interface Account {
   department?: string;
   jobTitle?: string;
   contactPerson?: string;
+  /** Present only on in-memory real API projections; never used for demo authentication. */
+  revision?: string;
+  accountId?: string | null;
 }
 
 export interface EmployeeDirectoryEntry {

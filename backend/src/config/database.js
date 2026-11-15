@@ -1,16 +1,11 @@
 ﻿import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-import fs from 'node:fs';
-import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabaseTlsOptions } from './database-tls.js';
+import { loadDatabaseCa } from './database-ca.js';
 
 const envPath = fileURLToPath(
   new URL('../../../database/.env.dev', import.meta.url)
-);
-
-const defaultCaPath = fileURLToPath(
-  new URL('../../certs/ca.pem', import.meta.url)
 );
 
 // Load existing database configuration.
@@ -39,17 +34,9 @@ for (const variable of requiredVariables) {
   }
 }
 
-// Resolve optional relative CA paths from the repository root, not the process cwd.
-// dotenv has loaded above; existing process environment settings take precedence.
-const caPath = process.env.DB_SSL_CA_PATH
-  ? resolve(
-    fileURLToPath(new URL('../../../', import.meta.url)),
-    process.env.DB_SSL_CA_PATH
-  )
-  : defaultCaPath;
-
-// Load the verified public MySQL CA certificate.
-const ca = fs.readFileSync(caPath, 'utf8');
+// Load the verified public MySQL CA certificate. Relative paths are resolved
+// from the repository root, not the process working directory.
+const { ca } = loadDatabaseCa({ configuredPath: process.env.DB_SSL_CA_PATH });
 
 const tlsOptions = createDatabaseTlsOptions({
   host: process.env.DB_HOST,

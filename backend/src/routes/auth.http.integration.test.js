@@ -62,6 +62,7 @@ const updateSessionActivityService = async (token) => {
 };
 
 const noRateLimit = (request, response, next) => next();
+const changePasswordService = async userId => ({ success: userId === testUser.userId });
 
 before(async () => {
   const app = express();
@@ -73,6 +74,7 @@ before(async () => {
     revokeSessionService,
     validateSessionService,
     updateSessionActivityService,
+    changePasswordService,
     appOrigin: APP_ORIGIN,
     rateLimit: noRateLimit
   }));
@@ -223,6 +225,19 @@ test('authentication endpoints work together over HTTP', async () => {
   );
 
   assert.equal(usernameLogin.status, 200);
+
+  // Password updates are authenticated, same-origin and clear the now-revoked session cookie.
+  const passwordChange = await request('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookiePair },
+    body: JSON.stringify({ currentPassword: 'private-current', newPassword: 'private-new-password' })
+  });
+  assert.equal(passwordChange.status, 200);
+  assert.match(passwordChange.headers.get('set-cookie'), /HttpOnly/i);
+  const unauthenticatedPasswordChange = await request('/api/auth/change-password', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword: 'x', newPassword: 'y' })
+  });
+  assert.equal(unauthenticatedPasswordChange.status, 401);
 
   // 10. Logout and revoke the session.
   const logout = await request('/api/auth/logout', {

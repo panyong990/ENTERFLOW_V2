@@ -21,3 +21,4 @@ node_modules
 
 # Environment-specific local MySQL public CA certificates
 /backend/certs/local/
+/backend/scripts/provision-initial-admin.local.mjs

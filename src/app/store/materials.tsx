@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createRealReadOnlyProvider } from "./realMode.js";
 
 /* ─────────── Types ─────────── */
 
@@ -500,21 +501,22 @@ interface Ctx {
 
 const MaterialsContext = createContext<Ctx | null>(null);
 
-export function MaterialsProvider({ children }: { children: ReactNode }) {
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(loadPersistedRawMaterials);
-  const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(seedFinishedGoods);
+export function MaterialsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
+  const realMode = mode === "real";
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? [] : loadPersistedRawMaterials());
+  const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(() => realMode ? [] : seedFinishedGoods);
   const rawMaterialsRef = useRef(rawMaterials);
   const generatedJOsDeducted = useRef(new Set<string>());
-  const [templates, setTemplates] = useState<BOMTemplate[]>(seedTemplates);
+  const [templates, setTemplates] = useState<BOMTemplate[]>(() => realMode ? [] : seedTemplates);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (realMode || typeof window === "undefined") return;
     try {
       window.localStorage.setItem(RAW_MATERIALS_STORAGE_KEY, JSON.stringify(rawMaterials));
     } catch (error) {
       console.error("[EnterFlow] Could not persist raw material inventory to localStorage.", error);
     }
-  }, [rawMaterials]);
+  }, [rawMaterials, realMode]);
 
   const commitRawMaterials = (update: (current: RawMaterial[]) => RawMaterial[]) => {
     const next = update(rawMaterialsRef.current);
@@ -761,10 +763,13 @@ export function MaterialsProvider({ children }: { children: ReactNode }) {
   const materials = deriveLegacy(rawMaterials);
   const get: Ctx["get"] = (k) => materials.find((m) => m.key === k)!;
 
+  const contextValue: Ctx = { rawMaterials, finishedGoods, templates, materials, get, updateStock, updateMaterial, updateFinishedGood, addMaterial, saveBOMTemplate, findBOMTemplate, validateGeneratedJOs, deductForGeneratedJOs, restoreFromJO };
+  const providerValue = realMode
+    ? createRealReadOnlyProvider(contextValue, ["get", "findBOMTemplate", "validateGeneratedJOs"], "materials")
+    : contextValue;
+
   return (
-    <MaterialsContext.Provider
-      value={{ rawMaterials, finishedGoods, templates, materials, get, updateStock, updateMaterial, updateFinishedGood, addMaterial, saveBOMTemplate, findBOMTemplate, validateGeneratedJOs, deductForGeneratedJOs, restoreFromJO }}
-    >
+    <MaterialsContext.Provider value={providerValue}>
       {children}
     </MaterialsContext.Provider>
   );

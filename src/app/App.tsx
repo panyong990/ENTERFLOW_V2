@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sidebar, allowedFor } from "./components/Sidebar";
+import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { SalesOrders } from "./components/SalesOrders";
 import { ProductionFloor } from "./components/ProductionFloor";
@@ -30,18 +30,8 @@ import { NotificationsProvider, useNotifications } from "./store/notifications";
 import { StockRequestsProvider } from "./store/stockRequests";
 import { SessionProvider } from "./store/session";
 import { api, enableRealRequests, type RealIdentity } from "./api/client";
-
-const landingFor: Record<Role, string> = {
-  owner: "analytics",
-  operations: "dashboard",
-  sales: "dashboard",
-  accounting: "dashboard",
-  production: "dashboard",
-  warehouse: "inventory",
-  logistics: "dashboard",
-  admin: "dashboard",
-  client: "client",
-};
+import { allowedFor, landingFor } from "./role-access";
+import { RealEmployeeShell, RealWorkspaceUnavailable } from "./components/RealEmployeeShell";
 
 interface Session { role: Role; name: string }
 
@@ -144,7 +134,9 @@ export default function App() {
   if(checking)return <div className="h-full flex items-center justify-center" role="status">Checking authenticated session...</div>;
   if(!identity)return <Login onLogin={(role,name)=>{if(!import.meta.env.DEV)return;enableRealRequests(false);setDemo({role,name});}} onRealLogin={async()=>{setActive('dashboard');await restore();}} sessionError={error} />;
   if(error)return <div className="h-full flex items-center justify-center bg-slate-50"><div role="alert" className="max-w-lg rounded-xl border bg-white p-6"><p>{error}</p><button className="mt-4 rounded border p-2" onClick={()=>void logout()}>Retry sign out</button></div></div>;
-  if(identity.roleCode!=='admin'||identity.accountType!=='employee')return <div className="h-full flex items-center justify-center bg-slate-50"><section className="max-w-lg rounded-xl border bg-white p-6"><h1 className="text-xl font-bold">Workspace integration not yet available</h1><p className="mt-3 text-sm">Signed in as {identity.displayName}. This milestone connects real Admin features only. Your account and records have not been changed.</p><button className="mt-4 rounded border p-2" onClick={()=>void logout()}>Sign out</button></section></div>;
+  if(identity.accountType==='client')return <RealWorkspaceUnavailable title="Client Portal" detail="The authenticated Client Portal data APIs are not connected in this milestone." onLogout={()=>void logout()} />;
+  if(identity.accountType!=='employee'||identity.roleCode==='client')return <RealWorkspaceUnavailable title="Workspace unavailable" detail="This account type and role combination is not supported." onLogout={()=>void logout()} />;
+  if(identity.roleCode!=='admin')return <RealEmployeeShell key={`${identity.userId}:${identity.roleCode}`} identity={identity as RealIdentity & {roleCode:Exclude<Role,'client'>}} onLogout={()=>void logout()} />;
   const screen=active==='clients'||active==='client-requests'?<ClientManagement key={active} initialTab={active==='client-requests'?'requests':'directory'} />:active==='employee-management'?<EmployeeManagement />:active==='roles'?<RolesPermissions />:<AdminDashboard />;
   return <SessionProvider mode="real" role="admin" name={identity.displayName} userId={identity.userId} navigate={setActive}>
     <div className="h-full flex bg-[#F5F7FB]"><Sidebar role="admin" active={active==='client-requests'?'clients':active} onNavigate={setActive} onLogout={()=>void logout()} userName={identity.displayName} />{screen}</div>

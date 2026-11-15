@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { Role } from "../components/Login";
+import { createRealReadOnlyProvider } from "./realMode.js";
 
 export type Department = "sales" | "production" | "logistics" | "payments" | "system";
 
@@ -92,18 +93,19 @@ function loadPersistedNotifications(): Notification[] {
   }
 }
 
-export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const [list, setList] = useState<Notification[]>(loadPersistedNotifications);
+export function NotificationsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
+  const realMode = mode === "real";
+  const [list, setList] = useState<Notification[]>(() => realMode ? [] : loadPersistedNotifications());
   const nextNotificationId = useRef(0);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (realMode || typeof window === "undefined") return;
     try {
       window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(list));
     } catch (error) {
       console.error("[EnterFlow] Could not persist notifications to localStorage.", error);
     }
-  }, [list]);
+  }, [list, realMode]);
 
   const unreadFor: Ctx["unreadFor"] = (role, clientName) =>
     list.filter((n) => n.recipients.includes(role) && (role !== "client" || !n.clientName || n.clientName === clientName));
@@ -161,8 +163,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setList((prev) => prev.filter((n) => !(n.recipients.includes(role) && n.read)));
   };
 
+  const contextValue: Ctx = { notifications: list, unreadFor, push, markRead, markAllRead, remove, removeAllRead };
+  const providerValue = realMode
+    ? createRealReadOnlyProvider(contextValue, ["unreadFor"], "notifications")
+    : contextValue;
+
   return (
-    <NotifContext.Provider value={{ notifications: list, unreadFor, push, markRead, markAllRead, remove, removeAllRead }}>
+    <NotifContext.Provider value={providerValue}>
       {children}
     </NotifContext.Provider>
   );

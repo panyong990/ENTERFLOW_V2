@@ -3,6 +3,7 @@ import { Sheet,SheetContent,SheetTitle,SheetTrigger } from "./ui/sheet";
 import { Menu, LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt, UserRoundCog, ShieldCheck, Users } from "lucide-react";
 import type { Role } from "./Login";
 import { roleMetas } from "./Login";
+import { allowedFor } from "../role-access";
 
 const navItems = [
   { id: "dashboard",  label: "Dashboard",         icon: LayoutDashboard },
@@ -21,20 +22,7 @@ const navItems = [
   { id: "users",      label: "Employee Directory", icon: Users },
 ];
 
-export const allowedFor: Record<Exclude<Role, "client">, string[]> = {
-  /* Owner sees high-level dashboards, client management, and a read-only workforce directory. */
-  owner:      ["analytics", "clients", "users", "notifications", "settings"],
-  /* Operations Manager: full operational access — analytics and user management are owner-only */
-  operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "clients", "notifications", "settings"],
-  sales:      ["dashboard", "sales", "clients", "notifications"],
-  accounting: ["dashboard", "sales", "delivery-receipts", "accounting", "notifications"],
-  production: ["dashboard", "production", "notifications"],
-  /* Warehouse: dashboard, inventory, waybill scanner, and waybill history */
-  warehouse:  ["dashboard", "inventory", "waybill", "waybill-history", "notifications"],
-  /* Logistics: dispatch tracking only; Waybill scanning is Warehouse-only */
-  logistics:  ["dashboard", "logistics", "notifications"],
-  admin:      ["dashboard", "clients", "employee-management", "roles"],
-};
+export { allowedFor } from "../role-access";
 
 export const roleSidebar: Record<Exclude<Role, "client">, { user: string; title: string }> = {
   owner:      { user: "T. Mendoza", title: "Owner / CEO" },

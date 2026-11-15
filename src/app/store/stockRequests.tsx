@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createRealReadOnlyProvider } from "./realMode.js";
 
 export type StockRequestStatus = "pending" | "responded" | "update_requested" | "updated";
 export type StockResponseStatus = "sufficient" | "shortage";
@@ -94,19 +95,20 @@ function loadRequests(): StockRequest[] {
   }
 }
 
-export function StockRequestsProvider({ children }: { children: ReactNode }) {
-  const [requests, setRequests] = useState<StockRequest[]>(loadRequests);
+export function StockRequestsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
+  const realMode = mode === "real";
+  const [requests, setRequests] = useState<StockRequest[]>(() => realMode ? [] : loadRequests());
   const requestsRef = useRef(requests);
 
   useEffect(() => {
     requestsRef.current = requests;
-    if (typeof window === "undefined") return;
+    if (realMode || typeof window === "undefined") return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
     } catch (error) {
       console.error("[EnterFlow] Could not persist stock requests to localStorage.", error);
     }
-  }, [requests]);
+  }, [requests, realMode]);
 
   const createRequest: StockRequestsContextValue["createRequest"] = (input) => {
     const existing = requestsRef.current.find((request) => request.inquiryId === input.inquiryId);
@@ -166,8 +168,13 @@ export function StockRequestsProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  const contextValue: StockRequestsContextValue = { requests, createRequest, respondToRequest, requestStockUpdate };
+  const providerValue = realMode
+    ? createRealReadOnlyProvider(contextValue, [], "stockRequests")
+    : contextValue;
+
   return (
-    <StockRequestsContext.Provider value={{ requests, createRequest, respondToRequest, requestStockUpdate }}>
+    <StockRequestsContext.Provider value={providerValue}>
       {children}
     </StockRequestsContext.Provider>
   );

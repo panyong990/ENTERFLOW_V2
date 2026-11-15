@@ -17,6 +17,7 @@ import {
   invoiceTotal, paymentRecords, PRODUCTION_STAGES,
   stageLabel, useOrders, type Inquiry, type Stage,
 } from "../store/orders";
+import { useSession } from "../store/session";
 
 type ViewKey = "all" | "revenue" | "sales" | "production" | "inventory" | "logistics" | "payments" | "reports";
 type ReportKey = "executive" | "sales" | "production" | "delivery" | "financial";
@@ -992,6 +993,8 @@ function MetricCard({
   icon: LucideIcon;
   color: string;
 }) {
+  const { mode } = useSession();
+  const displayedValue = mode === "real" ? "—" : value;
   return (
     <article className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5 sm:p-4" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.035)" }}>
       <div className="flex items-start justify-between gap-3">
@@ -1000,8 +1003,8 @@ function MetricCard({
           <Icon size={15} aria-hidden="true" />
         </span>
       </div>
-      <div className="font-syne mt-2 truncate" title={String(value)} style={{ fontSize: typeof value === "string" && value.length > 12 ? 20 : 28, fontWeight: 700, color: palette.text, lineHeight: 1.15 }}>
-        {value}
+      <div className="font-syne mt-2 truncate" title={String(displayedValue)} style={{ fontSize: typeof displayedValue === "string" && displayedValue.length > 12 ? 20 : 28, fontWeight: 700, color: palette.text, lineHeight: 1.15 }}>
+        {displayedValue}
       </div>
       <div className="font-dm mt-1 truncate" style={{ fontSize: 11, color: palette.muted }}>{detail}</div>
     </article>
@@ -1028,13 +1031,14 @@ function Panel({
 }
 
 function SnapshotRow({ label, value, icon: Icon, alert = false }: { label: string; value: string; icon: LucideIcon; alert?: boolean }) {
+  const { mode } = useSession();
   return (
     <div className="flex items-center justify-between gap-3 py-3">
       <div className="flex min-w-0 items-center gap-2.5">
         <Icon size={14} className="shrink-0" style={{ color: alert ? palette.red : palette.muted }} aria-hidden="true" />
         <span className="truncate font-dm" style={{ fontSize: 12, color: palette.muted }}>{label}</span>
       </div>
-      <span className="font-syne shrink-0" style={{ fontSize: 14, fontWeight: 800, color: alert ? palette.red : palette.text }}>{value}</span>
+      <span className="font-syne shrink-0" style={{ fontSize: 14, fontWeight: 800, color: alert ? palette.red : palette.text }}>{mode === "real" ? "—" : value}</span>
     </div>
   );
 }

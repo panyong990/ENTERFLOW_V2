@@ -11,6 +11,7 @@ import { pool } from '../config/database.js';
 import { createAuthController } from '../controllers/auth.controller.js';
 
 import { login } from '../services/auth.service.js';
+import { changePassword } from '../services/password-change.service.js';
 
 import {
   validateSession,
@@ -28,13 +29,15 @@ export function createAuthRouter({
   appOrigin = process.env.APP_ORIGIN,
   rateLimit = loginRateLimit,
   registerService = registrationService.register,
-  registrationLimit = registrationRateLimit
+  registrationLimit = registrationRateLimit,
+  changePasswordService = changePassword
 } = {}) {
   const router = Router();
 
   const controller = createAuthController({
     login: loginService,
-    revokeSession: revokeSessionService
+    revokeSession: revokeSessionService,
+    changePassword: changePasswordService
   });
 
   const requireAuthentication = createAuthenticationMiddleware({
@@ -60,6 +63,13 @@ export function createAuthRouter({
     requireSameOrigin,
     rateLimit,
     controller.loginUser
+  );
+
+  router.post(
+    '/change-password',
+    requireAuthentication,
+    requireSameOrigin,
+    controller.changeCurrentPassword
   );
 
   router.post(

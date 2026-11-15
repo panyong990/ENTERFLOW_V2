@@ -45,7 +45,7 @@ export const staffAccounts: { email: string; password: string; role: Role; name:
   { email: "admin@enter-fil.com",     password: "demo", role: "admin",      name: "A. Garcia" },
 ];
 
-const clientAccounts: { email: string; password: string; role: Role; name: string }[] = [
+export const clientAccounts: { email: string; password: string; role: Role; name: string }[] = [
   { email: "client@be-aerospace.com", password: "demo", role: "client", name: "B.E. Aerospace" },
 ];
 
@@ -53,6 +53,38 @@ interface Props {
   onLogin: (role: Role, name: string) => void;
   onRealLogin?: () => Promise<void>;
   sessionError?: string;
+}
+
+export function createDemoQuickLoginHandler(
+  account: Pick<(typeof staffAccounts)[number], "email" | "role" | "name">,
+  options: {
+    isEnabled: () => boolean;
+    readAccounts: typeof getAccounts;
+    onLogin: (role: Role, name: string) => void;
+    onUnavailable: (message: string) => void;
+  }
+) {
+  return () => {
+    if (!options.isEnabled()) return;
+    let accounts;
+    try {
+      accounts = options.readAccounts();
+    } catch {
+      options.onUnavailable("Demo account data is unavailable.");
+      return;
+    }
+    const saved = accounts.find((candidate) =>
+      candidate.email.toLocaleLowerCase() === account.email.toLocaleLowerCase()
+      && candidate.type === (account.role === "client" ? "client" : "employee")
+    );
+    if (saved && !saved.active) {
+      options.onUnavailable("This account is deactivated.");
+      return;
+    }
+    // The fixed Demo preset determines the workspace; local state only
+    // blocks an account explicitly marked inactive.
+    options.onLogin(account.role, account.name);
+  };
 }
 
 export function Login({ onLogin, onRealLogin, sessionError }: Props) {
@@ -154,18 +186,17 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
       setError(cause instanceof Error ? cause.message : "Unable to verify credentials.");
       return;
     }
-    if (!match || !validCredentials) { setError("Invalid credentials. Try a demo account below."); return; }
+    if (!match || !validCredentials) { setError("Invalid credentials."); return; }
     onLogin(match.role, match.name);
   };
 
   const quickLogin = (acct: { email: string; password: string; role: Role; name: string }) => {
-    if(!import.meta.env.DEV||busy||submitLocked.current)return;
-    const saved = getAccounts().find((account) =>
-      account.email.toLocaleLowerCase() === acct.email.toLocaleLowerCase()
-      && account.type === (acct.role === "client" ? "client" : "employee")
-    );
-    if (!saved?.active) { setError("This account is deactivated."); return; }
-    onLogin(saved.role, saved.name);
+    createDemoQuickLoginHandler(acct, {
+      isEnabled: () => import.meta.env.DEV && !busy && !submitLocked.current,
+      readAccounts: getAccounts,
+      onLogin: (role, name) => {setMode("demo");setError("");setFieldErrors({});onLogin(role, name);},
+      onUnavailable: setError,
+    })();
   };
 
   const switchPage = (p: "staff" | "client") => {
@@ -191,7 +222,6 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
 
           <div className="rounded-b-2xl bg-white px-6 py-5 sm:px-8 sm:py-6">
             <form onSubmit={submit} className="flex flex-col gap-4">
-              {import.meta.env.DEV && <label className="text-xs font-semibold text-slate-600">Access mode<select aria-label="Access mode" disabled={busy} value={mode} onChange={e=>{setMode(e.target.value as 'real'|'demo');setPassword('');setError('');setFieldErrors({});}} className="mt-1 block w-full rounded border p-2"><option value="real">Real authenticated access</option><option value="demo">Demo Preview ? local data only</option></select></label>}
               {sessionError&&<p role="alert" className="text-sm text-red-700">{sessionError}</p>}
               {Object.keys(fieldErrors).length>0&&<div role="alert" className="rounded border border-red-200 p-3 text-xs text-red-700">{Object.entries(fieldErrors).map(([key,value])=><p key={key}>{key}: {value}</p>)}</div>}
               <div className="flex flex-col gap-1.5">
@@ -219,36 +249,6 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
               <button type="button" onClick={()=>setError("Password recovery is not yet available. Contact an authorized administrator.")} className="font-dm text-center hover:underline" style={{ fontSize: 12, color: "#94A3B8" }}>Forgot password?</button>
             </form>
 
-            {/* Demo Accounts: preview shortcuts never authenticate the backend. */}
-            {import.meta.env.DEV && (
-            <div className="mt-5 pt-5 border-t border-slate-200">
-              <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>
-                Demo accounts (8 staff roles)
-              </div>
-              <p className="font-dm mb-2" style={{ fontSize: 11, color: "#64748B" }}>
-                Admin demo: <span style={{ fontWeight: 600, color: "#334155" }}>admin@enter-fil.com</span> / <span style={{ fontWeight: 600, color: "#334155" }}>demo</span>
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {staffAccounts.map((a) => {
-                  const m = roleMetas[a.role];
-                  return (
-                    <button
-                      key={a.role}
-                      disabled={busy}
-                      onClick={() => quickLogin(a)}
-                      className="font-dm px-3 py-2 rounded-md border border-slate-200 hover:bg-slate-50 text-left flex items-center gap-2"
-                      style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}
-                      aria-label={`Sign in as ${m.label}`}
-                    >
-                      <span className="px-1.5 py-0.5 rounded font-syne" style={{ fontSize: 9, fontWeight: 800, backgroundColor: m.bg, color: m.fg }}>{m.short}</span>
-                      <span className="truncate">{m.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            )}
             <div className="mt-4 pt-4 border-t border-slate-200 text-center">
               <button onClick={() => switchPage("client")} className="font-dm hover:underline" style={{ fontSize: 12, color: "#64748B" }}>
                 Client? Access your portal <span style={{ color: "#C8102E", fontWeight: 600 }}>→</span>
@@ -278,7 +278,6 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
 
         <div className="px-8 py-6">
           <form onSubmit={submit} className="flex flex-col gap-4">
-              {import.meta.env.DEV && <label className="text-xs font-semibold text-slate-600">Access mode<select aria-label="Access mode" disabled={busy} value={mode} onChange={e=>{setMode(e.target.value as 'real'|'demo');setPassword('');setError('');setFieldErrors({});}} className="mt-1 block w-full rounded border p-2"><option value="real">Real authenticated access</option><option value="demo">Demo Preview ? local data only</option></select></label>}
               {sessionError&&<p role="alert" className="text-sm text-red-700">{sessionError}</p>}
               {Object.keys(fieldErrors).length>0&&<div role="alert" className="rounded border border-red-200 p-3 text-xs text-red-700">{Object.entries(fieldErrors).map(([key,value])=><p key={key}>{key}: {value}</p>)}</div>}
             {isRegistering && (
@@ -326,18 +325,13 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
             </button>
           </form>
 
-          {import.meta.env.DEV && !isRegistering && <div className="mt-5 pt-5 border-t border-slate-200">
-            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Demo account</div>
-            <div className="flex flex-col gap-2">
-              {clientAccounts.map((a) => (
-                <button key={a.role} onClick={() => quickLogin(a)}
-                  className="font-dm px-3 py-2.5 rounded-md border border-slate-200 hover:bg-slate-50 text-left flex items-center justify-between"
-                  style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
-                  <span>{a.name}</span>
-                  <span style={{ color: "#94A3B8", fontWeight: 400 }}>client@be-aerospace.com</span>
-                </button>
-              ))}
-            </div>
+          {import.meta.env.DEV && !isRegistering && <div className="mt-5 border-t border-slate-200 pt-5">
+            <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Demo Client Access</div>
+            <button type="button" disabled={busy} onClick={() => quickLogin(clientAccounts[0])}
+              className="font-dm w-full rounded-md border border-slate-200 px-3 py-2.5 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
+              Enter Demo Client Portal <span className="float-right" style={{ color: "#64748B", fontWeight: 400 }}>{clientAccounts[0].name}</span>
+            </button>
           </div>}
 
             <div className="mt-4 text-center">

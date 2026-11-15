@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BOMLine, CostConfig } from "./materials";
 import { discardPendingSignedDeliveryReceiptAttachment, loadInquiryAttachments, promotePendingSignedDeliveryReceipt, readFileAsDataUrl, saveInquiryAttachments, saveProductSketchAttachments } from "./attachments";
+import { createRealReadOnlyProvider } from "./realMode.js";
 
 /* Quotation document — what the client sees */
 export interface QuotationLineItem {
@@ -951,10 +952,11 @@ function loadPersistedOrders(): PersistedOrdersState | null {
   }
 }
 
-export function OrdersProvider({ children }: { children: ReactNode }) {
-  const [savedOrders] = useState<PersistedOrdersState | null>(() => loadPersistedOrders());
-  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => savedOrders?.inquiries ?? seed);
-  const [clearedPOs, setClearedPOs] = useState<string[]>(() => savedOrders?.clearedPOs ?? []);
+export function OrdersProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
+  const realMode = mode === "real";
+  const [savedOrders] = useState<PersistedOrdersState | null>(() => realMode ? null : loadPersistedOrders());
+  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => realMode ? [] : savedOrders?.inquiries ?? seed);
+  const [clearedPOs, setClearedPOs] = useState<string[]>(() => realMode ? [] : savedOrders?.clearedPOs ?? []);
   const signedDRUploadsInProgress = useRef(new Set<string>());
   const paymentSequence = useRef(0);
 
@@ -992,14 +994,14 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   }, [allInquiries]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (realMode || typeof window === "undefined") return;
     try {
       const value: PersistedOrdersState = { inquiries: businessState(allInquiries), clearedPOs };
       window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(value));
     } catch (error) {
       console.error("[EnterFlow] Could not persist order state to localStorage.", error);
     }
-  }, [allInquiries, clearedPOs]);
+  }, [allInquiries, clearedPOs, realMode]);
 
   useEffect(() => {
     if (!savedOrders) return;
@@ -1826,8 +1828,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     return list.every((i) => i.stage === "inquiry");
   };
 
-  return (
-    <OrdersContext.Provider value={{
+  const contextValue: Ctx = {
       inquiries, archivedInquiries, completedJOs, clearedPOs,
       addInquiry, addInquiryWithProductSketches, sendQuotation, uploadPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
@@ -1841,7 +1842,13 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       sendDownpaymentDetails, uploadDownpaymentReceipt, confirmDownpayment,
       createReplacementJO,
       byClient, isNewClient,
-    }}>
+  };
+  const providerValue = realMode
+    ? createRealReadOnlyProvider(contextValue, ["inquiriesByStage", "byClient", "isNewClient"], "orders")
+    : contextValue;
+
+  return (
+    <OrdersContext.Provider value={providerValue}>
       {children}
     </OrdersContext.Provider>
   );

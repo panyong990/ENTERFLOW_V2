@@ -41,7 +41,8 @@ function getSessionToken(request) {
 
 export function createAuthController({
   login: loginService,
-  revokeSession: revokeSessionService
+  revokeSession: revokeSessionService,
+  changePassword: changePasswordService = async () => ({ success: false, code: 'SERVICE_UNAVAILABLE' })
 }) {
   if (typeof loginService !== 'function') {
     throw new Error('A valid login service is required.');
@@ -111,7 +112,24 @@ export function createAuthController({
     });
   }
 
-  return { loginUser, logoutUser, getCurrentUser };
+  async function changeCurrentPassword(request, response) {
+    try {
+      const result = await changePasswordService(request.auth.userId, request.body?.currentPassword, request.body?.newPassword);
+      if (!result?.success) {
+        const invalid = ['INVALID_REQUEST', 'INVALID_CREDENTIALS'].includes(result?.code);
+        return response.status(invalid ? 400 : 503).json({
+          success: false,
+          message: invalid ? 'Current password or new password is invalid.' : 'Password change is temporarily unavailable.'
+        });
+      }
+      response.clearCookie(COOKIE_NAME, getCookieOptions());
+      return response.status(200).json({ success: true, message: 'Password changed. Sign in again with the new password.' });
+    } catch {
+      return response.status(503).json({ success: false, message: 'Password change is temporarily unavailable.' });
+    }
+  }
+
+  return { loginUser, logoutUser, getCurrentUser, changeCurrentPassword };
 }
 
 const authController = createAuthController({

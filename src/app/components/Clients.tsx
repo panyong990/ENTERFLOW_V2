@@ -6,6 +6,7 @@ import {
 import { useOrders } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
 import { toast, Toaster } from "sonner";
+import { useSession } from "../store/session";
 
 interface LinkedDoc { type: string; ref: string }
 interface Transaction {
@@ -143,7 +144,9 @@ const txStyle: Record<string, { bg: string; fg: string }> = {
 
 export function Clients() {
   const { byClient } = useOrders();
-  const [rawClients, setClients] = useState<Client[]>(CLIENTS_DATA);
+  const { mode } = useSession();
+  const realMode = mode === "real";
+  const [rawClients, setClients] = useState<Client[]>(() => realMode ? [] : CLIENTS_DATA);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Client | null>(null);
 
@@ -182,13 +185,14 @@ export function Clients() {
       </header>
 
       <div className="px-8 py-8 flex flex-col gap-6">
+        {realMode && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Client directory API is not connected in Real Mode. Sample clients are excluded; this is not a verified empty database result.</div>}
         {/* Stats */}
         <div className="grid grid-cols-4 gap-6">
           {[
-            { label: "Total Clients", value: String(clients.length) },
-            { label: "Active", value: String(clients.filter((c) => c.status === "active").length), color: "#16A34A" },
-            { label: "Active Job Orders", value: String(clients.reduce((s, c) => s + c.jobs.filter((j) => j.status === "active").length, 0)), color: "#2563EB" },
-            { label: "Inactive", value: String(clients.filter((c) => c.status === "inactive").length), color: "#94A3B8" },
+            { label: "Total Clients", value: realMode ? "—" : String(clients.length) },
+            { label: "Active", value: realMode ? "—" : String(clients.filter((c) => c.status === "active").length), color: "#16A34A" },
+            { label: "Active Job Orders", value: realMode ? "—" : String(clients.reduce((s, c) => s + c.jobs.filter((j) => j.status === "active").length, 0)), color: "#2563EB" },
+            { label: "Inactive", value: realMode ? "—" : String(clients.filter((c) => c.status === "inactive").length), color: "#94A3B8" },
           ].map((k) => (
             <div key={k.label} className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
               <div className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>{k.label}</div>

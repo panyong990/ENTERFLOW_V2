@@ -12,6 +12,7 @@ import { getFinishedGoodStockStatus, getRawMaterialStockStatus, useMaterials, ty
 import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
 import { FinishedGoodsOrderActivity } from "./FinishedGoodsOrderActivity";
 import type { Role } from "./Login";
+import { useSession } from "../store/session";
 
 const weekly = [
   { day: "Mon", orders: 14 },
@@ -386,6 +387,8 @@ function displayQuantity(quantity: number): string {
 }
 
 function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void }) {
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const { rawMaterials, finishedGoods } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
   const readyForDispatch = completedJOs.filter(
@@ -485,10 +488,10 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
       <main className="px-4 py-5 sm:px-8 sm:py-7 flex flex-col gap-6">
         <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" aria-label="Warehouse summary">
           {[
-            { label: "Tracked Raw Material Items", value: String(rawMaterials.length), detail: "in inventory", icon: Boxes, color: "#1A2B4A" },
-            { label: "Finished Goods", value: displayQuantity(totalFinishedGoods), detail: `${finishedGoods.length} recorded items · pcs`, icon: Factory, color: "#2563EB" },
-            { label: "Low-Stock Items", value: String(lowStockItems.length), detail: "at or below threshold, including out of stock", icon: AlertTriangle, color: lowStockItems.length ? "#C2410C" : "#16A34A" },
-            { label: "Ready for Dispatch", value: String(readyForDispatch.length), detail: "awaiting Warehouse preparation", icon: Truck, color: "#0F766E" },
+            { label: "Tracked Raw Material Items", value: realMode ? "—" : String(rawMaterials.length), detail: "in inventory", icon: Boxes, color: "#1A2B4A" },
+            { label: "Finished Goods", value: realMode ? "—" : displayQuantity(totalFinishedGoods), detail: `${finishedGoods.length} recorded items · pcs`, icon: Factory, color: "#2563EB" },
+            { label: "Low-Stock Items", value: realMode ? "—" : String(lowStockItems.length), detail: "at or below threshold, including out of stock", icon: AlertTriangle, color: lowStockItems.length ? "#C2410C" : "#16A34A" },
+            { label: "Ready for Dispatch", value: realMode ? "—" : String(readyForDispatch.length), detail: "awaiting Warehouse preparation", icon: Truck, color: "#0F766E" },
           ].map((metric) => {
             const Icon = metric.icon;
             const card = (
@@ -636,6 +639,8 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
 function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role; onNavigate?: (id: string) => void }) {
   const role = variant;
   const isAcc = role === "accounting";
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const { inquiries, completedJOs } = useOrders();
   const { rawMaterials, finishedGoods } = useMaterials();
   const pendingInquiries = inquiries.filter(i => i.stage === "inquiry");
@@ -745,7 +750,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
       </header>
 
       <div className={role === "production" ? "px-4 sm:px-8 py-5 sm:py-8" : "px-8 py-8"} style={role === "production" ? undefined : { paddingLeft: 32, paddingRight: 32 }}>
-        {isAcc && (
+        {realMode && <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">The original role dashboard is shown with isolated real-mode stores. Operational read APIs are not connected, so metrics are not verified database counts.</div>}
+        {isAcc && !realMode && (
           <div
             className="rounded-xl p-4 mb-6 flex items-start gap-3"
             style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}
@@ -775,7 +781,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             <>
               <KPICard label="Active Orders"     value={String(activeOrdersCount)} delta="live count"  trend="up"   icon={ShoppingCart}    accent="#C8102E" />
               <KPICard label="Jobs In Progress"  value={String(jobsInProgress)}    delta="on the floor" trend="up"  icon={Factory}         accent="#1A2B4A" />
-              <KPICard label="Low Stock Alerts"  value="3"                          delta="see Inventory" trend="down" icon={AlertTriangle} accent="#D97706" />
+              <KPICard label="Low Stock Alerts"  value={realMode ? "—" : "3"}      delta="see Inventory" trend="down" icon={AlertTriangle} accent="#D97706" />
               <KPICard label="Revenue"           value={formatPeso(revenueTotal)}  delta={`${paidInquiries.length} paid orders`} trend="up" icon={DollarSign}  accent="#16A34A" />
             </>
           )}
@@ -882,9 +888,9 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         {/* Charts row — Owner / Sales only */}
         {(role === "owner" || role === "sales") && (
         <div className="grid grid-cols-12 gap-6 mb-8">
-          <Card title="Weekly Orders" className="col-span-5">
+          <Card title="Weekly Orders" className="relative col-span-5">
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={weekly} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <BarChart data={realMode ? [] : weekly} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                 <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
@@ -892,11 +898,12 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                 <Bar dataKey="orders" fill="#C8102E" radius={[6, 6, 0, 0]} barSize={28} />
               </BarChart>
             </ResponsiveContainer>
+            {realMode && <p className="absolute inset-x-0 top-1/2 text-center text-xs text-slate-500">Real orders API is not connected.</p>}
           </Card>
 
-          <Card title="Revenue Trend · 6 months" className="col-span-4">
+          <Card title="Revenue Trend · 6 months" className="relative col-span-4">
             <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={revenueTrend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <LineChart data={realMode ? [] : revenueTrend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                 <XAxis dataKey="m" tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
@@ -904,13 +911,14 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                 <Line type="monotone" dataKey="v" stroke="#1A2B4A" strokeWidth={2.5} dot={{ r: 4, fill: "#C8102E", strokeWidth: 0 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
+            {realMode && <p className="absolute inset-x-0 top-1/2 text-center text-xs text-slate-500">Real revenue API is not connected.</p>}
           </Card>
 
-          <Card title="Production Stages" className="col-span-3">
+          <Card title="Production Stages" className="relative col-span-3">
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie data={stages} dataKey="value" innerRadius={48} outerRadius={72} paddingAngle={2}>
-                  {stages.map((s) => <Cell key={s.name} fill={s.color} />)}
+                <Pie data={realMode ? [] : stages} dataKey="value" innerRadius={48} outerRadius={72} paddingAngle={2}>
+                  {(realMode ? [] : stages).map((s) => <Cell key={s.name} fill={s.color} />)}
                 </Pie>
                 <Legend
                   verticalAlign="bottom"
@@ -920,6 +928,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                 <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif", fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
+            {realMode && <p className="absolute inset-x-0 top-1/2 text-center text-xs text-slate-500">Real production API is not connected.</p>}
           </Card>
         </div>
         )}
@@ -939,7 +948,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                   <Inbox size={18} color="white" />
                 </div>
                 <div>
-                  <div className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#991B1B", lineHeight: 1 }}>{pendingInquiries.length}</div>
+                  <div className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#991B1B", lineHeight: 1 }}>{realMode ? "—" : pendingInquiries.length}</div>
                   <div className="font-dm" style={{ fontSize: 12, color: "#991B1B", fontWeight: 600 }}>unreviewed inquiries</div>
                 </div>
               </div>
@@ -958,7 +967,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                 ))}
                 {pendingInquiries.length === 0 && (
                   <div className="font-dm text-center py-4" style={{ fontSize: 12, color: "#94A3B8" }}>
-                    No unreviewed inquiries 🎉
+                    {realMode ? "Inquiry API is not connected; live records cannot be verified." : "No unreviewed inquiries 🎉"}
                   </div>
                 )}
               </div>
@@ -969,7 +978,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         )}
 
         {/* Owner production plan — recurring orders mapped to upcoming weeks */}
-        {role === "owner" && (
+        {role === "owner" && !realMode && (
           <div className="grid grid-cols-12 gap-6 mb-8">
             <Card title="Production Schedule · Next 4 Weeks" className="col-span-12"
               action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DCFCE7", color: "#166534" }}>Plan ahead based on recurring orders</span>}
@@ -1019,13 +1028,13 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                   </tr>
                 </thead>
                 <tbody>
-                  {[
+                  {(realMode ? [] : [
                     { rank: 1, client: "Maynilad", orders: 22, revenue: 2108400, last: "Mar 31, 2026", status: "Active" },
                     { rank: 2, client: "B.E. Aerospace", orders: 14, revenue: 1248600, last: "Apr 10, 2026", status: "Active" },
                     { rank: 3, client: "G.U. Engineering", orders: 6, revenue: 368100, last: "Apr 12, 2026", status: "Active" },
                     { rank: 4, client: "Emerald Vinyl", orders: 2, revenue: 85200, last: "—", status: "Holding" },
                     { rank: 5, client: "Monaco", orders: 1, revenue: 4680, last: "Apr 22, 2026", status: "New Inquiry" },
-                  ].map((r) => (
+                  ]).map((r) => (
                     <tr key={r.rank} className="border-t border-slate-200/70 hover:bg-slate-50">
                       <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 800, color: r.rank === 1 ? "#C9A84C" : "#0F172A" }}>#{r.rank}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
@@ -1035,6 +1044,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                       <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: r.status === "Active" ? "#DCFCE7" : r.status === "New Inquiry" ? "#FEF3C7" : "#E2E8F0", color: r.status === "Active" ? "#15803D" : r.status === "New Inquiry" ? "#92400E" : "#64748B" }}>{r.status}</span></td>
                     </tr>
                   ))}
+                  {realMode && <tr><td colSpan={6} className="border-t border-slate-200/70 px-4 py-8 text-center text-sm text-slate-500">Client analytics API is not connected. No live ranking is available.</td></tr>}
                 </tbody>
               </table>
             </Card>
@@ -1048,11 +1058,11 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
               action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#FEF3C7", color: "#92400E" }}>Auto-flag overdue</span>}
             >
               <div className="flex flex-col gap-2">
-                {[
+                {(realMode ? [] : [
                   { inv: "SI-2026-9533", client: "Maynilad", amount: 46800, due: "Apr 29, 2026", days: 1, status: "Due tomorrow" },
                   { inv: "SI-2026-0418", client: "B.E. Aerospace", amount: 46800, due: "May 10, 2026", days: 12, status: "Upcoming" },
                   { inv: "SI-2026-0421", client: "G.U. Engineering", amount: 67500, due: "Apr 30, 2026", days: 2, status: "Due in 2d" },
-                ].map((r) => (
+                ]).map((r) => (
                   <div key={r.inv} className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-slate-200">
                     <div className="flex-1">
                       <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{r.inv}</div>
@@ -1064,13 +1074,14 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                     </div>
                   </div>
                 ))}
+                {realMode && <p className="py-4 text-center text-sm text-slate-500">Invoice read API is not connected. No live due-date data is available.</p>}
               </div>
             </Card>
             <Card title="Partial Payments In Progress" className="col-span-5">
               <div className="flex flex-col gap-3">
-                {[
+                {(realMode ? [] : [
                   { inv: "SI-2026-9533", client: "Maynilad", total: 46800, paid: 23400, remaining: 23400 },
-                ].map((p) => {
+                ]).map((p) => {
                   const pct = (p.paid / p.total) * 100;
                   return (
                     <div key={p.inv} className="rounded-lg border border-slate-200 p-3">
@@ -1089,6 +1100,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                     </div>
                   );
                 })}
+                {realMode && <p className="py-4 text-center text-sm text-slate-500">Payment read API is not connected. No live payment data is available.</p>}
               </div>
             </Card>
           </div>
@@ -1143,7 +1155,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         )}
 
         {/* Finished Goods Buffer & Demand Forecast — Owner */}
-        {role === "owner" && (
+        {role === "owner" && !realMode && (
         <div className="grid grid-cols-12 gap-6 mb-8">
           <Card title="Finished Goods Buffer — Demand Forecast" className="col-span-12"
             action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>Based on last 6 months order history</span>}
@@ -1221,7 +1233,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                       ? stageLabel[inquiry.stage]
                       : PRODUCTION_STAGES[Math.min(inquiry.currentStage, PRODUCTION_STAGES.length - 1)],
                     due: inquiry.dueDate ?? "—",
-                  })) : activeJobs).map((j) => (
+                  })) : realMode ? [] : activeJobs).map((j) => (
                     <tr key={j.jo} className="border-t border-slate-200/70 hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 13, fontWeight: 500, color: "#1A2B4A" }}>{j.jo}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{j.client}</td>
@@ -1242,11 +1254,11 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                 <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700 }}>Alerts</h3>
               </div>
               <span className="font-dm bg-white/20 text-white px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 600 }}>
-                {alerts.length} active
+                {realMode ? "—" : alerts.length} active
               </span>
             </div>
             <div className="p-4 flex flex-col gap-3">
-              {alerts.map((a, i) => {
+              {(realMode ? [] : alerts).map((a, i) => {
                 const c = alertColors[a.kind];
                 return (
                   <div key={i} className="rounded-lg p-3" style={{ backgroundColor: c.bg, borderLeft: `3px solid ${c.bd}` }}>

@@ -29,6 +29,9 @@ function assertWrite(result) { if (result.affectedRows !== 1 || result.warningSt
 const bump = 'updated_at=GREATEST(UTC_TIMESTAMP(3), updated_at + INTERVAL 1000 MICROSECOND)';
 const actions = ['employee.created', 'employee.updated', 'employee.role_changed', 'employee.activated', 'employee.deactivated',
   'client.updated', 'client.activated', 'client.deactivated', 'client_application.approved', 'client_application.rejected'];
+// The first real Admin is designated by the reserved, unique bootstrap username.
+// Keep this marker stable so later profile edits cannot remove its safeguards.
+const isInitialAdmin = account => account?.username?.toLowerCase() === 'admin';
 
 export function createAdminService({ db, hash = hashPassword }) {
   async function run(actor, write, work) {
@@ -165,8 +168,12 @@ export function createAdminService({ db, hash = hashPassword }) {
       if (!current) return fail('NOT_FOUND');
       if (!write) return { success:true,data:current };
       if (current.revision !== input.revision) return fail('STALE_RECORD');
-      if (isEmployee && ((current.roleCode === 'admin' && current.id !== actor.userId)
-        || (current.id === actor.userId && operation !== 'updateEmployee'))) return fail('PROTECTED_ACCOUNT');
+      if (isEmployee && isInitialAdmin(current) &&
+        (operation === 'deactivateEmployee' || operation === 'assignRole' ||
+          (operation === 'updateEmployee' && input.username.toLowerCase() !== current.username.toLowerCase()))) {
+        return fail('PROTECTED_ACCOUNT');
+      }
+      if (isEmployee && current.id === actor.userId && operation !== 'updateEmployee') return fail('PROTECTED_ACCOUNT');
       if (!isEmployee && !current.accountId) return fail('NO_PORTAL_ACCOUNT');
       const targetId = isEmployee ? current.id : current.accountId;
       let action;
@@ -186,7 +193,9 @@ export function createAdminService({ db, hash = hashPassword }) {
         const [updated] = await connection.execute(`UPDATE users SET role_code=?,${bump} WHERE id=?`,[input.roleCode,targetId]); assertWrite(updated); action='employee.role_changed';
       } else {
         const active = operation.startsWith('activate');
-        const [updated] = await connection.execute(`UPDATE users SET active=?,${bump} WHERE id=?`,[active?1:0,targetId]); assertWrite(updated);
+        // updated_at is maintained by the users table's ON UPDATE clause. Keep
+        // this write limited to active so column-scoped UPDATE grants work.
+        const [updated] = await connection.execute('UPDATE users SET active=? WHERE id=?',[active?1:0,targetId]); assertWrite(updated);
         action=`${isEmployee?'employee':'client'}.${active?'activated':'deactivated'}`;
       }
       if (operation.startsWith('deactivate') || operation === 'assignRole' || ((operation === 'updateEmployee' || operation === 'updateClient') && (input.email !== current.email || input.username !== current.username))) {

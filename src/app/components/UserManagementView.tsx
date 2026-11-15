@@ -76,7 +76,9 @@ const workforceTitleByRole: Record<StaffRole, string> = {
 const workforcePageSize = 10;
 
 function EmployeeDirectory() {
-  const [employees] = useState<EmployeeDirectoryEntry[]>(getEmployeeDirectory);
+  const { mode } = useSession();
+  const realMode = mode === "real";
+  const [employees] = useState<EmployeeDirectoryEntry[]>(() => realMode ? [] : getEmployeeDirectory());
   const [query, setQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState<EmployeeDirectoryEntry["role"] | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -135,15 +137,16 @@ function EmployeeDirectory() {
     <main className="flex-1 min-w-0 h-full overflow-auto" style={{ backgroundColor: "#F5F7FB" }}>
       <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/95 px-5 py-5 backdrop-blur sm:px-8">
         <div className="mx-auto flex max-w-[1600px] items-center justify-end">
-          <div aria-live="polite" className="font-dm text-sm font-semibold text-slate-600">{filteredEmployees.length} employees</div>
+          <div aria-live="polite" className="font-dm text-sm font-semibold text-slate-600">{realMode ? "—" : filteredEmployees.length} employees</div>
         </div>
       </header>
 
       <section className="mx-auto flex max-w-[1600px] flex-col gap-6 px-5 py-6 sm:px-8 sm:py-8">
+        {realMode && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Employee directory API is not connected for this role. Demo accounts are excluded; this is not a verified empty database result.</div>}
         <section aria-label="Workforce summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {[
-            { label: "Total Employees", count: employees.length, icon: Users, color: "text-blue-700", background: "bg-blue-50" },
-            { label: "Active Employees", count: activeEmployees.length, icon: UserRound, color: "text-emerald-700", background: "bg-emerald-50" },
+            { label: "Total Employees", count: realMode ? "—" : employees.length, icon: Users, color: "text-blue-700", background: "bg-blue-50" },
+            { label: "Active Employees", count: realMode ? "—" : activeEmployees.length, icon: UserRound, color: "text-emerald-700", background: "bg-emerald-50" },
           ].map(({ label, count, icon: Icon, color, background }) => (
             <article key={label} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between">

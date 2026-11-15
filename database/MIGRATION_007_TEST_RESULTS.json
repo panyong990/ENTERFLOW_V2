@@ -1,0 +1,96 @@
+{
+  "runId": "7812b808d9afab6a",
+  "image": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "container": "enterflow-m007-7812b808d9afab6a",
+  "storage": "tmpfs /var/lib/mysql; no volumes",
+  "checks": [
+    "Isolated MySQL 8.4.13 with verified TLS, tmpfs storage, and no shared volume",
+    "Existing migrations 001-006 and reference seed applied through the real runner",
+    "Unmodified Migration 007 applied successfully through the real CLI, env loader, TLS, and runner",
+    "All original fields, indexes, foreign keys, fixture values, related records, and other table definitions preserved",
+    "Exactly two nullable virtual columns and full-length unique indexes; correct generated values for all statuses",
+    "Runner checksum/history records 007 once; repeat migrate/status leave history unchanged",
+    "Exact duplicate pending email rejected",
+    "Exact duplicate pending username rejected",
+    "Case-insensitive pending email uniqueness",
+    "Case-insensitive pending username uniqueness",
+    "Trailing-space pending email uniqueness",
+    "Trailing-space pending username uniqueness",
+    "Accent-insensitive pending email uniqueness",
+    "Accent-insensitive pending username uniqueness",
+    "Unrelated identities accepted; duplicate company names allowed",
+    "approved history permits repeated identifiers and a fresh pending application",
+    "rejected history permits repeated identifiers and a fresh pending application",
+    "Pre-migration approved/rejected duplicate history does not reserve identifiers",
+    "Pending-to-approved transition releases identifiers",
+    "approved-to-pending transition cannot bypass uniqueness",
+    "Pending-to-rejected transition releases identifiers",
+    "rejected-to-pending transition cannot bypass uniqueness",
+    "Email updates enforce pending uniqueness",
+    "Username updates enforce pending uniqueness",
+    "Generated identity cannot be supplied directly",
+    "Reviewer foreign key remains enforced",
+    "Approved-client foreign key remains enforced",
+    "Referenced reviewer cannot be deleted",
+    "Referenced client cannot be deleted",
+    "Full declared email/username lengths supported without prefix-index collisions",
+    "Concurrent pending email submissions produce exactly one winner",
+    "Concurrent pending username submissions produce exactly one winner",
+    "Cross-field namespace collisions remain outside 007; future service serialization is required",
+    "Pre-existing duplicate email: atomic DDL rejection, original schema/data preserved, runner failure and retry block recorded",
+    "Pre-existing duplicate username: atomic DDL rejection, original schema/data preserved, runner failure and retry block recorded",
+    "Only the owned temporary container removed; every pre-existing container and volume preserved",
+    "All migration and reference seed source checksums unchanged"
+  ],
+  "status": "passed",
+  "sourceChecksums": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "checksum": "e60efec38606192f4c5e6a409024d65be4f9f136ebbda6747403925547525ce7"
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "checksum": "e3ef25488a2ca47e8624997f429ee78d5a5033f0be7f61f1e973e0ba67199d0e"
+    },
+    {
+      "file": "migrations/003_operations_billing.sql",
+      "checksum": "30871045993de33933da8db39ec20991a4082a9a3d92cd1fb8b911ac54cb69af"
+    },
+    {
+      "file": "migrations/004_attachments_audit.sql",
+      "checksum": "fa252047a52c62e7ddb33949bb7275deab69ad1b3730b7d75c9e33e12b9f29a7"
+    },
+    {
+      "file": "migrations/005_user_sessions.sql",
+      "checksum": "4a82280d4f61073cf1ead2f442b2d55027cc70b1e3ca5a8d6af356cac0f8ffaf"
+    },
+    {
+      "file": "migrations/006_one_client_account_per_company.sql",
+      "checksum": "5b124013e865a6d243ef9cea17a108d69cd6b6c399933257542386850c144b04"
+    },
+    {
+      "file": "migrations/007_client_application_identity_uniqueness.sql",
+      "checksum": "fd51ca44edaf46c7118dbcc0c8b1d2d52c3fdb8e2c8c088fa9a5a44d7b9197cb"
+    },
+    {
+      "file": "seeds/001_reference_data.sql",
+      "checksum": "5655790aef8c55f4894b47d860c8e9ef77ef55dc5eeefe755f17a280bc5fa5d1"
+    }
+  ],
+  "containerId": "4d0f8b685ff4e11ffb0bc83d6c430b4faf235143bcfb1c57b842a2701625d880",
+  "tls": [
+    {
+      "Variable_name": "Ssl_cipher",
+      "Value": "TLS_AES_256_GCM_SHA384"
+    },
+    {
+      "Variable_name": "Ssl_version",
+      "Value": "TLSv1.3"
+    }
+  ],
+  "port": 3309,
+  "temporaryContainerRemoved": true,
+  "temporaryFilesRemoved": true,
+  "existingDockerResourcesUnchanged": true,
+  "finishedAt": "2026-11-15T01:49:22.609Z"
+}

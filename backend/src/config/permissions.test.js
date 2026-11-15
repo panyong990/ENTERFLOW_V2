@@ -8,6 +8,19 @@ import {
 
 // ADMIN
 
+test('only Admin can read, approve, and reject client applications', () => {
+  assert.deepEqual(getPermissions('admin').clientApplications, ['read', 'approve', 'reject']);
+  for (const action of ['read', 'approve', 'reject']) {
+    assert.equal(hasPermission('admin', 'clientApplications', action), true);
+    for (const role of ['owner', 'sales', 'operations', 'production', 'warehouse', 'logistics', 'accounting', 'client', 'unknown']) {
+      assert.equal(hasPermission(role, 'clientApplications', action), false);
+    }
+  }
+  assert.equal(hasPermission('admin', 'clientApplications', 'create'), false);
+  assert.equal(hasPermission('admin', 'clientAccounts', 'create'), false);
+  assert.equal(hasPermission('admin', 'clients', 'create'), false);
+});
+
 test('admin can manage employee accounts', () => {
   assert.equal(hasPermission('admin', 'users', 'read'), true);
   assert.equal(hasPermission('admin', 'users', 'create'), true);

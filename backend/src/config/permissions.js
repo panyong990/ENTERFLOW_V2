@@ -1,6 +1,7 @@
 ﻿
 const PERMISSIONS = Object.freeze({
   admin: {
+    clientApplications: ['read', 'approve', 'reject'],
     users: [
       'read',
       'create',

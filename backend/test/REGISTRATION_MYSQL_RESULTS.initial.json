@@ -1,0 +1,461 @@
+{
+  "runId": "ea4f26bfc14995d4",
+  "startedAt": "2026-11-15T02:29:27.609Z",
+  "status": "failed",
+  "image": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "container": "enterflow-registration-p3-ea4f26bfc14995d4",
+  "database": "enterflow_registration_p3_ea4f26bfc14995d4",
+  "checks": [
+    "Dedicated pinned MySQL 8.4.13, loopback random port, owned tmpfs, verified CA and pinned peer certificate",
+    "Unmodified migrations 001-007 and reference seed applied with the existing migration runner",
+    "Wrong trust anchor is rejected by a real TLS connection",
+    "Existing driver ignores ssl.servername: reproduce configuration gap without changing source",
+    "Real SQL permission failure returns confidential 503, rolls back, and releases the identity lock",
+    "Invalid registration: missing required fields rejected with zero writes",
+    "Invalid registration: unknown role/status/hash fields rejected with zero writes",
+    "Invalid registration: short password rejected with zero writes",
+    "Invalid registration: invalid email rejected with zero writes",
+    "Invalid registration: array input rejected with zero writes",
+    "Invalid registration: prototype mass assignment rejected with zero writes",
+    "Safe HTTP error: malformed JSON with zero database writes",
+    "Safe HTTP error: oversized JSON with zero database writes",
+    "Safe HTTP error: non-JSON content type with zero database writes",
+    "Safe HTTP error: missing content type with zero database writes",
+    "Safe HTTP error: wrong Origin with zero database writes",
+    "Safe HTTP error: missing Origin with zero database writes",
+    "Safe HTTP error: cross-site Fetch Metadata with zero database writes",
+    "Safe HTTP error: unsupported charset with zero database writes",
+    "All persisted test applications contain Argon2id hashes and no plaintext test password anywhere in their rows",
+    "Removed only the owned temporary container, tmpfs database, and temporary MySQL accounts",
+    "All pre-existing container IDs, states, start times, images, ports, mounts, and volume names unchanged",
+    "Migration 001-007 and reference seed checksums unchanged",
+    "All inspected backend implementation files unchanged"
+  ],
+  "failures": [
+    {
+      "check": "Runtime-role TLS connection is verified and has no DDL privileges",
+      "code": "ERR_INVALID_ARG_TYPE"
+    },
+    {
+      "check": "Successful HTTP registration stores one pending Argon2id application and creates no account/session",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Duplicate pending email rejected with safe 409 and no insert",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Duplicate pending username rejected with safe 409 and no insert",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Approved application email rejected with safe 409 and no insert",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Approved application username rejected with safe 409 and no insert",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Existing user email conflicts with submitted email",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Existing user email conflicts with submitted username",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Existing user username conflicts with submitted email",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Existing user username conflicts with submitted username",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Pending application email conflicts with submitted username",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Pending application username conflicts with submitted email",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Rejected synthetic application identifiers can be reused without implementing review actions",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Case-insensitive email follows real MySQL collation",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Case-insensitive username follows real MySQL collation",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Accent-insensitive email follows real MySQL collation",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Accent-insensitive username follows real MySQL collation",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Accent-insensitive cross-field follows real MySQL collation",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Concurrent email duplicates produce one 201 and one 409 across independent service instances",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Concurrent username duplicates produce one 201 and one 409 across independent service instances",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Concurrent cross-field duplicates produce one 201 and one 409 across independent service instances",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Real advisory-lock timeout returns safe 503 with no write, preserves holder lock, then recovers",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Real server disconnect after-lock safely cleans up and preserves correct HTTP outcome",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Real server disconnect after-commit safely cleans up and preserves correct HTTP outcome",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "SQL-injection-shaped metadata is stored as literal parameter data and leaves users intact",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Real registration rate limiter permits five inserts, blocks sixth before persistence, and resets at fifteen minutes",
+      "code": "ERR_ASSERTION"
+    },
+    {
+      "check": "Real login/logout/me regressions and independent login/registration limits",
+      "code": "ERR_ASSERTION"
+    }
+  ],
+  "findings": [
+    {
+      "id": "TLS-IDENTITY-CONFIG",
+      "scope": "pre-existing backend/src/config/database.js",
+      "observation": "mysql2 3.24.6 accepts a deliberately wrong ssl.servername; this property does not configure hostname verification.",
+      "proposedFix": "Use driver-supported verifyIdentity with a certificate-matching host and trusted endpoint resolution, or explicit peer-identity verification. Preserve CA verification. Requires separate implementation approval.",
+      "sourceModified": false
+    }
+  ],
+  "storage": "tmpfs /var/lib/mysql; no bind mounts or volumes",
+  "developmentDatabaseConnections": 0,
+  "credentialsLoadedFromDevelopment": false,
+  "resourcesBefore": {
+    "containers": [
+      {
+        "id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+        "name": "/enterflow-mysql84-validation",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "status": "exited",
+        "started": "2026-11-11T12:13:23.361481953Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3307"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow_mysql84_validation_data",
+            "Source": "/var/lib/docker/volumes/enterflow_mysql84_validation_data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "3d361e7fdd25cc8b3aa71ec5baa3742aa73587ad3c99838eca2f84325e3772ff",
+        "name": "/enterflow-migrations-workflow-test",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "status": "exited",
+        "started": "2026-11-12T12:42:46.40530122Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3309"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-migrations-workflow-test-data",
+            "Source": "/var/lib/docker/volumes/enterflow-migrations-workflow-test-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "9a61d013b545bc2a5ea4e33188763a153298a4cf3536fbec63c7ce247414c4ce",
+        "name": "/enterflow-mysql-dev",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "status": "running",
+        "started": "2026-11-15T01:09:39.154415226Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3308"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-mysql-dev-data",
+            "Source": "/var/lib/docker/volumes/enterflow-mysql-dev-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "rw",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      }
+    ],
+    "volumes": [
+      "enterflow-migrations-workflow-test-data",
+      "enterflow-mysql-dev-data",
+      "enterflow_mysql84_validation_data"
+    ]
+  },
+  "migrationChecksums": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "checksum": "e60efec38606192f4c5e6a409024d65be4f9f136ebbda6747403925547525ce7"
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "checksum": "e3ef25488a2ca47e8624997f429ee78d5a5033f0be7f61f1e973e0ba67199d0e"
+    },
+    {
+      "file": "migrations/003_operations_billing.sql",
+      "checksum": "30871045993de33933da8db39ec20991a4082a9a3d92cd1fb8b911ac54cb69af"
+    },
+    {
+      "file": "migrations/004_attachments_audit.sql",
+      "checksum": "fa252047a52c62e7ddb33949bb7275deab69ad1b3730b7d75c9e33e12b9f29a7"
+    },
+    {
+      "file": "migrations/005_user_sessions.sql",
+      "checksum": "4a82280d4f61073cf1ead2f442b2d55027cc70b1e3ca5a8d6af356cac0f8ffaf"
+    },
+    {
+      "file": "migrations/006_one_client_account_per_company.sql",
+      "checksum": "5b124013e865a6d243ef9cea17a108d69cd6b6c399933257542386850c144b04"
+    },
+    {
+      "file": "migrations/007_client_application_identity_uniqueness.sql",
+      "checksum": "fd51ca44edaf46c7118dbcc0c8b1d2d52c3fdb8e2c8c088fa9a5a44d7b9197cb"
+    },
+    {
+      "file": "seeds/001_reference_data.sql",
+      "checksum": "5655790aef8c55f4894b47d860c8e9ef77ef55dc5eeefe755f17a280bc5fa5d1"
+    }
+  ],
+  "implementationChecksums": [
+    {
+      "file": "../src/app.js",
+      "sha256": "0fcbaa1cf12eac51631edd088dfb1f58f5b20acaf50cbfc2b15c62ad33e32fdc"
+    },
+    {
+      "file": "../src/config/database.js",
+      "sha256": "27f54008730f9d39c9f1a6ee0a098344d834e6f7d6e26291c4918c5dd83aaa9d"
+    },
+    {
+      "file": "../src/controllers/auth.controller.js",
+      "sha256": "c00e55e5ba5cccdef861026f733c726f8f90f4125f3d5a95182f7ae3cab45c61"
+    },
+    {
+      "file": "../src/controllers/registration.controller.js",
+      "sha256": "2d2a69ee623dc7af39ed311f8ecb69bf6aa00c24e0282d7a715624451f33aab4"
+    },
+    {
+      "file": "../src/routes/auth.routes.js",
+      "sha256": "a28bd376380ce8fe8838f56ea0169da408e0789505e04d1384942bdd9b5537bc"
+    },
+    {
+      "file": "../src/services/registration.service.js",
+      "sha256": "d6cd5764a17003da311797225b2764fa32a16d4d46b22cd54c5a1c24b9161ef5"
+    },
+    {
+      "file": "../src/services/auth.service.js",
+      "sha256": "0b5e8d9ab6cf70cc20a7b5f4e36788e6fc90c7b5f99b25d5f8c14665e0a83dbc"
+    },
+    {
+      "file": "../src/services/session.service.js",
+      "sha256": "c6901409a8923d0fa6a66aa0f122c55ca0b07d02dd4aa9a6d145cb44a8a11808"
+    },
+    {
+      "file": "../src/services/password.service.js",
+      "sha256": "00fdf354fada45eeeb6f2a6b08297b0528d05d43833df2f1635b29d5edda2299"
+    },
+    {
+      "file": "../src/validation/registration.validation.js",
+      "sha256": "3d77c6d594ed947daef73980a350d0910765ecd6ab7de6be346973a46de52757"
+    },
+    {
+      "file": "../src/middleware/origin.middleware.js",
+      "sha256": "e36662edb3585c11b751901b2bc1bd088be734726006260f4e402ea152564436"
+    },
+    {
+      "file": "../src/middleware/login-rate-limit.middleware.js",
+      "sha256": "ede3944fe45de24e6292b917fae846176ac36c6687fbe77fbb0385157a52d3b3"
+    },
+    {
+      "file": "../src/middleware/registration-rate-limit.middleware.js",
+      "sha256": "a33b5c34253ad32ac960f51ee954b85d9514376629475756130626c3559a1542"
+    }
+  ],
+  "containerId": "c1eb02b30b39f931e027fc813d6c14d5ec28e3f4b191a216cc8d94c4db1524c3",
+  "endpoint": "127.0.0.1:65456",
+  "serverVersion": "8.4.13",
+  "serverUuid": "6296c6a9-e09c-11f1-b1c0-b25cae23d75f",
+  "certificateSha256": "f3f3b3e1397855f4dd612b8616eedddb14dfae9dee4cec57eb1de23ca4a20fb8",
+  "tls": [
+    {
+      "Variable_name": "Ssl_cipher",
+      "Value": "TLS_AES_256_GCM_SHA384"
+    },
+    {
+      "Variable_name": "Ssl_version",
+      "Value": "TLSv1.3"
+    }
+  ],
+  "appliedFiles": [
+    "migrations/001_identity_catalog.sql",
+    "migrations/002_orders_quotations.sql",
+    "migrations/003_operations_billing.sql",
+    "migrations/004_attachments_audit.sql",
+    "migrations/005_user_sessions.sql",
+    "migrations/006_one_client_account_per_company.sql",
+    "migrations/007_client_application_identity_uniqueness.sql",
+    "seeds/001_reference_data.sql"
+  ],
+  "finalSyntheticCounts": {
+    "client_applications": 12,
+    "clients": 0,
+    "users": 6,
+    "user_sessions": 0
+  },
+  "temporaryContainerRemoved": true,
+  "temporaryDatabaseAndAccountsRemoved": true,
+  "resourcesAfter": {
+    "containers": [
+      {
+        "id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+        "name": "/enterflow-mysql84-validation",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "status": "exited",
+        "started": "2026-11-11T12:13:23.361481953Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3307"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow_mysql84_validation_data",
+            "Source": "/var/lib/docker/volumes/enterflow_mysql84_validation_data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "3d361e7fdd25cc8b3aa71ec5baa3742aa73587ad3c99838eca2f84325e3772ff",
+        "name": "/enterflow-migrations-workflow-test",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "status": "exited",
+        "started": "2026-11-12T12:42:46.40530122Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3309"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-migrations-workflow-test-data",
+            "Source": "/var/lib/docker/volumes/enterflow-migrations-workflow-test-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "9a61d013b545bc2a5ea4e33188763a153298a4cf3536fbec63c7ce247414c4ce",
+        "name": "/enterflow-mysql-dev",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "status": "running",
+        "started": "2026-11-15T01:09:39.154415226Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3308"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-mysql-dev-data",
+            "Source": "/var/lib/docker/volumes/enterflow-mysql-dev-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "rw",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      }
+    ],
+    "volumes": [
+      "enterflow-migrations-workflow-test-data",
+      "enterflow-mysql-dev-data",
+      "enterflow_mysql84_validation_data"
+    ]
+  },
+  "existingDockerResourcesUnchanged": true,
+  "migrationsAndSeedsUnchanged": true,
+  "existingImplementationUnchanged": true,
+  "finishedAt": "2026-11-15T02:29:40.370Z"
+}

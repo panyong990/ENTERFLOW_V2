@@ -1,0 +1,28 @@
+{
+  "temporaryProcessConfiguration": true,
+  "checks": [
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "status": 200
+    }
+  ],
+  "databaseCalls": 0,
+  "appInitializes": true,
+  "status": "passed"
+}

@@ -1,0 +1,30 @@
+{
+  "startedAt": "2026-11-15T02:50:59.354Z",
+  "status": "passed",
+  "checks": [
+    "Actual backend pool accepts trusted matching local identity and preserves MySQL connectivity",
+    "Actual configuration rejects an incorrect expected identity",
+    "Actual environment-specific CA path rejects an untrusted CA",
+    "Actual environment-specific CA path accepts the configured trusted CA from an alternate file",
+    "Actual configuration accepts an explicit matching expected identity",
+    "Pooled reconnects retain strict verification across repeated real connections"
+  ],
+  "failures": [],
+  "sqlWrites": 0,
+  "migrationsExecuted": 0,
+  "databaseInfrastructureChanges": 0,
+  "serverVersion": "8.4.13",
+  "endpoint": "127.0.0.1:3308",
+  "tls": [
+    {
+      "Variable_name": "Ssl_cipher",
+      "Value": "TLS_AES_256_GCM_SHA384"
+    },
+    {
+      "Variable_name": "Ssl_version",
+      "Value": "TLSv1.3"
+    }
+  ],
+  "temporaryFilesRemoved": true,
+  "finishedAt": "2026-11-15T02:51:00.436Z"
+}

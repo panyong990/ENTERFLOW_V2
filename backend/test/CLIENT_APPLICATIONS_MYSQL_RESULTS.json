@@ -1,0 +1,552 @@
+{
+  "startedAt": "2026-11-15T04:11:46.080Z",
+  "status": "passed",
+  "checks": [
+    "Owned tmpfs MySQL 8.4.13 with strict CA/server identity, random loopback port, and migrations 001-007/reference seed",
+    "Real Admin login creates a persisted session used by review API tests",
+    "Admin reads pending applications with real pagination and safe individual details",
+    "Approval creates exactly one linked company/client login, exact hash reuse, decision metadata, and safe audit without a session",
+    "Rejection atomically records trimmed reason/Admin/time/audit, creates no account, and cannot repeat",
+    "Existing company conflict returns 409 without merge, attachment, audit, or partial records",
+    "user email conflicts with application email using real database equality",
+    "user email conflicts with application username using real database equality",
+    "user username conflicts with application email using real database equality",
+    "user username conflicts with application username using real database equality",
+    "approved application email conflicts with application email using real database equality",
+    "pending application email conflicts with application username using real database equality",
+    "pending application username conflicts with application email using real database equality",
+    "approved application username conflicts with application username using real database equality",
+    "Case/accent-insensitive company and identity conflicts follow MySQL collation",
+    "Real company write privilege failure rolls back the entire approval",
+    "Real user write privilege failure rolls back the entire approval",
+    "Real decision write privilege failure rolls back the entire approval",
+    "Real audit write privilege failure rolls back the entire approval",
+    "Real decision write privilege failure rolls back rejection and audit atomically",
+    "Real audit write privilege failure rolls back rejection and audit atomically",
+    "Concurrent approve/approve across two real HTTP instances commits at most one decision",
+    "Concurrent approve/reject across two real HTTP instances commits at most one decision",
+    "Concurrent reject/reject across two real HTTP instances commits at most one decision",
+    "Registration racing approve, registration holds the identity gate first",
+    "Registration racing approve, review holds the identity gate first",
+    "Registration racing reject, registration holds the identity gate first",
+    "Registration racing reject, review holds the identity gate first",
+    "Real held advisory lock times out safely, retains its owner, and recovers after release",
+    "Real disconnect after identity acquisition releases the lock and leaves no decision or partial records",
+    "Disconnect during rollback of a real audit permission failure leaves no orphaned transaction",
+    "approve before-commit connection/acknowledgement failure returns DECISION_OUTCOME_UNKNOWN and reconciles",
+    "approve after-commit connection/acknowledgement failure returns DECISION_OUTCOME_UNKNOWN and reconciles",
+    "reject before-commit connection/acknowledgement failure returns DECISION_OUTCOME_UNKNOWN and reconciles",
+    "reject after-commit connection/acknowledgement failure returns DECISION_OUTCOME_UNKNOWN and reconciles",
+    "Cleanup disconnect after acknowledged approval preserves success and one committed audit",
+    "Unauthenticated requests are rejected for all four real endpoints",
+    "Persisted owner session cannot read, approve, or reject applications",
+    "Persisted sales session cannot read, approve, or reject applications",
+    "Persisted operations session cannot read, approve, or reject applications",
+    "Persisted production session cannot read, approve, or reject applications",
+    "Persisted warehouse session cannot read, approve, or reject applications",
+    "Persisted logistics session cannot read, approve, or reject applications",
+    "Persisted accounting session cannot read, approve, or reject applications",
+    "Persisted client session cannot read, approve, or reject applications",
+    "Only authenticated Admin identity is recorded; body/query actor overrides are rejected",
+    "Admin demoted after authentication is denied by the transactional active-Admin recheck",
+    "Expired persisted Admin sessions cannot review applications",
+    "Request validation, origin, parser errors, and arbitrary-creation paths leave business records untouched",
+    "Final invariants: one audit per decided application, no orphan client/account, no partial decision, unchanged schema",
+    "Owned temporary container/database/accounts removed; existing resources, migrations, and application source preserved"
+  ],
+  "failures": [],
+  "developmentDatabaseConnections": 0,
+  "developmentCredentialsLoaded": false,
+  "unusedDefaultPoolBlocked": true,
+  "applicationChanges": [],
+  "environment": {
+    "runId": "3cd161072ea5f41d",
+    "image": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+    "container": "enterflow-review-p4-3cd161072ea5f41d",
+    "database": "enterflow_review_p4_3cd161072ea5f41d",
+    "storage": "tmpfs /var/lib/mysql; no bind mounts or volumes",
+    "containerId": "844711b2b3fb87a2ba7b35c7beef323c56ef1c7cf237f4d6bf06dbfbefe01527",
+    "endpoint": "127.0.0.1:61864",
+    "version": "8.4.13",
+    "serverUuid": "ad397820-e0aa-11f1-ba1d-76c9197cec78",
+    "certificateSha256": "be8a00ec7a7886b06e6f11d50afc6d02560a5470a8fd4432eccd7c1c4d0d9ace",
+    "tls": [
+      {
+        "Variable_name": "Ssl_cipher",
+        "Value": "TLS_AES_256_GCM_SHA384"
+      },
+      {
+        "Variable_name": "Ssl_version",
+        "Value": "TLSv1.3"
+      }
+    ]
+  },
+  "resourcesBefore": {
+    "containers": [
+      {
+        "id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+        "name": "/enterflow-mysql84-validation",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "state": "exited",
+        "started": "2026-11-11T12:13:23.361481953Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3307"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow_mysql84_validation_data",
+            "Source": "/var/lib/docker/volumes/enterflow_mysql84_validation_data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "3d361e7fdd25cc8b3aa71ec5baa3742aa73587ad3c99838eca2f84325e3772ff",
+        "name": "/enterflow-migrations-workflow-test",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "state": "exited",
+        "started": "2026-11-12T12:42:46.40530122Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3309"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-migrations-workflow-test-data",
+            "Source": "/var/lib/docker/volumes/enterflow-migrations-workflow-test-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "9a61d013b545bc2a5ea4e33188763a153298a4cf3536fbec63c7ce247414c4ce",
+        "name": "/enterflow-mysql-dev",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "state": "running",
+        "started": "2026-11-15T01:09:39.154415226Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3308"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-mysql-dev-data",
+            "Source": "/var/lib/docker/volumes/enterflow-mysql-dev-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "rw",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      }
+    ],
+    "volumes": [
+      "enterflow-migrations-workflow-test-data",
+      "enterflow-mysql-dev-data",
+      "enterflow_mysql84_validation_data"
+    ]
+  },
+  "sourceChecksums": [
+    {
+      "file": "backend/src/app.js",
+      "sha256": "f3b692b76a2a68041b6012106a39300a719f0417c7d9bcbe4278590e428ead68"
+    },
+    {
+      "file": "backend/src/config/database-tls.js",
+      "sha256": "57f58ab7bae1271b364034213db925790ba8f4ae0d2de3a74829b3c17d63fdcb"
+    },
+    {
+      "file": "backend/src/config/database-tls.test.js",
+      "sha256": "74f6a6711e4dcdabf3426bee68b214688afbc2808f4b5576a27e2d57e2e67ece"
+    },
+    {
+      "file": "backend/src/config/database.js",
+      "sha256": "61a7e4ad5975d140f9af4c6e5181a02dfafab2638bcd6abf74e70c1a30aa3ca1"
+    },
+    {
+      "file": "backend/src/config/permissions.js",
+      "sha256": "8d4fece08c805aabc144952dfd41011bc7909ee1ce0ff521371a8a13fef3282f"
+    },
+    {
+      "file": "backend/src/config/permissions.test.js",
+      "sha256": "9ee8eb624ec6b9a8ed5057bb97f761551958fb8fe95471b6b016f7c10adb7dde"
+    },
+    {
+      "file": "backend/src/controllers/auth.controller.js",
+      "sha256": "c00e55e5ba5cccdef861026f733c726f8f90f4125f3d5a95182f7ae3cab45c61"
+    },
+    {
+      "file": "backend/src/controllers/auth.controller.test.js",
+      "sha256": "e45951c2ff0c109c4598cb45c52a095ef1a17390e13dd8dd6fb87d624822d418"
+    },
+    {
+      "file": "backend/src/controllers/client-applications.controller.js",
+      "sha256": "7a526016caf6dc6879463adfa660a4402975b896ef69394a9e3749d7fee1b52d"
+    },
+    {
+      "file": "backend/src/controllers/client-applications.controller.test.js",
+      "sha256": "d41d696c2aa9773d5d7f0dd76e79e01d37298d2e9f95f064f4185391e2aa302a"
+    },
+    {
+      "file": "backend/src/controllers/health.controller.js",
+      "sha256": "6927c83ba787f9d040792b82c7ec14700f9651ff22efd8597430226ecc196862"
+    },
+    {
+      "file": "backend/src/controllers/registration.controller.js",
+      "sha256": "2d2a69ee623dc7af39ed311f8ecb69bf6aa00c24e0282d7a715624451f33aab4"
+    },
+    {
+      "file": "backend/src/controllers/registration.controller.test.js",
+      "sha256": "a2dd656be10350fb9c7ae0800b9398056f453440c2e2524cfdea197676b2d741"
+    },
+    {
+      "file": "backend/src/middleware/auth-permission.http.integration.test.js",
+      "sha256": "32f0f3021e19648ab11f731fccbe490f8a864547a54e4031f521d188d7d12df0"
+    },
+    {
+      "file": "backend/src/middleware/auth.middleware.js",
+      "sha256": "36cf899c4df522f0fc092a9c54e810b15f07724531ca4d7ed374670c602f1b3e"
+    },
+    {
+      "file": "backend/src/middleware/auth.middleware.test.js",
+      "sha256": "7dd34ca95cd88bf3c7e38189a0ac7569acbb9c000db5743ed288553f78f37a62"
+    },
+    {
+      "file": "backend/src/middleware/client-applications-error.middleware.js",
+      "sha256": "f2d1abae993fa1e37f82b55339c25ffed3bd2b22d8489f95a78c6098b190ae37"
+    },
+    {
+      "file": "backend/src/middleware/login-rate-limit.middleware.js",
+      "sha256": "ede3944fe45de24e6292b917fae846176ac36c6687fbe77fbb0385157a52d3b3"
+    },
+    {
+      "file": "backend/src/middleware/login-rate-limit.middleware.test.js",
+      "sha256": "d5ef1ae2d67fd9eff2d648969c0c6dbb5d87c7f15cd215fce9382ce7604f560f"
+    },
+    {
+      "file": "backend/src/middleware/origin.middleware.js",
+      "sha256": "e36662edb3585c11b751901b2bc1bd088be734726006260f4e402ea152564436"
+    },
+    {
+      "file": "backend/src/middleware/origin.middleware.test.js",
+      "sha256": "36d7587f8cfc91a5d456a05feb09c5f9a78c2b85a4b540094c78fd99359e8f4a"
+    },
+    {
+      "file": "backend/src/middleware/permission.http.integration.test.js",
+      "sha256": "dcedf8bd367d75f95ddbbffc18f8c723114e2ffc18b8ae8f153e41d6a1231d04"
+    },
+    {
+      "file": "backend/src/middleware/permission.middleware.js",
+      "sha256": "455059ff87e7011d2f929eb4f478a4af1dfbc191a17bb0c8837637d538b9706e"
+    },
+    {
+      "file": "backend/src/middleware/permission.middleware.test.js",
+      "sha256": "40d4a850c240f563c1df72983d54904a584558b0c52a3c6cc59eb73423a59b00"
+    },
+    {
+      "file": "backend/src/middleware/registration-rate-limit.middleware.js",
+      "sha256": "a33b5c34253ad32ac960f51ee954b85d9514376629475756130626c3559a1542"
+    },
+    {
+      "file": "backend/src/middleware/registration-rate-limit.middleware.test.js",
+      "sha256": "aabcc699bdbb9e42644f24f9e12dd821f2b97418c4105854e905de42f6029e6b"
+    },
+    {
+      "file": "backend/src/middleware/role.middleware.js",
+      "sha256": "a9db8ff12ed1e2943aae07050f53070ae03afcd05697e6f01ed0a3ac26a188d0"
+    },
+    {
+      "file": "backend/src/middleware/role.middleware.test.js",
+      "sha256": "66fbf3ba1d21f49fc7cbd0d301d0395bcc2d99eb1c7aada2f5d64d143b030b9f"
+    },
+    {
+      "file": "backend/src/routes/auth-permission.mysql.integration.js",
+      "sha256": "248fe7efa1af07611439605b888b2300fc6e875e96443eb7b2e0dcc0c30bdcb6"
+    },
+    {
+      "file": "backend/src/routes/auth.http.integration.test.js",
+      "sha256": "bb2632f6e6ed65d5235fb17acea4f95046dabde5eda1afbdb8c2f90bb3b95e7d"
+    },
+    {
+      "file": "backend/src/routes/auth.mysql.integration.js",
+      "sha256": "32207b8ba195ad1b03ba17109fdc552d6f61cc204b8cec6cbb29dd474234b1ea"
+    },
+    {
+      "file": "backend/src/routes/auth.routes.js",
+      "sha256": "a28bd376380ce8fe8838f56ea0169da408e0789505e04d1384942bdd9b5537bc"
+    },
+    {
+      "file": "backend/src/routes/client-applications.http.integration.test.js",
+      "sha256": "178d9dc8d1d4d2a8316352d4a6175e9130659e83817658451487c5f14364812d"
+    },
+    {
+      "file": "backend/src/routes/client-applications.routes.js",
+      "sha256": "f354b5f82002ab4390a7816211fe5b690ec688c7e2679a7e3e28513bcc1213bc"
+    },
+    {
+      "file": "backend/src/routes/health.routes.js",
+      "sha256": "9b21edc12c518460faa36ee2ae78cf291a934938020bf1cc678a4c0ad29b573c"
+    },
+    {
+      "file": "backend/src/routes/registration.http.integration.test.js",
+      "sha256": "9d7041870f98cc2341e921a46f26976ce93990c94b751275703b24a90ab69091"
+    },
+    {
+      "file": "backend/src/server.js",
+      "sha256": "77d592139bc3e3f6fdfb420ee85b5ddb6694ab9f95811167f958844fc1f35ea3"
+    },
+    {
+      "file": "backend/src/services/auth.http.integration.js",
+      "sha256": "a7fe358312107f2f63e4190fa8d6e411fab2ba59a991d51999d5ef489fc3e492"
+    },
+    {
+      "file": "backend/src/services/auth.service.js",
+      "sha256": "0b5e8d9ab6cf70cc20a7b5f4e36788e6fc90c7b5f99b25d5f8c14665e0a83dbc"
+    },
+    {
+      "file": "backend/src/services/auth.service.test.js",
+      "sha256": "5eb2d9926c6a9a753310b71c342132eb213f3be62f4ba2370e9d81f1ffaaf46c"
+    },
+    {
+      "file": "backend/src/services/client-applications.service.js",
+      "sha256": "cfb24faa83b9801f6f2666f272ff13726cd4b75496aad3e225d44033d0f124af"
+    },
+    {
+      "file": "backend/src/services/client-applications.service.test.js",
+      "sha256": "d268c9bc85d47c18fa6f2da648f6e88ab1fafadfade0fb2a84379ab1ea5e37b0"
+    },
+    {
+      "file": "backend/src/services/client-identity.mysql.integration.js",
+      "sha256": "a00cb8c6ae57624649fc2ae82e643950158f2e13cea0e1df732860c571889fb9"
+    },
+    {
+      "file": "backend/src/services/health.service.js",
+      "sha256": "0c306fb711a69096dbee4d67e1b8b9ed1eb2af5bdaae3a9d1e2e7a6706234e46"
+    },
+    {
+      "file": "backend/src/services/password.service.js",
+      "sha256": "00fdf354fada45eeeb6f2a6b08297b0528d05d43833df2f1635b29d5edda2299"
+    },
+    {
+      "file": "backend/src/services/password.service.test.js",
+      "sha256": "f2fd304e5b3a0544d497998e5674002bbf4733fb3f173a559c6262ca96598cb0"
+    },
+    {
+      "file": "backend/src/services/registration.service.js",
+      "sha256": "d6cd5764a17003da311797225b2764fa32a16d4d46b22cd54c5a1c24b9161ef5"
+    },
+    {
+      "file": "backend/src/services/registration.service.test.js",
+      "sha256": "68057264b431f1feeb4afa628ce3558725e841e9a48eb7acba9ebbb48c1b06cb"
+    },
+    {
+      "file": "backend/src/services/session.mysql.integration.js",
+      "sha256": "3ff30d3a6e69f7cb0d4eda9603b82cac68a6afa42269770d659b7bde0e2e5b49"
+    },
+    {
+      "file": "backend/src/services/session.service.js",
+      "sha256": "c6901409a8923d0fa6a66aa0f122c55ca0b07d02dd4aa9a6d145cb44a8a11808"
+    },
+    {
+      "file": "backend/src/services/session.service.test.js",
+      "sha256": "e7072ea0a404110e08eab144be60ebb71b9c771449a96091b56296119da2d766"
+    },
+    {
+      "file": "backend/src/validation/client-applications.validation.js",
+      "sha256": "6c2675d99f66d6877bae328dc7ff041d95c8712e073ebba56ba1fae0e41d3be2"
+    },
+    {
+      "file": "backend/src/validation/client-applications.validation.test.js",
+      "sha256": "3fc6be4185e8d5bc3c803646a8243c0c936087c3035d8ea3ea5738b0cb443858"
+    },
+    {
+      "file": "backend/src/validation/registration.validation.js",
+      "sha256": "3d77c6d594ed947daef73980a350d0910765ecd6ab7de6be346973a46de52757"
+    },
+    {
+      "file": "backend/src/validation/registration.validation.test.js",
+      "sha256": "1b2243cf4d63161be7cc35cdd07aec8048266c50563d4f1702b97d621651e148"
+    }
+  ],
+  "migrationChecksums": [
+    {
+      "file": "migrations/001_identity_catalog.sql",
+      "checksum": "e60efec38606192f4c5e6a409024d65be4f9f136ebbda6747403925547525ce7",
+      "rawSha256": "67250301f630f03b8c5eece710b3778e24ec917f7548b8c19de67f62f4b219f9"
+    },
+    {
+      "file": "migrations/002_orders_quotations.sql",
+      "checksum": "e3ef25488a2ca47e8624997f429ee78d5a5033f0be7f61f1e973e0ba67199d0e",
+      "rawSha256": "7b9679ec06eb3cc391a78d63233f0addfb3f179a917988eb2e3da3924f50c217"
+    },
+    {
+      "file": "migrations/003_operations_billing.sql",
+      "checksum": "30871045993de33933da8db39ec20991a4082a9a3d92cd1fb8b911ac54cb69af",
+      "rawSha256": "f996bad2b74950cdd92657dd441ca04d18f310a3300e5a792da305acfbc4a637"
+    },
+    {
+      "file": "migrations/004_attachments_audit.sql",
+      "checksum": "fa252047a52c62e7ddb33949bb7275deab69ad1b3730b7d75c9e33e12b9f29a7",
+      "rawSha256": "2e96f134b1f54b80104fe72c96f5970d3a8cd55764c97a983bdaa18d404ce12e"
+    },
+    {
+      "file": "migrations/005_user_sessions.sql",
+      "checksum": "4a82280d4f61073cf1ead2f442b2d55027cc70b1e3ca5a8d6af356cac0f8ffaf",
+      "rawSha256": "6a30fa7541986281e704a6c0d18704c75a1f7d3e4470cbdb63c066b43d600a28"
+    },
+    {
+      "file": "migrations/006_one_client_account_per_company.sql",
+      "checksum": "5b124013e865a6d243ef9cea17a108d69cd6b6c399933257542386850c144b04",
+      "rawSha256": "5b124013e865a6d243ef9cea17a108d69cd6b6c399933257542386850c144b04"
+    },
+    {
+      "file": "migrations/007_client_application_identity_uniqueness.sql",
+      "checksum": "fd51ca44edaf46c7118dbcc0c8b1d2d52c3fdb8e2c8c088fa9a5a44d7b9197cb",
+      "rawSha256": "fd51ca44edaf46c7118dbcc0c8b1d2d52c3fdb8e2c8c088fa9a5a44d7b9197cb"
+    },
+    {
+      "file": "seeds/001_reference_data.sql",
+      "checksum": "5655790aef8c55f4894b47d860c8e9ef77ef55dc5eeefe755f17a280bc5fa5d1",
+      "rawSha256": "49f407b92fc4a2324133d6b06c8f17473742abbfde9a60822c3c5a802e5e8c34"
+    }
+  ],
+  "appliedFiles": [
+    "migrations/001_identity_catalog.sql",
+    "migrations/002_orders_quotations.sql",
+    "migrations/003_operations_billing.sql",
+    "migrations/004_attachments_audit.sql",
+    "migrations/005_user_sessions.sql",
+    "migrations/006_one_client_account_per_company.sql",
+    "migrations/007_client_application_identity_uniqueness.sql",
+    "seeds/001_reference_data.sql"
+  ],
+  "finalSyntheticCounts": {
+    "clients": 14,
+    "users": 30,
+    "client_applications": 54,
+    "audit_events": 16,
+    "user_sessions": 12
+  },
+  "schemaUnchangedAfterMigrations": true,
+  "temporaryContainerRemoved": true,
+  "temporaryDatabaseAndAccountsRemoved": true,
+  "resourcesAfter": {
+    "containers": [
+      {
+        "id": "3b42acaf4138761e37222b34a68bd064288001dc0d16f40865e85ea419194432",
+        "name": "/enterflow-mysql84-validation",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "state": "exited",
+        "started": "2026-11-11T12:13:23.361481953Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3307"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow_mysql84_validation_data",
+            "Source": "/var/lib/docker/volumes/enterflow_mysql84_validation_data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "3d361e7fdd25cc8b3aa71ec5baa3742aa73587ad3c99838eca2f84325e3772ff",
+        "name": "/enterflow-migrations-workflow-test",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "state": "exited",
+        "started": "2026-11-12T12:42:46.40530122Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3309"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-migrations-workflow-test-data",
+            "Source": "/var/lib/docker/volumes/enterflow-migrations-workflow-test-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "z",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      },
+      {
+        "id": "9a61d013b545bc2a5ea4e33188763a153298a4cf3536fbec63c7ce247414c4ce",
+        "name": "/enterflow-mysql-dev",
+        "image": "sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+        "state": "running",
+        "started": "2026-11-15T01:09:39.154415226Z",
+        "ports": {
+          "3306/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "3308"
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "Type": "volume",
+            "Name": "enterflow-mysql-dev-data",
+            "Source": "/var/lib/docker/volumes/enterflow-mysql-dev-data/_data",
+            "Destination": "/var/lib/mysql",
+            "Driver": "local",
+            "Mode": "rw",
+            "RW": true,
+            "Propagation": ""
+          }
+        ]
+      }
+    ],
+    "volumes": [
+      "enterflow-migrations-workflow-test-data",
+      "enterflow-mysql-dev-data",
+      "enterflow_mysql84_validation_data"
+    ]
+  },
+  "existingDockerResourcesUnchanged": true,
+  "migrationsAndSeedsUnchanged": true,
+  "applicationSourceUnchanged": true,
+  "finishedAt": "2026-11-15T04:12:01.902Z"
+}

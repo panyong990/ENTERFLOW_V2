@@ -1,16 +1,27 @@
 
 import app from './app.js';
-import { pool } from './config/database.js';
+import { pool, testDatabaseConnection } from './config/database.js';
+import { resolveServerBinding, validateRuntimeConfig } from './config/runtime-config.js';
 
-const PORT = Number(process.env.PORT || 3000);
+const { host, port } = resolveServerBinding();
+validateRuntimeConfig();
 
-const server = app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Enter-Flow API running at http://127.0.0.1:${PORT}`);
-});
+let server;
+
+async function start() {
+  await testDatabaseConnection();
+  server = app.listen(port, host, () => {
+    console.log(`Enter-Flow API running at http://${host}:${port}`);
+  });
+}
 
 async function shutdown() {
   console.log('\nShutting down Enter-Flow API...');
 
+  if (!server) {
+    await pool.end();
+    return;
+  }
   server.close(async () => {
     try {
       await pool.end();
@@ -25,3 +36,9 @@ async function shutdown() {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+start().catch(async error => {
+  console.error('Enter-Flow API startup failed:', error.message);
+  await pool.end().catch(() => {});
+  process.exitCode = 1;
+});

@@ -32,6 +32,7 @@ import { SessionProvider } from "./store/session";
 import { api, enableRealRequests, type RealIdentity } from "./api/client";
 import { allowedFor, landingFor } from "./role-access";
 import { RealEmployeeShell, RealWorkspaceUnavailable } from "./components/RealEmployeeShell";
+import { RealClientPortal } from "./components/RealClientPortal";
 
 interface Session { role: Role; name: string }
 
@@ -134,7 +135,7 @@ export default function App() {
   if(checking)return <div className="h-full flex items-center justify-center" role="status">Checking authenticated session...</div>;
   if(!identity)return <Login onLogin={(role,name)=>{if(!import.meta.env.DEV)return;enableRealRequests(false);setDemo({role,name});}} onRealLogin={async()=>{setActive('dashboard');await restore();}} sessionError={error} />;
   if(error)return <div className="h-full flex items-center justify-center bg-slate-50"><div role="alert" className="max-w-lg rounded-xl border bg-white p-6"><p>{error}</p><button className="mt-4 rounded border p-2" onClick={()=>void logout()}>Retry sign out</button></div></div>;
-  if(identity.accountType==='client')return <RealWorkspaceUnavailable title="Client Portal" detail="The authenticated Client Portal data APIs are not connected in this milestone." onLogout={()=>void logout()} />;
+  if(identity.accountType==='client')return <SessionProvider mode="real" role="client" name={identity.displayName} userId={identity.userId}><RealClientPortal displayName={identity.displayName} onLogout={()=>void logout()} /></SessionProvider>;
   if(identity.accountType!=='employee'||identity.roleCode==='client')return <RealWorkspaceUnavailable title="Workspace unavailable" detail="This account type and role combination is not supported." onLogout={()=>void logout()} />;
   if(identity.roleCode!=='admin')return <RealEmployeeShell key={`${identity.userId}:${identity.roleCode}`} identity={identity as RealIdentity & {roleCode:Exclude<Role,'client'>}} onLogout={()=>void logout()} />;
   const screen=active==='clients'||active==='client-requests'?<ClientManagement key={active} initialTab={active==='client-requests'?'requests':'directory'} />:active==='employee-management'?<EmployeeManagement />:active==='roles'?<RolesPermissions />:<AdminDashboard />;

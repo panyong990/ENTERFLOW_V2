@@ -71,6 +71,7 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
   const currentPage = real?remote.data?.page??1:Math.min(page, pageCount);
   const total=real?remote.data?.total??0:filteredClients.length;
   const visibleRows = real?filteredClients:filteredClients.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const hasDirectoryCriteria = Boolean(query.trim()) || status !== "all";
 
   const updateAccounts = (next: Account[]) => {
     if(real)throw new Error("Local persistence is disabled in Real Mode.");
@@ -256,7 +257,7 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
                       </div></td>
                     </tr>
                   ))}
-                  {visibleRows.length === 0 && (!real||(!remote.loading&&!remote.error)) && <tr><td colSpan={8} className="px-5 py-14 text-center font-dm text-sm text-slate-500">{clients.length ? "No clients match the current search and filters." : "No client accounts are available."}</td></tr>}
+                  {visibleRows.length === 0 && (!real||(!remote.loading&&!remote.error)) && <tr><td colSpan={8} className="px-5 py-14 text-center font-dm text-sm text-slate-500">{hasDirectoryCriteria ? "No clients match the current search and filters." : "No client accounts are available."}</td></tr>}
                 </tbody>
               </table>
             </div>

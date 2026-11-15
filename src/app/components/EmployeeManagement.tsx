@@ -136,6 +136,7 @@ function EmployeeManagementPage() {
   const visibleEmployees = real?filteredEmployees:filteredEmployees.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const activeEmployeeCount = real?remote.data?.summary?.active??0:employees.filter((employee) => employee.active).length;
   const activeFilterCount = Number(departmentFilter !== "all") + Number(roleFilter !== "all") + Number(statusFilter !== "all");
+  const hasDirectoryCriteria = Boolean(query.trim()) || departmentFilter !== "all" || roleFilter !== "all" || statusFilter !== "all";
   const availableRoles: AccountRole[] = real?["admin",...assignableRoles]:assignableRoles.filter((role) => employees.some((employee) => employee.role === role));
   if (!real&&employees.some((employee) => employee.role === "admin")) availableRoles.unshift("admin");
 
@@ -417,7 +418,7 @@ function EmployeeManagementPage() {
                     <IconActionButton disabled={saving||(real&&(remote.loading||!!remote.error||employee.role==='admin'||employee.id===userId))} icon={Power} label={`${employee.active ? "Deactivate" : "Activate"} ${employee.name}`} onClick={() => void toggleEmployee(employee)} className="text-slate-500 hover:bg-red-50 hover:text-red-700" />
                   </div></td>
                 </tr>)}
-                {visibleEmployees.length === 0 && (!real||(!remote.loading&&!remote.error)) && <tr><td colSpan={8} className="px-5 py-14 text-center font-dm text-sm text-slate-500">{employees.length ? "No employees match the current search and filters." : "No employee accounts are available."}</td></tr>}
+                {visibleEmployees.length === 0 && (!real||(!remote.loading&&!remote.error)) && <tr><td colSpan={8} className="px-5 py-14 text-center font-dm text-sm text-slate-500">{hasDirectoryCriteria ? "No employees match the current search and filters." : "No employee accounts are available."}</td></tr>}
               </tbody>
             </table>
           </div>

@@ -1,17 +1,7 @@
 ﻿
 import { randomBytes, createHash } from 'node:crypto';
 import { pool } from '../config/database.js';
-
-function validateSessionConfiguration(idleTimeoutMinutes, absoluteTimeoutHours) {
-  if (
-    !Number.isSafeInteger(idleTimeoutMinutes) ||
-    idleTimeoutMinutes <= 0 ||
-    !Number.isSafeInteger(absoluteTimeoutHours) ||
-    absoluteTimeoutHours <= 0
-  ) {
-    throw new Error('Invalid session timeout configuration.');
-  }
-}
+import { validateSessionTimeouts } from '../config/runtime-config.js';
 
 function validateUserId(userId) {
   if (
@@ -51,7 +41,7 @@ export function createSessionService({
     throw new Error('A valid database connection is required.');
   }
 
-  validateSessionConfiguration(idleTimeoutMinutes, absoluteTimeoutHours);
+  validateSessionTimeouts({ idleTimeoutMinutes, absoluteTimeoutHours });
 
   async function createSession(userId) {
     const validUserId = validateUserId(userId);

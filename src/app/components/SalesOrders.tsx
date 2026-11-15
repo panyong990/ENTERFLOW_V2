@@ -16,6 +16,7 @@ import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModa
 import { useSession } from "../store/session";
 import { loadProductSketchAttachment, type ProductSketchAttachment } from "../store/attachments";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { RealSalesOrders } from "./RealSalesOrders";
 
 const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -840,6 +841,12 @@ function productDetails(product: ProductLine) {
 }
 
 export function SalesOrders() {
+  const session = useSession();
+  if (session.mode === "real" && session.role === "sales") return <RealSalesOrders />;
+  return <DemoSalesOrders />;
+}
+
+function DemoSalesOrders() {
   const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
   const { validateGeneratedJOs, deductForGeneratedJOs, rawMaterials, findBOMTemplate } = useMaterials();
   const { requests: stockRequests } = useStockRequests();

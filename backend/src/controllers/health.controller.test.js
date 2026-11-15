@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHealthController } from './health.controller.js';
+import { checkLiveness, createHealthController } from './health.controller.js';
 
 function responseDouble() {
   return {
@@ -68,4 +68,23 @@ test('diagnostic logging does not emit secret-shaped error messages', async () =
   });
   await controller({}, responseDouble());
   assert.equal(JSON.stringify(logged).includes('do-not-log'), false);
+});
+
+test('liveness does not query the database or expose database details', () => {
+  const response = responseDouble();
+  checkLiveness({}, response);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, {
+    success: true,
+    message: 'Enter-Flow API process is running.',
+    api: 'online'
+  });
+});
+
+test('readiness uses the database health contract and returns 503 when unavailable', async () => {
+  const controller = createHealthController({ health: async () => { throw new Error('database unavailable'); }, logger: { error() {} } });
+  const response = responseDouble();
+  await controller({}, response);
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.body.database, 'disconnected');
 });

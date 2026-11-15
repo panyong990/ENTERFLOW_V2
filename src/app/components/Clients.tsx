@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Search, Building2, Phone, Mail, MapPin, X, Pencil,
   ChevronDown, ChevronUp, Eye, Save,
@@ -7,6 +7,9 @@ import { useOrders } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
 import { toast, Toaster } from "sonner";
 import { useSession } from "../store/session";
+import { getSalesClient } from "../api/salesClients.js";
+import { useSalesClients, type SalesClientRow } from "./useSalesClients";
+import { AdminFeedback } from "./admin/AdminFeedback";
 
 interface LinkedDoc { type: string; ref: string }
 interface Transaction {
@@ -148,10 +151,38 @@ export function Clients() {
   const realMode = mode === "real";
   const [rawClients, setClients] = useState<Client[]>(() => realMode ? [] : CLIENTS_DATA);
   const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
+  const [sort, setSort] = useState<"name-asc" | "name-desc" | "id-asc" | "id-desc">("name-asc");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Client | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const detailSequence = useRef(0);
+  const detailController = useRef<AbortController | null>(null);
+  const pageSize = 25;
+  const remote = useSalesClients(realMode, { q: query, status, sort, page, pageSize });
+
+  useEffect(() => () => detailController.current?.abort(), []);
+
+  const fromRemote = (row: SalesClientRow): Client => ({
+    id: row.id,
+    name: row.companyName,
+    industry: row.industry ?? "",
+    contact: row.contactPerson ?? "",
+    email: row.email,
+    phone: row.phone ?? "",
+    address: [row.addressLine1, row.addressLine2, row.cityProvince, row.postalCode].filter(Boolean).join(", "),
+    since: row.joinedOn ?? row.createdAt.slice(0, 10),
+    totalOrders: 0,
+    totalRevenue: 0,
+    status: row.status,
+    paymentTerms: row.paymentTermLabel ?? row.paymentTermCode ?? undefined,
+    transactions: [],
+    jobs: [],
+  });
 
   /* DERIVED: override totalOrders + totalRevenue with live values from the orders store. The seed values are used only as a baseline for clients with historical orders that pre-date the store seed. */
-  const clients = rawClients.map((c) => {
+  const demoClients = rawClients.map((c) => {
     const inqs = byClient(c.name).filter((i) => !i.archived);
     const liveOrders = inqs.length;
     const livePaidRevenue = inqs
@@ -163,10 +194,38 @@ export function Clients() {
       : c;
   });
 
-  const visible = clients.filter((c) =>
+  const demoVisible = demoClients.filter((c) =>
     c.name.toLowerCase().includes(query.toLowerCase()) ||
     c.industry.toLowerCase().includes(query.toLowerCase())
   );
+  const clients = realMode ? (remote.data?.items ?? []).map(fromRemote) : demoClients;
+  const visible = realMode ? clients : demoVisible;
+  const totalClients = realMode ? (remote.data?.total ?? 0) : demoClients.length;
+  const pageCount = Math.max(1, Math.ceil(totalClients / pageSize));
+  const currentPage = realMode ? (remote.data?.page ?? page) : 1;
+
+  const openClient = (client: Client) => {
+    setSelected(client);
+    setDetailError("");
+    if (!realMode) return;
+    detailController.current?.abort();
+    const controller = new AbortController();
+    detailController.current = controller;
+    const token = ++detailSequence.current;
+    setDetailLoading(true);
+    getSalesClient(client.id, controller.signal)
+      .then(row => {
+        if (token === detailSequence.current) setSelected(fromRemote(row as SalesClientRow));
+      })
+      .catch(cause => {
+        if (token === detailSequence.current && !controller.signal.aborted) {
+          setDetailError(cause instanceof Error ? cause.message : "Unable to load client details.");
+        }
+      })
+      .finally(() => {
+        if (token === detailSequence.current && !controller.signal.aborted) setDetailLoading(false);
+      });
+  };
 
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
@@ -185,13 +244,13 @@ export function Clients() {
       </header>
 
       <div className="px-8 py-8 flex flex-col gap-6">
-        {realMode && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Client directory API is not connected in Real Mode. Sample clients are excluded; this is not a verified empty database result.</div>}
+        {realMode && <AdminFeedback loading={remote.loading} error={remote.error} retry={remote.refresh} />}
         {/* Stats */}
         <div className="grid grid-cols-4 gap-6">
           {[
-            { label: "Total Clients", value: realMode ? "—" : String(clients.length) },
+            { label: "Total Clients", value: realMode ? String(totalClients) : String(clients.length) },
             { label: "Active", value: realMode ? "—" : String(clients.filter((c) => c.status === "active").length), color: "#16A34A" },
-            { label: "Active Job Orders", value: realMode ? "—" : String(clients.reduce((s, c) => s + c.jobs.filter((j) => j.status === "active").length, 0)), color: "#2563EB" },
+            { label: "Active Job Orders", value: "—", color: "#2563EB" },
             { label: "Inactive", value: realMode ? "—" : String(clients.filter((c) => c.status === "inactive").length), color: "#94A3B8" },
           ].map((k) => (
             <div key={k.label} className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
@@ -206,12 +265,26 @@ export function Clients() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} aria-hidden />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by client name or industry..."
+            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+            placeholder={realMode ? "Search by client name, ID, contact, or email..." : "Search by client name or industry..."}
             className="font-dm w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 outline-none focus:border-slate-400 bg-white"
             style={{ fontSize: 13 }}
           />
         </div>
+        {realMode && (
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="font-dm text-xs text-slate-600">Status
+              <select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); }} className="ml-2 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                <option value="all">All</option><option value="active">Active</option><option value="inactive">Inactive</option>
+              </select>
+            </label>
+            <label className="font-dm text-xs text-slate-600">Sort
+              <select value={sort} onChange={(event) => { setSort(event.target.value as typeof sort); setPage(1); }} className="ml-2 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                <option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="id-asc">ID ascending</option><option value="id-desc">ID descending</option>
+              </select>
+            </label>
+          </div>
+        )}
 
         {/* Table */}
         <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
@@ -224,17 +297,19 @@ export function Clients() {
               </tr>
             </thead>
             <tbody>
+              {realMode && remote.loading && <tr><td colSpan={6} className="px-4 py-8 text-center font-dm text-sm text-slate-500">Loading client records…</td></tr>}
+              {realMode && !remote.loading && remote.error && <tr><td colSpan={6} className="px-4 py-8 text-center font-dm text-sm text-red-700">Client records could not be loaded. Use Refresh records to retry.</td></tr>}
               {visible.map((c) => (
                 <tr
                   key={c.id}
                   className="border-t border-slate-200/70 transition-colors hover:bg-slate-50 cursor-pointer focus-visible:outline-none focus-visible:bg-slate-50"
                   tabIndex={0}
                   aria-label={`View ${c.name} details`}
-                  onClick={() => setSelected(c)}
+                  onClick={() => openClient(c)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      setSelected(c);
+                      openClient(c);
                     }
                   }}
                 >
@@ -259,9 +334,9 @@ export function Clients() {
                   <td className="px-4 py-3">
                     <span
                       className="font-dm px-2.5 py-1 rounded-full"
-                      style={{ fontSize: 11, fontWeight: 600, backgroundColor: c.jobs.filter((j) => j.status === "active").length > 0 ? "#DBEAFE" : "#E2E8F0", color: c.jobs.filter((j) => j.status === "active").length > 0 ? "#1D4ED8" : "#475569" }}
+                      style={{ fontSize: 11, fontWeight: 600, backgroundColor: realMode ? "#E2E8F0" : (c.jobs.filter((j) => j.status === "active").length > 0 ? "#DBEAFE" : "#E2E8F0"), color: realMode ? "#475569" : (c.jobs.filter((j) => j.status === "active").length > 0 ? "#1D4ED8" : "#475569") }}
                     >
-                      {c.jobs.filter((j) => j.status === "active").length} active
+                      {realMode ? "—" : `${c.jobs.filter((j) => j.status === "active").length} active`}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -277,12 +352,26 @@ export function Clients() {
             </tbody>
           </table>
         </div>
+        {realMode && (
+          <div className="flex items-center justify-between font-dm text-xs text-slate-500">
+            <span>{totalClients === 0 ? "Showing 0 results" : `Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, totalClients)} of ${totalClients}`}</span>
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={currentPage <= 1 || remote.loading} onClick={() => setPage(value => Math.max(1, value - 1))} className="rounded border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-50">Previous</button>
+              <span>Page {currentPage} of {pageCount}</span>
+              <button type="button" disabled={currentPage >= pageCount || remote.loading} onClick={() => setPage(value => Math.min(pageCount, value + 1))} className="rounded border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-50">Next</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Client Detail Drawer */}
       {selected && (
         <ClientDetailDrawer
           client={selected}
+          readOnly={realMode}
+          loading={detailLoading}
+          loadError={detailError}
+          retry={() => openClient(selected)}
           onClose={() => setSelected(null)}
           onUpdate={(updated) => {
             setClients((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
@@ -297,9 +386,9 @@ export function Clients() {
 
 /* ─── Client Detail Drawer (580px) ─── */
 function ClientDetailDrawer({
-  client, onClose, onUpdate,
+  client, onClose, onUpdate, readOnly = false, loading = false, loadError = "", retry,
 }: {
-  client: Client; onClose: () => void; onUpdate: (c: Client) => void;
+  client: Client; onClose: () => void; onUpdate: (c: Client) => void; readOnly?: boolean; loading?: boolean; loadError?: string; retry?: () => void;
 }) {
   const [tab, setTab] = useState<"overview" | "transactionsOrders">("overview");
   const [draft, setDraft] = useState({ ...client });
@@ -430,7 +519,7 @@ function ClientDetailDrawer({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {editing ? (
+            {!readOnly && editing ? (
               <>
                 <button
                   type="button"
@@ -449,7 +538,7 @@ function ClientDetailDrawer({
                   Cancel
                 </button>
               </>
-            ) : tab === "overview" ? (
+            ) : !readOnly && tab === "overview" ? (
               <button
                 type="button"
                 onClick={startEditing}
@@ -487,6 +576,8 @@ function ClientDetailDrawer({
             );
           })}
         </nav>
+        {loading && <div role="status" className="mx-6 mt-4 rounded-lg bg-slate-100 p-3 text-sm text-slate-600">Loading current client details…</div>}
+        {loadError && <div role="alert" className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{loadError}{retry && <button type="button" onClick={retry} className="ml-3 rounded border border-red-300 px-2 py-1">Retry</button>}</div>}
         {formError && <p role="alert" className="mx-6 mt-4 font-dm text-sm text-red-700">{formError}</p>}
 
         {/* Content */}
@@ -497,7 +588,7 @@ function ClientDetailDrawer({
               <section>
                 <div className="font-syne mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Company Information</div>
                 <div className="grid grid-cols-2 gap-3">
-                  {editing ? (
+                  {!readOnly && editing ? (
                     <>
                       <EditField label="Company Name" value={draft.name} onChange={(v) => setDraft((p) => ({ ...p, name: v }))} />
                       <EditField label="Industry" value={draft.industry} onChange={(v) => setDraft((p) => ({ ...p, industry: v }))} />
@@ -522,7 +613,7 @@ function ClientDetailDrawer({
               <section>
                 <div className="font-syne mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Quick Stats</div>
                 <div className="grid grid-cols-3 gap-3">
-                  <StatCard label="Total Orders" value={String(client.totalOrders)} />
+                  <StatCard label="Total Orders" value={readOnly ? "—" : String(client.totalOrders)} />
                   <StatCard label="Last Order" value={client.lastOrder ?? "—"} />
                   <StatCard label="Payment Terms" value={client.paymentTerms ?? "—"} />
                 </div>
@@ -530,7 +621,7 @@ function ClientDetailDrawer({
 
               <section>
                 <div className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Internal Notes</div>
-                {editing ? (
+                {!readOnly && editing ? (
                   <textarea
                     aria-label="Internal Notes"
                     value={draft.notes ?? ""}
@@ -551,6 +642,11 @@ function ClientDetailDrawer({
 
           {/* ─── TRANSACTIONS & ORDERS TAB ─── */}
           {tab === "transactionsOrders" && (() => {
+            if (readOnly) {
+              return <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 font-dm text-sm text-slate-600">
+                Transaction and job-order summaries are provided by separate Sales order APIs and are not included in this client-directory response.
+              </section>;
+            }
             const normalizedQuery = transactionQuery.trim().toLocaleLowerCase();
             const transactions = client.transactions.filter((transaction) => {
               if (!normalizedQuery) return true;

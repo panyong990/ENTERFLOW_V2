@@ -41,3 +41,11 @@ export function createHealthController({ health = getHealthStatus, logger = cons
 }
 
 export const checkHealth = createHealthController();
+
+export function checkLiveness(request, response) {
+  return response.status(200).json({
+    success: true,
+    message: 'Enter-Flow API process is running.',
+    api: 'online'
+  });
+}

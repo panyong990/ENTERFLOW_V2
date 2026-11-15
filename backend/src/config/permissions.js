@@ -45,7 +45,8 @@ const PERMISSIONS = Object.freeze({
     clients: ['read', 'create', 'update'],
     inquiries: ['read', 'update'],
     quotations: ['read', 'create', 'update', 'approve'],
-    orders: ['read', 'create', 'update', 'approve']
+    orders: ['read', 'create', 'update', 'approve'],
+    notifications: ['read']
   },
 
   production: {
@@ -84,10 +85,13 @@ const PERMISSIONS = Object.freeze({
   },
 
   client: {
+    dashboard: ['read'],
     clients: ['read'],
     inquiries: ['read', 'create'],
     quotations: ['read'],
     orders: ['read'],
+    invoices: ['read'],
+    notifications: ['read', 'update'],
     payments: ['read', 'create']
   }
 });

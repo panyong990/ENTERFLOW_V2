@@ -1,0 +1,19 @@
+FROM node:24.15.0-bookworm-slim AS runtime
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev \
+  && npm cache clean --force
+
+COPY backend/src ./backend/src
+
+RUN groupadd --system --gid 10001 enterflow \
+  && useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin enterflow \
+  && chown -R enterflow:enterflow /app
+
+USER enterflow
+EXPOSE 3000
+
+CMD ["node", "backend/src/server.js"]

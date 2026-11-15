@@ -11,7 +11,10 @@
     "db:baseline": "node database/migrate.mjs baseline",
     "db:seed": "node database/migrate.mjs seed",
     "db:test": "node --test database/migration-core.test.mjs",
-    "server": "node backend/src/server.js"
+    "server": "node backend/src/server.js",
+    "test:browser:smoke": "playwright test --config=playwright.config.mjs tests/browser/environment.smoke.spec.mjs",
+    "test:browser:admin:smoke": "playwright test --config=playwright.admin.config.mjs",
+    "test:browser": "playwright test --config=playwright.config.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -77,6 +80,7 @@
     "vaul": "1.1.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/vite": "4.1.12",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-react": "4.7.0",

@@ -102,6 +102,13 @@ test('sales cannot verify payments', () => {
   assert.equal(hasPermission('sales', 'payments', 'verify'), false);
 });
 
+test('sales can read notifications but cannot modify them', () => {
+  assert.equal(hasPermission('sales', 'notifications', 'read'), true);
+  assert.equal(hasPermission('sales', 'notifications', 'create'), false);
+  assert.equal(hasPermission('sales', 'notifications', 'update'), false);
+  assert.equal(hasPermission('sales', 'notifications', 'delete'), false);
+});
+
 // PRODUCTION
 
 test('production can update production records', () => {
@@ -187,12 +194,35 @@ test('client can submit inquiries and view permitted records', () => {
   assert.equal(hasPermission('client', 'clients', 'read'), true);
   assert.equal(hasPermission('client', 'quotations', 'read'), true);
   assert.equal(hasPermission('client', 'orders', 'read'), true);
+  assert.equal(hasPermission('client', 'invoices', 'read'), true);
+  assert.equal(hasPermission('client', 'notifications', 'read'), true);
+  assert.equal(hasPermission('client', 'notifications', 'update'), true);
 });
 
 test('client can submit and view payment records', () => {
   assert.equal(hasPermission('client', 'payments', 'read'), true);
   assert.equal(hasPermission('client', 'payments', 'create'), true);
   assert.equal(hasPermission('client', 'payments', 'verify'), false);
+});
+
+test('client can read the client dashboard without changing other role permissions', () => {
+  assert.equal(hasPermission('client', 'dashboard', 'read'), true);
+  assert.equal(hasPermission('sales', 'dashboard', 'read'), false);
+  assert.equal(hasPermission('admin', 'dashboard', 'read'), false);
+});
+
+test('invoice read permission is limited to clients and existing accounting readers', () => {
+  assert.equal(hasPermission('client', 'invoices', 'read'), true);
+  assert.equal(hasPermission('admin', 'invoices', 'read'), false);
+  assert.equal(hasPermission('sales', 'invoices', 'read'), false);
+  assert.equal(hasPermission('accounting', 'invoices', 'read'), false);
+});
+
+test('notification update permission is limited to clients and does not alter other roles', () => {
+  assert.equal(hasPermission('client', 'notifications', 'update'), true);
+  assert.equal(hasPermission('sales', 'notifications', 'update'), false);
+  assert.equal(hasPermission('admin', 'notifications', 'update'), false);
+  assert.equal(hasPermission('accounting', 'notifications', 'update'), false);
 });
 
 test('client cannot approve orders or access internal operational records', () => {

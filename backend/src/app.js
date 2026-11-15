@@ -6,17 +6,23 @@ import { clientApplicationsJson, clientApplicationsError } from './middleware/cl
 import adminRoutes from './routes/admin.routes.js';
 import salesWorkspaceRoutes from './routes/sales-workspace.routes.js';
 import { adminJson, adminError } from './middleware/admin-error.middleware.js';
+import salesRoutes from './routes/sales.routes.js';
+import clientRoutes from './routes/client.routes.js';
 
 export function createApp({
   authenticationRoutes = authRoutes,
   applicationReviewRoutes = clientApplicationsRoutes,
-  administrationRoutes = adminRoutes
+  administrationRoutes = adminRoutes,
+  clientDirectoryRoutes = salesRoutes,
+  clientPortalRoutes = clientRoutes
 } = {}) {
   const app = express();
 
   app.use('/api/client-applications', clientApplicationsJson, applicationReviewRoutes, clientApplicationsError);
   app.use('/api/admin', adminJson, administrationRoutes, adminError);
   app.use('/api/workspace/sales', salesWorkspaceRoutes);
+  app.use('/api/sales', clientDirectoryRoutes);
+  app.use('/api/client', clientPortalRoutes);
   app.use(express.json());
 
   app.use('/api/health', healthRoutes);

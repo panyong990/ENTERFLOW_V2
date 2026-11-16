@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowRight, FileText, Search, SlidersHorizontal, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, isValidProductionDueDate, resolveProductBOM, poNumberForDisplay, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, poReviewStatus, stageLabel, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type Stage, type FinalizeJOData, type JOSpecs } from "../store/orders";
+import { calculateProductionDeadline, DELIVERY_TRANSIT_ESTIMATE_NOTICE, formatDeliveryTransitEstimate, getDeliveryTransitEstimate } from "../store/productionDeadline";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../store/materials";
 import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
@@ -17,6 +18,16 @@ import { useSession } from "../store/session";
 import { loadProductSketchAttachment, type ProductSketchAttachment } from "../store/attachments";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { RealSalesOrders } from "./RealSalesOrders";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 
 const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[] = [
   { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
@@ -26,6 +37,8 @@ const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[]
 
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
+const hasPendingRevisionRequest = (inquiry: Inquiry) =>
+  Boolean(inquiry.revisionNote || inquiry.revisionRequests?.some((request) => request.status === "pending"));
 const isReadyForJobOrder = (inquiry: Inquiry) => {
   if (inquiry.stage !== "po" || !hasPORecord(inquiry) || !inquiry.poFileName || !inquiry.poReceived || !inquiry.invoiceNo || !inquiry.invoiceSentAt) return false;
   const state = paymentState(inquiry);
@@ -37,6 +50,69 @@ const isReadyForJobOrder = (inquiry: Inquiry) => {
 const hasCreatedJobOrder = (inquiry: Inquiry, completedJOs: Inquiry[]) =>
   Boolean(inquiry.joNumber)
   || completedJOs.some((job) => job.id === inquiry.id || job.parentInquiryId === inquiry.id);
+
+type SalesOrdersStatusFilter =
+  | "all"
+  | "newInquiry"
+  | "quotationAwaitingPO"
+  | "revisionRequested"
+  | "poPending"
+  | "poApproved"
+  | "poRejected"
+  | "readyForJobOrder"
+  | "invoiceAwaitingPayment"
+  | "invoiceDraft"
+  | "downpaymentPending"
+  | "cancellationRequested";
+
+const salesOrdersStatusOptions: { value: SalesOrdersStatusFilter; label: string }[] = [
+  { value: "all", label: "All Statuses" },
+  { value: "newInquiry", label: "New Inquiry" },
+  { value: "quotationAwaitingPO", label: "Quotation Sent · Awaiting Client PO" },
+  { value: "revisionRequested", label: "Revision Requested" },
+  { value: "poPending", label: "PO Pending Sales Review" },
+  { value: "poApproved", label: "PO Approved" },
+  { value: "poRejected", label: "PO Rejected · Resubmission Required" },
+  { value: "readyForJobOrder", label: "Ready for Job Order · Payment Verified" },
+  { value: "invoiceAwaitingPayment", label: "Invoice Sent · Awaiting Client Payment" },
+  { value: "invoiceDraft", label: "Invoice Draft · Ready for Sales Review" },
+  { value: "downpaymentPending", label: "Required Downpayment Pending" },
+  { value: "cancellationRequested", label: "Cancellation Requested" },
+];
+
+function matchesSalesOrdersStatus(inquiry: Inquiry, status: SalesOrdersStatusFilter): boolean {
+  switch (status) {
+    case "all":
+      return true;
+    case "newInquiry":
+      return inquiry.stage === "inquiry";
+    case "quotationAwaitingPO":
+      return inquiry.stage === "quotation" && !hasPORecord(inquiry) && !hasPendingRevisionRequest(inquiry);
+    case "revisionRequested":
+      return inquiry.stage === "quotation" && hasPendingRevisionRequest(inquiry);
+    case "poPending":
+      return inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Pending Sales Review";
+    case "poApproved":
+      return inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Approved";
+    case "poRejected":
+      return inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Rejected";
+    case "readyForJobOrder":
+      return isReadyForJobOrder(inquiry);
+    case "invoiceAwaitingPayment":
+      return inquiry.stage === "po" && inquiry.poReceived && !isReadyForJobOrder(inquiry)
+        && !!inquiry.invoiceNo && !!inquiry.invoiceSentAt;
+    case "invoiceDraft":
+      return inquiry.stage === "po" && inquiry.poReceived && !isReadyForJobOrder(inquiry)
+        && hasPORecord(inquiry) && !!inquiry.poFileName && !!inquiry.invoiceNo && !inquiry.invoiceSentAt;
+    case "downpaymentPending": {
+      if (inquiry.stage !== "po" || !inquiry.poReceived || isReadyForJobOrder(inquiry)) return false;
+      const payment = paymentState(inquiry);
+      return payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus !== "COMPLETE";
+    }
+    case "cancellationRequested":
+      return Boolean(inquiry.pendingCancellation);
+  }
+}
 
 function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inquiry[]; completedJOs: Inquiry[] }) {
   const [query, setQuery] = useState("");
@@ -97,6 +173,8 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
           inquiry.joSpecs?.oem,
           ...Object.values(inquiry.joSpecs ?? {}).filter((value): value is string => typeof value === "string"),
           inquiry.quotationDoc?.quotationNo,
+          inquiry.revisionNote,
+          ...(inquiry.revisionRequests?.map((request) => request.note) ?? []),
           ...(inquiry.quotationDoc?.lineItems.flatMap((line) => [line.description, line.subDescription].filter((value): value is string => Boolean(value))) ?? []),
           ...inquiry.products.flatMap((product) =>
             Object.values(product)
@@ -112,8 +190,13 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
           && (!rangeEnd || inquiryDate <= rangeEnd)
         );
         const matchesFollowUpStatus = followUpStatus === "all"
+          || (followUpStatus === "revisionRequested" && inquiry.stage === "quotation" && hasPendingRevisionRequest(inquiry))
           || (followUpStatus === "awaitingQuotation" && inquiry.stage === "inquiry")
-          || (followUpStatus === "poReceived" && inquiry.stage === "po");
+          || (inquiry.stage === "po" && (
+            (followUpStatus === "poPending" && poReviewStatus(inquiry) === "Pending Sales Review")
+            || (followUpStatus === "poRejected" && poReviewStatus(inquiry) === "Rejected")
+            || (followUpStatus === "poReceived" && poReviewStatus(inquiry) === "Approved")
+          ));
 
         return matchesQuery && matchesDate && matchesFollowUpStatus;
       })
@@ -295,8 +378,11 @@ function OperationsSalesMonitoring({ inquiries, completedJOs }: { inquiries: Inq
                         className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
                       >
                         <option value="all">All Pipeline Records</option>
+                        <option value="revisionRequested">Revision Requested</option>
                         <option value="awaitingQuotation">Awaiting Quotation</option>
-                        <option value="poReceived">PO Received</option>
+                        <option value="poPending">Pending PO Review</option>
+                        <option value="poRejected">PO Rejected · Resubmission Required</option>
+                        <option value="poReceived">PO Approved</option>
                       </select>
                     </label>
                     <div className="flex justify-between gap-2 border-t border-slate-100 pt-3">
@@ -821,6 +907,16 @@ function OperationsDetailDrawer({ inquiry, onClose, completedJOs }: { inquiry: I
           onClose={() => setShowQuotation(false)}
         />
       )}
+      {historicalQuoteToView && (
+        <QuotationPreviewModal
+          inquiry={historicalQuoteToView.inquiry}
+          doc={historicalQuoteToView.doc}
+          vatLabel={quotationVatLabel(historicalQuoteToView.inquiry)}
+          total={historicalQuoteToView.doc.total ?? historicalQuoteToView.doc.lineItems.reduce((sum, line) => sum + line.unitPrice * line.qty, 0)}
+          preparedBy={historicalQuoteToView.doc.preparedBy || "Enter-Fil"}
+          onClose={() => setHistoricalQuoteToView(null)}
+        />
+      )}
       {showPO && <POViewerModal inquiry={inquiry} onClose={() => setShowPO(false)} />}
     </div>
   );
@@ -840,14 +936,15 @@ function productDetails(product: ProductLine) {
   return parts.join(" · ") || "Standard specification";
 }
 
-export function SalesOrders() {
+export function SalesOrders({ targetInquiryId }: { targetInquiryId?: string } = {}) {
   const session = useSession();
   if (session.mode === "real" && session.role === "sales") return <RealSalesOrders />;
+  if (targetInquiryId) return <DemoSalesOrders targetInquiryId={targetInquiryId} />;
   return <DemoSalesOrders />;
 }
 
-function DemoSalesOrders() {
-  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, inquiriesByStage } = useOrders();
+function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
+  const { inquiries, archivedInquiries, completedJOs, addInquiry, sendQuotation, generateInvoice, sendInvoice, finalizeProductJOs, markInventoryDeducted, rejectInquiry, approveCancellation, declineCancellation, setBillOfMaterials, setProductsCosting, setQuotationDoc, isNewClient, updateInquiry, reviewPO, inquiriesByStage } = useOrders();
   const { validateGeneratedJOs, deductForGeneratedJOs, rawMaterials, findBOMTemplate } = useMaterials();
   const { requests: stockRequests } = useStockRequests();
   const { push: pushNotif } = useNotifications();
@@ -859,25 +956,42 @@ function DemoSalesOrders() {
   const [query, setQuery] = useState("");
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [viewQuoteId, setViewQuoteId] = useState<string | null>(null);
+  const [historicalQuoteToView, setHistoricalQuoteToView] = useState<{ inquiry: Inquiry; doc: QuotationDoc } | null>(null);
   const [poViewId, setPoViewId] = useState<string | null>(null);
   const [generateId, setGenerateId] = useState<string | null>(null);
   const [generateJoId, setGenerateJoId] = useState<string | null>(null);
   const [viewInvoiceId, setViewInvoiceId] = useState<string | null>(null);
+  const [approvePOId, setApprovePOId] = useState<string | null>(null);
+  const [rejectPOId, setRejectPOId] = useState<string | null>(null);
+  const [poRejectionReason, setPORejectionReason] = useState("");
   const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [showStockRequests, setShowStockRequests] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<SalesOrdersStatusFilter>("all");
   const [expandedCards, setExpandedCards] = useState<{ quotation: string | null; readyForJobOrder: string | null }>({
     quotation: null,
     readyForJobOrder: null,
   });
 
   const filtered = useMemo(
-    () => inquiries.filter((i) =>
-      query === "" ||
-      i.code.toLowerCase().includes(query.toLowerCase()) ||
-      i.clientName.toLowerCase().includes(query.toLowerCase())
-    ),
-    [inquiries, query]
+    () => inquiries.filter((i) => {
+      const needle = query.trim().toLowerCase();
+      const matchesSearch = !needle
+        || i.code.toLowerCase().includes(needle)
+        || i.clientName.toLowerCase().includes(needle)
+        || Boolean(i.revisionNote?.toLowerCase().includes(needle))
+        || Boolean(i.revisionRequests?.some((request) => request.note.toLowerCase().includes(needle)));
+      return matchesSearch && matchesSalesOrdersStatus(i, statusFilter);
+    }),
+    [inquiries, query, statusFilter]
   );
+
+  useEffect(() => {
+    if (!targetInquiryId) return;
+    const target = inquiries.find((inquiry) => inquiry.id === targetInquiryId);
+    if (!target) return;
+    setQuery(target.code);
+    setExpandedCards((current) => ({ ...current, quotation: target.id }));
+  }, [inquiries, targetInquiryId]);
 
   const salesStockRequestCount = stockRequests.filter((request) => request.status === "responded" || request.status === "updated").length;
 
@@ -887,6 +1001,53 @@ function DemoSalesOrders() {
   const generating = inquiries.find((i) => i.id === generateId);
   const generatingJO = inquiries.find((i) => i.id === generateJoId);
   const viewingInvoice = inquiries.find((i) => i.id === viewInvoiceId);
+  const approvingPO = inquiries.find((i) => i.id === approvePOId);
+  const rejectingPO = inquiries.find((i) => i.id === rejectPOId);
+
+  const approvePurchaseOrder = (inquiry: Inquiry) => {
+    if (!reviewPO(inquiry.id, "Approved", session.name)) {
+      toast.error("This PO is no longer awaiting review");
+      setApprovePOId(null);
+      return;
+    }
+    pushNotif({
+      dept: "sales",
+      title: `Purchase Order approved: ${inquiry.code}`,
+      body: `${inquiry.clientName} · ${poNumberForDisplay(inquiry) ?? inquiry.code}`,
+      link: "sales",
+      clientLink: "orders",
+      clientName: inquiry.clientName,
+      recipients: ["client"],
+    });
+    toast.success("Purchase Order approved", { description: `${inquiry.code} · client notified` });
+    setApprovePOId(null);
+  };
+
+  const rejectPurchaseOrder = () => {
+    if (!rejectingPO) return;
+    const reason = poRejectionReason.trim();
+    if (!reason) {
+      toast.error("Enter a reason for rejecting this PO");
+      return;
+    }
+    if (!reviewPO(rejectingPO.id, "Rejected", session.name, reason)) {
+      toast.error("This PO is no longer awaiting review");
+      setRejectPOId(null);
+      return;
+    }
+    pushNotif({
+      dept: "sales",
+      title: `Purchase Order rejected: ${rejectingPO.code}`,
+      body: `${rejectingPO.clientName} · ${poNumberForDisplay(rejectingPO) ?? rejectingPO.code} · Reason: ${reason}`,
+      link: "sales",
+      clientLink: "orders",
+      clientName: rejectingPO.clientName,
+      recipients: ["client"],
+    });
+    toast.success("Purchase Order rejected", { description: `${rejectingPO.code} · client notified` });
+    setRejectPOId(null);
+    setPORejectionReason("");
+  };
 
   const sendInvoiceToClient = (invoice: Inquiry, closePreview: () => void) => {
     if (!sendInvoice(invoice.id)) return;
@@ -922,6 +1083,16 @@ function DemoSalesOrders() {
               style={{ fontSize: 13, backgroundColor: "#F4F6F9" }}
             />
           </div>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as SalesOrdersStatusFilter)}
+            aria-label="Filter Sales & Orders by status"
+            className="font-dm rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-slate-400"
+          >
+            {salesOrdersStatusOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200">
             <span className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Pipeline</span>
             <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{inquiries.length} items</span>
@@ -969,6 +1140,16 @@ function DemoSalesOrders() {
                   </div>
                   <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{i.clientName}</div>
                   <div className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>{i.submittedDate} · {i.paymentTerms}</div>
+                  {i.cancellationHistory?.map((request, index) => (
+                    <div key={`${request.requestedAt}-${index}`} className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>
+                      Cancellation {request.resolution} · requested {request.requestedAt}
+                      {request.resolvedAt ? ` · resolved ${request.resolvedAt}` : ""}
+                      <div style={{ color: "#475569" }}>Reason: {request.reason}</div>
+                    </div>
+                  ))}
+                  {i.archiveReason === "cancelled" && !i.cancellationHistory?.length && i.archiveNote && (
+                    <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Cancellation reason: {i.archiveNote}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1021,12 +1202,10 @@ function DemoSalesOrders() {
                       }}
                       onReview={() => setReviewId(c.id)}
                       onViewQuote={() => setViewQuoteId(c.id)}
+                      onViewHistoricalQuote={(doc) => setHistoricalQuoteToView({ inquiry: c, doc })}
                       onViewPO={() => setPoViewId(c.id)}
-                      onMarkPOReceived={() => {
-                        if (!hasPORecord(c)) return;
-                        updateInquiry(c.id, { poReceived: true });
-                        toast.success("PO marked received", { description: `${c.code} · ${poNumberForDisplay(c) ?? c.code}` });
-                      }}
+                      onApprovePO={() => setApprovePOId(c.id)}
+                      onRejectPO={() => { setRejectPOId(c.id); setPORejectionReason(""); }}
                       onGenerateJO={() => {
                         const existingJO = completedJOs.find((job) => job.id === c.id || job.parentInquiryId === c.id);
                         if (c.joNumber || existingJO) {
@@ -1050,6 +1229,8 @@ function DemoSalesOrders() {
                           title: `Inquiry rejected: ${c.code}`,
                           body: `${c.clientName} · Reason: ${reason}`,
                           link: "sales",
+                          clientLink: "orders",
+                          clientName: c.clientName,
                           recipients: ["owner", "operations", "sales", "client"],
                         });
                         toast.info("Inquiry rejected", { description: `${c.code} archived · client notified with reason` });
@@ -1060,7 +1241,8 @@ function DemoSalesOrders() {
                           dept: "sales",
                           title: `Cancellation accepted: ${c.code}`,
                           body: `${c.clientName} · order archived as cancelled`,
-                          link: "sales",
+                          link: "orders",
+                          clientName: c.clientName,
                           recipients: ["client"],
                         });
                         toast.success("Cancellation accepted", { description: `${c.code} archived · client notified` });
@@ -1071,7 +1253,8 @@ function DemoSalesOrders() {
                           dept: "sales",
                           title: `Cancellation declined: ${c.code}`,
                           body: `${c.clientName} · please reach out via email to discuss`,
-                          link: "sales",
+                          link: "orders",
+                          clientName: c.clientName,
                           recipients: ["client"],
                         });
                         toast.info("Cancellation declined", { description: `Contact ${c.clientName} via email to discuss` });
@@ -1110,17 +1293,37 @@ function DemoSalesOrders() {
                 downpaymentConfirmed: quotationDoc.downpaymentPercent ? false : undefined,
               });
             }
-            /* Section C2 — when this is a revision response, archive the previous quotationDoc and clear the revisionNote */
-            if (reviewing.revisionNote) {
+            const isRevisionResponse = hasPendingRevisionRequest(reviewing);
+            /* Keep the prior quote version and mark each pending request as processed with this response. */
+            if (isRevisionResponse) {
               const previousVersions = reviewing.quotationHistory ?? [];
               const archivedDoc = reviewing.quotationDoc;
               const newHistory = archivedDoc ? [...previousVersions, archivedDoc] : previousVersions;
-              updateInquiry(reviewing.id, { quotationHistory: newHistory, revisionNote: undefined });
+              const processedAt = new Date().toISOString();
+              const priorRequests = reviewing.revisionRequests ?? (reviewing.revisionNote
+                ? [{
+                  id: `legacy-revision-${reviewing.id}`,
+                  note: reviewing.revisionNote,
+                  requestedAt: "",
+                  quotationNo: reviewing.quotationDoc?.quotationNo,
+                  status: "pending" as const,
+                }]
+                : []);
+              updateInquiry(reviewing.id, {
+                quotationHistory: newHistory,
+                revisionNote: undefined,
+                revisionRequests: priorRequests.map((request) => request.status === "pending"
+                  ? { ...request, status: "processed", processedAt, responseQuotationNo: quotationDoc?.quotationNo }
+                  : request),
+              });
               pushNotif({
                 dept: "sales",
                 title: `📝 Revised quotation sent to ${reviewing.clientName}`,
                 body: `${reviewing.code} · v${newHistory.length + 1}${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}`,
                 link: "orders",
+                clientLink: "orders",
+                clientName: reviewing.clientName,
+                inquiryId: reviewing.id,
                 recipients: ["client"],
               });
             }
@@ -1129,10 +1332,15 @@ function DemoSalesOrders() {
               title: `Quotation sent: ${quotationDoc?.quotationNo ?? reviewing.code}`,
               body: `${reviewing.clientName} · awaiting PO · ${q.leadTimeDays} day lead time${bomData ? ` · ₱${bomData.unitPrice.toFixed(2)}/unit` : ""}`,
               link: "sales",
-              recipients: ["owner", "operations", "sales", "client"],
+              clientLink: "orders",
+              clientName: reviewing.clientName,
+              inquiryId: reviewing.id,
+              recipients: isRevisionResponse
+                ? ["owner", "operations", "sales"]
+                : ["owner", "operations", "sales", "client"],
             });
             setReviewId(null);
-            toast.success(reviewing.revisionNote ? "Revised quotation sent" : "Quotation sent to client", { description: `${reviewing.clientName} notified in portal${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}` });
+            toast.success(isRevisionResponse ? "Revised quotation sent" : "Quotation sent to client", { description: `${reviewing.clientName} notified in portal${quotationDoc ? ` · ${quotationDoc.quotationNo}` : ""}` });
           }}
         />
       )}
@@ -1150,6 +1358,47 @@ function DemoSalesOrders() {
 
       {poViewing && (
         <POViewerModal inquiry={poViewing} onClose={() => setPoViewId(null)} />
+      )}
+      <AlertDialog open={Boolean(approvingPO)} onOpenChange={(open) => { if (!open) setApprovePOId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-syne text-[#1A2B4A]">APPROVE PURCHASE ORDER?</AlertDialogTitle>
+            <AlertDialogDescription className="font-dm text-slate-600">
+              Approve the latest PO from {approvingPO?.clientName ?? "this client"}? Existing invoice, payment verification, and Job Order requirements will remain in place.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-dm">CANCEL</AlertDialogCancel>
+            <AlertDialogAction className="font-dm bg-[#16A34A] hover:bg-[#15803D]" onClick={(event) => {
+              event.preventDefault();
+              if (approvingPO) approvePurchaseOrder(approvingPO);
+            }}>APPROVE PO</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {rejectingPO && (
+        <ModalShell
+          title={`Reject Purchase Order · ${rejectingPO.code}`}
+          subtitle={`${rejectingPO.clientName} · ${poNumberForDisplay(rejectingPO) ?? rejectingPO.code}`}
+          onClose={() => { setRejectPOId(null); setPORejectionReason(""); }}
+        >
+          <label className="font-dm mb-2 block" htmlFor="po-rejection-reason" style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+            Rejection reason (required)
+          </label>
+          <textarea
+            id="po-rejection-reason"
+            value={poRejectionReason}
+            onChange={(event) => setPORejectionReason(event.target.value)}
+            rows={4}
+            className="form-input"
+            placeholder="Explain what needs to be corrected in the revised PO."
+            required
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => { setRejectPOId(null); setPORejectionReason(""); }} className="rounded-md border border-slate-300 px-4 py-2 font-dm text-slate-700" style={{ fontSize: 12, fontWeight: 700 }}>CANCEL</button>
+            <button type="button" disabled={!poRejectionReason.trim()} onClick={rejectPurchaseOrder} className="rounded-md px-4 py-2 font-dm text-white disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>REJECT PO</button>
+          </div>
+        </ModalShell>
       )}
 
       {generating && (
@@ -1252,8 +1501,8 @@ function DemoSalesOrders() {
 }
 
 /* ---- Inquiry Card with collapsible product list ---- */
-function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded, onToggle, onReview, onViewQuote, onViewPO, onMarkPOReceived, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
-  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; collapsible: boolean; expanded: boolean; onToggle: () => void; onReview: () => void; onViewQuote: () => void; onViewPO: () => void; onMarkPOReceived: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
+function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded, onToggle, onReview, onViewQuote, onViewHistoricalQuote, onViewPO, onApprovePO, onRejectPO, onGenerateJO, onGenerateInvoice, onViewInvoice, onReject, onAcceptCancel, onDeclineCancel }: {
+  inquiry: Inquiry; isNew: boolean; isReadyForJobOrder: boolean; collapsible: boolean; expanded: boolean; onToggle: () => void; onReview: () => void; onViewQuote: () => void; onViewHistoricalQuote: (doc: QuotationDoc) => void; onViewPO: () => void; onApprovePO: () => void; onRejectPO: () => void; onGenerateJO: () => void; onGenerateInvoice: () => void; onViewInvoice: () => void; onReject: (reason: string) => void; onAcceptCancel: () => void; onDeclineCancel: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
@@ -1271,6 +1520,25 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
   const isAwaitingClientPayment = inquiry.stage === "po" && inquiry.poReceived && !isReadyForJobOrder
     && !!inquiry.invoiceNo && !!inquiry.invoiceSentAt;
   const isGenerateInvoicePending = inquiry.stage === "po" && inquiry.poReceived && !inquiry.invoiceNo;
+  const isExpandedContentVisible = !collapsible || expanded;
+  const poStatus = inquiry.stage === "po" && hasPORecord(inquiry) ? poReviewStatus(inquiry) : undefined;
+  const showRevisionBadge = hasPendingRevisionRequest(inquiry)
+    && !(isExpandedContentVisible && inquiry.stage === "quotation" && !hasPORecord(inquiry));
+  const showPaymentVerifiedBadge = isReadyForJobOrder
+    && !isExpandedContentVisible;
+  const showPOStatusBadge = inquiry.stage === "po" && hasPORecord(inquiry)
+    && !(isExpandedContentVisible && (poStatus === "Approved" || poStatus === "Rejected"));
+  const showInvoiceAwaitingPaymentBadge = isAwaitingClientPayment
+    && !(isExpandedContentVisible && hasPORecord(inquiry) && inquiry.poFileName);
+  const showQuotationAwaitingPOBadge = inquiry.stage === "quotation" && !hasPORecord(inquiry)
+    && !hasPendingRevisionRequest(inquiry) && !isExpandedContentVisible;
+  const showDownpaymentPendingBadge = isDownpaymentPending
+    && !(isExpandedContentVisible && hasPORecord(inquiry) && inquiry.poFileName
+      && (inquiry.downpaymentPercent ?? 0) > 0 && payment.downpaymentStatus !== "COMPLETE");
+  const hasVisibleStatusBadges = !inquiry.pendingCancellation && (
+    showRevisionBadge || showPaymentVerifiedBadge || showPOStatusBadge
+    || showInvoiceAwaitingPaymentBadge || showQuotationAwaitingPOBadge || showDownpaymentPendingBadge
+  );
   const cardBorderColor = inquiry.pendingCancellation ? "#FBBF24"
     : inquiry.urgent ? "#FECACA"
     : isReadyForJobOrder ? "#BBF7D0"
@@ -1289,7 +1557,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
       style={{ borderColor: cardBorderColor, borderWidth: inquiry.pendingCancellation ? 2 : 1 }}
     >
       {/* Pending cancellation banner */}
-      {(!collapsible || expanded) && inquiry.pendingCancellation && (
+      {inquiry.pendingCancellation && (
         <div className="rounded-md p-3 mb-3" style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
           <div className="flex items-center gap-2 mb-1">
             <span style={{ fontSize: 14 }}>⏳</span>
@@ -1340,27 +1608,53 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
 
       <div className="font-dm mb-1.5" style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>{inquiry.clientName}</div>
       <div className="font-dm mb-2" style={{ fontSize: 12, color: "#64748B" }}>{inquiry.contactPerson} · {inquiry.paymentTerms}</div>
-      {collapsible && !expanded && (
-        <div className="flex flex-col items-start gap-2">
+      <div className={`flex flex-col items-start gap-2 ${!collapsible || expanded ? "mb-4" : ""}`}>
+        {collapsible && !expanded ? (
           <span className="font-dm px-2.5 py-1 rounded-full flex items-center gap-1" style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}>
             {inquiry.products.length} {inquiry.products.length === 1 ? "product" : "products"}
           </span>
+        ) : (
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="font-dm px-2.5 py-1 rounded-full flex items-center gap-1"
+            style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}
+          >
+            {inquiry.products.length} {inquiry.products.length === 1 ? "product" : "products"}
+            {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+        )}
+        {hasVisibleStatusBadges && (
           <div className="flex flex-col items-start gap-1.5">
-            {isReadyForJobOrder && (
+            {showRevisionBadge && (
+              <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 800, color: "#92400E", backgroundColor: "#FEF3C7" }}>
+                REVISION REQUESTED
+              </span>
+            )}
+            {showPaymentVerifiedBadge && (
               <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#15803D", backgroundColor: "#F0FDF4" }}>PAYMENT VERIFIED</span>
             )}
-            {!isReadyForJobOrder && inquiry.stage === "po" && inquiry.poReceived && inquiry.invoiceNo && inquiry.invoiceSentAt && (
+            {showPOStatusBadge && (
+              <span className="font-dm px-2 py-1 rounded-full" style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: poStatus === "Approved" ? "#166534" : poStatus === "Rejected" ? "#991B1B" : "#1D4ED8",
+                backgroundColor: poStatus === "Approved" ? "#DCFCE7" : poStatus === "Rejected" ? "#FEE2E2" : "#DBEAFE",
+              }}>PO {poStatus?.toUpperCase()}</span>
+            )}
+            {showInvoiceAwaitingPaymentBadge && (
               <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", backgroundColor: "#FFFBEB" }}>INVOICE SENT · AWAITING CLIENT PAYMENT</span>
             )}
-            {inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
-              <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", backgroundColor: "#FFFBEB" }}>QUOTATION SENT · AWAITING CLIENT PO</span>
+            {showQuotationAwaitingPOBadge && (
+              <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#92400E", backgroundColor: "#FFFBEB" }}>
+                QUOTATION SENT · AWAITING CLIENT PO
+              </span>
             )}
-            {isDownpaymentPending && (
+            {showDownpaymentPendingBadge && (
               <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, color: "#C2410C", backgroundColor: "#FFF7ED" }}>REQUIRED DOWNPAYMENT PENDING</span>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
       <div
         className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${!collapsible || expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
         inert={collapsible && !expanded}
@@ -1372,14 +1666,6 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
       )}
 
       <div className="flex flex-col items-start mb-4 gap-2">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="font-dm px-2.5 py-1 rounded-full flex items-center gap-1"
-          style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}
-        >
-          {inquiry.products.length} {inquiry.products.length === 1 ? "product" : "products"}
-          {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        </button>
         {((inquiry.stage === "quotation" || inquiry.stage === "po") && (inquiry.quotationDoc || inquiry.quotation))
           || (inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName) ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -1411,7 +1697,62 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
         </div>
       )}
 
-      {inquiry.stage === "inquiry" && (
+      {((inquiry.revisionRequests?.length ?? 0) > 0 || inquiry.revisionNote || (inquiry.quotationHistory?.length ?? 0) > 0) && (
+        <section className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3">
+          <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 800, color: "#92400E", letterSpacing: 0.4, textTransform: "uppercase" }}>
+            Quotation Revision &amp; Document History
+          </div>
+          {(inquiry.revisionRequests?.length
+            ? inquiry.revisionRequests
+            : inquiry.revisionNote
+              ? [{ id: "legacy-revision", note: inquiry.revisionNote, requestedAt: "", quotationNo: inquiry.quotationDoc?.quotationNo, status: "pending" as const }]
+              : []
+          ).map((request, index) => (
+            <div key={request.id} className={index ? "mt-2 border-t border-amber-200 pt-2" : ""}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-dm" style={{ fontSize: 11, color: "#78350F" }}>
+                <span style={{ fontWeight: 800 }}>Request #{index + 1} · {request.status === "pending" ? "Revision Requested" : "Processed"}</span>
+                <span>{request.requestedAt ? new Date(request.requestedAt).toLocaleString() : "Date unavailable"}</span>
+                <span>Quotation: {request.quotationNo ?? "Current quotation"}</span>
+                {request.processedAt && <span>Processed {new Date(request.processedAt).toLocaleString()}</span>}
+                {request.responseQuotationNo && <span>Response: {request.responseQuotationNo}</span>}
+              </div>
+              <div className="mt-1 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{request.note}</div>
+            </div>
+          ))}
+          {!!inquiry.quotationHistory?.length && (
+            <div className="mt-3 border-t border-amber-200 pt-2">
+              <div className="mb-2 font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#78350F" }}>Previous Quotation Documents</div>
+              <div className="flex flex-wrap gap-2">
+                {inquiry.quotationHistory.map((doc, index) => {
+                  const isAvailable = Boolean(
+                    doc
+                    && typeof doc.quotationNo === "string"
+                    && doc.quotationNo.trim()
+                    && Array.isArray(doc.lineItems)
+                  );
+                  return (
+                    <button
+                      key={`${doc?.quotationNo ?? "unavailable"}-${doc?.date ?? ""}-${index}`}
+                      type="button"
+                      disabled={!isAvailable}
+                      onClick={() => {
+                        if (isAvailable) onViewHistoricalQuote(doc);
+                      }}
+                      className="rounded border border-amber-300 bg-white px-2.5 py-1.5 font-dm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ fontSize: 11, fontWeight: 700, color: "#78350F" }}
+                      title={isAvailable ? `Open previous quotation version ${index + 1}` : "This previous quotation document is unavailable"}
+                    >
+                      {isAvailable ? `View ${doc.quotationNo} · Version ${index + 1}` : `Previous quotation version ${index + 1} unavailable`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {!inquiry.pendingCancellation && inquiry.stage === "inquiry" && (
         <button
           onClick={onReview}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90"
@@ -1420,36 +1761,65 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           <Calculator size={13} /> REVIEW &amp; SEND QUOTATION <ArrowRight size={14} />
         </button>
       )}
-      {inquiry.stage === "quotation" && inquiry.revisionNote && (
+      {!inquiry.pendingCancellation && inquiry.stage === "quotation" && hasPendingRevisionRequest(inquiry) && (
         <button
           onClick={onReview}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90 mb-2"
           style={{ backgroundColor: "#D97706", fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}
-          title={`Client note: ${inquiry.revisionNote}`}
+          title={`Client note: ${inquiry.revisionNote ?? inquiry.revisionRequests?.find((request) => request.status === "pending")?.note ?? ""}`}
         >
           📝 Review Revision Request →
         </button>
       )}
-      {inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
+      {!inquiry.pendingCancellation && inquiry.stage === "quotation" && !hasPORecord(inquiry) && (
         <div className="w-full rounded-md px-3 py-2 font-dm text-center" style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", fontSize: 11, fontWeight: 700, color: "#92400E" }}>
-          QUOTATION SENT · AWAITING CLIENT PO
+          {hasPendingRevisionRequest(inquiry) ? "REVISION REQUESTED · AWAITING SALES REVIEW" : "QUOTATION SENT · AWAITING CLIENT PO"}
         </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poFileName && !inquiry.poReceived && (
-        <button
-          onClick={onMarkPOReceived}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md font-dm border border-slate-300 hover:bg-slate-50"
-          style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
-        >
-          <Upload size={13} /> MARK PO RECEIVED
-        </button>
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Pending Sales Review" && (
+        <div className="flex gap-2">
+          <button onClick={onApprovePO} className="flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 font-dm text-white hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700 }}>
+            <CheckCircle2 size={13} /> APPROVE PO
+          </button>
+          <button onClick={onRejectPO} className="flex-1 flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 font-dm hover:bg-red-50" style={{ color: "#C8102E", fontSize: 12, fontWeight: 700 }}>
+            <X size={13} /> REJECT PO
+          </button>
+        </div>
       )}
-      {inquiry.stage === "po" && hasPORecord(inquiry) && inquiry.poReceived && (
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Rejected" && (
+        <div className="w-full mb-3 rounded-md px-3 py-2.5" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA", color: "#991B1B", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
+          PO REJECTED · RESUBMISSION REQUIRED
+        </div>
+      )}
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && hasPORecord(inquiry) && poReviewStatus(inquiry) === "Approved" && (
         <div className="w-full mb-3 rounded-md px-3 py-2.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", color: "#15803D", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}>
-          ✓ PO RECEIVED
+          ✓ PO APPROVED
         </div>
       )}
-      {isReadyForJobOrder && (
+      {(inquiry.poSubmissions?.length ?? 0) > 0 && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div className="font-dm mb-2" style={{ fontSize: 10, fontWeight: 800, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>PO Submission History</div>
+          <div className="flex flex-col gap-2">
+            {inquiry.poSubmissions?.map((submission, index) => (
+              <div key={submission.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 font-dm" style={{ fontSize: 11, color: "#475569" }}>
+                <span style={{ fontWeight: 700 }}>#{index + 1}{index === (inquiry.poSubmissions?.length ?? 0) - 1 ? " · Latest" : ""} · {submission.fileName}</span>
+                <span>{new Date(submission.submittedAt).toLocaleString()}</span>
+                <span className="rounded-full px-2 py-0.5" style={{
+                  backgroundColor: submission.status === "Approved" ? "#DCFCE7" : submission.status === "Rejected" ? "#FEE2E2" : "#DBEAFE",
+                  color: submission.status === "Approved" ? "#166534" : submission.status === "Rejected" ? "#991B1B" : "#1D4ED8",
+                  fontSize: 10,
+                  fontWeight: 800,
+                }}>{submission.status}</span>
+                {submission.fileDataUrl && (
+                  <a href={submission.fileDataUrl} target="_blank" rel="noreferrer" download={submission.fileName} className="font-dm underline" style={{ color: "#1A2B4A", fontWeight: 700 }}>View / Download</a>
+                )}
+                {submission.rejectionReason && <span className="w-full" style={{ color: "#991B1B" }}>Reason: {submission.rejectionReason}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {isReadyForJobOrder && !inquiry.pendingCancellation && (
         <div className="flex flex-col gap-3">
           <div className="rounded-md p-3.5" style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC" }}>
             <div className="font-dm flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 800, color: "#15803D", letterSpacing: 0.4 }}>
@@ -1474,7 +1844,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
           </button>
         </div>
       )}
-      {inquiry.stage === "po" && !isReadyForJobOrder && hasPORecord(inquiry) && inquiry.poFileName && inquiry.poReceived && (
+      {!inquiry.pendingCancellation && inquiry.stage === "po" && !isReadyForJobOrder && hasPORecord(inquiry) && inquiry.poFileName && inquiry.poReceived && (
         <>
           {/* ── Downpayment Banner ── */}
           {(inquiry.downpaymentPercent ?? 0) > 0 && (
@@ -1533,7 +1903,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
       )}
 
       {/* Reject inquiry — only on New Inquiry stage. Prominent red button with warning icon. */}
-      {inquiry.stage === "inquiry" && (
+      {!inquiry.pendingCancellation && inquiry.stage === "inquiry" && (
         <div className="mt-2 pt-2 border-t border-slate-100">
           {!confirmReject ? (
             <button
@@ -2168,8 +2538,6 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   const [otherDocs, setOtherDocs] = useState<UploadedDoc[]>([]);
   const [otherLabel, setOtherLabel] = useState("");
   const [checks, setChecks] = useState({ verified: false, matches: false, terms: false, dpConfirmed: false });
-  const [productionDueDate, setProductionDueDate] = useState("");
-  const [productionDueDateError, setProductionDueDateError] = useState("");
   const [poFullscreen, setPoFullscreen] = useState(false);
   const [showSpecs, setShowSpecs] = useState(true);
   /* Active product tab for multi-product JO editing */
@@ -2226,7 +2594,12 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   /* Payment terms (set by Enter-Fil during quotation, can be edited here after negotiation) */
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(inquiry.paymentTerms);
   /* Delivery method (Enter-Fil's final say) */
-  const [deliveryMethod, setDeliveryMethod] = useState<"Lalamove" | "AP Cargo" | "Fast Cargo" | "Company Vehicle" | "Client Pick-up">("Company Vehicle");
+  const [deliveryMethod, setDeliveryMethod] = useState<NonNullable<Inquiry["deliveryMethod"]>>(() => {
+    const quotationMethod = inquiry.quotationDoc?.shipping?.label;
+    return ["Lalamove", "AP Cargo", "Fast Cargo", "Company Vehicle", "Client Pick-up"].includes(quotationMethod ?? "")
+      ? quotationMethod as NonNullable<Inquiry["deliveryMethod"]>
+      : "Company Vehicle";
+  });
   /* Sales-invoice issuance — some orders skip SI */
   const [issueSI, setIssueSI] = useState(true);
 
@@ -2248,22 +2621,27 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
     setOtherDocs((prev) => [...prev, doc]);
   };
 
+  const productionDeadline = calculateProductionDeadline(
+    inquiry.quotationDoc?.timeOfDelivery,
+    deliveryMethod,
+  );
+  const deliveryTransitEstimate = getDeliveryTransitEstimate(deliveryMethod);
+
   const buildFinalizePayload = (): FinalizeJOData[] =>
     inquiry.products.map((_, idx) => ({
       joNumber: joNumbers[idx] ?? `${joNumbers[0]}-${idx + 1}`,
-      productionDueDate,
+      productionDueDate: productionDeadline?.productionDueDate ?? "",
+      deliveryMethod,
       joSpecs: { ...productSpecs[idx], oem: enterFilPNs[idx] || productSpecs[idx]?.oem },
       joSketch: productSketches[idx]?.[0]?.name,
     }));
 
   const handleConfirm = () => {
-    if (!isValidProductionDueDate(productionDueDate)) {
-      const message = productionDueDate ? "Enter a valid production due date." : "Production due date is required.";
-      setProductionDueDateError(message);
+    if (!productionDeadline) {
+      const message = "Cannot calculate the production deadline. Confirm the quotation delivery timeframe and selected delivery method, and verify the transit-time configuration.";
       toast.error(message);
       return;
     }
-    setProductionDueDateError("");
     onConfirm(buildFinalizePayload());
   };
 
@@ -2278,7 +2656,6 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
     : "Not recorded";
   const clientDeliveryDate = inquiry.dueDate || "Not provided";
   const quotedDeliveryTerm = inquiry.quotationDoc?.timeOfDelivery || "Not recorded";
-  const quotedLeadTime = inquiry.quotation?.leadTimeDays;
 
   const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
   const summary = inquiry.products.map((p) => `${p.type}${p.od1 ? ` ${p.od1}×${p.id1}×${p.height}mm` : ""} · Qty ${p.qty}`).join(" · ");
@@ -2509,13 +2886,21 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
             </select>
           </Field>
           <Field label="Delivery Method (Enter-Fil's final say)">
-            <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as any)} className="form-input">
+            <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as NonNullable<Inquiry["deliveryMethod"]>)} className="form-input">
               <option value="Company Vehicle">Company Vehicle — Batangas / Laguna / nearby</option>
               <option value="Lalamove">Lalamove — local, urgent</option>
               <option value="AP Cargo">AP Cargo — Cagayan / Isabela / north</option>
               <option value="Fast Cargo">Fast Cargo — Davao / Mindanao / south</option>
               <option value="Client Pick-up">Client Pick-up</option>
             </select>
+            <div className="font-dm mt-1.5" style={{ fontSize: 11, color: "#92400E" }}>
+              {deliveryMethod === "Client Pick-up"
+                ? "No transit days are deducted for client pick-up."
+                : `Estimated transit: ${formatDeliveryTransitEstimate(deliveryMethod)}.`}
+              {deliveryTransitEstimate?.isPlaceholder && (
+                <div className="mt-0.5" style={{ fontSize: 10 }}>{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div>
+              )}
+            </div>
           </Field>
         </div>
         <label className="flex items-start gap-2 mt-3 p-2 rounded-md cursor-pointer hover:bg-white" style={{ backgroundColor: issueSI ? "transparent" : "#FFFBEB" }}>
@@ -2540,35 +2925,28 @@ function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           </div>
         </div>
         <div className="font-dm mb-3" style={{ fontSize: 12, color: "#64748B" }}>
-          Quotation delivery term: {quotedDeliveryTerm}
-          {quotedLeadTime ? ` · Quoted lead time: ${quotedLeadTime} days` : ""}
-          . Choose the production completion deadline manually; no automatic calendar calculation is configured.
+          Original quotation timeframe: {quotedDeliveryTerm} · Quotation method: {inquiry.quotationDoc?.shipping?.label || "Not recorded"}.
+          <br />
+          Final JO method: {deliveryMethod} · Transit estimate: {formatDeliveryTransitEstimate(deliveryMethod) ?? "Not configured"}.
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="production-due-date" className="font-dm flex items-center gap-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
-            Production Due Date
-            <span className="font-dm px-1.5 py-0.5 rounded-full" style={{ fontSize: 8, fontWeight: 800, backgroundColor: "#C8102E", color: "white" }}>REQUIRED</span>
-          </label>
-          <input
-            id="production-due-date"
-            type="date"
-            required
-            value={productionDueDate}
-            onChange={(event) => {
-              setProductionDueDate(event.target.value);
-              setProductionDueDateError("");
-            }}
-            onBlur={() => {
-              if (!productionDueDate) setProductionDueDateError("Production due date is required.");
-            }}
-            aria-invalid={Boolean(productionDueDateError)}
-            aria-describedby={productionDueDateError ? "production-due-date-error" : undefined}
-            className="form-input max-w-xs"
-          />
-          {productionDueDateError && (
-            <p id="production-due-date-error" role="alert" className="font-dm" style={{ fontSize: 12, color: "#B91C1C" }}>{productionDueDateError}</p>
-          )}
-        </div>
+        {productionDeadline ? (
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+            <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase" }}>Automatically calculated production deadline</div>
+            <div className="font-dm mt-1" style={{ fontSize: 16, fontWeight: 700, color: "#1E3A8A" }}>
+              {new Date(`${productionDeadline.productionDueDate}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            </div>
+            <div className="font-dm mt-1" style={{ fontSize: 11, color: "#1E40AF" }}>
+              {productionDeadline.quotationCalendarDays} calendar days (quotation timeframe) − {productionDeadline.maximumTransitCalendarDays} calendar days (maximum final JO transit) = {productionDeadline.productionCalendarDays} calendar days of production, counted as working days excluding Saturdays and Sundays.
+            </div>
+            {deliveryTransitEstimate?.isPlaceholder && (
+              <div className="font-dm mt-1" style={{ fontSize: 10, color: "#92400E" }}>{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div>
+            )}
+          </div>
+        ) : (
+          <p role="alert" className="font-dm rounded-md border border-amber-200 bg-amber-50 p-3" style={{ fontSize: 12, color: "#92400E" }}>
+            Deadline unavailable: a valid quotation timeframe and supported final JO delivery method with a valid transit estimate are required. No deadline will be saved until the configuration is corrected.
+          </p>
+        )}
       </div>
 
       {/* ── Other Documents (optional) ── */}
@@ -2845,13 +3223,6 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
   const [isRush, setIsRush] = useState(false);
   const [rushDate, setRushDate] = useState("");
 
-  /* Auto-due-date when NOT rush: today + 14 days */
-  const autoDueDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  };
-
   const group = groupForType(filterType);
   const dimensionList = GROUP_TEMPLATES[group].dimensions;
 
@@ -2862,12 +3233,11 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
     if (qty < 10) { toast.error("Minimum order quantity is 10 pcs"); return; }
     if (isRush && !rushDate.trim()) { toast.error("Required delivery date needed for rush order"); return; }
     const product: ProductLine = { id: "p1", type: filterType, filterName: filterName.trim(), ...dims, media, innerCore, oem, qty };
-    const finalDueDate = isRush ? rushDate : autoDueDate();
     onSubmit({
       clientName, contactPerson, paymentTerms, generalNotes,
       products: [product],
       urgent: isRush,
-      dueDate: finalDueDate,
+      dueDate: isRush ? rushDate : undefined,
       inquirySketch: sketchFile ?? undefined,
     });
   };
@@ -2992,7 +3362,7 @@ function ManagementNewInquiryModal({ onClose, onSubmit }: {
               </div>
             ) : (
               <div className="mt-3 rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#64748B", backgroundColor: "white", border: "1px solid #E2E8F0" }}>
-                ℹ️ Auto-set due date: <span style={{ color: "#0F172A", fontWeight: 700 }}>{autoDueDate()}</span> (today + 14 days, standard 1–2 week production norm)
+                No client-requested delivery date is recorded unless one is entered for a rush order.
               </div>
             )}
           </div>

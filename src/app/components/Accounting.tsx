@@ -1,8 +1,10 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import { FileText, ClipboardList, Search, Plus, CheckCircle2, X, Send, AlertTriangle, ChevronDown, ChevronUp, PlusCircle, Receipt, Eye, History, Pencil, Download } from "lucide-react";
-import { hasValidSignedDeliveryReceipt, useOrders, paymentDaysRemaining, paymentRecords, paymentState, poNumberForDisplay, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
+import { formatMoney, fromMoneyCents, hasValidSignedDeliveryReceipt, paymentSubmissionAllowance, paymentDaysRemaining, paymentRecords, paymentState, poNumberForDisplay, toMoneyCents, useOrders, type Inquiry, type PaymentRecord, type PaymentType } from "../store/orders";
 import { useNotifications } from "../store/notifications";
+import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
+import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
 import { Toaster, toast } from "sonner";
 
 type Status = "paid" | "pending";
@@ -39,11 +41,39 @@ interface Invoice {
   signedDeliveryReceiptSubmittedBy?: string;
   signedDeliveryReceiptReceivedAt?: string;
   signedDeliveryReceiptDataUrl?: string;
+  officialReceipt?: Inquiry["officialReceipt"];
 }
 
 type ReminderCategory = "dueSoon" | "overdue" | "remainingBalance";
 type ReminderFilter = "all" | "remainingBalance" | "dueSoon" | "overdue";
 const DUE_SOON_WINDOW_DAYS = 7;
+const REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+const REMINDER_HISTORY_STORAGE_KEY = "enterflow.paymentReminderHistory.v1";
+
+function loadReminderHistory(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(REMINDER_HISTORY_STORAGE_KEY) ?? "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "string"));
+  } catch {
+    return {};
+  }
+}
+
+function reminderNextEligibleAt(lastReminderAt: string): number {
+  return new Date(lastReminderAt).getTime() + REMINDER_COOLDOWN_MS;
+}
+
+function formatReminderDate(value: string | number): string {
+  return new Date(value).toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 function isEligibleReminder(invoice: Invoice): boolean {
   const balance = invoice.paymentState.remainingInvoiceBalance;
@@ -53,7 +83,7 @@ function isEligibleReminder(invoice: Invoice): boolean {
     && invoice.client
     && invoice.status === "pending"
     && Number.isFinite(balance)
-    && balance > 0.005
+    && balance > 0
     && (!invoice.dueDate || paymentDaysRemaining(invoice.dueDate) !== undefined)
   );
 }
@@ -110,6 +140,7 @@ function inquiryToInvoice(inq: Inquiry): Invoice {
     signedDeliveryReceiptSubmittedBy: signedDRReceived ? inq.signedDeliveryReceiptSubmittedBy : undefined,
     signedDeliveryReceiptReceivedAt: signedDRReceived ? inq.signedDeliveryReceiptReceivedAt : undefined,
     signedDeliveryReceiptDataUrl: signedDRReceived ? inq.signedDeliveryReceiptDataUrl : undefined,
+    officialReceipt: inq.officialReceipt,
   };
 }
 
@@ -130,22 +161,35 @@ function granularStatus(inv: Invoice, totalPaid: number, now = new Date()): Gran
   return "Pending";
 }
 
-const granularStyle: Record<GranularStatus, { bg: string; fg: string }> = {
-  Paid:    { bg: "#DCFCE7", fg: "#15803D" },
-  Partial: { bg: "#DBEAFE", fg: "#1D4ED8" },
-  Pending: { bg: "#FEF3C7", fg: "#B45309" },
-  Overdue: { bg: "#FEE2E2", fg: "#C8102E" },
-  "Awaiting Verification": { bg: "#FEF3C7", fg: "#B45309" },
-  Rejected: { bg: "#FEE2E2", fg: "#C8102E" },
-  Verified: { bg: "#DCFCE7", fg: "#15803D" },
-  "Paid/Completed": { bg: "#DCFCE7", fg: "#15803D" },
+function hasFullyPaidBalancePayment(inv: Invoice): boolean {
+  return inv.status === "paid"
+    && inv.paymentState.state === "FULLY_PAID"
+    && inv.paymentState.remainingInvoiceBalance === 0
+    && inv.paymentRecords.some((payment) =>
+      payment.paymentType === "BALANCE_PAYMENT" && payment.verificationStatus === "verified",
+    )
+    && !inv.paymentRecords.some((payment) => payment.verificationStatus === "pending");
+}
+
+const granularStyle: Record<GranularStatus, { bg: string; fg: string; border: string }> = {
+  Paid:    { bg: "#ECFDF3", fg: "#15803D", border: "#BBF7D0" },
+  Partial: { bg: "#EFF6FF", fg: "#1D4ED8", border: "#BFDBFE" },
+  Pending: { bg: "#FFFBEB", fg: "#B45309", border: "#FDE68A" },
+  Overdue: { bg: "#FEF2F2", fg: "#C8102E", border: "#FECACA" },
+  "Awaiting Verification": { bg: "#FFFBEB", fg: "#B45309", border: "#FDE68A" },
+  Rejected: { bg: "#FEF2F2", fg: "#C8102E", border: "#FECACA" },
+  Verified: { bg: "#ECFDF3", fg: "#15803D", border: "#BBF7D0" },
+  "Paid/Completed": { bg: "#ECFDF3", fg: "#15803D", border: "#BBF7D0" },
 };
 
 function StatusPill({ status }: { status: GranularStatus }) {
   const s = granularStyle[status];
   return (
-    <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: s.bg, color: s.fg }}>
-      {status === "Overdue" ? "⚠️ " : ""}{status}
+    <span
+      className="inline-flex min-h-7 max-w-full shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-3 py-1 text-center font-dm text-[11px] font-semibold leading-4"
+      style={{ backgroundColor: s.bg, color: s.fg, borderColor: s.border }}
+    >
+      {status}
     </span>
   );
 }
@@ -173,18 +217,25 @@ export function Accounting() {
   const [newPmt, setNewPmt] = useState<Record<string, { amount: string; method: string; ref: string; datePaid: string }>>({});
   const [viewReceiptsId, setViewReceiptsId] = useState<string | null>(null);
   const [view, setView] = useState<"active" | "history">("active");
+  const [expandedClientPayments, setExpandedClientPayments] = useState<Set<string>>(() => new Set());
   const [downpaymentFilter, setDownpaymentFilter] = useState<"ALL" | "AWAITING VERIFICATION" | "VERIFIED" | "REJECTED" | "PAID/COMPLETED">("ALL");
   const [activeCycleFilter, setActiveCycleFilter] = useState<"ALL" | "PENDING" | "PARTIAL" | "PAID/COMPLETED" | "OVERDUE" | "AWAITING VERIFICATION" | "REJECTED">("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [editingReceipt, setEditingReceipt] = useState<{ invoiceId: string; receipt: PaymentEntry } | null>(null);
+  const [receiptToIssue, setReceiptToIssue] = useState<Invoice | null>(null);
   const [proofToView, setProofToView] = useState<{ filename: string; dataUrl: string } | null>(null);
-  const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment } = useOrders();
+  const [receiptToView, setReceiptToView] = useState<NonNullable<Invoice["officialReceipt"]> | null>(null);
+  const [paymentToReject, setPaymentToReject] = useState<{ invoice: Invoice; payment: PaymentRecord } | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
+  const { name: issuingStaff } = useSession();
   const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
   const [sendingReminderIds, setSendingReminderIds] = useState<Set<string>>(() => new Set());
   const [sendingAllReminders, setSendingAllReminders] = useState(false);
+  const [reminderHistory, setReminderHistory] = useState<Record<string, string>>(loadReminderHistory);
   const sendingReminderIdsRef = useRef(new Set<string>());
   const sendingAllRemindersRef = useRef(false);
   const [now, setNow] = useState(() => new Date());
@@ -193,6 +244,14 @@ export function Accounting() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(REMINDER_HISTORY_STORAGE_KEY, JSON.stringify(reminderHistory));
+    } catch (error) {
+      console.error("[EnterFlow] Could not persist payment reminder history.", error);
+    }
+  }, [reminderHistory]);
 
   /* DERIVED: invoices come from the orders store. Anything past delivery is invoiced. */
   const trackedInquiries = useMemo(
@@ -253,6 +312,11 @@ export function Accounting() {
   const activePaymentCycleRows = visible.filter((r) =>
     isActiveBalancePaymentCycle(r)
   );
+  const fullyPaidHistoryRows = activePaymentCycleRows.filter((r) =>
+    r.paymentState.state === "FULLY_PAID"
+    && r.paymentState.remainingInvoiceBalance === 0
+    && !r.paymentRecords.some((payment) => payment.verificationStatus === "pending")
+  );
   const downpaymentRowsForFilter = (filter: typeof downpaymentFilter) => downpaymentRows.filter((r) => {
     if (filter === "ALL") return true;
     const records = r.paymentRecords.filter((payment) => payment.paymentType === "DOWNPAYMENT");
@@ -261,7 +325,7 @@ export function Accounting() {
     if (filter === "REJECTED") return records.some((payment) => payment.verificationStatus === "rejected");
     return r.paymentState.downpaymentStatus === "COMPLETE";
   });
-  const activePaymentCycleRowsForFilter = (filter: typeof activeCycleFilter) => activePaymentCycleRows.filter((r) => {
+  const activePaymentCycleRowsForFilter = (filter: typeof activeCycleFilter, sourceRows = activePaymentCycleRows) => sourceRows.filter((r) => {
     if (filter === "ALL") return true;
     const status = granularStatus(r, r.paymentState.totalVerifiedPayments, now);
     if (filter === "PAID/COMPLETED") return status === "Paid";
@@ -283,11 +347,16 @@ export function Accounting() {
     },
     {
       key: "active-cycle",
-      label: "ACTIVE PAYMENT CYCLE",
-      description: "Orders with a received signed Delivery Receipt and an active balance-payment cycle.",
-      rows: activePaymentCycleRowsForFilter(activeCycleFilter),
+      label: view === "history" ? "FULLY PAID / CLEARED" : "ACTIVE PAYMENT CYCLE",
+      description: view === "history"
+        ? "Invoices with fully verified payments and zero outstanding balance."
+        : "Orders with a received signed Delivery Receipt and an active balance-payment cycle.",
+      rows: activePaymentCycleRowsForFilter(
+        activeCycleFilter,
+        view === "history" ? fullyPaidHistoryRows : activePaymentCycleRows,
+      ),
     },
-  ];
+  ].filter((section) => view !== "history" || section.key !== "downpayment");
 
   /* Auto-overdue notification: fire once per overdue invoice on mount */
   const [overdueNotified, setOverdueNotified] = useState<Set<string>>(new Set());
@@ -325,6 +394,48 @@ export function Accounting() {
   };
 
   const editReceipt = (invId: string, oldEntry: PaymentEntry, next: { amount: number; method: string; ref: string; date: string }) => {
+    const inquiry = rows.find((row) => row.id === invId);
+    const source = inquiry ? byClient(inquiry.client).find((item) => item.id === invId) : undefined;
+    if (!source) {
+      toast.error("Payment record could not be found.");
+      return;
+    }
+    const record = paymentRecords(source).find((payment) => payment.id === oldEntry.id);
+    const nextAmountCents = toMoneyCents(next.amount);
+    if (!Number.isFinite(next.amount) || nextAmountCents <= 0) {
+      toast.error("Invalid amount");
+      return;
+    }
+    if (record) {
+      const currentAmountCents = toMoneyCents(record.verifiedAmount ?? record.submittedAmount);
+      const maximumAmountCents = toMoneyCents(paymentState(source).remainingInvoiceBalance) + currentAmountCents;
+      const maximumDownpaymentCents = record.paymentType === "DOWNPAYMENT"
+        ? toMoneyCents(paymentState(source).remainingDownpayment) + currentAmountCents
+        : maximumAmountCents;
+      if (nextAmountCents > Math.min(maximumAmountCents, maximumDownpaymentCents)) {
+        toast.error("Payment exceeds the amount currently due.");
+        return;
+      }
+      updateInquiry(invId, {
+        payments: (source.payments ?? []).map((payment) => payment.id === record.id
+          ? {
+              ...payment,
+              submittedAmount: fromMoneyCents(nextAmountCents),
+              verifiedAmount: payment.verificationStatus === "verified" ? fromMoneyCents(nextAmountCents) : payment.verifiedAmount,
+              method: next.method,
+              referenceNumber: next.ref,
+              paymentDate: next.date,
+            }
+          : payment),
+        confirmedPayments: (source.confirmedPayments ?? []).map((payment) => payment.id === record.id
+          ? { ...payment, amount: fromMoneyCents(nextAmountCents), method: next.method, ref: next.ref, date: next.date }
+          : payment),
+        ...(record.id === `legacy-paid-${source.id}` ? { amountPaid: fromMoneyCents(nextAmountCents), paidAt: next.date } : {}),
+      });
+    } else {
+      toast.error("Payment record could not be matched to the invoice.");
+      return;
+    }
     setPayments(prev => ({
       ...prev,
       [invId]: (prev[invId] ?? []).map(p => p.id === oldEntry.id ? { ...p, ...next } : p),
@@ -340,34 +451,44 @@ export function Accounting() {
     }
     const f = newPmt[id];
     if (!f?.amount || !f?.method) { toast.error("Amount and method required"); return; }
-    const amt = parseFloat(f.amount);
-    if (isNaN(amt) || amt <= 0) { toast.error("Invalid amount"); return; }
+    const enteredAmount = Number(f.amount);
+    const amountCents = toMoneyCents(enteredAmount);
+    if (!Number.isFinite(enteredAmount) || amountCents <= 0) { toast.error("Invalid amount"); return; }
+    const target = byClient(invoice.client).find((inquiry) => inquiry.id === invoice.id);
+    const allowance = target ? paymentSubmissionAllowance(target) : null;
+    if (!allowance?.paymentType || amountCents > toMoneyCents(allowance.maxAmount)) {
+      toast.error("Payment exceeds the amount currently due", {
+        description: allowance?.maxAmount
+          ? `Maximum payment: ₱${formatMoney(allowance.maxAmount)}`
+          : "No payment is currently due for this invoice.",
+      });
+      return;
+    }
+    const amt = fromMoneyCents(amountCents);
     const entryDate = f.datePaid?.trim()
       ? f.datePaid
       : new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const reference = f.ref || "—";
+    const paymentId = confirmClientPayment(target.id, { date: entryDate, amount: amt, method: f.method, ref: reference });
+    if (!paymentId) {
+      toast.error("Payment could not be recorded. Review the current balance and try again.");
+      return;
+    }
     const entry: PaymentEntry = {
-      id: `pe-${Date.now()}`, date: entryDate,
-      amount: amt, method: f.method, ref: f.ref || "—",
+      id: paymentId, date: entryDate,
+      amount: amt, method: f.method, ref: reference,
     };
     setPayments((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), entry] }));
     setNewPmt((prev) => ({ ...prev, [id]: { amount: "", method: "", ref: "", datePaid: "" } }));
-    /* Sync to client portal — find matching inquiry by client name */
-    const inv = invoice;
-    if (inv) {
-      const clientInqs = byClient(inv.client);
-      const target = clientInqs.find((inquiry) => inquiry.id === inv.id);
-      if (target) {
-        confirmClientPayment(target.id, { date: entryDate, amount: amt, method: f.method, ref: f.ref || "—" });
-        pushNotif({
-          dept: "payments",
-          title: `Payment confirmed for ${inv.client}`,
-          body: `₱${amt.toLocaleString("en-PH")} · ${inv.inv} · synced to client portal`,
-          link: "accounting",
-          recipients: ["client"],
-        });
-      }
-    }
-    toast.success("Payment recorded", { description: `₱${amt.toLocaleString("en-PH")} via ${f.method} · synced to client portal` });
+    pushNotif({
+      dept: "payments",
+      title: `Payment confirmed for ${invoice.client}`,
+      body: `₱${amt.toLocaleString("en-PH")} · ${invoice.inv} · synced to client portal`,
+      link: "accounting",
+      clientName: invoice.client,
+      recipients: ["client"],
+    });
+    toast.success("Payment recorded", { description: `₱${formatMoney(amt)} via ${f.method} · synced to client portal` });
   };
 
   const clearAccount = (id: string) => {
@@ -393,13 +514,14 @@ export function Accounting() {
 
   const handleVerifyClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
     if (payment.verificationStatus !== "pending" || payment.submittedAmount <= 0 || !payment.receiptDataUrl) return;
-    const remaining = Math.max(0, invoice.paymentState.remainingInvoiceBalance - payment.submittedAmount);
-    const verifiedDownpayment = invoice.paymentState.verifiedDownpaymentAmount
-      + (payment.paymentType === "DOWNPAYMENT" ? payment.submittedAmount : 0);
-    const requiredDownpayment = invoice.paymentState.requiredDownpaymentAmount;
-    const requirementMet = requiredDownpayment > 0
-      ? (payment.paymentType === "FULL_PAYMENT" ? remaining <= 0.005 : verifiedDownpayment + 0.005 >= requiredDownpayment)
-      : remaining <= 0.005;
+    const remainingCents = Math.max(0, toMoneyCents(invoice.paymentState.remainingInvoiceBalance) - toMoneyCents(payment.submittedAmount));
+    const verifiedDownpaymentCents = toMoneyCents(invoice.paymentState.verifiedDownpaymentAmount)
+      + (payment.paymentType === "DOWNPAYMENT" ? toMoneyCents(payment.submittedAmount) : 0);
+    const requiredDownpaymentCents = toMoneyCents(invoice.paymentState.requiredDownpaymentAmount);
+    const requirementMet = requiredDownpaymentCents > 0
+      ? (payment.paymentType === "FULL_PAYMENT" ? remainingCents === 0 : verifiedDownpaymentCents >= requiredDownpaymentCents)
+      : remainingCents === 0;
+    const remaining = fromMoneyCents(remainingCents);
     const typeLabel = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
       : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
 
@@ -424,22 +546,43 @@ export function Accounting() {
 
   const handleRejectClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
     if (payment.verificationStatus !== "pending") return;
-    rejectPayment(invoice.id, payment.id);
+    setRejectionReason("");
+    setPaymentToReject({ invoice, payment });
+  };
+
+  const confirmRejectClientPayment = () => {
+    const reason = rejectionReason.trim();
+    if (!paymentToReject || !reason) return;
+    const { invoice, payment } = paymentToReject;
+    if (!rejectPayment(invoice.id, payment.id, reason)) {
+      toast.error("This payment is no longer awaiting verification.");
+      setPaymentToReject(null);
+      return;
+    }
     pushNotif({
       dept: "payments",
       title: `Payment Rejected: ${invoice.inv}`,
-      body: `${invoice.client} · ${payment.paymentType.replace("_", " ")} · ₱${payment.submittedAmount.toLocaleString("en-PH")} · Please review and resubmit proof of payment.`,
+      body: `${invoice.client} · ${payment.paymentType.replace("_", " ")} · ₱${payment.submittedAmount.toLocaleString("en-PH")} · Reason for Rejection: ${reason}`,
       link: "accounting",
       clientName: invoice.client,
       recipients: ["client"],
     });
-    toast.info("Payment rejected", { description: `${invoice.inv} · client notified to resubmit` });
+    toast.info("Payment rejected", { description: `${invoice.inv} · client notified` });
+    setPaymentToReject(null);
+    setRejectionReason("");
   };
 
-  const eligibleReminderRows = rows.filter(isEligibleReminder);
+  const reminderCandidates = rows.filter(isEligibleReminder);
+  const isReminderCoolingDown = (invoice: Invoice) => {
+    const lastReminderAt = reminderHistory[invoice.id];
+    if (!lastReminderAt) return false;
+    const nextEligibleAt = reminderNextEligibleAt(lastReminderAt);
+    return Number.isFinite(nextEligibleAt) && now.getTime() < nextEligibleAt;
+  };
+  const eligibleReminderRows = reminderCandidates.filter((invoice) => !isReminderCoolingDown(invoice));
   const dueSoonReminderCount = eligibleReminderRows.filter((r) => reminderCategory(r, now) === "dueSoon").length;
   const overdueReminderCount = eligibleReminderRows.filter((r) => reminderCategory(r, now) === "overdue").length;
-  const filteredReminderRows = filterReminderRows(eligibleReminderRows, reminderFilter, now);
+  const filteredReminderRows = filterReminderRows(reminderCandidates, reminderFilter, now);
 
   const createReminderNotification = (invoice: Invoice) => {
     if (!isEligibleReminder(invoice)) {
@@ -455,14 +598,17 @@ export function Accounting() {
       clientName: invoice.client,
       recipients: ["client"],
     });
+    return true;
   };
 
   const sendInvoiceReminder = (invoice: Invoice) => {
-    if (sendingAllRemindersRef.current || sendingReminderIdsRef.current.has(invoice.id)) return;
+    if (sendingAllRemindersRef.current || sendingReminderIdsRef.current.has(invoice.id) || isReminderCoolingDown(invoice)) return;
     sendingReminderIdsRef.current.add(invoice.id);
     setSendingReminderIds(new Set(sendingReminderIdsRef.current));
     try {
       createReminderNotification(invoice);
+      const sentAt = new Date().toISOString();
+      setReminderHistory((previous) => ({ ...previous, [invoice.id]: sentAt }));
     } catch (error) {
       console.error("[EnterFlow] Could not create invoice reminder notification.", error);
       toast.error("Reminder could not be sent", { description: `${invoice.inv} · Please try again.` });
@@ -478,9 +624,11 @@ export function Accounting() {
   };
 
   const sendFilteredReminders = () => {
-    if (sendingAllRemindersRef.current || filteredReminderRows.length === 0) return;
+    const eligibleInvoices = filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice));
+    if (sendingAllRemindersRef.current || eligibleInvoices.length === 0) return;
     sendingAllRemindersRef.current = true;
-    const invoicesToSend = [...filteredReminderRows];
+    const invoicesToSend = [...eligibleInvoices];
+    const skippedCount = filteredReminderRows.length - invoicesToSend.length;
     invoicesToSend.forEach((invoice) => sendingReminderIdsRef.current.add(invoice.id));
     setSendingAllReminders(true);
     setSendingReminderIds(new Set(sendingReminderIdsRef.current));
@@ -490,15 +638,17 @@ export function Accounting() {
       invoicesToSend.forEach((invoice) => {
         try {
           createReminderNotification(invoice);
+          const sentAt = new Date().toISOString();
+          setReminderHistory((previous) => ({ ...previous, [invoice.id]: sentAt }));
           sentCount += 1;
         } catch (error) {
           console.error(`[EnterFlow] Could not create invoice reminder notification for ${invoice.inv}.`, error);
           failedInvoices.push(invoice.inv);
         }
       });
-      if (sentCount > 0) {
-        toast.success(`${sentCount} reminder notification${sentCount === 1 ? "" : "s"} created`, {
-          description: "Prototype notifications were added for the invoices in the selected filter.",
+      if (sentCount > 0 || skippedCount > 0) {
+        toast.success(`${sentCount} reminder${sentCount === 1 ? "" : "s"} sent successfully.`, {
+          description: `${skippedCount} invoice${skippedCount === 1 ? "" : "s"} skipped because the reminder cooldown is still active.`,
         });
       }
       if (failedInvoices.length > 0) {
@@ -512,6 +662,42 @@ export function Accounting() {
       setSendingAllReminders(false);
       setSendingReminderIds(new Set(sendingReminderIdsRef.current));
     }
+  };
+
+  const beginOfficialReceipt = (invoice: Invoice) => {
+    const current = rows.find((row) => row.id === invoice.id);
+    if (!current || current.officialReceipt) {
+      toast.error("This invoice already has an issued Official Receipt.");
+      return;
+    }
+    const currentInquiry = byClient(current.client).find((inquiry) => inquiry.id === current.id);
+    const currentState = currentInquiry ? paymentState(currentInquiry) : current.paymentState;
+    const hasUnverifiedPayment = currentInquiry ? paymentRecords(currentInquiry).some((payment) => payment.verificationStatus === "pending") : true;
+    if (currentState.state !== "FULLY_PAID" || currentState.remainingInvoiceBalance > 0 || hasUnverifiedPayment) {
+      toast.error("Official Receipt issuance is unavailable until all payments are verified and the balance is zero.");
+      return;
+    }
+    setReceiptToIssue(current);
+  };
+
+  const issueReceipt = (invoice: Invoice, orNumber: string) => {
+    const succeeded = issueOfficialReceipt(invoice.id, orNumber, issuingStaff);
+    if (!succeeded) {
+      toast.error("Official Receipt could not be issued. Verify the invoice state and OR number.");
+      return;
+    }
+    pushNotif({
+      dept: "payments",
+      title: `Official Receipt available: ${orNumber.trim()}`,
+      body: `${invoice.client} · ${invoice.inv} · ₱${invoice.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+      link: "client-portal",
+      recipients: ["client"],
+      clientName: invoice.client,
+      resourceType: "official-receipt",
+      resourceId: invoice.id,
+    });
+    setReceiptToIssue(null);
+    toast.success("Official Receipt issued", { description: `${orNumber.trim()} · prototype-generated document` });
   };
 
   return (
@@ -568,9 +754,9 @@ export function Accounting() {
       <div className="px-8 py-8 flex flex-col gap-6">
         <div className="grid grid-cols-4 gap-6">
           <KPI label="Total Invoices" value={String(rows.length)} />
-          <KPI label="Total Billed" value={`₱${rows.reduce((s, r) => s + r.amount, 0).toLocaleString("en-PH")}`} accent="#1A2B4A" />
-          <KPI label="Pending Collection" value={`₱${rows.filter(r => r.status === "pending").reduce((s, r) => s + r.amount, 0).toLocaleString("en-PH")}`} accent="#D97706" />
-          <KPI label="Paid & Closed" value={`₱${rows.filter(r => r.status === "paid").reduce((s, r) => s + r.amount, 0).toLocaleString("en-PH")}`} accent="#16A34A" />
+          <KPI label="Total Billed" value={`₱${formatMoney(fromMoneyCents(rows.reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#1A2B4A" />
+          <KPI label="Pending Collection" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "pending").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#D97706" />
+          <KPI label="Paid & Closed" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#16A34A" />
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
@@ -703,8 +889,18 @@ export function Accounting() {
           </section>
         )}
 
-        <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-          <table className="w-full">
+        <div className="bg-white rounded-xl border border-slate-200/70 overflow-x-auto" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+          <table className="w-full min-w-[1180px] table-fixed">
+            <colgroup>
+              <col style={{ width: 115 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 140 }} />
+              <col style={{ width: 175 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 165 }} />
+              <col style={{ width: 235 }} />
+            </colgroup>
             <thead style={{ backgroundColor: "#F4F6F9" }}>
               <tr>
                 {["Date", "Invoice No.", "Source PO No.", "Client", "Item", "Amount", "Payment", "Status"].map((h) => (
@@ -756,19 +952,50 @@ export function Accounting() {
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.inv}</td>
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.po}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                      <td className="px-4 py-3 font-dm break-words" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
+                      <td className="px-4 py-3 font-dm break-words" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
+                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{formatMoney(r.amount)}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                         <div style={{ fontWeight: 700, color: "#1A2B4A" }}>{r.paymentType}</div>
                         <div style={{ fontSize: 11, color: "#64748B" }}>{r.payment}</div>
                       </td>
-                      <td className="px-4 py-3"><StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} /></td>
+                      <td className="px-3 py-3 align-middle">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                          <StatusPill status={section.key === "downpayment" ? downpaymentDisplayStatus(r) : granularStatus(r, r.paymentState.totalVerifiedPayments, now)} />
+                          {view === "history" && hasFullyPaidBalancePayment(r) && (
+                            <button
+                              type="button"
+                              aria-label={`View payment history for ${r.inv}`}
+                              onClick={(event) => { event.stopPropagation(); setOpenId(r.id); }}
+                              className="shrink-0 whitespace-nowrap rounded-md px-1 py-1 font-dm text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                            >
+                              View Payment History →
+                            </button>
+                          )}
+                        </div>
+                        {view === "history" && (
+                          <div className="flex flex-col items-start gap-1">
+                            {r.officialReceipt ? (
+                              <button
+                                onClick={(event) => { event.stopPropagation(); setReceiptToView(r.officialReceipt!); }}
+                                className="font-dm rounded-md px-0 py-0.5 hover:bg-blue-50"
+                                style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8" }}
+                              >View Official Receipt</button>
+                            ) : (
+                              <button
+                                onClick={(event) => { event.stopPropagation(); beginOfficialReceipt(r); }}
+                                className="font-dm inline-flex items-center justify-center rounded-md px-3 py-2 text-white shadow-sm transition-opacity hover:opacity-90"
+                                style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700, lineHeight: 1.2, whiteSpace: "nowrap" }}
+                              >Issue Official Receipt</button>
+                            )}
+                          </div>
+                        )}
+                      </td>
                     </tr>
                     {isOpen && (() => {
                       const pmts = payments[r.id] ?? [];
                       const clientPayments = r.paymentRecords;
-                      const localPaid = pmts.reduce((s, p) => s + p.amount, 0);
+                      const localPaidCents = pmts.reduce((sum, payment) => sum + toMoneyCents(payment.amount), 0);
                       const verifiedClientPayments = clientPayments.filter((payment) => payment.verificationStatus === "verified");
                       const unlistedVerifiedPayments = verifiedClientPayments.filter((payment) => !pmts.some((entry) =>
                         entry.id === payment.id
@@ -777,8 +1004,8 @@ export function Accounting() {
                           && entry.method === payment.method
                           && entry.ref === (payment.referenceNumber ?? "—"))
                       ));
-                      const totalPaid = Math.max(localPaid, r.paymentState.totalVerifiedPayments);
-                      const remaining = Math.max(0, r.amount - totalPaid);
+                      const totalPaid = r.paymentState.totalVerifiedPayments;
+                      const remaining = r.paymentState.remainingInvoiceBalance;
                       const pf = newPmt[r.id] ?? { amount: "", method: "", ref: "", datePaid: "" };
                       const clientInquiries = byClient(r.client);
                       const clientReceipts = clientInquiries.flatMap(i => i.clientPaymentReceipts ?? []);
@@ -810,15 +1037,15 @@ export function Accounting() {
                               <div className="flex gap-6 text-right">
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Invoice Total</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>₱{r.amount.toLocaleString("en-PH")}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>₱{formatMoney(r.amount)}</div>
                                 </div>
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Paid</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#16A34A" }}>₱{totalPaid.toLocaleString("en-PH")}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#16A34A" }}>₱{formatMoney(totalPaid)}</div>
                                 </div>
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Balance Due</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: remaining > 0 ? "#C8102E" : "#16A34A" }}>₱{remaining.toLocaleString("en-PH")}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: remaining > 0 ? "#C8102E" : "#16A34A" }}>₱{formatMoney(remaining)}</div>
                                 </div>
                               </div>
                             </div>
@@ -904,30 +1131,56 @@ export function Accounting() {
                                   const statusColor = p.verificationStatus === "pending" ? "#B45309"
                                     : p.verificationStatus === "verified" ? "#15803D" : "#C8102E";
                                   const dpPercent = r.downpaymentPercent;
-                                  const remainingAfter = Math.max(0, r.paymentState.remainingInvoiceBalance - p.submittedAmount);
+                                  const paymentBalanceCents = p.paymentType === "DOWNPAYMENT"
+                                    ? toMoneyCents(r.paymentState.remainingDownpayment)
+                                    : toMoneyCents(r.paymentState.remainingInvoiceBalance);
+                                  const remainingAfterCents = p.verificationStatus === "pending"
+                                    ? Math.max(0, paymentBalanceCents - toMoneyCents(p.submittedAmount))
+                                    : paymentBalanceCents;
+                                  const remainingAfter = fromMoneyCents(remainingAfterCents);
+                                  const paymentKey = `${r.id}:${p.id}`;
+                                  const isPaymentExpanded = expandedClientPayments.has(paymentKey);
                                   return (
-                                  <div key={p.id} className="rounded-lg p-3 mb-2 last:mb-0 bg-white border border-blue-200 shadow-sm">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                                      <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>PAYMENT {p.verificationStatus === "pending" ? "SUBMITTED" : statusLabel}</div>
-                                      <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 800, color: statusColor, backgroundColor: `${statusColor}18` }}>{statusLabel}</span>
-                                    </div>
+                                  <div key={paymentKey} className="mb-2 last:mb-0 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-sm">
+                                    <button
+                                      type="button"
+                                      aria-expanded={isPaymentExpanded}
+                                      aria-controls={`client-payment-details-${paymentKey}`}
+                                      onClick={() => setExpandedClientPayments((previous) => {
+                                        const next = new Set(previous);
+                                        if (next.has(paymentKey)) next.delete(paymentKey);
+                                        else next.add(paymentKey);
+                                        return next;
+                                      })}
+                                      className="flex w-full flex-wrap items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-slate-50"
+                                    >
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>{r.client} · {p.invoiceNo ?? r.inv}</span>
+                                        <span className="mt-0.5 block font-dm" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>{paymentType} · PAYMENT {p.verificationStatus === "pending" ? "SUBMITTED" : statusLabel}</span>
+                                      </span>
+                                      <span className="flex shrink-0 items-center gap-2">
+                                        <span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 800, color: statusColor, backgroundColor: `${statusColor}18` }}>{statusLabel}</span>
+                                        {isPaymentExpanded ? <ChevronUp size={16} color="#64748B" /> : <ChevronDown size={16} color="#64748B" />}
+                                      </span>
+                                    </button>
+                                    {isPaymentExpanded && <div id={`client-payment-details-${paymentKey}`} className="border-t border-blue-100 p-3">
                                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4 xl:grid-cols-6 font-dm" style={{ fontSize: 11, color: "#475569" }}>
                                       <span>Client</span><strong>{r.client}</strong>
                                       <span>Invoice</span><strong>{p.invoiceNo ?? r.inv}</strong>
                                       <span>PO</span><strong>{r.po}</strong>
                                       <span>PAYMENT TYPE</span><strong>{paymentType}</strong>
-                                      <span>Invoice Total</span><strong>₱{r.paymentState.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                      <span>Invoice Total</span><strong>₱{formatMoney(r.paymentState.invoiceTotal)}</strong>
                                       {p.paymentType === "DOWNPAYMENT" ? <>
                                         <span>DOWNPAYMENT REQUIRED</span><strong>{dpPercent}%</strong>
-                                        <span>Required Amount</span><strong>₱{r.paymentState.requiredDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                        <span>Required Amount</span><strong>₱{formatMoney(r.paymentState.requiredDownpaymentAmount)}</strong>
                                       </> : p.paymentType === "BALANCE_PAYMENT" ? <>
-                                        <span>Previously Verified</span><strong>₱{r.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                        <span>Balance Due</span><strong>₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                        <span>Previously Verified</span><strong>₱{formatMoney(r.paymentState.totalVerifiedPayments)}</strong>
+                                        <span>Balance Due</span><strong>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</strong>
                                       </> : <>
-                                        <span>FULL PAYMENT REQUIRED</span><strong>₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                        <span>FULL PAYMENT REQUIRED</span><strong>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</strong>
                                       </>}
-                                      <span>Submitted Amount</span><strong>₱{p.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                                      <span>Remaining Balance</span><strong>₱{remainingAfter.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                      <span>Submitted Amount</span><strong>₱{formatMoney(p.submittedAmount)}</strong>
+                                      <span>Remaining Balance</span><strong>₱{formatMoney(remainingAfter)}</strong>
                                       <span>Date Submitted</span><strong>{p.paymentDate}</strong>
                                       <span>Payment Method</span><strong>{p.method ?? "Not specified"}</strong>
                                       <span>Reference Number</span><strong>{p.referenceNumber ?? "—"}</strong>
@@ -941,6 +1194,7 @@ export function Accounting() {
                                         <button onClick={() => handleVerifyClientPayment(r, p)} disabled={!p.receiptDataUrl || p.submittedAmount <= 0} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#15803D" }}><CheckCircle2 size={11} /> VERIFY PAYMENT</button>
                                       </>}
                                     </div>
+                                    </div>}
                                   </div>
                                   );
                                 })}
@@ -963,13 +1217,13 @@ export function Accounting() {
                                       <tr className="bg-white border-b border-slate-100">
                                         <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
                                         <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#1A2B4A", fontWeight: 600 }}>{r.inv} · Invoice Raised</td>
-                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#C8102E", fontWeight: 600 }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#C8102E", fontWeight: 600 }}>₱{formatMoney(r.amount)}</td>
                                         <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                        <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#C8102E" }}>₱{r.amount.toLocaleString("en-PH")}</td>
+                                        <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#C8102E" }}>₱{formatMoney(r.amount)}</td>
                                       </tr>
                                       {pmts.reduce((acc, p) => {
-                                        const prevBal = acc.balance;
-                                        const newBal = prevBal - p.amount;
+                                        const newBalanceCents = Math.max(0, acc.balanceCents - toMoneyCents(p.amount));
+                                        const newBal = fromMoneyCents(newBalanceCents);
                                         acc.rows.push(
                                           <tr key={p.id} className="bg-white border-b border-slate-100 hover:bg-slate-50 group">
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{p.date}</td>
@@ -986,16 +1240,17 @@ export function Accounting() {
                                               </div>
                                             </td>
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{p.amount.toLocaleString("en-PH")}</td>
-                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: newBal > 0 ? "#C8102E" : "#16A34A" }}>₱{newBal.toLocaleString("en-PH")}</td>
+                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{formatMoney(p.amount)}</td>
+                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: newBal > 0 ? "#C8102E" : "#16A34A" }}>₱{formatMoney(newBal)}</td>
                                           </tr>
                                         );
-                                        acc.balance = newBal;
+                                        acc.balanceCents = newBalanceCents;
                                         return acc;
-                                      }, { balance: r.amount, rows: [] as React.ReactNode[] }).rows}
+                                      }, { balanceCents: toMoneyCents(r.amount), rows: [] as React.ReactNode[] }).rows}
                                       {unlistedVerifiedPayments.reduce((acc, payment) => {
-                                        const amount = payment.verifiedAmount ?? payment.submittedAmount;
-                                        const balance = Math.max(0, acc.balance - amount);
+                                        const amount = fromMoneyCents(toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount));
+                                        const balanceCents = Math.max(0, acc.balanceCents - toMoneyCents(amount));
+                                        const balance = fromMoneyCents(balanceCents);
                                         const type = payment.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
                                           : payment.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
                                         acc.rows.push(
@@ -1003,13 +1258,13 @@ export function Accounting() {
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{payment.paymentDate}</td>
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 11, color: "#0F172A" }}>{type} · {payment.method ?? "Payment"}{payment.referenceNumber ? ` · ${payment.referenceNumber}` : ""}</td>
                                             <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{amount.toLocaleString("en-PH")}</td>
-                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#C8102E" : "#16A34A" }}>₱{balance.toLocaleString("en-PH")}</td>
+                                            <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>₱{formatMoney(amount)}</td>
+                                            <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#C8102E" : "#16A34A" }}>₱{formatMoney(balance)}</td>
                                           </tr>
                                         );
-                                        acc.balance = balance;
+                                        acc.balanceCents = balanceCents;
                                         return acc;
-                                      }, { balance: Math.max(0, r.amount - localPaid), rows: [] as React.ReactNode[] }).rows}
+                                      }, { balanceCents: Math.max(0, toMoneyCents(r.amount) - localPaidCents), rows: [] as React.ReactNode[] }).rows}
                                     </tbody>
                                   </table>
                                 </div>
@@ -1023,7 +1278,7 @@ export function Accounting() {
                                   <div className="flex flex-col gap-1">
                                     <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Amount (₱)</label>
                                     <input
-                                      type="number" min={0} placeholder="e.g. 23400"
+                                      type="number" min={0} step="0.01" placeholder="e.g. 23400.00"
                                       value={pf.amount}
                                       onChange={(e) => setNewPmt(p => ({ ...p, [r.id]: { ...pf, amount: e.target.value } }))}
                                       className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
@@ -1084,7 +1339,7 @@ export function Accounting() {
                                     style={{ backgroundColor: "#16A34A", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}
                                   >
                                     <CheckCircle2 size={12} strokeWidth={2.5} />
-                                    {remaining > 0 ? `₱${remaining.toLocaleString("en-PH")} remaining` : "Mark Cleared ✓"}
+                                    {remaining > 0 ? `₱${formatMoney(remaining)} remaining` : "Mark Cleared ✓"}
                                   </button>
                                 </div>
                               </div>
@@ -1107,6 +1362,60 @@ export function Accounting() {
 
       {/* Overdue Reminders Modal */}
       {/* Edit Receipt Modal */}
+      {paymentToReject && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,.65)" }}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reject-payment-title"
+            className="bg-white rounded-xl w-full max-w-lg overflow-hidden"
+            style={{ boxShadow: "0 24px 48px rgba(0,0,0,.25)" }}
+          >
+            <header className="px-6 py-4 border-b border-slate-200">
+              <h2 id="reject-payment-title" className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>Reject Payment</h2>
+            </header>
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-slate-50 p-4 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+                <span>Client</span><strong>{paymentToReject.invoice.client}</strong>
+                <span>Invoice</span><strong>{paymentToReject.payment.invoiceNo ?? paymentToReject.invoice.inv}</strong>
+                <span>Payment Type</span><strong>{paymentToReject.payment.paymentType.replace("_", " ")}</strong>
+                <span>Submitted Amount</span><strong>₱{formatMoney(paymentToReject.payment.submittedAmount)}</strong>
+              </div>
+              <label htmlFor="payment-rejection-reason" className="font-dm block mt-5 mb-1.5" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                Reason for Rejection <span style={{ color: "#C8102E" }}>*</span>
+              </label>
+              <textarea
+                id="payment-rejection-reason"
+                value={rejectionReason}
+                onChange={(event) => setRejectionReason(event.target.value)}
+                placeholder="Explain why this payment is being rejected..."
+                rows={4}
+                required
+                className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-y"
+                style={{ fontSize: 13 }}
+              />
+            </div>
+            <footer className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                onClick={() => { setPaymentToReject(null); setRejectionReason(""); }}
+                className="font-dm px-4 py-2 rounded-md border border-slate-200 hover:bg-slate-50"
+                style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRejectClientPayment}
+                disabled={!rejectionReason.trim()}
+                className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}
+              >
+                Reject Payment
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {editingReceipt && (
         <EditReceiptModal
           receipt={editingReceipt.receipt}
@@ -1143,28 +1452,30 @@ export function Accounting() {
         </div>
       )}
 
+      {receiptToView && <OfficialReceiptPreviewModal receipt={receiptToView} onClose={() => setReceiptToView(null)} />}
+
       {showOverdueModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setShowOverdueModal(false)}>
-          <div className="bg-white rounded-xl w-full max-w-lg flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "85vh" }} onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#FEF2F2" }}>
+          <div className="bg-white rounded-xl w-full max-w-[800px] h-[85vh] max-h-[85vh] flex flex-col" style={{ boxShadow: "0 24px 48px rgba(15,23,42,0.28)" }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#FEF2F2" }}>
               <div className="flex items-center gap-2">
                 <AlertTriangle size={18} style={{ color: "#C8102E" }} />
                 <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#991B1B" }}>Overdue &amp; Pending Invoices</h3>
               </div>
               <button onClick={() => setShowOverdueModal(false)} className="w-8 h-8 rounded-md hover:bg-red-100 flex items-center justify-center"><X size={16} style={{ color: "#991B1B" }} /></button>
             </div>
-            <div className="p-6 overflow-auto flex flex-col gap-3">
-              <p className="font-dm" style={{ fontSize: 13, color: "#475569" }}>
+            <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
+              <p className="font-dm flex-none" style={{ fontSize: 13, color: "#475569" }}>
                 Review eligible outstanding invoices and create a client reminder notification for each selected invoice.
               </p>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
                 <label htmlFor="reminder-filter" className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Filter reminders</label>
                 <select
                   id="reminder-filter"
                   value={reminderFilter}
                   onChange={(event) => setReminderFilter(event.target.value as ReminderFilter)}
                   disabled={sendingAllReminders}
-                  className="font-dm rounded-md border border-slate-300 bg-white px-3 py-2 outline-none focus:border-slate-500 disabled:opacity-60"
+                  className="font-dm rounded-md border border-slate-300 bg-white px-2.5 py-1.5 outline-none focus:border-slate-500 disabled:opacity-60"
                   style={{ fontSize: 12, color: "#0F172A" }}
                 >
                   <option value="all">All Reminders</option>
@@ -1173,14 +1484,15 @@ export function Accounting() {
                   <option value="overdue">Overdue</option>
                 </select>
                 <span className="font-dm w-full" style={{ fontSize: 11, color: "#64748B" }}>
-                  {filteredReminderRows.length} eligible · {dueSoonReminderCount} due soon · {overdueReminderCount} overdue
+                  {filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length} eligible · {dueSoonReminderCount} due soon · {overdueReminderCount} overdue
                 </span>
                 <span className="font-dm w-full" style={{ fontSize: 10, color: "#94A3B8" }}>
                   Due soon means due within 7 days; Remaining Balance includes later or undated invoices.
                 </span>
               </div>
+              <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
               {filteredReminderRows.length === 0 ? (
-                <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 13, color: "#16A34A", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                <div className="rounded-lg p-5 text-center font-dm" style={{ fontSize: 13, color: "#16A34A", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
                   {eligibleReminderRows.length === 0
                     ? "✅ No eligible reminders — all invoices are cleared or have no outstanding balance."
                     : "No eligible invoices match this reminder filter."}
@@ -1189,54 +1501,79 @@ export function Accounting() {
                 const category = reminderCategory(r, now);
                 const isOverdue = category === "overdue";
                 const isDueSoon = category === "dueSoon";
+                const lastReminderAt = reminderHistory[r.id];
+                const reminderOnCooldown = isReminderCoolingDown(r);
+                const nextEligibleAt = lastReminderAt ? reminderNextEligibleAt(lastReminderAt) : undefined;
                 return (
-                  <div key={r.id} className="rounded-lg p-4 border" style={{ backgroundColor: isOverdue ? "#FEF2F2" : isDueSoon ? "#FFFBEB" : "#F8FAFC", borderColor: isOverdue ? "#FECACA" : isDueSoon ? "#FDE68A" : "#CBD5E1" }}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{r.inv}</span>
-                          <span
-                            className="font-dm px-2 py-0.5 rounded-full"
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 700,
-                              backgroundColor: isOverdue ? "#FEE2E2" : isDueSoon ? "#FEF3C7" : "#E2E8F0",
-                              color: isOverdue ? "#C8102E" : isDueSoon ? "#B45309" : "#475569",
-                            }}
-                          >
-                            {isOverdue ? "OVERDUE" : isDueSoon ? "DUE SOON" : "REMAINING BALANCE"}
-                          </span>
-                        </div>
-                        <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</div>
-                        <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{r.item}</div>
-                        <div className="flex items-center gap-4 mt-1">
-                          <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Balance: ₱{r.paymentState.remainingInvoiceBalance.toLocaleString("en-PH")}</span>
-                          <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>Due: {r.dueDate ?? "—"}</span>
-                          <span className="font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.payment}</span>
-                        </div>
+                  <div key={r.id} className="rounded-lg border p-3" style={{ backgroundColor: isOverdue ? "#FEF2F2" : isDueSoon ? "#FFFBEB" : "#F8FAFC", borderColor: isOverdue ? "#FECACA" : isDueSoon ? "#FDE68A" : "#CBD5E1" }}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="font-mono-jb whitespace-nowrap" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A" }}>{r.inv}</span>
+                        <span
+                          className="font-dm whitespace-nowrap rounded-full px-2 py-0.5"
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            backgroundColor: isOverdue ? "#FEE2E2" : isDueSoon ? "#FEF3C7" : "#E2E8F0",
+                            color: isOverdue ? "#C8102E" : isDueSoon ? "#B45309" : "#475569",
+                          }}
+                        >
+                          {isOverdue ? "OVERDUE" : isDueSoon ? "DUE SOON" : "REMAINING BALANCE"}
+                        </span>
                       </div>
-                      <button
-                        onClick={() => sendInvoiceReminder(r)}
-                        disabled={sendingAllReminders || sendingReminderIds.has(r.id)}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-md text-white font-dm hover:opacity-90 shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
-                        style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}
-                      >
-                        <Send size={12} /> {sendingReminderIds.has(r.id) ? "Sending..." : "Send Reminder"}
-                      </button>
+                      {reminderOnCooldown ? (
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 font-dm text-[10px] font-bold text-green-800">Reminder Sent</span>
+                          {lastReminderAt && (
+                            <div className="text-right font-dm" style={{ fontSize: 10, color: "#64748B", lineHeight: 1.35 }}>
+                              <div>Last reminder: {formatReminderDate(lastReminderAt)}</div>
+                              {nextEligibleAt !== undefined && <div>Next eligible: {formatReminderDate(nextEligibleAt)}</div>}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => sendInvoiceReminder(r)}
+                          disabled={sendingAllReminders || sendingReminderIds.has(r.id)}
+                          className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}
+                        >
+                          <Send size={12} /> {sendingReminderIds.has(r.id) ? "Sending..." : "Send Reminder"}
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-2">
+                      <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</div>
+                      <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>{r.item}</div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 border-t border-slate-200/80 pt-2 sm:grid-cols-3 sm:gap-3">
+                      <div>
+                        <div className="font-dm uppercase" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.35 }}>Balance</div>
+                        <div className="font-syne mt-0.5" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</div>
+                      </div>
+                      <div>
+                        <div className="font-dm uppercase" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.35 }}>Due Date</div>
+                        <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#475569" }}>{r.dueDate ?? "—"}</div>
+                      </div>
+                      <div>
+                        <div className="font-dm uppercase" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.35 }}>Payment Terms</div>
+                        <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#475569" }}>{r.payment}</div>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-between items-center">
-              <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{filteredReminderRows.length} eligible reminder{filteredReminderRows.length === 1 ? "" : "s"}</span>
-              <div className="flex gap-2">
-                <button onClick={() => setShowOverdueModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Close</button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3">
+              <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length} eligible reminder{filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length === 1 ? "" : "s"}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => setShowOverdueModal(false)} className="font-dm rounded-md px-3 py-1.5 hover:bg-slate-100" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Close</button>
                 <button
                   onClick={sendFilteredReminders}
-                  disabled={filteredReminderRows.length === 0 || sendingAllReminders}
-                  className="flex items-center gap-2 px-4 py-2 rounded-md text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}
+                  disabled={filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice)).length === 0 || sendingAllReminders}
+                  className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700 }}
                 >
                   <Send size={14} /> {sendingAllReminders ? "Sending..." : "Send All Payment Reminders"}
                 </button>
@@ -1244,6 +1581,16 @@ export function Accounting() {
             </div>
           </div>
         </div>
+      )}
+
+      {receiptToIssue && (
+        <OfficialReceiptModal
+          invoice={receiptToIssue}
+          suggestedNumber={generateOfficialReceiptNumber()}
+          issuingStaff={issuingStaff}
+          onCancel={() => setReceiptToIssue(null)}
+          onIssue={(orNumber) => issueReceipt(receiptToIssue, orNumber)}
+        />
       )}
 
     </div>
@@ -1263,8 +1610,8 @@ function EditReceiptModal({ receipt, onClose, onSave }: {
   const [replaceFile, setReplaceFile] = useState<string | null>(null);
 
   const submit = () => {
-    const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) { toast.error("Invalid amount"); return; }
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || toMoneyCents(amt) <= 0) { toast.error("Invalid amount"); return; }
     if (!method.trim()) { toast.error("Method required"); return; }
     onSave({ amount: amt, method, ref: ref.trim() || "—", date });
   };
@@ -1279,7 +1626,7 @@ function EditReceiptModal({ receipt, onClose, onSave }: {
         <div className="p-5 flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Amount Paid (₱)</label>
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
           </div>
           <div className="flex flex-col gap-1">
             <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Method</label>
@@ -1309,6 +1656,46 @@ function EditReceiptModal({ receipt, onClose, onSave }: {
           <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
           <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Save Changes</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function OfficialReceiptModal({ invoice, suggestedNumber, issuingStaff, onCancel, onIssue }: {
+  invoice: Invoice;
+  suggestedNumber: string;
+  issuingStaff: string;
+  onCancel: () => void;
+  onIssue: (orNumber: string) => void;
+}) {
+  const [orNumber, setOrNumber] = useState(suggestedNumber);
+  const [submitting, setSubmitting] = useState(false);
+  const issue = () => {
+    if (!orNumber.trim()) { toast.error("OR number is required"); return; }
+    if (submitting) return;
+    setSubmitting(true);
+    onIssue(orNumber);
+    setSubmitting(false);
+  };
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={onCancel}>
+      <div className="bg-white rounded-xl w-full max-w-2xl flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(event) => event.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div><h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Issue Official Receipt</h3><div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Prototype-generated receipt · not BIR-compliant</div></div>
+          <button onClick={onCancel} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
+        </div>
+        <div className="p-6 overflow-auto grid grid-cols-2 gap-4 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+          <label className="flex flex-col gap-1"><span className="font-semibold">OR Number</span><input value={orNumber} onChange={(event) => setOrNumber(event.target.value)} className="px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" /></label>
+          <div><div className="font-semibold">Issue Date</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{new Date().toLocaleDateString("en-US")}</div></div>
+          <div><div className="font-semibold">Client / Company</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{invoice.client}</div></div>
+          <div><div className="font-semibold">Related Invoice</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{invoice.inv}</div></div>
+          <div><div className="font-semibold">Original Invoice Amount</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">₱{invoice.paymentState.invoiceTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div></div>
+          <div><div className="font-semibold">Amount Covered by OR</div><div className="mt-2 px-3 py-2 rounded-md bg-green-50 text-green-800">₱{invoice.paymentState.totalVerifiedPayments.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div></div>
+          <div><div className="font-semibold">Issuing Staff</div><div className="mt-2 px-3 py-2 rounded-md bg-slate-50">{issuingStaff}</div></div>
+          <div><div className="font-semibold">Outstanding Balance</div><div className="mt-2 px-3 py-2 rounded-md bg-green-50 text-green-800">₱{invoice.paymentState.remainingInvoiceBalance.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div></div>
+          <div className="col-span-2 rounded-md border border-slate-200 p-3"><div className="font-semibold mb-2">Verified Payments</div>{invoice.paymentRecords.filter((payment) => payment.verificationStatus === "verified").map((payment) => <div key={payment.id} className="flex justify-between py-1"><span>{payment.paymentDate} · {payment.paymentType}</span><strong>₱{(payment.verifiedAmount ?? payment.submittedAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong></div>)}</div>
+        </div>
+        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2"><button onClick={onCancel} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button><button onClick={issue} disabled={submitting} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Issue Official Receipt</button></div>
       </div>
     </div>
   );

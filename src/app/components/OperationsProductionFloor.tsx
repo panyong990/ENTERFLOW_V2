@@ -374,7 +374,9 @@ export function OperationsProductionFloor() {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <CardFact label="Quantity" value={`${job.quantity.toLocaleString()} pcs`} />
                       <CardFact label="Current Stage" value={currentStage} />
-                      <CardFact label="Due Date" value={formatDate(inquiry.dueDate)} alert={job.overdue} />
+                      <CardFact label="Client Requested Delivery" value={formatDate(inquiry.dueDate)} alert={job.overdue} />
+                      <CardFact label="Production Due" value={formatDate(inquiry.productionDueDate)} />
+                      <CardFact label="Final Delivery Method" value={inquiry.deliveryMethod ?? "—"} />
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                       <button
@@ -424,7 +426,9 @@ export function OperationsProductionFloor() {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <DetailFact label="Job Order" value={selectedJob.inquiry.joNumber ?? selectedJob.inquiry.code} />
                   <DetailFact label="Client" value={selectedJob.inquiry.clientName} />
-                  <DetailFact label="Due Date" value={formatDate(selectedJob.inquiry.dueDate)} alert={selectedJob.overdue} />
+                  <DetailFact label="Client Requested Delivery" value={formatDate(selectedJob.inquiry.dueDate)} alert={selectedJob.overdue} />
+                  <DetailFact label="Production Due" value={formatDate(selectedJob.inquiry.productionDueDate)} />
+                  <DetailFact label="Final Delivery Method" value={selectedJob.inquiry.deliveryMethod ?? "—"} />
                   <DetailFact label="Current Status" value={selectedJob.status.label} alert={selectedJob.overdue} />
                   <DetailFact label="Current Production Stage" value={selectedJob.stageIndex < PRODUCTION_STAGES.length ? PRODUCTION_STAGES[selectedJob.stageIndex] : "Production Complete"} />
                   <DetailFact label="Purchase Order" value={poNumberForDisplay(selectedJob.inquiry) ?? "—"} />

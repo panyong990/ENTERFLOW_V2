@@ -14,10 +14,17 @@ import {
   quotationTotal,
   paymentRecords,
   paymentState,
+  exactDownpaymentValidationMessage,
+  invoiceTotal,
   poNumberForDisplay,
+  poReviewStatus,
+  stageLabel,
+  fromMoneyCents,
+  toMoneyCents,
   type Inquiry,
   type PaymentStateSummary,
   type ProductLine,
+  type QuotationDoc,
   type ReplacementRequest,
   type PaymentType,
 } from "../store/orders";
@@ -26,9 +33,11 @@ import { useSettings } from "../store/settings";
 import { getClientCompanySettings, saveClientCompanySettings } from "../store/clientCompanySettings";
 import { loadProductSketchAttachment, readFileAsDataUrl } from "../store/attachments";
 import { NotificationBell } from "./NotificationBell";
+import { NotificationsCenter } from "./NotificationsCenter";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
 import { InvoicePreviewModal } from "./InvoicePreviewModal";
+import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,7 +50,7 @@ import {
 } from "./ui/alert-dialog";
 import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../store/filterTemplates";
 
-type Tab = "orders" | "status" | "logistics" | "accounting" | "settings";
+type Tab = "orders" | "status" | "logistics" | "accounting" | "notifications" | "settings";
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "orders", label: "Orders", icon: ClipboardList },
@@ -51,13 +60,22 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
+const isClientDestination = (id: string): id is Tab =>
+  id === "notifications" || tabs.some((tab) => tab.id === id);
+
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
+const hasPendingRevisionRequest = (inquiry: Inquiry) =>
+  Boolean(inquiry.revisionNote || inquiry.revisionRequests?.some((request) => request.status === "pending"));
 
 type ClientOrderStatusId =
+  | "cancellationRequested"
+  | "cancelled"
   | "awaitingQuotation"
   | "quotationSent"
+  | "revisionRequested"
   | "awaitingPOVerification"
   | "poReceived"
+  | "poRejected"
   | "invoiceSent"
   | "awaitingPaymentVerification"
   | "fullPaymentVerified"
@@ -72,6 +90,24 @@ type ClientOrderStatus = {
 };
 
 const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
+  if (inquiry.pendingCancellation) {
+    return {
+      id: "cancellationRequested",
+      label: "CANCELLATION REQUESTED",
+      bg: "#FEF3C7",
+      fg: "#92400E",
+      message: "Cancellation request submitted — awaiting Enter-Fil approval.",
+    };
+  }
+  if (inquiry.archived && inquiry.archiveReason === "cancelled") {
+    return {
+      id: "cancelled",
+      label: "CANCELLED",
+      bg: "#E2E8F0",
+      fg: "#475569",
+      message: "This order has been cancelled.",
+    };
+  }
   const payment = paymentState(inquiry);
   const invoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
   if (invoiceSent && payment.invoiceTotal > 0 && payment.state === "FULLY_PAID") {
@@ -111,35 +147,50 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
       message: "Invoice sent — awaiting required payment.",
     };
   }
+  if (inquiry.stage === "po" && inquiry.poFileName) {
+    const poStatus = poReviewStatus(inquiry);
+    if (poStatus === "Rejected") {
+      return {
+        id: "poRejected",
+        label: "PO REJECTED · RESUBMISSION REQUIRED",
+        bg: "#FEE2E2",
+        fg: "#991B1B",
+        message: "Your PO was rejected. Review the reason below and upload a revised PO.",
+      };
+    }
+    if (poStatus === "Approved") {
+      return {
+        id: "poReceived",
+        label: "PO APPROVED",
+        bg: "#DCFCE7",
+        fg: "#166534",
+        message: "Purchase order approved — the order can proceed to invoice and payment.",
+      };
+    }
+    return {
+      id: "awaitingPOVerification",
+      label: "PURCHASE ORDER SUBMITTED",
+      bg: "#DBEAFE",
+      fg: "#1D4ED8",
+      message: "Purchase order submitted — awaiting Sales review.",
+    };
+  }
   if (inquiry.stage === "quotation") {
+    if (hasPendingRevisionRequest(inquiry)) {
+      return {
+        id: "revisionRequested",
+        label: "REVISION REQUESTED",
+        bg: "#FEF3C7",
+        fg: "#92400E",
+        message: "Quotation revision requested — awaiting Sales review.",
+      };
+    }
     return {
       id: "quotationSent",
       label: "QUOTATION SENT",
       bg: "#DBEAFE",
       fg: "#1D4ED8",
       message: "Quotation sent — awaiting client purchase order.",
-    };
-  }
-  if (
-    (inquiry.quotationDoc?.quotationNo || inquiry.quotation)
-    && inquiry.stage === "po"
-    && inquiry.poFileName
-  ) {
-    if (inquiry.poReceived) {
-      return {
-        id: "poReceived",
-        label: "PO SUBMITTED",
-        bg: "#FEF3C7",
-        fg: "#B45309",
-        message: "Purchase order received by Sales.",
-      };
-    }
-    return {
-      id: "awaitingPOVerification",
-      label: "AWAITING PO VERIFICATION",
-      bg: "#DBEAFE",
-      fg: "#1D4ED8",
-      message: "Purchase order submitted — awaiting verification.",
     };
   }
   return {
@@ -152,7 +203,7 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
 };
 
 function Shell({ active, onChange, children, clientName, onLogout }: {
-  active: Tab; onChange: (t: Tab) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
+  active: Tab; onChange: (t: Tab, inquiryId?: string) => void; children: React.ReactNode; clientName: string; onLogout?: () => void;
 }) {
   return (
     <div className="size-full flex flex-col font-dm" style={{ backgroundColor: "#F4F6F9" }}>
@@ -171,7 +222,7 @@ function Shell({ active, onChange, children, clientName, onLogout }: {
           <span className="font-dm" style={{ fontSize: 13, color: "#0F172A" }}>
             Welcome, <span style={{ fontWeight: 600 }}>{clientName}</span>
           </span>
-          <NotificationBell role="client" clientName={clientName} onNavigate={(id) => tabs.some((tab) => tab.id === id) && onChange(id as Tab)} />
+          <NotificationBell role="client" clientName={clientName} onNavigate={(id, inquiryId) => isClientDestination(id) && onChange(id, inquiryId)} />
           <button onClick={onLogout} className="font-dm" style={{ fontSize: 13, color: "#C8102E", fontWeight: 600 }}>Logout</button>
         </div>
       </header>
@@ -207,6 +258,10 @@ function Shell({ active, onChange, children, clientName, onLogout }: {
 
 /* ---------- Orders Tab ---------- */
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
+const formatMoneyAmount = (amount: number) => amount.toLocaleString("en-PH", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 const blankProduct = (id: string): ProductLine => ({
   id, type: "AIRFIL", filterName: "",
@@ -249,22 +304,30 @@ const FILTRATION_RATINGS = [
   { value: "custom",     label: "Custom / Other", desc: "Specify in notes" },
 ];
 
-function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void }) {
+function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void; targetInquiryId?: string }) {
   const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches } = useOrders();
   const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
   const myOrders = byClient(clientName).filter((i) =>
-    !i.archived
-    && (
+    (i.archived && i.archiveReason === "cancelled")
+    || (!i.archived && (
       i.stage === "inquiry"
       || i.stage === "quotation"
       || i.stage === "po"
       || Boolean(i.invoiceNo && i.invoiceSentAt)
-    )
+    ))
   );
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
+  const [orderSortOrder, setOrderSortOrder] = useState<"newest" | "oldest">("newest");
   const normalizedOrderSearch = orderSearch.trim().toLowerCase();
+  useEffect(() => {
+    if (!targetInquiryId) return;
+    const target = byClient(clientName).find((inquiry) => inquiry.id === targetInquiryId);
+    if (!target) return;
+    setOrderSearch(target.code);
+    setOrderStatusFilter("all");
+  }, [byClient, clientName, targetInquiryId]);
   const visibleOrders = myOrders.filter((inquiry) => {
     const matchesStatus = orderStatusFilter === "all" || clientOrderStatus(inquiry).id === orderStatusFilter;
     const searchableValues = [
@@ -280,11 +343,21 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
     ];
     const matchesSearch = !normalizedOrderSearch || searchableValues.some((value) => value?.toLowerCase().includes(normalizedOrderSearch));
     return matchesStatus && matchesSearch;
+  }).sort((left, right) => {
+    const leftDate = Date.parse(left.submittedDate);
+    const rightDate = Date.parse(right.submittedDate);
+    const leftSubmittedAt = Number.isNaN(leftDate) ? 0 : leftDate;
+    const rightSubmittedAt = Number.isNaN(rightDate) ? 0 : rightDate;
+    return orderSortOrder === "newest"
+      ? rightSubmittedAt - leftSubmittedAt
+      : leftSubmittedAt - rightSubmittedAt;
   });
   const [poForId, setPoForId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showJobs, setShowJobs] = useState(false);
+  const [showCreateOptions, setShowCreateOptions] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
+  const poForInquiry = poForId ? myOrders.find((inquiry) => inquiry.id === poForId) : undefined;
 
   const createReorderInquiry = async (source: Inquiry, quantities: Record<string, number>): Promise<boolean> => {
     try {
@@ -362,14 +435,14 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Orders</h2>
-          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Inquiries, quotations, POs, and sent invoices · click <strong>+ New Order</strong> to start a new inquiry.</p>
+          <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Inquiries, quotations, POs, and sent invoices · create a new inquiry or reorder a previous Job Order.</p>
         </div>
         <button
-          onClick={() => setShowWizard(true)}
+          onClick={() => setShowCreateOptions(true)}
           className="font-dm flex items-center gap-2 px-5 py-3 rounded-md text-white hover:opacity-90 shadow-sm"
           style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
         >
-          <Plus size={16} strokeWidth={3} /> New Order
+          <Plus size={16} strokeWidth={3} /> Create Order
         </button>
       </div>
 
@@ -377,14 +450,11 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         <button onClick={() => setShowTransactions(true)} className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
           <ClipboardList size={14} /> View Transaction History
         </button>
-        <button onClick={() => setShowJobs(true)} className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
-          <FileCheck size={14} /> View Job Orders
-        </button>
       </div>
 
       {myOrders.length === 0 && (
         <div className="bg-white rounded-xl border border-slate-200/70 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-          No active orders yet — click <strong>+ New Order</strong> to submit your first inquiry.
+          No active orders yet — click <strong>Create Order</strong> to submit your first inquiry.
         </div>
       )}
       {myOrders.length > 0 && (
@@ -406,13 +476,28 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
             style={{ fontSize: 12, color: "#475569" }}
           >
             <option value="all">All Statuses</option>
+            <option value="cancellationRequested">Cancellation Requested</option>
+            <option value="cancelled">Cancelled</option>
             <option value="awaitingQuotation">Awaiting Quotation</option>
             <option value="quotationSent">Quotation Sent</option>
-            <option value="poReceived">PO SUBMITTED</option>
-            <option value="invoiceSent">Invoice Sent</option>
+            <option value="revisionRequested">Revision Requested</option>
+            <option value="awaitingPOVerification">Purchase Order Submitted</option>
+            <option value="poReceived">Purchase Order Approved</option>
+            <option value="poRejected">Purchase Order Rejected</option>
             <option value="awaitingPaymentVerification">Awaiting Payment Verification</option>
-            <option value="fullPaymentVerified">Full Payment Verified</option>
             <option value="downpaymentVerified">Downpayment Verified</option>
+            <option value="invoiceSent">Invoice Sent</option>
+            <option value="fullPaymentVerified">Paid / Completed</option>
+          </select>
+          <select
+            value={orderSortOrder}
+            onChange={(event) => setOrderSortOrder(event.target.value as "newest" | "oldest")}
+            aria-label="Sort My Orders by submission date"
+            className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#475569" }}
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
           </select>
         </div>
       )}
@@ -441,6 +526,42 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
         />
       ))}
 
+      {showCreateOptions && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setShowCreateOptions(false)}>
+          <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
+              <div>
+                <h2 className="font-syne text-lg font-extrabold text-slate-900">Create Order</h2>
+                <p className="font-dm mt-1 text-xs text-slate-500">Choose how you would like to start your inquiry.</p>
+              </div>
+              <button onClick={() => setShowCreateOptions(false)} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="Close create order options"><X size={16} /></button>
+            </div>
+            <div className="flex flex-col gap-3 p-5 sm:p-6">
+              <button
+                onClick={() => { setShowCreateOptions(false); setShowWizard(true); }}
+                className="flex min-h-20 items-center gap-4 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:border-[#C8102E] hover:bg-red-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A]"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#C8102E]"><Plus size={20} strokeWidth={2.5} /></span>
+                <span>
+                  <span className="block font-syne text-sm font-extrabold text-slate-900">New Order</span>
+                  <span className="font-dm mt-1 block text-xs leading-5 text-slate-600">Start a new inquiry with the existing order form.</span>
+                </span>
+              </button>
+              <button
+                onClick={() => { setShowCreateOptions(false); setShowJobs(true); }}
+                className="flex min-h-20 items-center gap-4 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:border-[#1A2B4A] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A]"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#1A2B4A]"><RotateCcw size={18} /></span>
+                <span>
+                  <span className="block font-syne text-sm font-extrabold text-slate-900">Reorder</span>
+                  <span className="font-dm mt-1 block text-xs leading-5 text-slate-600">Choose a previous Job Order and update quantities for a new inquiry.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showWizard && (
         <NewOrderWizardModal
           clientName={clientName}
@@ -451,12 +572,39 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice }: { clientName: stri
 
       {poForId && (
         <POUploadOverlay
+          isResubmission={Boolean(poForInquiry && poReviewStatus(poForInquiry) === "Rejected")}
           onClose={() => setPoForId(null)}
-          onSubmit={({ fileName, fileDataUrl, poNumber }) => { uploadPO(poForId, fileName, fileDataUrl, poNumber); setPoForId(null); toast.success("Purchase Order submitted ✅", { description: "Management has been notified" }); }}
+          onSubmit={({ fileName, fileDataUrl, poNumber }) => {
+            const inquiry = poForInquiry;
+            if (!inquiry || !uploadPO(inquiry.id, fileName, fileDataUrl, poNumber)) {
+              toast.error("This order is not currently eligible for a PO submission");
+              return false;
+            }
+            const revised = poReviewStatus(inquiry) === "Rejected";
+            pushNotif({
+              dept: "sales",
+              title: revised ? `Revised Purchase Order submitted: ${inquiry.code}` : `Purchase Order submitted: ${inquiry.code}`,
+              body: `${clientName} · ${poNumber} · awaiting Sales review`,
+              link: "sales",
+              recipients: ["owner", "operations", "sales"],
+            });
+            pushNotif({
+              dept: "sales",
+              title: "Purchase Order received",
+              body: `${inquiry.code} · ${poNumber} · awaiting Sales review`,
+              link: "orders",
+              clientLink: "orders",
+              clientName,
+              recipients: ["client"],
+            });
+            setPoForId(null);
+            toast.success(revised ? "Revised Purchase Order submitted" : "Purchase Order submitted", { description: "Sales has been notified and your PO is awaiting review." });
+            return true;
+          }}
         />
       )}
       {showJobs && (
-        <ClientTableModal title="Job Orders" onClose={() => setShowJobs(false)}>
+        <ClientTableModal title="Select a Job Order to Reorder" onClose={() => setShowJobs(false)}>
           <JobOrdersTab
             clientName={clientName}
             onContinueReorder={async (inquiry, quantities) => {
@@ -528,13 +676,14 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
   };
 
   return (
-    <div className="px-8 py-8 flex flex-col gap-4">
+    <div className="px-4 py-6 flex flex-col gap-4 sm:px-8 sm:py-8">
       <div>
         <h1 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Job Orders</h1>
-        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Click <strong>Reorder</strong> on any past production order to review its specs and quantities.</p>
+        <p className="font-dm mt-0.5" style={{ fontSize: 13, color: "#64748B" }}>Select a previous Job Order to review its product details and set reorder quantities.</p>
       </div>
-      <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        <table className="w-full">
+      <div className="overflow-hidden rounded-xl border border-slate-200/70 bg-white" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px]">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
             <tr>
               {["Job Order", "Date", "Item", "Qty", "Status", ""].map((h) => (
@@ -547,7 +696,7 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
               <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No job orders yet.</td></tr>
             )}
             {jobOrders.map((inq) => {
-              const item = inq.products[0]?.filterName || labelForType(inq.products[0]?.type ?? "");
+              const item = inq.products.map((product) => product.filterName || labelForType(product.type)).join(", ");
               const qty = inq.products.reduce((s, p) => s + p.qty, 0);
               return (
                 <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
@@ -566,18 +715,19 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
             })}
           </tbody>
         </table>
+        </div>
       </div>
       {reorderInquiry && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => { if (!isSubmittingReorder) setReorderInquiry(null); }}>
           <div className="bg-white rounded-xl w-full max-w-2xl overflow-hidden" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "90vh" }} onClick={(event) => event.stopPropagation()}>
-            <div className="px-6 py-5 flex items-start justify-between" style={{ backgroundColor: "#1A2B4A" }}>
+            <div className="px-4 py-4 flex items-start justify-between sm:px-6 sm:py-5" style={{ backgroundColor: "#1A2B4A" }}>
               <div>
                 <h2 className="font-syne text-white" style={{ fontSize: 18, fontWeight: 700 }}>Confirm Reorder Quantities</h2>
                 <p className="font-dm text-white/70 mt-1" style={{ fontSize: 12 }}>Job Order {reorderInquiry.joNumber ?? reorderInquiry.code}</p>
               </div>
               <button onClick={() => setReorderInquiry(null)} disabled={isSubmittingReorder} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center text-white disabled:opacity-50" aria-label="Close"><X size={16} /></button>
             </div>
-            <div className="p-6 overflow-auto flex flex-col gap-4" style={{ maxHeight: "calc(90vh - 150px)" }}>
+            <div className="p-4 overflow-auto flex flex-col gap-4 sm:p-6" style={{ maxHeight: "calc(90vh - 150px)" }}>
               {reorderInquiry.products.map((product, index) => {
                 const dimensions = GROUP_TEMPLATES[groupForType(product.type)].dimensions
                   .map((dimension) => `${DIMENSION_LABELS[dimension]}: ${product[dimension] || "—"}`)
@@ -601,15 +751,15 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
                       <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{labelForType(product.type)} · {dimensions}</div>
                       {optionalComponents && <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{optionalComponents}</div>}
                     </div>
-                    <label className="font-dm flex items-center gap-3" style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
-                      <span className="min-w-32">Quantity (original: {product.qty})</span>
+                    <label className="font-dm flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3" style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
+                      <span className="sm:min-w-32">Quantity (original: {product.qty})</span>
                       <input
                         type="number"
                         min={10}
                         step={1}
                         value={quantities[product.id] ?? ""}
                         onChange={(event) => setQuantities((previous) => ({ ...previous, [product.id]: event.target.value }))}
-                        className="w-36 font-syne px-3 py-2 rounded-md border border-slate-300 outline-none focus:border-slate-500 bg-white"
+                        className="w-full max-w-36 font-syne px-3 py-2 rounded-md border border-slate-300 outline-none focus:border-slate-500 bg-white"
                         style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}
                         aria-label={`Quantity for ${product.filterName || labelForType(product.type)}`}
                       />
@@ -622,7 +772,7 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
                 );
               })}
             </div>
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+            <div className="px-4 py-4 border-t border-slate-200 flex flex-col-reverse justify-end gap-2 sm:flex-row sm:px-6">
               <button onClick={() => setReorderInquiry(null)} disabled={isSubmittingReorder} className="font-dm px-4 py-2.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-50" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
               <button onClick={continueReorder} disabled={!quantitiesAreValid || isSubmittingReorder} className="font-dm px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>{isSubmittingReorder ? "Creating Inquiry..." : "Confirm Reorder"}</button>
             </div>
@@ -633,12 +783,21 @@ function JobOrdersTab({ clientName, onContinueReorder }: {
   );
 }
 
-/* ─────────── TransactionsTab — paid invoices only, derived from store ─────────── */
+/* ─────────── TransactionsTab — client-scoped delivered and invoiced orders ─────────── */
 function TransactionsTab({ clientName }: { clientName: string }) {
   const { byClient } = useOrders();
-
-  /* Include delivered + paid orders */
-  const allOrders = byClient(clientName).filter((i) => !i.archived && ["delivered", "paid"].includes(i.stage));
+  const [receiptToView, setReceiptToView] = useState<NonNullable<Inquiry["officialReceipt"]> | null>(null);
+  const clientInquiries = byClient(clientName).filter((inquiry) => !inquiry.archived);
+  const allOrders = Array.from(new Map(
+    clientInquiries
+      .filter((inquiry) => (
+        ["delivered", "paid"].includes(inquiry.stage)
+        || Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt)
+        || paymentState(inquiry).state === "FULLY_PAID"
+        || inquiry.officialReceipt?.invoiceId === inquiry.id
+      ))
+      .map((inquiry) => [inquiry.invoiceNo?.trim().toUpperCase() || inquiry.id, inquiry] as const),
+  ).values());
 
   return (
     <div className="px-8 py-8 flex flex-col gap-4">
@@ -650,38 +809,73 @@ function TransactionsTab({ clientName }: { clientName: string }) {
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
             <tr>
-              {["Date", "PO No.", "Item", "Amount", "Payment Terms", "Status"].map((h) => (
+              {["Date", "PO No.", "Item", "Amount", "Payment Terms", "Status", "Official Receipt"].map((h) => (
                 <th key={h} className="font-dm text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {allOrders.length === 0 && (
-              <tr><td colSpan={6} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>No transactions yet.</td></tr>
             )}
-            {allOrders.map((inq) => (
+            {allOrders.map((inq) => {
+              const inquiryPaymentState = paymentState(inq);
+              const fullyPaid = inq.stage === "paid" || inquiryPaymentState.state === "FULLY_PAID";
+              const eligibleForReceipt = inquiryPaymentState.state === "FULLY_PAID"
+                && inquiryPaymentState.remainingInvoiceBalance === 0
+                && !paymentRecords(inq).some((payment) => payment.verificationStatus === "pending");
+              const actualInvoiceNumber = inq.invoiceNo?.trim();
+              const issuedReceipt = inq.officialReceipt?.status === "issued"
+                && inq.officialReceipt.invoiceId === inq.id
+                && inq.officialReceipt.clientName === inq.clientName
+                && (!actualInvoiceNumber || inq.officialReceipt.invoiceNo === actualInvoiceNumber)
+                ? inq.officialReceipt
+                : undefined;
+              const poNumber = poNumberForDisplay(inq) ?? "—";
+              const itemDescription = inq.products
+                .map((product) => product.filterName ?? product.type)
+                .filter(Boolean)
+                .join(", ") || "—";
+              return (
               <tr key={inq.id} className="border-t border-slate-200/70 hover:bg-slate-50">
-                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.deliveredDate ?? inq.submittedDate}</td>
-                <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{inq.code}</td>
-                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{inq.products[0]?.filterName ?? labelForType(inq.products[0]?.type ?? "")}</td>
-                <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{(inq.invoiceAmount ?? inq.quotedTotal ?? 0).toLocaleString("en-PH")}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.invoiceDate ?? inq.deliveredDate ?? inq.submittedDate}</td>
+                <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{poNumber}</td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#0F172A" }}>{itemDescription}</td>
+                <td className="px-4 py-3 font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>₱{invoiceTotal(inq).toLocaleString("en-PH")}</td>
                 <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inq.paymentTerms}</td>
                 <td className="px-4 py-3">
-                  <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: inq.stage === "paid" ? "#DCFCE7" : "#DBEAFE", color: inq.stage === "paid" ? "#15803D" : "#1D4ED8" }}>
-                    {inq.stage === "paid" ? "✅ Paid" : "📦 Delivered"}
+                  <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: fullyPaid ? "#DCFCE7" : "#DBEAFE", color: fullyPaid ? "#15803D" : "#1D4ED8" }}>
+                    {fullyPaid ? "✅ Paid" : `📦 ${stageLabel[inq.stage]}`}
                   </span>
                 </td>
+                <td className="px-4 py-3 font-dm" style={{ fontSize: 11, color: issuedReceipt ? "#15803D" : fullyPaid ? "#B45309" : "#94A3B8", fontWeight: 700 }}>
+                  {issuedReceipt ? (
+                    <button onClick={() => setReceiptToView(issuedReceipt)} className="text-left text-blue-700 underline">View Official Receipt · {issuedReceipt.orNumber}</button>
+                  ) : eligibleForReceipt ? "OR Pending" : "Not Issued"}
+                </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      {receiptToView && <OfficialReceiptPreviewModal receipt={receiptToView} onClose={() => setReceiptToView(null)} />}
 
     </div>
   );
 }
 
 /* ─────────── NewOrderWizardModal — multi-product wizard with dynamic dimensions ─────────── */
+function formatRequestedDeliveryDate(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onClose, onSubmitted }: {
   clientName: string;
   reorderSource?: Inquiry;
@@ -695,6 +889,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   const [step, setStep] = useState(1);
   const [contactPerson, setContactPerson] = useState(reorderSource?.contactPerson ?? "");
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(reorderSource?.paymentTerms ?? "30-Day Terms");
+  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
   const [generalNotes, setGeneralNotes] = useState(reorderSource ? `Reorder of ${reorderSource.joNumber ?? reorderSource.code}` : "");
   /* Multi-product state — clients can add multiple filters per inquiry. */
   const [products, setProducts] = useState<ProductLine[]>(reorderSource
@@ -798,6 +993,9 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
 
     const inquiryData = {
       clientName, contactPerson, paymentTerms, generalNotes,
+      dueDate: requestedDeliveryDate
+        ? formatRequestedDeliveryDate(requestedDeliveryDate)
+        : undefined,
       products: finalProducts,
       /* Legacy single-sketch field — show comma-joined list for multi-product */
       inquirySketch: finalProducts.map((p) => p.sketchFileName).filter(Boolean).join(", ") || undefined,
@@ -922,6 +1120,15 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
                   <option>15-Day Terms</option><option>30-Day Terms</option>
                 </select>
               </Field>
+              <Field label="Client Requested Delivery Date (optional)">
+                <input
+                  type="date"
+                  value={requestedDeliveryDate}
+                  onChange={(e) => setRequestedDeliveryDate(e.target.value)}
+                  className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+                  style={{ fontSize: 13 }}
+                />
+              </Field>
               <div className="col-span-2 flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Notes <span style={{ color: "#94A3B8", fontWeight: 400 }}>(optional)</span></label>
                 <textarea value={generalNotes} onChange={(e) => setGeneralNotes(e.target.value)} placeholder="Special instructions, brand references..." rows={2} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none" style={{ fontSize: 13 }} />
@@ -1036,6 +1243,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
               ))}
               <div className="rounded-lg p-4 grid grid-cols-2 gap-y-2 gap-x-4" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A" }}>
                 <ReviewLine label="Payment Terms" value={paymentTerms} />
+                <ReviewLine label="Requested Date" value={requestedDeliveryDate ? formatRequestedDeliveryDate(requestedDeliveryDate) : "Not provided"} />
               </div>
               {/* Per-product filtration + sketch summary */}
               {products.map((p, i) => (
@@ -1203,14 +1411,16 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
 function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void; onPayInvoice: () => void }) {
   const { updateInquiry } = useOrders();
   const { push: pushNotif } = useNotifications();
-  const [open, setOpen] = useState(inquiry.stage === "quotation");
+  const [open, setOpen] = useState(inquiry.stage === "quotation" || poReviewStatus(inquiry) === "Rejected");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   /* Section C — revision request modal */
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [revisionNoteDraft, setRevisionNoteDraft] = useState("");
+  const revisionSubmissionLock = useRef(false);
   /* View full quotation doc */
   const [showQuotationDoc, setShowQuotationDoc] = useState(false);
+  const [historicalQuotationDoc, setHistoricalQuotationDoc] = useState<QuotationDoc | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
   /* View terms & conditions */
   const [showTerms, setShowTerms] = useState(false);
@@ -1218,17 +1428,42 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const invoicePayment = paymentState(inquiry);
   const submittedPayments = paymentRecords(inquiry);
   const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
+  const poSubmissions = inquiry.poSubmissions ?? [];
   const status = clientOrderStatus(inquiry);
+  const isInvoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
+  const quotationDocToView = historicalQuotationDoc ?? (showQuotationDoc ? inquiry.quotationDoc : undefined);
 
   const submitRevision = () => {
+    if (revisionSubmissionLock.current) return;
     const note = revisionNoteDraft.trim();
     if (note.length < 5) { toast.error("Please describe what you'd like changed (at least a few words)"); return; }
-    updateInquiry(inquiry.id, { revisionNote: note });
+    if (hasPendingRevisionRequest(inquiry)) {
+      toast.error("A quotation revision request is already awaiting Sales review.");
+      return;
+    }
+    revisionSubmissionLock.current = true;
+    const requestedAt = new Date().toISOString();
+    const requestId = `revision-${inquiry.id}-${Date.now()}-${(inquiry.revisionRequests?.length ?? 0) + 1}`;
+    const preview = note.length > 120 ? `${note.slice(0, 117)}...` : note;
+    updateInquiry(inquiry.id, {
+      revisionNote: note,
+      revisionRequests: [
+        ...(inquiry.revisionRequests ?? []),
+        {
+          id: requestId,
+          note,
+          requestedAt,
+          quotationNo: inquiry.quotationDoc?.quotationNo,
+          status: "pending",
+        },
+      ],
+    });
     pushNotif({
       dept: "sales",
       title: `📝 Revision request from ${inquiry.clientName}`,
-      body: `${inquiry.code} · ${note}`,
+      body: `${inquiry.code} · ${inquiry.clientName} · ${preview}`,
       link: "sales",
+      inquiryId: inquiry.id,
       recipients: ["sales"],
     });
     toast.success("Revision request sent", { description: "Sales will review and send a revised quotation soon." });
@@ -1258,8 +1493,11 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             {status.message}
           </div>
           {latestSubmittedPayment?.verificationStatus === "rejected" && (
-            <div className="mt-2 rounded-md px-3 py-2 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12, fontWeight: 700 }}>
-              Payment rejected — please resubmit proof in Accounting.
+            <div className="mt-2 rounded-md border border-red-200 px-3 py-2.5 font-dm" style={{ backgroundColor: "#FEF2F2", color: "#991B1B", fontSize: 12 }}>
+              <div style={{ fontWeight: 800 }}>Payment rejected · {latestSubmittedPayment.invoiceNo ?? inquiry.invoiceNo ?? "Invoice"}</div>
+              <div className="mt-1">Submitted amount: ₱{latestSubmittedPayment.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Submitted: {latestSubmittedPayment.paymentDate}</div>
+              <div className="mt-1"><strong>Reason for Rejection:</strong> {latestSubmittedPayment.rejectionReason ?? "Not recorded"}</div>
+              <div className="mt-1">Please correct the issue described above and submit a corrected payment.</div>
             </div>
           )}
 
@@ -1280,6 +1518,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                 {invoicePayment.currentPaymentType
                   && status.id !== "downpaymentVerified"
                   && status.id !== "fullPaymentVerified"
+                  && status.id !== "awaitingPaymentVerification"
                   && <button onClick={onPayInvoice} className="rounded-md px-3 py-2 font-dm text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>MAKE PAYMENT</button>}
               </div>
             </section>
@@ -1392,28 +1631,110 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
 
               {inquiry.stage === "quotation" && (
                 <>
-                  {inquiry.revisionNote && !inquiry.quotationHistory?.length && (
-                    <div className="rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                      ⏳ Revision requested: <em>{inquiry.revisionNote}</em> — Enter-Fil will send a revised quotation soon.
-                    </div>
-                  )}
                   <div className="flex items-center gap-3">
-                    <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
-                      <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
-                    </button>
-                    <button onClick={() => setShowRevisionModal(true)} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
-                      Request Revision
-                    </button>
+                    {!hasPendingRevisionRequest(inquiry) && (
+                      <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+                        <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
+                      </button>
+                    )}
+                    {!hasPendingRevisionRequest(inquiry) ? (
+                      <button onClick={() => { revisionSubmissionLock.current = false; setShowRevisionModal(true); }} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
+                        Request Revision
+                      </button>
+                    ) : (
+                      <span className="font-dm px-3 py-2 rounded-md" style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}>Revision Requested · Awaiting Sales</span>
+                    )}
                   </div>
                 </>
               )}
-              {inquiry.stage === "po" && inquiry.poFileName && (
-                <div className="rounded-md p-3 font-dm" style={{ backgroundColor: "#DCFCE7", border: "1px solid #86EFAC", fontSize: 13, color: "#166534" }}>
-                  ✅ PO submitted: <span style={{ fontWeight: 700 }}>{inquiry.poFileName}</span>
+              {inquiry.stage === "po" && inquiry.poFileName && !isInvoiceSent && (
+                <div className="rounded-md p-3 font-dm" style={{
+                  backgroundColor: status.id === "poRejected" ? "#FEF2F2" : status.id === "poReceived" ? "#F0FDF4" : "#EFF6FF",
+                  border: `1px solid ${status.id === "poRejected" ? "#FECACA" : status.id === "poReceived" ? "#86EFAC" : "#BFDBFE"}`,
+                  fontSize: 12,
+                  color: status.fg,
+                }}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span><strong>{status.label}</strong> · {inquiry.poFileName}</span>
+                    <span>Submitted {inquiry.poUploadedAt ? new Date(inquiry.poUploadedAt).toLocaleString() : "date unavailable"}</span>
+                    {inquiry.poFileDataUrl && (
+                      <a
+                        href={inquiry.poFileDataUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        download={inquiry.poFileName}
+                        className="rounded border border-current px-2 py-1 font-dm"
+                        style={{ fontSize: 11, fontWeight: 700 }}
+                      >View / Download latest PO</a>
+                    )}
+                  </div>
+                  {status.id === "poRejected" && poSubmissions[poSubmissions.length - 1]?.rejectionReason && (
+                    <div className="mt-2 rounded border border-red-200 bg-white p-2" style={{ color: "#991B1B" }}>
+                      <strong>Rejection reason:</strong> {poSubmissions[poSubmissions.length - 1].rejectionReason}
+                    </div>
+                  )}
+                  {poSubmissions.length > 0 && (
+                    <div className="mt-3 border-t border-current/20 pt-2">
+                      <div className="mb-1 font-dm" style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" }}>Submission History</div>
+                      <div className="flex flex-col gap-2">
+                        {poSubmissions.map((submission, index) => (
+                          <div key={submission.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span>#{index + 1}{index === poSubmissions.length - 1 ? " · Latest" : ""} · {submission.fileName} · {new Date(submission.submittedAt).toLocaleString()} · <strong>{submission.status}</strong></span>
+                            {submission.fileDataUrl && (
+                              <a href={submission.fileDataUrl} target="_blank" rel="noreferrer" download={submission.fileName} className="underline" style={{ fontWeight: 700 }}>View / Download</a>
+                            )}
+                            {submission.rejectionReason && <span className="w-full" style={{ color: "#991B1B" }}>Rejection reason: {submission.rejectionReason}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+              {inquiry.stage === "po" && poReviewStatus(inquiry) === "Rejected" && (
+                <button onClick={onUploadPO} className="flex w-full items-center justify-center gap-2 rounded-md py-3 font-dm text-white hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+                  <FileCheck size={15} strokeWidth={2.5} />
+                  RESUBMIT PO
+                </button>
               )}
 
             </div>
+          )}
+
+          {poReviewStatus(inquiry) !== "Approved"
+            && ((inquiry.revisionRequests?.length ?? 0) > 0 || inquiry.revisionNote || (inquiry.quotationHistory?.length ?? 0) > 0) && (
+            <section className="mt-4 rounded-md p-3 font-dm" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+              <div className="mb-2" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase" }}>Quotation Revision &amp; Document History</div>
+              {(inquiry.revisionRequests?.length
+                ? inquiry.revisionRequests
+                : inquiry.revisionNote
+                  ? [{ id: "legacy-revision", note: inquiry.revisionNote, requestedAt: "", quotationNo: inquiry.quotationDoc?.quotationNo, status: "pending" as const }]
+                  : []
+              ).map((request, index) => (
+                <div key={request.id} className={index ? "mt-2 border-t border-amber-200 pt-2" : ""}>
+                  <div>{request.status === "pending" ? "Awaiting Sales review" : "Processed"} · {request.quotationNo ?? "Quotation"} · {request.requestedAt ? new Date(request.requestedAt).toLocaleString() : "Date unavailable"}</div>
+                  <div className="mt-1"><em>{request.note}</em></div>
+                </div>
+              ))}
+              {!!inquiry.quotationHistory?.length && (
+                <div className="mt-3 border-t border-amber-200 pt-2">
+                  <div className="mb-2" style={{ fontSize: 11, fontWeight: 800 }}>Previous Quotation Documents</div>
+                  <div className="flex flex-wrap gap-2">
+                    {inquiry.quotationHistory.map((doc) => (
+                      <button
+                        key={doc.quotationNo}
+                        type="button"
+                        onClick={() => { setShowQuotationDoc(false); setHistoricalQuotationDoc(doc); }}
+                        className="rounded border border-amber-300 bg-white px-2.5 py-1.5 font-dm hover:bg-amber-100"
+                        style={{ fontSize: 11, fontWeight: 700 }}
+                      >
+                        View {doc.quotationNo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
           )}
 
           {/* Cancel — pending approval */}
@@ -1429,9 +1750,23 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               </div>
             </div>
           )}
+          {inquiry.cancellationHistory?.some((request) => request.resolution !== "pending") && (
+            <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+              <div className="mb-2" style={{ fontSize: 11, fontWeight: 800, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>Cancellation Request History</div>
+              {inquiry.cancellationHistory.filter((request) => request.resolution !== "pending").map((request, index) => (
+                <div key={`${request.requestedAt}-${index}`} className={index ? "mt-2 border-t border-slate-200 pt-2" : ""}>
+                  <div style={{ fontWeight: 700 }}>
+                    Cancellation {request.resolution === "approved" ? "approved" : "declined"}
+                    {request.resolvedAt ? ` · ${request.resolvedAt}` : ""}
+                  </div>
+                  <div>Requested {request.requestedAt} · Reason: {request.reason}</div>
+                </div>
+              ))}
+            </section>
+          )}
 
           {/* Cancel order — only before PO is confirmed and not already pending */}
-          {inquiry.stage !== "po" && !inquiry.pendingCancellation && (
+          {!inquiry.archived && inquiry.stage !== "po" && !inquiry.pendingCancellation && (
             <div className="pt-3 border-t border-slate-200 mt-2">
               {!confirmCancel ? (
                 <button
@@ -1492,14 +1827,14 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
       )}
 
       {/* Full Quotation Document Modal */}
-      {showQuotationDoc && inquiry.quotationDoc && (
+      {quotationDocToView && (
         <QuotationPreviewModal
           inquiry={inquiry}
-          doc={inquiry.quotationDoc}
+          doc={quotationDocToView}
           vatLabel={quotationVatLabel(inquiry)}
-          total={inquiry.quotationDoc.total ?? inquiry.quotationDoc.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
-          preparedBy={inquiry.quotationDoc.preparedBy ?? "Enter-Fil"}
-          onClose={() => setShowQuotationDoc(false)}
+          total={quotationDocToView.total ?? quotationDocToView.lineItems.reduce((s, li) => s + li.unitPrice * li.qty, 0)}
+          preparedBy={quotationDocToView.preparedBy ?? "Enter-Fil"}
+          onClose={() => { setShowQuotationDoc(false); setHistoricalQuotationDoc(null); }}
         />
       )}
 
@@ -1548,11 +1883,12 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   );
 }
 
-function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string }) => void }) {
+function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string }) => boolean; isResubmission: boolean }) {
   const { generatePONumber } = useOrders();
   const [file, setFile] = useState<File | null>(null);
   const [fileDataUrl, setFileDataUrl] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
   /* Section J — auto-generated PO reference shown to the client; on submit, prefer the uploaded filename, but fall back to this reference. */
   const [autoRef] = useState(() => generatePONumber());
   const readPOFile = (nextFile: File) => {
@@ -1585,11 +1921,29 @@ function POUploadOverlay({ onClose, onSubmit }: { onClose: () => void; onSubmit:
             <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
           </div>
           {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
-          <button onClick={() => file && fileDataUrl && onSubmit({ fileName: file.name, fileDataUrl, poNumber: autoRef })} disabled={!file || !fileDataUrl} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-            SUBMIT PURCHASE ORDER ({autoRef})
+          <button onClick={() => setConfirmSubmit(true)} disabled={!file || !fileDataUrl} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+            {isResubmission ? "REVIEW REVISED PURCHASE ORDER" : "REVIEW PURCHASE ORDER"} ({autoRef})
           </button>
         </div>
       </div>
+      <AlertDialog open={confirmSubmit} onOpenChange={setConfirmSubmit}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-syne text-[#1A2B4A]">{isResubmission ? "SUBMIT REVISED PURCHASE ORDER?" : "SUBMIT PURCHASE ORDER?"}</AlertDialogTitle>
+            <AlertDialogDescription className="font-dm text-slate-600">
+              {file?.name} will be sent to Sales for review. {isResubmission ? "The rejected submission and its history will be preserved." : "You cannot replace this PO unless Sales rejects it."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-dm">CANCEL</AlertDialogCancel>
+            <AlertDialogAction className="font-dm bg-[#C8102E] hover:bg-[#A00D25]" onClick={(event) => {
+              event.preventDefault();
+              if (!file || !fileDataUrl) return;
+              if (onSubmit({ fileName: file.name, fileDataUrl, poNumber: autoRef })) setConfirmSubmit(false);
+            }}>CONFIRM SUBMISSION</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1633,6 +1987,8 @@ interface ActiveOrder {
 function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
   const downstreamOfJO = ["in_production", "quality_inspection", "ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"];
   const payment = paymentState(inq);
+  const invoiceSent = Boolean(inq.invoiceSentAt && inq.invoiceNo);
+  const paymentCleared = invoiceSent && payment.invoiceTotal > 0 && payment.state === "FULLY_PAID";
   const requiredPaymentVerified = payment.state === "FULLY_PAID"
     || (payment.requiredDownpaymentAmount > 0 && payment.downpaymentStatus === "COMPLETE");
   const poReference = poNumberForDisplay(inq);
@@ -1642,12 +1998,22 @@ function inquiryToActiveOrder(inq: Inquiry): ActiveOrder {
       detailFn: (i) => `Submitted ${i.submittedDate}${i.inquirySketch ? " · sketch attached" : ""}` },
     { key: "quotation",  label: "Quotation Received",    matches: (i) => i.stage === "quotation" ? "current" : (["po","jo","in_production","quality_inspection","ready_for_dispatch","delivered","paid","overdue"].includes(i.stage) ? "done" : "pending"),
       detailFn: (i) => i.quotation ? `${i.quotation.leadTimeDays}-day lead time · ${i.paymentTerms}` : "Awaiting our team's quote" },
-    { key: "po",         label: "PO Approved & Uploaded", matches: (i) => !hasPORecord(i) ? "pending" : i.stage === "po" && !i.poReceived ? "current" : i.poReceived || downstreamOfJO.includes(i.stage) ? "done" : "pending",
-      detailFn: (i) => hasPORecord(i) ? `${poNumberForDisplay(i) ?? "PO document"} · ${i.poReceived ? "received by Sales" : "uploaded"}` : "Upload signed PO to proceed" },
-    { key: "invoiced",   label: "Invoiced",               matches: (i) => !i.invoiceSentAt || !i.invoiceNo ? "pending" : (requiredPaymentVerified || downstreamOfJO.includes(i.stage) ? "done" : "current"),
+    { key: "po",         label: "PO Validation", matches: (i) => {
+        if (!hasPORecord(i)) return "pending";
+        const status = poReviewStatus(i);
+        return status === "Approved" || downstreamOfJO.includes(i.stage) ? "done" : "current";
+      },
+      detailFn: (i) => hasPORecord(i)
+        ? `${poNumberForDisplay(i) ?? "PO document"} · ${poReviewStatus(i) ?? "Pending Sales Review"}`
+        : "Upload signed PO to proceed" },
+    { key: "invoiced",   label: "Invoiced",               matches: (i) => i.invoiceSentAt && i.invoiceNo ? "done" : "pending",
       detailFn: (i) => i.invoiceSentAt && i.invoiceNo ? `${i.invoiceNo}${i.paymentCycleStartedAt && i.invoiceDueDate ? ` · due ${i.invoiceDueDate}` : ""}` : "Awaiting invoice from Enter-Fil" },
-    { key: "paid",       label: "Payment Cleared",        matches: () => requiredPaymentVerified ? "done" : "pending",
-      detailFn: () => payment.state === "FULLY_PAID" ? "Full payment verified" : requiredPaymentVerified ? `Required downpayment verified · ${peso(payment.verifiedDownpaymentAmount)}` : "Awaiting required payment verification" },
+    { key: "paid",       label: "Payment Cleared",        matches: () => paymentCleared ? "done" : invoiceSent ? "current" : "pending",
+      detailFn: () => paymentCleared
+        ? "Full payment verified"
+        : invoiceSent && payment.totalVerifiedPayments > 0
+          ? `Verified ${peso(payment.totalVerifiedPayments)} · ${peso(payment.remainingInvoiceBalance)} balance remaining`
+          : invoiceSent ? "Awaiting required payment verification" : "Awaiting invoice" },
     { key: "jo",         label: "Job Order Created",      matches: (i) => {
         if (!i.invoiceSentAt || !requiredPaymentVerified) return "pending";
         return i.stage === "jo" ? "current" : downstreamOfJO.includes(i.stage) ? "done" : "pending";
@@ -1704,7 +2070,7 @@ function StatusTab({ clientName }: { clientName: string }) {
   const [showJO, setShowJO] = useState(false);
   const [searchOrders, setSearchOrders] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "awaitingQuotation" | "poSubmitted" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
+    "all" | "awaitingQuotation" | "revisionRequested" | "poSubmitted" | "inProduction" | "readyForDispatch" | "outForDelivery" | "delivered"
   >("all");
 
   /* DERIVED: pull this client's inquiries, exclude paid + cancelled, map to ActiveOrder timelines */
@@ -1732,7 +2098,9 @@ function StatusTab({ clientName }: { clientName: string }) {
         order.product,
       ].some((value) => value?.toLowerCase().includes(query));
       const matchesStatus = statusFilter === "all"
-        || inquiry.stage === statusStages[statusFilter];
+        || (statusFilter === "revisionRequested"
+          ? inquiry.stage === "quotation" && hasPendingRevisionRequest(inquiry)
+          : inquiry.stage === statusStages[statusFilter]);
       return matchesSearch && matchesStatus;
     });
 
@@ -1767,6 +2135,7 @@ function StatusTab({ clientName }: { clientName: string }) {
         >
           <option value="all">All Statuses</option>
           <option value="awaitingQuotation">Awaiting Quotation</option>
+          <option value="revisionRequested">Revision Requested</option>
           <option value="poSubmitted">PO Submitted</option>
           <option value="inProduction">In Production</option>
           <option value="readyForDispatch">Ready for Dispatch</option>
@@ -2279,37 +2648,58 @@ function LogisticsTab({ clientName }: { clientName: string }) {
 
   return (
     <div className="px-8 py-8 flex flex-col gap-6">
+      <style>{`
+        .client-logistics-date-empty {
+          color: #94A3B8 !important;
+        }
+        .client-logistics-date::-webkit-calendar-picker-indicator {
+          position: absolute !important;
+          left: 0.75rem !important;
+          right: auto !important;
+          width: 1rem;
+          height: 1rem;
+          margin: 0;
+          padding: 0;
+          opacity: 0.55;
+          filter: invert(22%) sepia(14%) saturate(1034%) hue-rotate(177deg) brightness(94%) contrast(88%);
+          cursor: pointer;
+          transition: opacity 150ms ease;
+        }
+        .client-logistics-date:hover::-webkit-calendar-picker-indicator {
+          opacity: 0.8;
+        }
+      `}</style>
       <div>
         <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Delivery &amp; Tracking</h1>
         <p className="font-dm mt-2" style={{ fontSize: 13, color: "#64748B" }}>Delivery method, live tracking, order status, and receipts for each of your orders.</p>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-xl border border-slate-200/70 bg-white p-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           {filters.map((f) => {
             const active = filter === f;
             return (
-              <button key={f} onClick={() => setFilter(f)} className="font-dm inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-md border px-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A] focus-visible:ring-offset-2" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#1A2B4A", borderColor: active ? "#C8102E" : "#CBD5E1" }}>
+              <button key={f} onClick={() => setFilter(f)} className="font-dm inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-lg border px-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A2B4A] focus-visible:ring-offset-2" style={{ fontSize: 12, fontWeight: 700, backgroundColor: active ? "#C8102E" : "#FFFFFF", color: active ? "#FFFFFF" : "#1A2B4A", borderColor: active ? "#C8102E" : "#CBD5E1" }}>
                 {filterLabels[f]}
               </button>
             );
           })}
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
-          <div className="min-w-0">
-            <label htmlFor="logistics-date-from" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">Start date</label>
-            <input id="logistics-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="font-dm mt-1 min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }} />
+        <div className="flex flex-wrap items-end gap-3 lg:ml-auto">
+          <div className="w-[145px] max-w-full">
+            <label htmlFor="logistics-date-from" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">Start Date</label>
+            <input id="logistics-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={`client-logistics-date font-dm relative mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 outline-none transition-colors hover:border-slate-300 focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] ${dateFrom ? "" : "client-logistics-date-empty"}`} style={{ fontSize: 12, color: "#0F172A" }} />
           </div>
-          <div className="min-w-0">
-            <label htmlFor="logistics-date-to" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">End date</label>
-            <input id="logistics-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="font-dm mt-1 min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }} />
+          <div className="w-[145px] max-w-full">
+            <label htmlFor="logistics-date-to" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">End Date</label>
+            <input id="logistics-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={`client-logistics-date font-dm relative mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 outline-none transition-colors hover:border-slate-300 focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] ${dateTo ? "" : "client-logistics-date-empty"}`} style={{ fontSize: 12, color: "#0F172A" }} />
           </div>
-          <div className="col-span-2 sm:col-span-1">
-            <label htmlFor="logistics-sort" className="sr-only">Sort deliveries</label>
-            <select id="logistics-sort" aria-label="Sort deliveries" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm min-h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A] sm:mt-[18px] sm:w-[150px]" style={{ fontSize: 12, color: "#0F172A" }}>
-            <option value="date-desc">Newest first</option>
-            <option value="date-asc">Oldest first</option>
-            <option value="status">By status</option>
+          <div className="w-[145px] max-w-full">
+            <label htmlFor="logistics-sort" className="font-dm block text-[10px] font-bold uppercase tracking-wide text-slate-500">Sort Order</label>
+            <select id="logistics-sort" aria-label="Sort deliveries" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="font-dm mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 outline-none transition-colors hover:border-slate-300 focus:border-slate-400 focus-visible:ring-2 focus-visible:ring-[#1A2B4A]" style={{ fontSize: 12, color: "#0F172A" }}>
+              <option value="date-desc">Newest first</option>
+              <option value="date-asc">Oldest first</option>
+              <option value="status">By status</option>
             </select>
           </div>
         </div>
@@ -2646,6 +3036,33 @@ function inquiryToClientInvoice(inq: Inquiry) {
   };
 }
 
+type ClientInvoiceStatus = "Awaiting Verification" | "Partial" | "Awaiting Signed DR" | "Payment Required" | "Fully Paid";
+type ClientInvoiceStatusFilter = "All" | Exclude<ClientInvoiceStatus, "Fully Paid">;
+
+const clientInvoiceStatusFilters: Exclude<ClientInvoiceStatusFilter, "All">[] = [
+  "Awaiting Verification",
+  "Partial",
+  "Awaiting Signed DR",
+  "Payment Required",
+];
+
+const clientInvoiceStatusStyles: Record<ClientInvoiceStatus, { bg: string; fg: string }> = {
+  "Awaiting Verification": { bg: "#DBEAFE", fg: "#1D4ED8" },
+  Partial: { bg: "#DBEAFE", fg: "#1D4ED8" },
+  "Awaiting Signed DR": { bg: "#E2E8F0", fg: "#475569" },
+  "Payment Required": { bg: "#FEF3C7", fg: "#B45309" },
+  "Fully Paid": { bg: "#DCFCE7", fg: "#15803D" },
+};
+
+function clientInvoiceStatus(row: ReturnType<typeof inquiryToClientInvoice>): ClientInvoiceStatus {
+  const { paymentState: state, payments, paymentCycleActive } = row;
+  if (state.state === "FULLY_PAID") return "Fully Paid";
+  if (payments.some((payment) => payment.verificationStatus === "pending")) return "Awaiting Verification";
+  if (state.currentPaymentType === "BALANCE_PAYMENT" && !paymentCycleActive) return "Awaiting Signed DR";
+  if (state.totalVerifiedPayments > 0 && state.currentPaymentType !== null) return "Partial";
+  return "Payment Required";
+}
+
 /* ---------- Accounting Tab ---------- */
 function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: string; focusInvoiceId?: string | null }) {
   const { byClient, submitPayment } = useOrders();
@@ -2656,6 +3073,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; reference: string; note: string; file: string; receiptDataUrl?: string; methodId?: string }>>({});
   const submittingPayments = useRef(new Set<string>());
   const [view, setView] = useState<"active" | "history">("active");
+  const [statusFilter, setStatusFilter] = useState<ClientInvoiceStatusFilter>("All");
 
   /* DERIVED: pull this client's invoiced inquiries (delivered / overdue / paid). PO/quotation/in-production aren't yet billable. */
   const myInvoiced = byClient(clientName).filter((i) => !i.archived && !!i.invoiceSentAt && !!i.invoiceNo);
@@ -2665,7 +3083,8 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
 
   const activeRows = rows.filter(r => r.paymentState.state !== "FULLY_PAID");
   const historyRows = rows.filter(r => r.paymentState.state === "FULLY_PAID");
-  const visibleRows = view === "active" ? activeRows : historyRows;
+  const visibleRows = (view === "active" ? activeRows : historyRows)
+    .filter((row) => statusFilter === "All" || clientInvoiceStatus(row) === statusFilter);
 
   const [openId, setOpenId] = useState<string | null>(focusInvoiceId ?? activeRows[0]?.id ?? null);
 
@@ -2690,18 +3109,24 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
     }
     const f = receiptForm[rowId];
     if (!f?.file || !f.receiptDataUrl) { toast.error("Please attach a receipt file first"); return; }
-    const amt = parseFloat(f.amount);
-    if (isNaN(amt) || amt <= 0) { toast.error("Please enter the amount paid"); return; }
-    if (amt > allowance.maxAmount) {
+    const enteredAmount = Number(f.amount);
+    const amountCents = toMoneyCents(enteredAmount);
+    if (!Number.isFinite(enteredAmount) || amountCents <= 0) { toast.error("Please enter the amount paid"); return; }
+    if (allowance.paymentType === "DOWNPAYMENT") {
+      const validationMessage = exactDownpaymentValidationMessage(currentInquiry!, enteredAmount);
+      if (validationMessage) { toast.error(validationMessage); return; }
+    }
+    if (amountCents > toMoneyCents(allowance.maxAmount)) {
       toast.error("Payment exceeds the amount currently due", {
         description: `Maximum submission: ₱${allowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       });
       return;
     }
+    const amt = fromMoneyCents(amountCents);
     submittingPayments.current.add(rowId);
     const selectedMethod = settings.paymentMethods.find((m) => m.id === f.methodId) ?? settings.paymentMethods[0];
     try {
-      submitPayment(rowId, {
+      const submitted = submitPayment(rowId, {
         invoiceNo: invNo,
         submittedAmount: amt,
         method: selectedMethod?.label ?? bank.bankName,
@@ -2711,6 +3136,14 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
         paymentDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         note: f.note || undefined,
       });
+      if (!submitted) {
+        const latestInquiry = byClient(clientName).find((inquiry) => inquiry.id === rowId);
+        const message = latestInquiry && paymentState(latestInquiry).currentPaymentType === "DOWNPAYMENT"
+          ? exactDownpaymentValidationMessage(latestInquiry, enteredAmount)
+          : "This payment could not be submitted. Please review the amount and try again.";
+        toast.error(message ?? "This payment could not be submitted. Please try again.");
+        return;
+      }
       pushNotif({
         dept: "payments",
         title: `Receipt uploaded by ${clientName}`,
@@ -2737,7 +3170,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           {view === "history" && (
-            <button onClick={() => setView("active")} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
+            <button onClick={() => { setView("active"); setStatusFilter("All"); }} className="font-dm flex items-center gap-1 hover:underline mb-1" style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
               ← Back to active
             </button>
           )}
@@ -2749,7 +3182,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
           </p>
         </div>
         {view === "active" && historyRows.length > 0 && (
-          <button onClick={() => setView("history")} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white font-dm hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
+          <button onClick={() => { setView("history"); setStatusFilter("All"); }} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white font-dm hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>
             View Paid Transactions ({historyRows.length}) →
           </button>
         )}
@@ -2758,8 +3191,26 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
         {pill("Total Invoices", String(rows.length))}
         {pill("Paid", String(historyRows.length), "#16A34A")}
         {pill("Pending", String(activeRows.length), "#D97706")}
-        {pill("Amount Due", `₱${activeRows.reduce((s, r) => s + r.paymentState.remainingInvoiceBalance, 0).toLocaleString("en-PH")}`, "#C8102E")}
+        {pill("Amount Due", `₱${activeRows.reduce((sum, row) => sum + row.paymentState.remainingInvoiceBalance, 0).toLocaleString("en-PH")}`, "#C8102E")}
       </div>
+      {view === "active" && (
+        <div className="flex w-full items-start justify-end">
+          <label htmlFor="client-invoice-status-filter" className="sr-only">Filter invoices by payment status</label>
+          <select
+            id="client-invoice-status-filter"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as ClientInvoiceStatusFilter)}
+            aria-label="Filter invoices by payment status"
+            className="font-dm min-h-10 min-w-[220px] self-start rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400"
+            style={{ fontSize: 12, color: "#475569" }}
+          >
+            <option value="All">All Statuses</option>
+            {clientInvoiceStatusFilters.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
         <table className="w-full">
           <thead style={{ backgroundColor: "#F4F6F9" }}>
@@ -2775,7 +3226,11 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
           <tbody>
             {visibleRows.length === 0 && (
               <tr><td colSpan={7} className="px-6 py-8 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
-                {view === "active" ? "✅ No pending invoices · all caught up!" : "No paid transactions yet."}
+                {statusFilter !== "All"
+                  ? "No invoices match this status."
+                  : view === "active"
+                    ? "✅ No pending invoices · all caught up!"
+                    : "No paid transactions yet."}
               </td></tr>
             )}
             {visibleRows.map((r) => {
@@ -2787,16 +3242,8 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                 payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
               );
               const isPayable = r.submissionAllowance.paymentType !== null;
-              const isPartial = state.totalVerifiedPayments > 0 && state.currentPaymentType !== null;
-              const status = state.state === "FULLY_PAID"
-                ? { bg: "#DCFCE7", fg: "#15803D", label: "Fully Paid" }
-                : pendingPayments.length > 0
-                ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Awaiting Verification" }
-                : state.currentPaymentType === "BALANCE_PAYMENT" && !r.paymentCycleActive
-                ? { bg: "#E2E8F0", fg: "#475569", label: "Awaiting Signed DR" }
-                : isPartial
-                ? { bg: "#DBEAFE", fg: "#1D4ED8", label: "Partial" }
-                : { bg: "#FEF3C7", fg: "#B45309", label: "Payment Required" };
+              const statusLabel = clientInvoiceStatus(r);
+              const status = clientInvoiceStatusStyles[statusLabel];
               const rf = receiptForm[r.id] ?? { amount: "", reference: "", note: "", file: "", receiptDataUrl: "", methodId: settings.paymentMethods[0]?.id };
               const selectedMethod = settings.paymentMethods.find((m) => m.id === rf.methodId) ?? settings.paymentMethods[0];
               const paymentTypeLabel: Record<PaymentType, string> = {
@@ -2833,11 +3280,31 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                       <div className="mt-0.5 text-[11px]">{r.payment}</div>
                     </td>
                     <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: isPending ? "#D97706" : "#475569", fontWeight: isPending ? 600 : 400 }}>{view === "history" ? r.paidDate : r.due}</td>
-                    <td className="px-4 py-3"><span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: status.bg, color: status.fg }}>{status.label}</span></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-dm px-2.5 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: status.bg, color: status.fg }}>{statusLabel}</span>
+                        <button
+                          type="button"
+                          aria-label={`${isOpen ? "Collapse" : "Expand"} invoice ${r.inv}`}
+                          aria-expanded={isOpen}
+                          aria-controls={`client-invoice-details-${r.id}`}
+                          onClick={(event) => { event.stopPropagation(); setOpenId(isOpen ? null : r.id); }}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100"
+                        >
+                          {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                  {isOpen && (
-                    <tr style={{ backgroundColor: "#FAFBFC" }}>
-                      <td colSpan={7} className="px-6 py-5">
+                  <tr aria-hidden={!isOpen} style={{ backgroundColor: "#FAFBFC" }}>
+                    <td colSpan={7} className="p-0">
+                      <div
+                        id={`client-invoice-details-${r.id}`}
+                        className="grid transition-[grid-template-rows] duration-200 ease-in-out"
+                        style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                        <div className="px-6 py-5">
                         <div className="grid grid-cols-2 gap-6">
                           {/* Shared payment status and history */}
                           <div>
@@ -2922,11 +3389,18 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                         <div className="min-w-0">
                                           <div className="font-dm text-xs font-bold text-slate-800">{paymentTypeName} · ₱{payment.submittedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                           <div className="font-dm text-[11px] text-slate-500">
-                                            {payment.paymentDate}{payment.method ? ` · ${payment.method}` : ""}{payment.referenceNumber ? ` · Ref ${payment.referenceNumber}` : ""}
+                                            {payment.invoiceNo ?? inquiry.invoiceNo ?? "Invoice"} · {payment.paymentDate}
+                                            {payment.method ? ` · ${payment.method}` : ""}{payment.referenceNumber ? ` · Ref ${payment.referenceNumber}` : ""}
                                             {payment.verificationStatus === "verified" && payment.verifiedAmount !== undefined
                                               ? ` · Verified ₱${payment.verifiedAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                               : ""}
                                           </div>
+                                          {payment.verificationStatus === "rejected" && (
+                                            <div className="mt-1 font-dm text-[11px] text-red-700" style={{ lineHeight: 1.4 }}>
+                                              <span style={{ fontWeight: 800 }}>Reason for Rejection:</span>{" "}
+                                              <span style={{ fontWeight: 400 }}>{payment.rejectionReason ?? "Not recorded"}</span>
+                                            </div>
+                                          )}
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className="rounded-full px-2 py-1 font-dm text-[9px] font-extrabold" style={{ color: paymentStatus.color, backgroundColor: paymentStatus.bg }}>{paymentStatus.label}</span>
@@ -3014,7 +3488,11 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                   className="font-dm w-full px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
                                   style={{ fontSize: 13 }}
                                 />
-                                <div className="font-dm mt-1 text-[11px] text-slate-500">Maximum currently available: ₱{r.submissionAllowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                <div className="font-dm mt-1 text-[11px] text-slate-500">
+                                  {state.currentPaymentType === "DOWNPAYMENT"
+                                    ? `Exact required downpayment: ₱${state.requiredDownpaymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : `Maximum currently available: ₱${r.submissionAllowance.maxAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </div>
                               </div>
                               {/* Reference */}
                               <div>
@@ -3056,15 +3534,17 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                     : state.currentPaymentType === "BALANCE_PAYMENT" && !r.paymentCycleActive
                                       ? "Balance payment is unavailable until the signed Delivery Receipt is received."
                                       : pendingPayments.length > 0
-                                        ? "Your submitted amount is awaiting verification. Any remaining available amount is shown after pending submissions."
+                                        ? "Your submitted payment is awaiting Accountant verification. Submit another payment after the pending submission is reviewed."
                                         : "No payment is currently available for submission."}
                               </div>
                             )}
                           </div>
                         </div>
+                        </div>
+                        </div>
+                      </div>
                       </td>
-                    </tr>
-                  )}
+                  </tr>
                 </Fragment>
               );
             })}
@@ -3381,12 +3861,25 @@ function Txt({ v, onChange }: { v: string; onChange: (v: string) => void }) {
 export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLogout?: () => void; clientName?: string } = {}) {
   const [tab, setTab] = useState<Tab>("orders");
   const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
+  const [targetInquiryId, setTargetInquiryId] = useState<string | undefined>();
+  const navigateFromNotification = (id: string, inquiryId?: string) => {
+    if (!isClientDestination(id)) return;
+    setTargetInquiryId(inquiryId);
+    setTab(id);
+  };
   return (
-    <Shell active={tab} onChange={setTab} clientName={clientName} onLogout={onLogout}>
-      {tab === "orders" && <OrdersTab clientName={clientName} onSubmitted={() => setTab("status")} onPayInvoice={(id) => { setPaymentInvoiceId(id); setTab("accounting"); }} />}
+    <Shell active={tab} onChange={navigateFromNotification} clientName={clientName} onLogout={onLogout}>
+      {tab === "orders" && <OrdersTab clientName={clientName} targetInquiryId={targetInquiryId} onSubmitted={() => setTab("status")} onPayInvoice={(id) => { setPaymentInvoiceId(id); setTab("accounting"); }} />}
       {tab === "status" && <StatusTab clientName={clientName} />}
       {tab === "logistics" && <LogisticsTab clientName={clientName} />}
       {tab === "accounting" && <ClientAccountingTab clientName={clientName} focusInvoiceId={paymentInvoiceId} />}
+      {tab === "notifications" && (
+        <NotificationsCenter
+          role="client"
+          clientName={clientName}
+          onNavigate={navigateFromNotification}
+        />
+      )}
       {tab === "settings" && <SettingsTab clientName={clientName} />}
     </Shell>
   );

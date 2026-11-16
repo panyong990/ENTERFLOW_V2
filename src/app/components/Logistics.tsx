@@ -440,7 +440,6 @@ function DeliveryDetailModal({
   onSubmitSignedDR,
   onMarkDelivered,
   onSendToClient,
-  onTrackingRefChange,
   onTrackingLinkChange,
 }: {
   inquiry: Inquiry;
@@ -453,7 +452,6 @@ function DeliveryDetailModal({
   onSubmitSignedDR: (id: string) => Promise<boolean>;
   onMarkDelivered: (id: string) => void;
   onSendToClient: (id: string) => void;
-  onTrackingRefChange: (id: string, trackingRef: string) => void;
   onTrackingLinkChange: (id: string, trackingLink: string) => void;
 }) {
   const [uploadingSignedDR, setUploadingSignedDR] = useState(false);
@@ -727,22 +725,6 @@ function DeliveryDetailModal({
             </div>
 
             <label className="font-dm mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Tracking / Waybill No.
-            </label>
-
-            <input
-              value={inquiry.trackingRef ?? ""}
-              onChange={(event) =>
-                onTrackingRefChange(
-                  inquiry.id,
-                  event.target.value,
-                )
-              }
-              placeholder="Enter tracking or waybill number"
-              className="w-full rounded-md border border-slate-200 px-3 py-2.5 font-mono-jb text-sm text-[#1A2B4A] outline-none focus:border-[#1A2B4A] focus:ring-2 focus:ring-[#1A2B4A]/10"
-            />
-
-            <label className="font-dm mb-1.5 mt-4 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Tracking Link
             </label>
 
@@ -1645,11 +1627,6 @@ export function Logistics() {
     }
   };
 
-  const handleTrackingRefChange = (
-    id: string,
-    trackingRef: string,
-  ) => updateInquiry(id, { trackingRef });
-
   const handleTrackingLinkChange = (
     id: string,
     deliveryTrackingLink: string,
@@ -1974,7 +1951,6 @@ export function Logistics() {
           onSubmitSignedDR={handleSubmitSignedDR}
           onMarkDelivered={handleMarkDelivered}
           onSendToClient={handleSendToClient}
-          onTrackingRefChange={handleTrackingRefChange}
           onTrackingLinkChange={handleTrackingLinkChange}
         />
       )}

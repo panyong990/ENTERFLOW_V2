@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BOMLine, CostConfig } from "./materials";
+import { createDemoInquiries } from "./demoOrders";
 import { discardPendingSignedDeliveryReceiptAttachment, loadInquiryAttachments, promotePendingSignedDeliveryReceipt, readFileAsDataUrl, saveInquiryAttachments, saveProductSketchAttachments } from "./attachments";
 import { createRealReadOnlyProvider } from "./realMode.js";
+import { calculateProductionDeadline } from "./productionDeadline";
 
 /* Quotation document — what the client sees */
 export interface QuotationLineItem {
@@ -50,7 +52,16 @@ export interface QuotationDoc {
   /* Packaging add-on */
   packaging?: { materialId: string; materialName: string; qty: number; unitPrice: number; includeInUnit: boolean };
   /* Shipping add-on */
-  shipping?: { label: string; amount: number; includeInUnit: boolean };
+  shipping?: {
+    label: string;
+    amount: number;
+    includeInUnit: boolean;
+    transitEstimate?: {
+      minCalendarDays: number;
+      maxCalendarDays: number;
+      isPlaceholder: boolean;
+    };
+  };
   /* Terms */
   termsOfPayment: "15-Day Terms" | "30-Day Terms";
   timeOfDelivery: string;    // "3–4 working weeks upon receipt of P.O."
@@ -82,7 +93,7 @@ export type Stage =
 export const stageLabel: Record<Stage, string> = {
   inquiry: "New Inquiry",
   quotation: "Quotation Sent",
-  po: "PO Received",
+  po: "PO Validation",
   jo: "JO Created",
   in_production: "In Production",
   quality_inspection: "Quality Inspection",
@@ -176,6 +187,18 @@ export type PaymentState =
   | "BALANCE_PAYMENT_REQUIRED"
   | "FULLY_PAID";
 
+export interface OfficialReceipt {
+  orNumber: string;
+  issueDate: string;
+  invoiceId: string;
+  invoiceNo: string;
+  clientName: string;
+  amount: number;
+  issuedBy: string;
+  status: "issued";
+  documentDataUrl: string;
+}
+
 /* Canonical payment record used by the payment workflow. Legacy receipt and
    confirmed-payment fields remain on Inquiry for existing UI compatibility. */
 export interface PaymentRecord {
@@ -192,6 +215,7 @@ export interface PaymentRecord {
   paymentDate: string;
   verificationStatus: PaymentVerificationStatus;
   verifiedAt?: string;
+  rejectionReason?: string;
   rejectedAt?: string;
   note?: string;
 }
@@ -243,6 +267,14 @@ export const PRODUCTION_STAGES = [
   "Quality / Product Inspection",
 ] as const;
 
+export interface CancellationRequestHistory {
+  reason: string;
+  requestedAt: string;
+  requestedBy: "client" | "management";
+  resolution: "pending" | "approved" | "declined";
+  resolvedAt?: string;
+}
+
 export interface Inquiry {
   id: string;
   code: string;
@@ -261,6 +293,8 @@ export interface Inquiry {
   poUploadedAt?: string;
   /** Sales confirmation state for a client-uploaded PO. */
   poReceived?: boolean;
+  poStatus?: "Pending Sales Review" | "Approved" | "Rejected";
+  poSubmissions?: POSubmission[];
   urgent?: boolean;
   dueDate?: string;
   productionDueDate?: string;
@@ -293,8 +327,11 @@ export interface Inquiry {
   /* — confirmed payments (secretary-confirmed amounts that show on the client side) — */
   confirmedPayments?: { id: string; date: string; amount: number; method: string; ref: string }[];
   payments?: PaymentRecord[];
+  /* Accounting-issued Official Receipt; separate from payment completion. */
+  officialReceipt?: OfficialReceipt;
   /* — cancellation approval flow — */
   pendingCancellation?: { reason: string; requestedAt: string; requestedBy: "client" | "management" };
+  cancellationHistory?: CancellationRequestHistory[];
   /* — bill of materials + cost config (set during quotation, carried into JO) — */
   billOfMaterials?: BOMLine[];
   costConfig?: CostConfig;
@@ -334,6 +371,15 @@ export interface Inquiry {
   fulfillmentCompletedAt?: string;
   /* — quotation revision flow (client requests, sales reviews, version history) — */
   revisionNote?: string;
+  revisionRequests?: {
+    id: string;
+    note: string;
+    requestedAt: string;
+    quotationNo?: string;
+    status: "pending" | "processed";
+    processedAt?: string;
+    responseQuotationNo?: string;
+  }[];
   quotationHistory?: QuotationDoc[];
   /* — urgent upgrade two-way comm — */
   urgentUpgradeRequested?: boolean;
@@ -377,6 +423,32 @@ export interface Inquiry {
   /* — This inquiry is itself a replacement JO — */
   isReplacement?: boolean;
   replacementParentId?: string;   // id of the original inquiry
+}
+
+export interface POSubmission {
+  id: string;
+  fileName: string;
+  poNumber: string;
+  submittedAt: string;
+  status: "Pending Sales Review" | "Approved" | "Rejected";
+  fileDataUrl?: string;
+  rejectionReason?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
+
+export function latestPOSubmission(inquiry: Inquiry): POSubmission | undefined {
+  return inquiry.poSubmissions?.[inquiry.poSubmissions.length - 1];
+}
+
+export function poReviewStatus(inquiry: Inquiry): POSubmission["status"] | undefined {
+  return inquiry.poStatus
+    ?? latestPOSubmission(inquiry)?.status
+    ?? (inquiry.poReceived
+      ? "Approved"
+      : inquiry.poFileName && (inquiry.poUploaded || inquiry.poFileDataUrl)
+        ? "Pending Sales Review"
+        : undefined);
 }
 
 function paymentDueDate(paymentTerms: Inquiry["paymentTerms"], receiptAt: string): string | undefined {
@@ -429,6 +501,7 @@ export function poNumberForDisplay(inquiry: Pick<Inquiry, "poNumber" | "poFileNa
 export interface FinalizeJOData {
   joNumber: string;
   productionDueDate: string;
+  deliveryMethod: NonNullable<Inquiry["deliveryMethod"]>;
   joSpecs?: JOSpecs;
   joSketch?: string;
   dpReceiptFile?: string;
@@ -449,14 +522,20 @@ export const quotationTotal = (inq: Inquiry) =>
     return sum + (p ? lineSubtotal(l, p.qty) : 0);
   }, 0);
 
-const paymentEpsilon = 0.005;
+export const toMoneyCents = (amount: number): number => Math.round(amount * 100);
+export const fromMoneyCents = (cents: number): number => cents / 100;
+export const formatMoney = (amount: number): string =>
+  fromMoneyCents(toMoneyCents(amount)).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 export const invoiceTotal = (inq: Inquiry): number =>
-  inq.invoiceAmount ?? inq.quotedTotal ?? quotationTotal(inq);
+  fromMoneyCents(toMoneyCents(inq.invoiceAmount ?? inq.quotedTotal ?? quotationTotal(inq)));
 
 export const requiredDownpaymentAmount = (inq: Inquiry): number => {
   const percent = inq.quotationDoc?.downpaymentPercent ?? inq.downpaymentPercent ?? 0;
-  return invoiceTotal(inq) * (percent / 100);
+  return fromMoneyCents(Math.round(toMoneyCents(invoiceTotal(inq)) * percent / 100));
 };
 
 const legacyPaymentRecords = (inq: Inquiry): PaymentRecord[] => {
@@ -494,10 +573,11 @@ const legacyPaymentRecords = (inq: Inquiry): PaymentRecord[] => {
 export const paymentRecords = (inq: Inquiry): PaymentRecord[] => {
   const canonical = inq.payments ?? [];
   const canonicalIds = new Set(canonical.map((payment) => payment.id));
-  return [
+  const records = [
     ...legacyPaymentRecords(inq).filter((payment) => !canonicalIds.has(payment.id)),
     ...canonical,
   ];
+  return Array.from(new Map(records.map((payment) => [payment.id, payment])).values());
 };
 
 export const verifiedPayments = (inq: Inquiry): PaymentRecord[] =>
@@ -506,41 +586,45 @@ export const verifiedPayments = (inq: Inquiry): PaymentRecord[] =>
 export const paymentState = (inq: Inquiry): PaymentStateSummary => {
   const total = invoiceTotal(inq);
   const requiredDp = requiredDownpaymentAmount(inq);
+  const totalCents = toMoneyCents(total);
+  const requiredDpCents = toMoneyCents(requiredDp);
   const verified = verifiedPayments(inq);
-  const verifiedDp = verified
+  const verifiedDpCents = verified
     .filter((payment) => payment.paymentType === "DOWNPAYMENT")
-    .reduce((sum, payment) => sum + (payment.verifiedAmount ?? payment.submittedAmount), 0);
-  const totalVerified = verified.reduce(
-    (sum, payment) => sum + (payment.verifiedAmount ?? payment.submittedAmount),
+    .reduce((sum, payment) => sum + toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount), 0);
+  const totalVerifiedCents = verified.reduce(
+    (sum, payment) => sum + toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount),
     0,
   );
-  const remainingDp = Math.max(0, requiredDp - verifiedDp);
-  const remainingBalance = Math.max(0, total - totalVerified);
+  const verifiedDp = fromMoneyCents(verifiedDpCents);
+  const totalVerified = fromMoneyCents(totalVerifiedCents);
+  const remainingDp = fromMoneyCents(Math.max(0, requiredDpCents - verifiedDpCents));
+  const remainingBalance = fromMoneyCents(Math.max(0, totalCents - totalVerifiedCents));
 
-  if (remainingBalance <= paymentEpsilon) {
+  if (remainingBalance === 0) {
     return {
       invoiceTotal: total,
       requiredDownpaymentAmount: requiredDp,
       verifiedDownpaymentAmount: verifiedDp,
       remainingDownpayment: remainingDp,
-      downpaymentStatus: requiredDp > paymentEpsilon ? "COMPLETE" : "NOT_REQUIRED",
+      downpaymentStatus: requiredDpCents > 0 ? "COMPLETE" : "NOT_REQUIRED",
       totalVerifiedPayments: totalVerified,
       remainingInvoiceBalance: 0,
       currentPaymentType: null,
       state: "FULLY_PAID",
     };
   }
-  if (requiredDp > paymentEpsilon && verifiedDp + paymentEpsilon < requiredDp) {
+  if (requiredDpCents > 0 && verifiedDpCents < requiredDpCents) {
     return {
       invoiceTotal: total,
       requiredDownpaymentAmount: requiredDp,
       verifiedDownpaymentAmount: verifiedDp,
       remainingDownpayment: remainingDp,
-      downpaymentStatus: verifiedDp > paymentEpsilon ? "PARTIAL" : "REQUIRED",
+      downpaymentStatus: verifiedDpCents > 0 ? "PARTIAL" : "REQUIRED",
       totalVerifiedPayments: totalVerified,
       remainingInvoiceBalance: remainingBalance,
       currentPaymentType: "DOWNPAYMENT",
-      state: verifiedDp > paymentEpsilon ? "DOWNPAYMENT_PARTIAL" : "DOWNPAYMENT_REQUIRED",
+      state: verifiedDpCents > 0 ? "DOWNPAYMENT_PARTIAL" : "DOWNPAYMENT_REQUIRED",
     };
   }
   return {
@@ -548,11 +632,11 @@ export const paymentState = (inq: Inquiry): PaymentStateSummary => {
     requiredDownpaymentAmount: requiredDp,
     verifiedDownpaymentAmount: verifiedDp,
     remainingDownpayment: 0,
-    downpaymentStatus: requiredDp > paymentEpsilon ? "COMPLETE" : "NOT_REQUIRED",
+    downpaymentStatus: requiredDpCents > 0 ? "COMPLETE" : "NOT_REQUIRED",
     totalVerifiedPayments: totalVerified,
     remainingInvoiceBalance: remainingBalance,
-    currentPaymentType: requiredDp > paymentEpsilon ? "BALANCE_PAYMENT" : "FULL_PAYMENT",
-    state: requiredDp > paymentEpsilon ? "BALANCE_PAYMENT_REQUIRED" : "FULL_PAYMENT_REQUIRED",
+    currentPaymentType: requiredDpCents > 0 ? "BALANCE_PAYMENT" : "FULL_PAYMENT",
+    state: requiredDpCents > 0 ? "BALANCE_PAYMENT_REQUIRED" : "FULL_PAYMENT_REQUIRED",
   };
 };
 
@@ -562,9 +646,9 @@ export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: Payment
   if (!paymentType || inq.stage === "paid") return { paymentType: null, maxAmount: 0 };
 
   const records = paymentRecords(inq);
-  if (paymentType === "DOWNPAYMENT" && records.some((payment) =>
-    payment.paymentType === "DOWNPAYMENT" && payment.verificationStatus === "pending",
-  )) return { paymentType: null, maxAmount: 0 };
+  if (records.some((payment) => payment.verificationStatus === "pending")) {
+    return { paymentType: null, maxAmount: 0 };
+  }
 
   if (
     paymentType === "BALANCE_PAYMENT"
@@ -572,19 +656,25 @@ export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: Payment
       || inq.paymentCycleStartedAt !== inq.signedDeliveryReceiptReceivedAt)
   ) return { paymentType: null, maxAmount: 0 };
 
-  const pendingAmount = records
+  const pendingAmountCents = records
     .filter((payment) => payment.verificationStatus === "pending")
-    .reduce((sum, payment) => sum + payment.submittedAmount, 0);
-  const availableBalance = Math.max(0, state.remainingInvoiceBalance - pendingAmount);
-  const typeBalance = paymentType === "DOWNPAYMENT"
-    ? state.remainingDownpayment
-    : state.remainingInvoiceBalance;
-  const maxAmount = Math.min(availableBalance, typeBalance);
+    .reduce((sum, payment) => sum + toMoneyCents(payment.submittedAmount), 0);
+  const availableBalanceCents = Math.max(0, toMoneyCents(state.remainingInvoiceBalance) - pendingAmountCents);
+  const typeBalanceCents = paymentType === "DOWNPAYMENT"
+    ? toMoneyCents(state.remainingDownpayment)
+    : toMoneyCents(state.remainingInvoiceBalance);
+  const maxAmount = fromMoneyCents(Math.min(availableBalanceCents, typeBalanceCents));
 
-  return maxAmount > paymentEpsilon
+  return maxAmount > 0
     ? { paymentType, maxAmount }
     : { paymentType: null, maxAmount: 0 };
 }
+
+export const exactDownpaymentValidationMessage = (inq: Inquiry, submittedAmount: number): string | undefined => {
+  const requiredCents = toMoneyCents(requiredDownpaymentAmount(inq));
+  if (toMoneyCents(submittedAmount) === requiredCents) return undefined;
+  return `Please enter the exact required downpayment amount of ₱${formatMoney(fromMoneyCents(requiredCents))}. Partial or excess downpayment amounts are not accepted.`;
+};
 
 const seed: Inquiry[] = [
   {
@@ -786,7 +876,8 @@ interface Ctx {
     sketches: Record<string, File>,
   ) => Promise<string>;
   sendQuotation: (id: string, q: Quotation) => void;
-  uploadPO: (id: string, fileName: string, fileDataUrl: string, poNumber: string) => void;
+  uploadPO: (id: string, fileName: string, fileDataUrl: string, poNumber: string) => boolean;
+  reviewPO: (id: string, status: "Approved" | "Rejected", reviewedBy: string, rejectionReason?: string) => boolean;
   finalizeJO: (id: string, data: FinalizeJOData) => void;
   rejectInquiry: (id: string, reason?: string) => void;
   cancelInquiry: (id: string, reason?: string) => void;
@@ -796,10 +887,12 @@ interface Ctx {
   approveCancellation: (id: string) => void;
   declineCancellation: (id: string) => void;
   /* Secretary confirms a client receipt — pushes it to confirmedPayments visible on client portal */
-  confirmClientPayment: (inquiryId: string, payment: { date: string; amount: number; method: string; ref: string }) => void;
-  submitPayment: (inquiryId: string, payment: Omit<PaymentRecord, "id" | "inquiryId" | "paymentType" | "verificationStatus" | "verifiedAmount">) => void;
+  confirmClientPayment: (inquiryId: string, payment: { date: string; amount: number; method: string; ref: string }) => string | undefined;
+  submitPayment: (inquiryId: string, payment: Omit<PaymentRecord, "id" | "inquiryId" | "paymentType" | "verificationStatus" | "verifiedAmount">) => boolean;
   verifyPayment: (inquiryId: string, paymentId: string, verifiedAmount?: number) => void;
-  rejectPayment: (inquiryId: string, paymentId: string) => void;
+  rejectPayment: (inquiryId: string, paymentId: string, reason: string) => boolean;
+  generateOfficialReceiptNumber: () => string;
+  issueOfficialReceipt: (inquiryId: string, orNumber: string, issuedBy: string) => boolean;
   /* BOM lifecycle */
   setBillOfMaterials: (id: string, bom: BOMLine[], costConfig: CostConfig, unitPrice: number, quotedTotal: number) => void;
   setProductsCosting: (id: string, data: { boms: (BOMLine[] | null)[]; configs: (CostConfig | null)[]; unitPrices: (number | null)[]; totals: (number | null)[] }) => void;
@@ -863,10 +956,21 @@ interface PersistedOrdersState {
 }
 
 function businessState(inquiries: Inquiry[]): Inquiry[] {
-  return inquiries.map(({ poFileDataUrl, pendingSignedDeliveryReceiptDataUrl, signedDeliveryReceiptDataUrl, payments, ...inquiry }) => ({
+  return inquiries.map(({ poFileDataUrl, poSubmissions, pendingSignedDeliveryReceiptDataUrl, signedDeliveryReceiptDataUrl, payments, ...inquiry }) => ({
     ...inquiry,
+    poSubmissions: poSubmissions?.map(({ fileDataUrl, ...submission }) => submission),
     payments: payments?.map(({ receiptDataUrl, ...payment }) => payment),
   }));
+}
+
+function addDevelopmentDemoInquiries(inquiries: Inquiry[]): Inquiry[] {
+  if (!import.meta.env.DEV) return inquiries;
+  const existingIds = new Set(inquiries.map((inquiry) => inquiry.id));
+  const missingDemoInquiries = createDemoInquiries(inquiries)
+    .filter((inquiry) => !existingIds.has(inquiry.id));
+  return missingDemoInquiries.length > 0
+    ? [...inquiries, ...missingDemoInquiries]
+    : inquiries;
 }
 
 function repairPersistedDemoOilfilBom(inquiries: Inquiry[]): { inquiries: Inquiry[]; changed: boolean } {
@@ -913,6 +1017,11 @@ function repairPersistedDemoOilfilBom(inquiries: Inquiry[]): { inquiries: Inquir
 function attachmentState(inquiry: Inquiry) {
   return {
     poFileDataUrl: inquiry.poFileDataUrl,
+    poSubmissionDataUrls: Object.fromEntries(
+      (inquiry.poSubmissions ?? [])
+        .filter((submission): submission is POSubmission & { fileDataUrl: string } => Boolean(submission.fileDataUrl))
+        .map((submission) => [submission.id, submission.fileDataUrl]),
+    ),
     pendingSignedDeliveryReceiptDataUrl: inquiry.pendingSignedDeliveryReceiptDataUrl,
     signedDeliveryReceiptDataUrl: inquiry.signedDeliveryReceiptDataUrl,
     paymentReceiptDataUrls: Object.fromEntries(
@@ -940,13 +1049,14 @@ function loadPersistedOrders(): PersistedOrdersState | null {
     ))) return null;
     if (!value.clearedPOs.every((po) => typeof po === "string")) return null;
     const repaired = repairPersistedDemoOilfilBom(value.inquiries as Inquiry[]);
-    if (repaired.changed) {
+    const inquiries = addDevelopmentDemoInquiries(repaired.inquiries);
+    if (repaired.changed || inquiries !== repaired.inquiries) {
       window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify({
-        inquiries: businessState(repaired.inquiries),
+        inquiries: businessState(inquiries),
         clearedPOs: value.clearedPOs,
       }));
     }
-    return { inquiries: repaired.inquiries, clearedPOs: value.clearedPOs as string[] };
+    return { inquiries, clearedPOs: value.clearedPOs as string[] };
   } catch {
     return null;
   }
@@ -955,7 +1065,7 @@ function loadPersistedOrders(): PersistedOrdersState | null {
 export function OrdersProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
   const realMode = mode === "real";
   const [savedOrders] = useState<PersistedOrdersState | null>(() => realMode ? null : loadPersistedOrders());
-  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => realMode ? [] : savedOrders?.inquiries ?? seed);
+  const [allInquiries, setAllInquiries] = useState<Inquiry[]>(() => realMode ? [] : savedOrders?.inquiries ?? addDevelopmentDemoInquiries(seed));
   const [clearedPOs, setClearedPOs] = useState<string[]>(() => realMode ? [] : savedOrders?.clearedPOs ?? []);
   const signedDRUploadsInProgress = useRef(new Set<string>());
   const paymentSequence = useRef(0);
@@ -1020,6 +1130,10 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
           return {
             ...inquiry,
             poFileDataUrl: entry.attachments.poFileDataUrl ?? inquiry.poFileDataUrl,
+            poSubmissions: inquiry.poSubmissions?.map((submission) => ({
+              ...submission,
+              fileDataUrl: submission.fileDataUrl ?? entry.attachments.poSubmissionDataUrls?.[submission.id],
+            })),
             pendingSignedDeliveryReceiptDataUrl: entry.attachments.pendingSignedDeliveryReceiptDataUrl ?? inquiry.pendingSignedDeliveryReceiptDataUrl,
             signedDeliveryReceiptDataUrl: entry.attachments.signedDeliveryReceiptDataUrl ?? inquiry.signedDeliveryReceiptDataUrl,
             payments: inquiry.payments?.map((payment) => ({
@@ -1107,16 +1221,81 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
   };
 
   const uploadPO: Ctx["uploadPO"] = (id, fileName, fileDataUrl, poNumber) => {
-    setAllInquiries((prev) => prev.map((x) => (x.id === id ? {
-      ...x,
+    const inquiry = allInquiries.find((item) => item.id === id);
+    if (!inquiry || !fileName.trim() || !fileDataUrl.trim() || !poNumber.trim()) return false;
+    const currentStatus = poReviewStatus(inquiry);
+    const hasExistingPO = Boolean(inquiry.poUploaded || inquiry.poFileName || inquiry.poFileDataUrl);
+    if (hasExistingPO && (currentStatus !== "Rejected" || inquiry.stage !== "po")) return false;
+    if (!hasExistingPO && inquiry.stage !== "quotation") return false;
+
+    const submittedAt = new Date().toISOString();
+    const submission: POSubmission = {
+      id: `${id}-po-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      fileName,
+      poNumber,
+      submittedAt,
+      status: "Pending Sales Review",
+      fileDataUrl,
+    };
+    setAllInquiries((prev) => prev.map((item) => item.id === id ? {
+      ...item,
       stage: "po",
       poUploaded: true,
       poFileName: fileName,
       poNumber,
       poFileDataUrl: fileDataUrl,
-      poUploadedAt: new Date().toISOString(),
+      poUploadedAt: submittedAt,
       poReceived: false,
-    } : x)));
+      poStatus: "Pending Sales Review",
+      poSubmissions: [...(item.poSubmissions ?? []), submission],
+    } : item));
+    return true;
+  };
+
+  const reviewPO: Ctx["reviewPO"] = (id, status, reviewedBy, rejectionReason) => {
+    const reason = rejectionReason?.trim();
+    const inquiry = allInquiries.find((item) => item.id === id);
+    if (
+      !inquiry
+      || inquiry.stage !== "po"
+      || poReviewStatus(inquiry) !== "Pending Sales Review"
+      || !reviewedBy.trim()
+    ) return false;
+    if (status === "Rejected" && !reason) return false;
+
+    const existingSubmission = latestPOSubmission(inquiry);
+    const poNumber = poNumberForDisplay(inquiry);
+    const submission: POSubmission | undefined = existingSubmission ?? (
+      inquiry.poFileName && poNumber
+        ? {
+            id: `${id}-legacy-po`,
+            fileName: inquiry.poFileName,
+            poNumber,
+            submittedAt: inquiry.poUploadedAt ?? new Date().toISOString(),
+            status: "Pending Sales Review",
+            fileDataUrl: inquiry.poFileDataUrl,
+          }
+        : undefined
+    );
+    if (!submission || submission.status !== "Pending Sales Review") return false;
+
+    const reviewedAt = new Date().toISOString();
+    const reviewedSubmission: POSubmission = {
+      ...submission,
+      status,
+      reviewedAt,
+      reviewedBy: reviewedBy.trim(),
+      rejectionReason: status === "Rejected" ? reason : undefined,
+    };
+    setAllInquiries((prev) => prev.map((item) => item.id === id ? {
+      ...item,
+      poStatus: status,
+      poReceived: status === "Approved",
+      poSubmissions: item.poSubmissions?.length
+        ? item.poSubmissions.map((entry) => entry.id === submission.id ? reviewedSubmission : entry)
+        : [reviewedSubmission],
+    } : item));
+    return true;
   };
 
   const finalizeJO: Ctx["finalizeJO"] = (id, data) => {
@@ -1127,6 +1306,8 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
               ...x,
               stage: "jo",
               joNumber: data.joNumber,
+              productionDueDate: data.productionDueDate,
+              deliveryMethod: data.deliveryMethod,
               joSpecs: data.joSpecs,
               joSketch: data.joSketch,
               dpReceiptFile: data.dpReceiptFile,
@@ -1155,19 +1336,56 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
   /* Cancellation approval workflow — both sides go through this */
   const requestCancellation: Ctx["requestCancellation"] = (id, reason, requestedBy) => {
     const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, pendingCancellation: { reason, requestedAt: now, requestedBy } } : x));
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== id || x.pendingCancellation || x.archived) return x;
+      const request = { reason, requestedAt: now, requestedBy };
+      return {
+        ...x,
+        pendingCancellation: request,
+        cancellationHistory: [
+          ...(x.cancellationHistory ?? []),
+          { ...request, resolution: "pending" },
+        ],
+      };
+    }));
   };
 
   const approveCancellation: Ctx["approveCancellation"] = (id) => {
     const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== id || !x.pendingCancellation) return x;
-      return { ...x, archived: true, archiveReason: "cancelled", archiveDate: now, archiveNote: x.pendingCancellation.reason, pendingCancellation: undefined };
+      const history = x.cancellationHistory ?? [];
+      const pendingIndex = history.map((request) => request.resolution).lastIndexOf("pending");
+      const cancellationHistory = pendingIndex < 0
+        ? [...history, { ...x.pendingCancellation, resolution: "approved" as const, resolvedAt: now }]
+        : history.map((request, index) => index === pendingIndex
+          ? { ...request, resolution: "approved" as const, resolvedAt: now }
+          : request);
+      return {
+        ...x,
+        archived: true,
+        archiveReason: "cancelled",
+        archiveDate: now,
+        archiveNote: x.pendingCancellation.reason,
+        pendingCancellation: undefined,
+        cancellationHistory,
+      };
     }));
   };
 
   const declineCancellation: Ctx["declineCancellation"] = (id) => {
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, pendingCancellation: undefined } : x));
+    const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== id || !x.pendingCancellation) return x;
+      const history = x.cancellationHistory ?? [];
+      const pendingIndex = history.map((request) => request.resolution).lastIndexOf("pending");
+      const cancellationHistory = pendingIndex < 0
+        ? [...history, { ...x.pendingCancellation, resolution: "declined" as const, resolvedAt: now }]
+        : history.map((request, index) => index === pendingIndex
+          ? { ...request, resolution: "declined" as const, resolvedAt: now }
+          : request);
+      return { ...x, pendingCancellation: undefined, cancellationHistory };
+    }));
   };
 
   const setBillOfMaterials: Ctx["setBillOfMaterials"] = (id, bom, costConfig, unitPrice, quotedTotal) => {
@@ -1324,13 +1542,23 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
 
   const finalizeProductJOs: Ctx["finalizeProductJOs"] = (id, data) => {
     const src = allInquiries.find((i) => i.id === id);
-    const productionDueDate = data[0]?.productionDueDate;
+    const deliveryMethod = data[0]?.deliveryMethod;
+    if (!deliveryMethod || data.some((job) => job.deliveryMethod !== deliveryMethod)) {
+      console.error("Cannot generate Job Order: all products must use the selected final delivery method.");
+      return [];
+    }
+    const calculation = src
+      ? calculateProductionDeadline(
+        src.quotationDoc?.timeOfDelivery,
+        deliveryMethod,
+      )
+      : undefined;
+    const productionDueDate = calculation?.productionDueDate;
     if (
       !productionDueDate
       || !isValidProductionDueDate(productionDueDate)
-      || data.some((job) => job.productionDueDate !== productionDueDate)
     ) {
-      console.error("Cannot generate Job Order: a valid shared production due date is required.");
+      console.error("Cannot generate Job Order: the automatic production deadline could not be calculated or verified.");
       return [];
     }
     if (!src || src.stage !== "po" || src.joNumber || allInquiries.some((i) => i.parentInquiryId === id && i.stage === "jo")) return [];
@@ -1352,7 +1580,8 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
           parentInquiryId,
           stage: "jo" as Stage,
           joNumber: jo.joNumber,
-          productionDueDate: jo.productionDueDate,
+          productionDueDate,
+          deliveryMethod: jo.deliveryMethod,
           joSpecs: jo.joSpecs,
           joSketch: jo.joSketch,
           dpReceiptFile: jo.dpReceiptFile,
@@ -1372,15 +1601,25 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
   };
 
   const confirmClientPayment: Ctx["confirmClientPayment"] = (inquiryId, payment) => {
+    const source = allInquiries.find((inquiry) => inquiry.id === inquiryId);
+    if (!source) return undefined;
+    const allowance = paymentSubmissionAllowance(source);
+    const paymentAmount = fromMoneyCents(toMoneyCents(payment.amount));
+    if (
+      !allowance.paymentType
+      || !Number.isFinite(paymentAmount)
+      || paymentAmount <= 0
+      || toMoneyCents(paymentAmount) > toMoneyCents(allowance.maxAmount)
+    ) return undefined;
     const id = `cp-${Date.now()}-${++paymentSequence.current}`;
     setAllInquiries((prev) => prev.map((x) => {
       const allowance = paymentSubmissionAllowance(x);
       if (
         x.id !== inquiryId
         || !allowance.paymentType
-        || !Number.isFinite(payment.amount)
-        || payment.amount <= 0
-        || payment.amount > allowance.maxAmount
+        || !Number.isFinite(paymentAmount)
+        || paymentAmount <= 0
+        || toMoneyCents(paymentAmount) > toMoneyCents(allowance.maxAmount)
       ) return x;
       return {
         ...x,
@@ -1391,29 +1630,44 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
           inquiryId,
           invoiceNo: x.invoiceNo,
           paymentType: allowance.paymentType,
-          submittedAmount: payment.amount,
-          verifiedAmount: payment.amount,
+          submittedAmount: paymentAmount,
+          verifiedAmount: paymentAmount,
           method: payment.method,
           referenceNumber: payment.ref,
           paymentDate: payment.date,
           verificationStatus: "verified" as const,
         },
       ],
-      confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, id }],
+      confirmedPayments: [...(x.confirmedPayments ?? []), { ...payment, amount: paymentAmount, id }],
       };
     }));
+    return id;
   };
 
   const submitPayment: Ctx["submitPayment"] = (inquiryId, payment) => {
+    const submittedAmount = fromMoneyCents(toMoneyCents(payment.submittedAmount));
+    const source = allInquiries.find((inquiry) => inquiry.id === inquiryId);
+    if (!source) return false;
+    const sourceAllowance = paymentSubmissionAllowance(source);
+    if (
+      !sourceAllowance.paymentType
+      || !Number.isFinite(submittedAmount)
+      || submittedAmount <= 0
+      || toMoneyCents(submittedAmount) > toMoneyCents(sourceAllowance.maxAmount)
+      || (sourceAllowance.paymentType === "DOWNPAYMENT"
+        && toMoneyCents(submittedAmount) !== toMoneyCents(requiredDownpaymentAmount(source)))
+    ) return false;
     const id = `pmt-${Date.now()}-${++paymentSequence.current}`;
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== inquiryId) return x;
       const allowance = paymentSubmissionAllowance(x);
       if (
         !allowance.paymentType
-        || !Number.isFinite(payment.submittedAmount)
-        || payment.submittedAmount <= 0
-        || payment.submittedAmount > allowance.maxAmount
+        || !Number.isFinite(submittedAmount)
+        || submittedAmount <= 0
+        || toMoneyCents(submittedAmount) > toMoneyCents(allowance.maxAmount)
+        || (allowance.paymentType === "DOWNPAYMENT"
+          && toMoneyCents(submittedAmount) !== toMoneyCents(requiredDownpaymentAmount(x)))
       ) return x;
       return {
         ...x,
@@ -1424,7 +1678,7 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
               id,
               date: payment.paymentDate,
               filename: payment.receiptFile,
-              amount: payment.submittedAmount,
+              amount: submittedAmount,
               note: payment.note ?? payment.referenceNumber,
             },
           ]
@@ -1433,6 +1687,7 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
         ...(x.payments ?? []),
         {
           ...payment,
+          submittedAmount,
           id,
           inquiryId,
           invoiceNo: payment.invoiceNo ?? x.invoiceNo,
@@ -1442,25 +1697,34 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
       ],
       };
     }));
+    return true;
   };
 
   const verifyPayment: Ctx["verifyPayment"] = (inquiryId, paymentId, verifiedAmount) => {
     setAllInquiries((prev) => prev.map((x) => {
       if (x.id !== inquiryId) return x;
-      const payments = (x.payments ?? []).map((payment) => payment.id === paymentId
-        && payment.verificationStatus === "pending"
-        && payment.submittedAmount > 0
-        ? {
-            ...payment,
-            verifiedAmount: verifiedAmount ?? payment.submittedAmount,
-            verificationStatus: "verified" as const,
-            verifiedAt: new Date().toISOString(),
-          }
-        : payment);
+      const currentState = paymentState(x);
+      const payments = (x.payments ?? []).map((payment) => {
+        if (payment.id !== paymentId || payment.verificationStatus !== "pending" || payment.submittedAmount <= 0) return payment;
+        const amountToVerifyCents = toMoneyCents(verifiedAmount ?? payment.submittedAmount);
+        const submittedAmountCents = toMoneyCents(payment.submittedAmount);
+        const invoiceBalanceCents = toMoneyCents(currentState.remainingInvoiceBalance);
+        const downpaymentBalanceCents = toMoneyCents(currentState.remainingDownpayment);
+        const maximumVerifiedCents = payment.paymentType === "DOWNPAYMENT"
+          ? Math.min(submittedAmountCents, downpaymentBalanceCents, invoiceBalanceCents)
+          : Math.min(submittedAmountCents, invoiceBalanceCents);
+        if (!Number.isFinite(amountToVerifyCents) || amountToVerifyCents <= 0 || amountToVerifyCents > maximumVerifiedCents) return payment;
+        return {
+          ...payment,
+          verifiedAmount: fromMoneyCents(amountToVerifyCents),
+          verificationStatus: "verified" as const,
+          verifiedAt: new Date().toISOString(),
+        };
+      });
       const verifiedInquiry = { ...x, payments };
       const state = paymentState(verifiedInquiry);
-      const downpaymentConfirmed = state.requiredDownpaymentAmount > paymentEpsilon
-        && state.verifiedDownpaymentAmount + paymentEpsilon >= state.requiredDownpaymentAmount;
+      const downpaymentConfirmed = toMoneyCents(state.requiredDownpaymentAmount) > 0
+        && toMoneyCents(state.verifiedDownpaymentAmount) >= toMoneyCents(state.requiredDownpaymentAmount);
       return downpaymentConfirmed
         ? {
             ...verifiedInquiry,
@@ -1472,16 +1736,64 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
     }));
   };
 
-  const rejectPayment: Ctx["rejectPayment"] = (inquiryId, paymentId) => {
+  const rejectPayment: Ctx["rejectPayment"] = (inquiryId, paymentId, reason) => {
+    const rejectionReason = reason.trim();
+    const inquiry = allInquiries.find((item) => item.id === inquiryId);
+    if (
+      !rejectionReason
+      || !inquiry?.payments?.some((payment) => payment.id === paymentId && payment.verificationStatus === "pending")
+    ) return false;
+
     setAllInquiries((prev) => prev.map((x) => x.id === inquiryId ? {
       ...x,
       payments: (x.payments ?? []).map((payment) => payment.id === paymentId && payment.verificationStatus === "pending" ? {
         ...payment,
         verifiedAmount: undefined,
         verificationStatus: "rejected" as const,
+        rejectionReason,
         rejectedAt: new Date().toISOString(),
       } : payment),
     } : x));
+    return true;
+  };
+
+  const generateOfficialReceiptNumber: Ctx["generateOfficialReceiptNumber"] = () => {
+    const year = new Date().getFullYear();
+    const used = allInquiries
+      .map((inquiry) => inquiry.officialReceipt?.orNumber)
+      .filter((number): number is string => Boolean(number))
+      .map((number) => Number.parseInt(number.match(new RegExp(`^OR-${year}-(\\d+)$`, "i"))?.[1] ?? "0", 10))
+      .filter((number) => Number.isFinite(number));
+    return `OR-${year}-${String(used.length ? Math.max(...used) + 1 : 1).padStart(4, "0")}`;
+  };
+
+  const issueOfficialReceipt: Ctx["issueOfficialReceipt"] = (inquiryId, orNumber, issuedBy) => {
+    const normalizedNumber = orNumber.trim();
+    if (!normalizedNumber || !issuedBy.trim()) return false;
+    const source = allInquiries.find((inquiry) => inquiry.id === inquiryId);
+    if (!source || source.officialReceipt) return false;
+    if (allInquiries.some((inquiry) => inquiry.officialReceipt?.orNumber === normalizedNumber)) return false;
+    const state = paymentState(source);
+    const payments = paymentRecords(source);
+    if (state.state !== "FULLY_PAID" || state.remainingInvoiceBalance > 0 || payments.some((payment) => payment.verificationStatus === "pending")) return false;
+    const issueDate = new Date().toISOString();
+    const invoiceNo = source.invoiceNo ?? `SI-${source.code.replace("INQ-", "")}`;
+    const amount = state.totalVerifiedPayments;
+    const escapeHtml = (value: string) => value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#39;" }[character] ?? character));
+    const documentHtml = `<!doctype html><html><head><meta charset="utf-8"><title>Official Receipt ${escapeHtml(normalizedNumber)}</title><style>body{font-family:Arial,sans-serif;color:#0f172a;padding:36px;max-width:760px;margin:auto}h1{color:#1a2b4a}table{width:100%;border-collapse:collapse}td{padding:9px;border-bottom:1px solid #e2e8f0}.label{color:#64748b;font-size:12px;text-transform:uppercase}</style></head><body><h1>Official Receipt</h1><p>Prototype-generated receipt. Not a BIR-compliant document.</p><table><tr><td class="label">OR Number</td><td>${escapeHtml(normalizedNumber)}</td></tr><tr><td class="label">Issue Date</td><td>${escapeHtml(new Date(issueDate).toLocaleDateString("en-US"))}</td></tr><tr><td class="label">Client</td><td>${escapeHtml(source.clientName)}</td></tr><tr><td class="label">Invoice</td><td>${escapeHtml(invoiceNo)}</td></tr><tr><td class="label">Amount Covered</td><td>₱${amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td></tr><tr><td class="label">Issued By</td><td>${escapeHtml(issuedBy)}</td></tr></table></body></html>`;
+    const receipt: OfficialReceipt = {
+      orNumber: normalizedNumber,
+      issueDate,
+      invoiceId: source.id,
+      invoiceNo,
+      clientName: source.clientName,
+      amount,
+      issuedBy: issuedBy.trim(),
+      status: "issued",
+      documentDataUrl: `data:text/html;charset=utf-8,${encodeURIComponent(documentHtml)}`,
+    };
+    setAllInquiries((prev) => prev.map((inquiry) => inquiry.id === inquiryId && !inquiry.officialReceipt ? { ...inquiry, officialReceipt: receipt } : inquiry));
+    return true;
   };
 
   const updateInquiry: Ctx["updateInquiry"] = (id, patch) => {
@@ -1830,10 +2142,10 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
 
   const contextValue: Ctx = {
       inquiries, archivedInquiries, completedJOs, clearedPOs,
-      addInquiry, addInquiryWithProductSketches, sendQuotation, uploadPO, finalizeJO,
+      addInquiry, addInquiryWithProductSketches, sendQuotation, uploadPO, reviewPO, finalizeJO,
       rejectInquiry, cancelInquiry, cancelJOFromProduction,
       requestCancellation, approveCancellation, declineCancellation,
-      confirmClientPayment, submitPayment, verifyPayment, rejectPayment,
+      confirmClientPayment, submitPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt,
       setBillOfMaterials, setProductsCosting, markInventoryDeducted,
       setQuotationDoc, generateQuotationNumber, generatePONumber, generateJONumber, generateInvoice, generateDeliveryReceipt, sendDeliveryReceiptToLogistics, markDeliveryReceiptSent, sendInvoice, finalizeProductJOs,
       addClientReceipt, addReplacementRequest, resolveReplacement, reorderToProduction, markPOCleared,

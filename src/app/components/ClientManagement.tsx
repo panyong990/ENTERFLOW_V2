@@ -7,8 +7,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Building2, Eye, Pencil, Power, Search, SlidersHorizontal, X } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import {
   getAccounts,
+  hashPassword,
   saveAccounts,
   type Account,
 } from "../store/accounts";
@@ -36,7 +38,6 @@ export function ClientManagement({initialTab="directory"}:{initialTab?:"director
 function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) {
   const real=useSession().mode==='real';
   const [tab,setTab]=useState(initialTab);
-  const [saving,setSaving]=useState(false);
   const mutation=useRef(false);
   const [formError,setFormError]=useState('');const [blocked,setBlocked]=useState(false);const [fieldErrors,setFieldErrors]=useState<Record<string,string>>({});
   const [accounts, setAccounts] = useState<Account[]>(()=>real?[]:getAccounts());
@@ -49,6 +50,9 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ClientAccount | null>(null);
   const [editing, setEditing] = useState<ClientAccount | null>(null);
+  const [resetting, setResetting] = useState<ClientAccount | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ name: "", contactPerson: "", email: "", username: "", phone: "" });
 
   const remote=useDirectory(real,'clients',{q:query,status,sort,page,pageSize});
@@ -178,6 +182,30 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
       toast.error(cause instanceof Error ? cause.message : `Unable to ${action} client access.`);if(real){setSelected(null);remote.refresh();}
     } finally {mutation.current=false;setSaving(false);}
   };
+  const resetClientPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!resetting) return;
+    if (newPassword.length < 8) {
+      toast.error("Set a password with at least 8 characters.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const passwordHash = await hashPassword(newPassword);
+      updateAccounts(accounts.map((account) => {
+        if (account.id !== resetting.id) return account;
+        const { password: _legacyPassword, ...accountWithoutPlaintextPassword } = account;
+        return { ...accountWithoutPlaintextPassword, passwordHash };
+      }));
+      setResetting(null);
+      setNewPassword("");
+      toast.success("Password updated. No plaintext password was stored or displayed.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Unable to reset the client password.");
+    } finally {
+      setSaving(false);
+    }
+  };
   const openDetails = async (client: ClientAccount) => {
     if(mutation.current)return;
     try {setSelected(real?accountFromRow(await api<DirectoryRow>(`/api/admin/clients/${client.id}`),'client') as ClientAccount:client);}catch(cause){toast.error((cause as Error).message);}
@@ -192,9 +220,9 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
           <div>
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ color: "#C8102E", backgroundColor: "#FFF1F2" }}><Building2 size={19} /></span>
-              <h1 className="font-syne" style={{ fontSize: 27, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Client Management</h1>
+              <h1 className="min-w-0 break-words font-syne" style={{ fontSize: "clamp(20px, 2.1vw, 27px)", fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Client Management</h1>
             </div>
-            <p className="font-dm ml-11 mt-1" style={{ fontSize: 13, color: "#64748B" }}>Manage existing client access.</p>
+            <p className="font-dm mt-1 sm:ml-11" style={{ fontSize: 13, color: "#64748B" }}>Manage existing client access.</p>
           </div>
         </div>
       </header>
@@ -211,7 +239,7 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }}
                   placeholder="Search company, client ID, or email..."
-                  aria-label="Search clients" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 font-dm text-sm outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50" />
+                  aria-label="Search clients" className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 font-dm text-sm outline-none transition focus:border-red-300 focus:ring-4 focus:ring-red-50" />
               </label>
               <Popover open={filterOpen} onOpenChange={(open) => {
                 if (open) {
@@ -222,7 +250,7 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
               }}>
                 <PopoverTrigger asChild>
                   <button type="button" aria-label="Open filters" aria-expanded={filterOpen}
-                    className={`inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2.5 font-dm text-sm font-semibold ${status !== "all" || sort !== "name-asc" ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>
+                    className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border px-3 font-dm text-sm font-semibold transition-colors ${status !== "all" || sort !== "name-asc" ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>
                     <SlidersHorizontal size={16} /> <span>Filter</span>
                   </button>
                 </PopoverTrigger>
@@ -260,9 +288,10 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
               <div><h2 className="font-syne text-lg font-bold text-slate-900">Client directory</h2><p className="mt-1 font-dm text-xs text-slate-500">{real&&!remote.data?"Records unavailable":total} client account{filteredClients.length === 1 ? "" : "s"}</p></div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px]">
+              <table className="w-full min-w-[1080px]">
                 <thead className="bg-slate-50/80"><tr>
                   {["Client / Company", "Client ID", "Contact Person", "Email Address", "Contact Number", "Account Status", "Registered", "Actions"].map((heading) => <th key={heading} className="px-4 py-3 text-left font-dm text-[11px] font-bold uppercase tracking-wider text-slate-500">{heading}</th>)}
+                  {["Client / Company", "Client ID", "Contact Person", "Email Address", "Contact Number", "Account Status", "Registered", "Actions"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500">{heading}</th>)}
                 </tr></thead>
                 <tbody>
                   {visibleRows.map((client) => (
@@ -302,8 +331,14 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
           <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             {[["Client ID", selected.id], ["Contact person", selected.contactPerson || "—"], ["Email address", selected.email], ["Username", selected.username], ["Contact number", selected.phone || "—"], ["Account status", real&&!selected.accountId?"No portal account":selected.active ? "Active" : "Deactivated"], ["Registration date", selected.joined]].map(([label, value]) => <div key={label}><dt className="font-dm text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-1 font-dm text-sm text-slate-800">{value}</dd></div>)}
           </dl>
-          <div className="mt-6 flex justify-end gap-2"><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => beginEdit(selected)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-700">Edit details</button><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => void toggleClient(selected)} className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white">{selected.active ? "Deactivate" : "Activate"} account</button></div>
+          <div className="mt-6 flex justify-end gap-2"><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => beginEdit(selected)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-700">Edit details</button><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => void toggleClient(selected)} className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white">{selected.active ? "Deactivate" : "Activate"} account</button>{!real&&<button type="button" disabled={saving} onClick={() => { setResetting(selected); setNewPassword(""); }} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 font-dm text-sm font-semibold text-amber-800">Reset password</button>}</div>
       </AdminDialog>}
+
+      {resetting && !real && <AdminDialog title="Set a new client password" busy={saving} onClose={()=>setResetting(null)}><form onSubmit={resetClientPassword}>
+        <p className="font-dm text-sm text-slate-500">For {resetting.name}. Only a salted password hash will be stored.</p>
+        <label className="mt-5 block font-dm text-xs font-semibold text-slate-600">New password<input required minLength={8} type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-red-300" /></label>
+        <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setResetting(null)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-600">Cancel</button><button type="submit" disabled={saving} className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Update password"}</button></div>
+      </form></AdminDialog>}
 
       {editing && <AdminDialog title="Edit client details" busy={saving} onClose={()=>setEditing(null)}><form onSubmit={saveClientDetails} aria-describedby={formError?"client-form-error":undefined}>
           <div className="flex items-start justify-between"><div><p className="font-dm text-xs font-bold uppercase tracking-widest text-red-700">Client profile</p><h2 className="mt-1 font-syne text-xl font-bold text-slate-900">Edit client details</h2></div><button type="button" disabled={saving} onClick={() => setEditing(null)} aria-label="Close editor" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div>

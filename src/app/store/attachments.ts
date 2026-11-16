@@ -8,6 +8,7 @@ interface AttachmentRecord {
 
 export interface PersistedAttachmentSet {
   poFileDataUrl?: string;
+  poSubmissionDataUrls?: Record<string, string>;
   paymentReceiptDataUrls: Record<string, string>;
   pendingSignedDeliveryReceiptDataUrl?: string;
   signedDeliveryReceiptDataUrl?: string;
@@ -28,7 +29,7 @@ function openAttachmentsDb(): Promise<IDBDatabase> {
   });
 }
 
-function attachmentKey(inquiryId: string, kind: "po" | "payment" | "signed-dr" | "pending-signed-dr" | "product-sketch", childId?: string) {
+function attachmentKey(inquiryId: string, kind: "po" | "po-submission" | "payment" | "signed-dr" | "pending-signed-dr" | "product-sketch", childId?: string) {
   return childId ? `${inquiryId}:${kind}:${childId}` : `${inquiryId}:${kind}`;
 }
 
@@ -94,6 +95,9 @@ export async function saveInquiryAttachments(
     if (attachments.poFileDataUrl) {
       store.put({ key: attachmentKey(inquiryId, "po"), dataUrl: attachments.poFileDataUrl } satisfies AttachmentRecord);
     }
+    Object.entries(attachments.poSubmissionDataUrls ?? {}).forEach(([submissionId, dataUrl]) => {
+      store.put({ key: attachmentKey(inquiryId, "po-submission", submissionId), dataUrl } satisfies AttachmentRecord);
+    });
     Object.entries(attachments.paymentReceiptDataUrls).forEach(([paymentId, dataUrl]) => {
       store.put({ key: attachmentKey(inquiryId, "payment", paymentId), dataUrl } satisfies AttachmentRecord);
     });
@@ -135,10 +139,14 @@ export async function loadInquiryAttachments(inquiryId: string): Promise<Persist
   });
   db.close();
   const prefix = `${inquiryId}:`;
-  const result: PersistedAttachmentSet = { paymentReceiptDataUrls: {} };
+  const result: PersistedAttachmentSet = { poSubmissionDataUrls: {}, paymentReceiptDataUrls: {} };
   records.filter((record) => record.key.startsWith(prefix)).forEach((record) => {
     if (record.key === attachmentKey(inquiryId, "po")) {
       result.poFileDataUrl = record.dataUrl;
+    } else if (record.key.startsWith(`${inquiryId}:po-submission:`)) {
+      const submissionDataUrls = result.poSubmissionDataUrls ?? {};
+      submissionDataUrls[record.key.slice(`${inquiryId}:po-submission:`.length)] = record.dataUrl;
+      result.poSubmissionDataUrls = submissionDataUrls;
     } else if (record.key.startsWith(`${inquiryId}:payment:`)) {
       result.paymentReceiptDataUrls[record.key.slice(`${inquiryId}:payment:`.length)] = record.dataUrl;
     } else if (record.key === attachmentKey(inquiryId, "pending-signed-dr")) {

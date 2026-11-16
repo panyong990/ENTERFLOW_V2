@@ -6,6 +6,7 @@ import { useOrders, type Inquiry, type QuotationDoc, type QuotationLineItem } fr
 import { useStockRequests } from "../store/stockRequests";
 import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { useSession } from "../store/session";
+import { DELIVERY_TRANSIT_ESTIMATE_NOTICE, formatDeliveryTransitEstimate, getDeliveryTransitEstimate } from "../store/productionDeadline";
 
 interface Props {
   inquiry: Inquiry;
@@ -88,6 +89,8 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
 
   /* Selected packaging material */
   const selectedPackaging: RawMaterial | undefined = packagingOptions.find((m) => m.id === packagingId);
+  const selectedShippingMethod = shippingMethod || savedShippingLabel;
+  const selectedShippingTransitEstimate = getDeliveryTransitEstimate(selectedShippingMethod);
 
   /* ─── Computed values ─── */
 
@@ -192,7 +195,12 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
       ? { materialId: selectedPackaging.id, materialName: selectedPackaging.name, qty: packagingQty, unitPrice: selectedPackaging.unitPrice, includeInUnit: packagingInUnit }
       : undefined,
     shipping: shippingOpen
-      ? { label: shippingMethod || savedShippingLabel || "Shipping", amount: shippingAmount, includeInUnit: shippingInUnit }
+      ? {
+        label: selectedShippingMethod || "Shipping",
+        amount: shippingAmount,
+        includeInUnit: shippingInUnit,
+        transitEstimate: selectedShippingTransitEstimate ? { ...selectedShippingTransitEstimate } : undefined,
+      }
       : undefined,
     termsOfPayment,
     timeOfDelivery,
@@ -366,6 +374,14 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
                     <option key={method.id} value={method.id}>{method.id} — {method.description}</option>
                   ))}
                 </select>
+                {formatDeliveryTransitEstimate(selectedShippingMethod) && (
+                  <div className="font-dm mt-1.5" style={{ fontSize: 10, color: "#92400E" }}>
+                    Estimated transit: <strong>{formatDeliveryTransitEstimate(selectedShippingMethod)}</strong>
+                    {selectedShippingTransitEstimate?.isPlaceholder && (
+                      <> · temporary placeholder, not confirmed.<div className="mt-0.5">{DELIVERY_TRANSIT_ESTIMATE_NOTICE}</div></>
+                    )}
+                  </div>
+                )}
               </Field>
               <Field label="Amount (₱)">
                 <input type="number" step="0.01" value={shippingAmount} onChange={(e) => setShippingAmount(Number(e.target.value))} className="font-mono-jb w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />

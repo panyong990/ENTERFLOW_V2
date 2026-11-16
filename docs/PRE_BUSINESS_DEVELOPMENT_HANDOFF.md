@@ -1,5 +1,15 @@
 # ENTER-FLOW V2 — Pre-Business Development Handoff
 
+> **Task 32 evidence update:** The documented Task 29 completion evidence is
+> now incorporated into the final readiness record: backend **579 passed**,
+> frontend **70 passed**, migration-core synthetic tests **17 passed**,
+> synthetic login proxy **1 passed**, and browser acceptance **8 passed** (1
+> unauthenticated smoke case plus 7 authenticated Client/Admin cases). These
+> results verify the approved testing scope only. Task 32 remains **PARTIAL**;
+> production release is not cleared, and live migration-history integrity and
+> production operations remain unresolved. Task 28's status and restrictions
+> are unchanged.
+
 > **Task 29 completed within its agreed testing scope:** [fresh authenticated results](TASK29_AUTHENTICATED_ACCEPTANCE_RESULTS.md).
 > Seven authenticated cases passed once; no failures/unexecuted cases or reruns.
 > Isolated synthetic mutations/audits retained. Normal development servers are
@@ -89,16 +99,19 @@ See the detailed ten-category assessment in
 ### Verified functionality and test evidence
 
 - Fresh Task 29 results: backend **579 passed, 0 failed, 0 skipped**; frontend
-  **64 passed, 0 failed, 0 skipped**; combined **643 passed, 0 failed, 0
-  skipped**. These results were supplied for the Task 29 report and were not
-  rerun in Task 32.
+  **70 passed, 0 failed, 0 skipped**; migration-core synthetic tests **17
+  passed**; synthetic login proxy **1 passed**; and browser acceptance **8
+  passed** (1 unauthenticated smoke case plus 7 authenticated Client/Admin
+  cases). These results are incorporated from Task 29 and were not rerun in
+  this Task 32 documentation update.
 - Task 28 records four passing isolated migration-core tests using synthetic
   fixtures. The current runner defers migrations numbered 007 and later before
   opening their SQL; this is not database execution evidence.
 - Existing backend/frontend route, service, ownership, validation, and
   permission tests are documented across the Task 28–31 reports.
-- Historical MySQL, browser, container-build, and nginx checks remain
-  historical and are not represented as current verification.
+- The documented browser results verify the approved isolated acceptance scope;
+  they do not establish production authentication, persistence, deployment, or
+  operational readiness.
 
 ### Partially implemented functionality
 
@@ -108,21 +121,24 @@ See the detailed ten-category assessment in
   transactional Sales workflows or broad Sales write APIs.
 - Client Portal has authenticated, client-owned read APIs and Real Mode
   integration. Payment submission and document operations remain incomplete.
-  Cancellation display/review behavior was implemented earlier, but latest
-  browser or live persistence verification is absent.
+  Cancellation display/review behavior was implemented earlier; the documented
+  browser acceptance covers only the approved scope and does not complete live
+  persistence verification for unsupported operational writes.
 - Admin routes, services, and UI support account, employee, client, and client
-  application administration; current browser verification is absent.
+  application administration; the documented Admin browser acceptance passed
+  for the approved scope, while broader production verification remains open.
 - Schema, role/permission foundations, and operational UI/page areas exist for
   other modules; do not infer complete operational APIs from their presence.
 
 ### Outstanding issues
 
-- Browser tests were **NOT RUN** in the latest cycle: the isolated Task 19
-  browser-test container and DPAPI fixtures were unavailable; Chromium
-  installation previously stalled. Do not retry that installation.
-- Backend startup did not complete because it requires a database connection
-  and confirmation of the intended target. No database connection or query was
-  performed in the latest cycle.
+- The documented Task 29 browser acceptance cases passed against the approved
+  isolated target. This does not clear production browser or persistence
+  verification, and no additional browser execution is implied by this handoff
+  update.
+- Live development/production database migration-history verification remains
+  unverified and separately authorized; no migration, seed, baseline, or
+  production database operation is authorized by this handoff.
 - Node 24 deployment-runtime test execution is unverified.
 - Production platform, ingress, secrets, database identity, deployment, and
   rollback have not been established.
@@ -150,8 +166,8 @@ See the detailed ten-category assessment in
 
 ### Git and exact continuation point
 
-Last recorded branch: `dev-phase`; last recorded HEAD:
-`3b2701dcb266dddb11bbe6c9fcfc472545479cd6`. The worktree contains accumulated
+Current branch: `dev-phase`; current HEAD:
+`8b64ae1f7250ccec39de7a5147ef67302252c3a3`. The worktree contains the
 uncommitted changes from Tasks 28–32; its exact current status was not refreshed
 for Task 32 because only `git diff --check` was run. Preserve all modified and
 untracked files. Do not reset, clean, restore, rebase, merge, commit, or push.
@@ -352,7 +368,9 @@ Local development and isolated browser tests have distinct runtime paths. Produc
 The following are recorded baselines from completed work. A future report must distinguish these historical results from newly executed commands:
 
 - Backend suite: 579 passed, 0 failed, 0 skipped, 0 todo.
-- Frontend suite: 64 passed, 0 failed, 0 skipped, 0 todo.
+- Frontend suite: 70 passed, 0 failed, 0 skipped, 0 todo.
+- Migration-core synthetic suite: 17 passed, 0 failed, 0 skipped, 0 todo.
+- Synthetic login-proxy test: 1 passed, 0 failed, 0 skipped, 0 todo.
 - Client browser suite: 2 passed in the verified isolated environment.
 - Admin browser smoke suite: 6 passed in the verified isolated environment.
 - Environment smoke: 1 passed.
@@ -394,8 +412,11 @@ migration.
 - The root package contains both frontend and backend dependencies, so the backend image installs the production subset of the shared package manifest.
 - The Vite build retains a large-chunk warning; this is not a deployment-blocking failure but may warrant future code splitting.
 - Migration 007 remains deferred.
-- Browser tests were not run in the latest testing cycle; the isolated Task 19 container and DPAPI fixtures were unavailable, and Chromium installation previously stalled. Do not retry the installation.
-- The latest testing cycle made no database connection or query; backend startup awaits confirmation of the intended target and authorization.
+- The documented Task 29 browser acceptance evidence is limited to the approved
+  isolated synthetic target and must not be represented as production
+  verification.
+- Migration-history integrity and live migration verification remain
+  unverified and require their existing separate authorization.
 - Logging, global correlation/redaction, audit coverage, retention, monitoring, alerts, and operational ownership remain incomplete or unverified.
 - Browser fixtures and credentials are environment-specific and must never be committed.
 

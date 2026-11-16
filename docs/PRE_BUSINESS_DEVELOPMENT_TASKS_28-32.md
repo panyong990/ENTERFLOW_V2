@@ -97,11 +97,14 @@ The value is not reproduced here, and no further search or use was made of it.
 
 **Task 32 readiness decision: PARTIAL.** The architectural, database, security,
 and portal foundations have substantial implementation and automated test
-evidence. The current migration runner safely defers migrations numbered 007
-and later before opening SQL; Task 28's earlier discovery blocker is resolved.
-The phase cannot be called COMPLETE because the required isolated browser
-database is absent, browser tests could not run, and production
-deployment/operations remain unconfigured. Bounded Business Module Development
+evidence. The documented Task 29 evidence now covers 579 backend tests, 70
+frontend tests, 17 synthetic migration-core tests, 1 synthetic login-proxy
+test, and all 8 browser acceptance cases (1 unauthenticated smoke case plus 7
+authenticated Client/Admin cases). The current migration runner safely defers
+migrations numbered 007 and later before opening SQL; live migration-history
+integrity remains **UNVERIFIED** under the existing hold. The phase cannot be
+called COMPLETE because migration-history reconciliation and production
+deployment/operations remain unresolved. Bounded Business Module Development
 is conditionally cleared to begin under the handoff's inspection and
 authorization gates; this does not authorize database or production work.
 
@@ -573,11 +576,9 @@ activity such as database changes or production release.
 
 Reviewed this report's Task 28â€“31 evidence, the project handoff, testing and
 deployment documentation, Client Portal audit, migration guide, and documented
-architecture/API/permission/test findings. Task 32 did not re-inspect
-Migration 007, connect to a database, rerun tests, or execute a deployment.
-The branch/HEAD and worktree notes below use the last recorded Git evidence;
-they were not refreshed because the requested final check was limited to
-`git diff --check`.
+architecture/API/permission/test findings. This continuation confirmed the
+current branch, HEAD, and worktree without re-inspecting Migration 007,
+connecting to a database, rerunning tests, or executing a deployment.
 
 ### 3. Implementation
 
@@ -590,17 +591,17 @@ prerequisite is not automatically a blocker to bounded application development.
 | Architecture â€” frontend/backend separation, API adapters, runtime configuration, and typed identifier/decimal conventions | VERIFIED | Current handoff records React/TypeScript/Vite, Express/MySQL, runtime configuration, same-origin `/api`, string BIGINT IDs, and decimal-safe values. | None identified for starting scoped module work. |
 | Architecture â€” end-to-end runtime compatibility, including deployment Node version | PARTIALLY VERIFIED | Unit suites pass; backend image is documented on Node 24.15.0, while prior test execution evidence used Node 26.13.0. No fresh Node 24 verification. | Carryable during development; verify before deployment. |
 | Database â€” schema design, relationships, and historical integrity evidence | PARTIALLY VERIFIED | Existing schema and integrity tests are documented; the recorded MySQL integration suite is historical. No database connection or query occurred in the latest cycle. | Current live schema/data state is unverified; critical before DB writes/migrations, carryable for work not requiring DB access. |
-| Database â€” checksums, ordering, fail-closed behavior, lock and migration-history safeguards | VERIFIED | Source review and four isolated migration-core tests are recorded. The focused tests use temporary fixtures; there was no current database execution. | Database execution remains separately authorized. |
+| Database â€” checksums, ordering, fail-closed behavior, lock and migration-history safeguards | VERIFIED | Source review and 17 isolated synthetic migration-core tests are recorded. The focused tests use temporary fixtures; live migration-history integrity remains unverified. | Database execution remains separately authorized. |
 | Database â€” Migration 007 remains deferred without opening its SQL | VERIFIED | Current cutoff defers migration numbers 007 and later before SQL access; the isolated fixture test covers deferred paths. No Migration 007 SQL was inspected in this audit. | Continue the hold; do not enable or execute the deferred migration without its separate approval. |
 | Database â€” compliance with the earlier strict no-checksum-inspection restriction | PARTIALLY VERIFIED | The Task 28 report transparently records that an earlier broad search surfaced a historical checksum. No SQL or database history was changed, and the deviation is not concealed. | Critical to migration-governance acceptance; not a blocker to unrelated module design/coding while restrictions are followed. |
-| Authentication â€” password/session implementation and automated coverage | PARTIALLY VERIFIED | Existing route/middleware and test evidence are documented; no live authentication/browser flow ran in the latest cycle. | Carryable for bounded development; live end-to-end authentication is a release gate. |
-| Authorization and RBAC â€” server-side permissions, role checks, and client ownership enforcement | PARTIALLY VERIFIED | Permission map, middleware, ownership guards, safe projections, and automated coverage are documented. No current browser cross-client authorization check. | Carryable for development only if each new endpoint has focused permission/ownership tests; live cross-client verification is a release gate. |
-| Admin Portal â€” account, employee, client, and client-application administration | PARTIALLY VERIFIED | Existing Admin routes/services/UI and automated tests are recorded; historical browser results are not current. | Carryable during development; current browser verification required before release. |
-| Client Portal â€” authenticated read APIs, Real Mode separation, and cancellation display/review changes | PARTIALLY VERIFIED | Client-owned reads and Real Mode adapters are documented; cancellation UI behavior was implemented earlier. Latest browser verification did not run, and cancellation persistence was not verified in the latest cycle. Payment submission and document operations remain incomplete. | Operational writes must be separately specified and tested; not a blocker to unrelated module work. |
+| Authentication â€” password/session implementation and automated coverage | PARTIALLY VERIFIED | Automated authentication/session coverage passes, and the documented Task 29 browser acceptance cases passed against the isolated target. Production authentication and broader live persistence remain unverified. | Carryable for bounded development; production end-to-end authentication remains a release gate. |
+| Authorization and RBAC â€” server-side permissions, role checks, and client ownership enforcement | PARTIALLY VERIFIED | Permission map, middleware, ownership guards, safe projections, automated coverage, and documented browser acceptance are present. The accepted scope is not a substitute for full production or cross-client release verification. | Carryable for development only if each new endpoint has focused permission/ownership tests; production verification remains a release gate. |
+| Admin Portal â€” account, employee, client, and client-application administration | PARTIALLY VERIFIED | Existing Admin routes/services/UI and automated tests are recorded; the documented Admin browser acceptance cases passed in the isolated target. Broader production verification remains unverified. | Carryable during development; production browser verification remains required before release. |
+| Client Portal â€” authenticated read APIs, Real Mode separation, and cancellation display/review changes | PARTIALLY VERIFIED | Client-owned reads, Real Mode adapters, and documented Client browser acceptance are verified for the accepted scope. Payment submission and document operations remain incomplete, and this evidence does not complete those workflows. | Operational writes must be separately specified and tested; not a blocker to unrelated module work. |
 | API foundation â€” validation, parameterized queries, safe projections, pagination, and test conventions | PARTIALLY VERIFIED | Existing APIs and unit/integration test coverage are documented. Sales API foundations are primarily reads; broad transactional business workflows are not established as complete. | Missing workflows are the work of Business Module Development, not evidence that the whole foundation is blocked. |
-| Testing â€” backend and frontend unit suites | VERIFIED | Fresh Task 29 evidence: `node --test backend/src` 579 passed, 0 failed, 0 skipped; `node --test src/app` 64 passed, 0 failed, 0 skipped; combined 643 passed, 0 failed, 0 skipped. Results were supplied for documentation; they were not rerun during Task 32. | None for the recorded unit-test results. |
-| Testing â€” browser end-to-end verification | BLOCKED | Browser tests were NOT RUN in the latest cycle. The isolated Task 19 container was unavailable; Chromium installation previously stalled (do not retry); DPAPI fixtures were unavailable. Historical browser passes are not current evidence. | Critical before claiming current end-to-end/release acceptance; carryable for implementation with unit/API tests. |
-| Testing â€” live database/backend startup verification | NOT VERIFIED | Backend startup was not completed because it requires a database connection and confirmation of the intended target. No database connection or query occurred in the latest cycle. | Critical before DB-integrated acceptance or migration; carryable for mock/unit-based work. |
+| Testing â€” backend and frontend unit suites | VERIFIED | Documented Task 29 evidence records 579 backend tests and 70 frontend tests passed, with zero failures, skips, cancellations, or todos. | None for the recorded automated-suite evidence. |
+| Testing â€” browser end-to-end verification | VERIFIED (DOCUMENTED SCOPE) | Documented Task 29 evidence records 8 passed, 0 failed, and 0 unexecuted: 1 unauthenticated smoke case plus 7 authenticated Client/Admin cases. This verifies the approved isolated acceptance scope, not production release readiness. | Retain production, migration, and broader operational release gates. |
+| Testing â€” live database/backend startup verification | PARTIALLY VERIFIED | Task 29 evidence includes 17 synthetic migration-core tests, 1 synthetic login-proxy test, and isolated browser-target acceptance. This does not verify development/production migration history or production persistence. | Critical before DB-integrated migration or production release; carryable for mock/unit-based module work. |
 | Deployment â€” container/nginx/runtime artifacts and build evidence | PARTIALLY VERIFIED | Dockerfiles, nginx configuration, runtime requirements, health endpoints, and historical image/nginx checks are documented. No current build was run. | Carryable before deployment. |
 | Deployment â€” production platform, ingress, secrets, TLS/database identity, rollout/rollback | NOT VERIFIED | No production platform or production deployment is configured or verified. | Critical for production release; not a blocker to bounded module development. |
 | Operations and maintenance â€” health endpoints and selected audit events | PARTIALLY VERIFIED | Liveness/readiness endpoints and selected audit writes are documented; no current runtime/production observation. | Carryable during development; readiness checks must be verified before deployment. |
@@ -609,10 +610,11 @@ prerequisite is not automatically a blocker to bounded application development.
 **Critical foundational blockers:** none identified that require halting all
 bounded Business Module Development. The hard gates are narrower: do not
 perform database migrations or writes without an authorized target and test
-strategy; do not claim browser/release verification without the missing
-isolated environment; do not deploy to production without its platform,
-secrets/TLS, rollback, and operational controls. The Task 28 deviation remains
-an explicit historical governance exception and must not be erased or repeated.
+strategy; do not treat the documented isolated browser acceptance as
+production verification; do not deploy to production without its platform,
+secrets/TLS, rollback, and operational controls. Live migration-history
+integrity remains **UNVERIFIED** under the existing hold. Task 28's status and
+restrictions remain unchanged.
 
 ### 4. Files changed
 
@@ -626,26 +628,27 @@ an explicit historical governance exception and must not be erased or repeated.
 ### 5. Testing
 
 No tests, builds, installations, migration commands, or database operations
-were run during Task 32. Fresh Task 29 evidence remains 579 backend and 64
-frontend tests passed (643 combined; zero failures/skips). Task 28's four
-fixture-only migration-core tests and historical deployment/browser checks are
-identified as prior evidence, not Task 32 execution. `git diff --check` is the
-only validation command for this documentation update.
+were run during Task 32. Incorporated Task 29 evidence records 579 backend,
+70 frontend, 17 synthetic migration-core, and 1 synthetic login-proxy test
+passed, plus 8 browser acceptance cases passed. These are incorporated
+evidence, not Task 32 execution. `git diff --check` is the only validation
+command for this documentation update.
 
 ### 6. Browser verification
 
-Browser tests were NOT RUN in the latest testing cycle. The isolated Task 19
-browser-test container was unavailable, Chromium installation previously
-stalled and is not to be retried, and DPAPI fixtures were unavailable.
-Historical Client/Admin browser passes are recorded only as historical
-evidence. The harness was not bypassed and no test database was recreated.
+The documented Task 29 browser acceptance evidence records 8 passed cases: 1
+unauthenticated smoke case and 7 authenticated Client/Admin cases. The cases
+ran against the approved isolated target with retained synthetic state. This
+is accepted evidence for the documented scope only; it is not production
+browser or production-persistence verification.
 
 ### 7. Database change report
 
 - Schema changes/migrations/seeds/records: none.
 - Migration 007: untouched, deferred.
-- Latest testing cycle: no database connection or query; backend startup did
-  not complete pending database-target confirmation.
+- Task 29's documented browser acceptance used only the approved isolated
+  synthetic target; this Task 32 documentation update made no database
+  connection or query.
 - Production database: not accessed.
 
 ### 8. Security
@@ -659,41 +662,51 @@ gaps; never treat recommendations as implemented controls.
 
 ### 9. Git state
 
-Last recorded branch: `dev-phase`. Last recorded HEAD:
-`3b2701dcb266dddb11bbe6c9fcfc472545479cd6`. The worktree is known to contain
-uncommitted changes from prior work; exact current status was not re-queried
-because this task restricts validation to `git diff --check`. The two new
-handoff/report edits are added to that existing work. No reset, clean, restore,
-rebase, merge, commit, or push was performed. Recheck status before any later
-implementation and preserve every existing change.
+Current branch: `dev-phase`. Current HEAD:
+`8b64ae1f7250ccec39de7a5147ef67302252c3a3`. At the start of this continuation,
+the only worktree changes were the two Task 32 documentation files; they were
+preserved. This continuation made documentation-only changes to those same
+files. No reset, clean, restore, rebase, merge, commit, push, or destructive
+Git operation was performed.
 
 ### 10. Outstanding issues
 
 1. Retain the Task 28 restriction deviation in the record; do not access the
    deferred migration or its checksum. Database changes require a separately
    reviewed and authorized target/procedure.
-2. Obtain authorized confirmation of the intended database target before
-   backend startup or live database verification.
-3. Restore the approved isolated Task 19 browser-test environment and DPAPI
-   fixtures through authorized procedures; do not retry Chromium installation.
-4. Confirm Node runtime support and run the appropriate test suite on the
+2. Obtain authorized confirmation of any intended live database target before
+   database verification or migration-related work; the documented isolated
+   browser acceptance target does not authorize development or production DB
+   operations.
+3. Confirm Node runtime support and run the appropriate test suite on the
    backend deployment runtime when an approved environment is available.
-5. Before production, select/configure platform, secrets, ingress, TLS CA and
+4. Before production, select/configure platform, secrets, ingress, TLS CA and
    database identity; verify deployment, rollback, health and smoke checks.
-6. Implement structured logging, safe correlation/redaction, audit coverage,
+5. Implement structured logging, safe correlation/redaction, audit coverage,
    retention, monitoring, alert routing/ownership, and runbooks before
    production operations.
-7. Define and implement operational APIs module by module from approved
+6. Define and implement operational APIs module by module from approved
    business requirements; do not infer missing workflow rules from UI or
    schema alone.
 
 ### 11. Acceptance criteria
 
-All ten categories were assessed with explicit evidence and status:
-**COMPLETE as an audit**. Formal Task 32 readiness is **PARTIAL**, not
-COMPLETE or BLOCKED. The foundation supports conditional, bounded Business
-Module Development. It does not clear database migrations, current browser
-acceptance, backend live startup, or production deployment/operations.
+The Task 32 acceptance criteria are resolved as follows:
+
+- Ten readiness categories assessed with explicit evidence and status:
+  **COMPLETE**.
+- Task 29 evidence reconciled into the matrix: **COMPLETE** for the documented
+  testing scope.
+- Migration-history integrity and live migration verification: **BLOCKED BY
+  DEFERRED TASK 28 / EXISTING RESTRICTIONS**.
+- Production platform, deployment, rollback, operations, and monitoring:
+  **BLOCKED BY EXTERNAL INFRASTRUCTURE AND OWNER DECISIONS**.
+- Unspecified operational business workflows: **BLOCKED BY OWNER APPROVAL**.
+
+Formal Task 32 readiness remains **PARTIAL**, not COMPLETE or BLOCKED. The
+audit deliverable is complete and bounded Business Module Development remains
+conditionally supported, but the external/deferred gates above prevent an
+honest full-readiness closure. Production release remains not cleared.
 
 ### 12. Handoff recommendation
 

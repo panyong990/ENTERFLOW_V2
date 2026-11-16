@@ -124,8 +124,8 @@ test('Admin Portal workflows operate against disposable fixtures only', async ({
   expect(pendingRejection).toBeTruthy();
 
   await page.getByRole('button', { name: 'Dashboard' }).click();
-  await expect(page.getByRole('button', { name: /Pending Client Registrations:/ })).toBeVisible();
-  await page.getByRole('button', { name: /Pending Client Registrations:/ }).click();
+  await expect(page.getByRole('button', { name: /Pending Client Registrations/ })).toBeVisible();
+  await page.getByRole('button', { name: /Pending Client Registrations/ }).click();
   await expect(page.getByRole('heading', { name: 'Client Management' })).toBeVisible();
   await expect(page.getByText('Pending Client Registrations', { exact: true })).toBeVisible();
   await expect(page.getByText(rejectionCompany, { exact: true })).toBeVisible();

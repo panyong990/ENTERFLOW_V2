@@ -7,7 +7,7 @@ import {AdminDialog} from './AdminDialog';
 import {AdminFeedback} from './AdminFeedback';
 interface Application {id:string;companyName:string;contactPerson:string;email:string;username:string;phone:string|null;status:string;submittedAt:string;rejectionReason?:string|null}
 interface List {applications:Application[];nextCursor:string|null}
-const button='rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50';
+const button='rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
 export function RegistrationRequests() {
  const real=useSession().mode==='real';
  const [list,setList]=useState<List>({applications:[],nextCursor:null});const [cursor,setCursor]=useState<string|null>(null);const [history,setHistory]=useState<(string|null)[]>([]);
@@ -35,10 +35,17 @@ export function RegistrationRequests() {
    }catch(cause){setDialogError((cause as Error).message);const failure=cause as ApiError;if(real&&(failure.status===0||failure.status===409||failure.status===503||failure.code==='INVALID_RESPONSE'))setUncertain(true);}
    finally{locked.current=false;setBusy(false);}
  };
- return <div className="p-4 sm:p-5 space-y-4"><div className="flex items-center justify-between"><div><h2 className="text-lg font-bold">Pending Client Registrations</h2><p className="text-xs text-slate-500">Newest pending requests. Decisions require explicit confirmation.</p></div><button className={button} disabled={loading||busy} onClick={()=>void load()}>Refresh</button></div>
+ useEffect(()=>{
+  if(!real||selected||busy)return;
+  const update=()=>{if(document.visibilityState!=='visible'||locked.current)return;void load();};
+  const visibility=()=>{if(document.visibilityState==='visible')update();};
+  const timer=window.setInterval(update,30000);window.addEventListener('focus',update);window.addEventListener('enterflow:admin-changed',update);document.addEventListener('visibilitychange',visibility);
+  return()=>{window.clearInterval(timer);window.removeEventListener('focus',update);window.removeEventListener('enterflow:admin-changed',update);document.removeEventListener('visibilitychange',visibility);};
+ },[real,load,selected,busy]);
+ return <div className="p-4 sm:p-5 space-y-4"><div className="flex items-center justify-between"><div><h2 className="text-lg font-bold">Pending Client Registrations</h2><p className="text-xs text-slate-500">Newest pending requests. Decisions require explicit confirmation.</p></div></div>
  <AdminFeedback loading={loading} error={error} retry={()=>void load()} />
  <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Application ID','Company','Contact person','Email','Submitted','Status','Action'].map(label=><th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{list.applications.map(item=><tr key={item.id} className="border-t border-slate-100"><td className="p-3">{item.id}</td><td className="p-3 font-semibold">{item.companyName}</td><td className="p-3">{item.contactPerson}</td><td className="p-3">{item.email}</td><td className="p-3">{new Date(real?item.submittedAt.replace(' ','T')+'Z':item.submittedAt).toLocaleString()}</td><td className="p-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">Pending</span></td><td className="p-3"><button className={button} disabled={busy||loading||!!error} onClick={()=>void review(item)}>Review</button></td></tr>)}</tbody></table></div>
- {!loading&&!error&&!list.applications.length&&<p className="py-10 text-center text-sm text-slate-500">No pending registration requests.</p>}
+ {!loading&&!error&&!list.applications.length&&<p className="py-10 text-center text-sm text-slate-500">No pending registrations. New applications will appear here for review.</p>}
  {real&&<div className="flex justify-end gap-2"><button className={button} disabled={!history.length||loading||busy} onClick={()=>{setCursor(history.at(-1)??null);setHistory(value=>value.slice(0,-1));}}>Previous</button><button className={button} disabled={!list.nextCursor||loading||busy} onClick={()=>{setHistory(value=>[...value,cursor]);setCursor(list.nextCursor);}}>Next</button></div>}
  {selected&&<AdminDialog title={action?`${action==='approve'?'Approve':'Reject'} application?`:'Application details'} description={selected.companyName} busy={busy} onClose={()=>{setSelected(null);setAction(null);setReason('');}}>
  <dl className="grid gap-3 sm:grid-cols-2 text-sm">{[['Application ID',selected.id],['Company',selected.companyName],['Contact person',selected.contactPerson],['Email',selected.email],['Username',selected.username],['Phone',selected.phone||'—'],['Status',selected.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="break-words">{value}</dd></div>)}</dl>

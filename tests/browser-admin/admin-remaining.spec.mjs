@@ -48,12 +48,12 @@ test('Admin empty states render safely for empty API responses', async ({ page }
 
   await page.route('**/api/admin/clients*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { items: [], total: 0, page: 1, pageSize: 10 } }) }));
   await page.getByRole('button', { name: 'Client Management' }).click();
-  await expect(page.getByText('No client accounts are available.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No client accounts yet. Approved client registrations will appear here.', { exact: true })).toBeVisible();
   await page.unroute('**/api/admin/clients*');
 
   await page.route('**/api/client-applications*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { applications: [], nextCursor: null } }) }));
   await page.getByRole('tab', { name: 'Registration Requests' }).click();
-  await expect(page.getByText('No pending registration requests.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No pending registrations. New applications will appear here for review.', { exact: true })).toBeVisible();
   await page.unroute('**/api/client-applications*');
 
   await page.route('**/api/admin/dashboard', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { employees: 0, activeEmployees: 0, clients: 0, roles: 0, pendingApplications: 0, activity: [], refreshedAt: new Date().toISOString() } }) }));

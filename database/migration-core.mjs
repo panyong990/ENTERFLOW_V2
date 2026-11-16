@@ -162,7 +162,15 @@ export async function run(db, command, base = root, log = console.log) {
     let exists = tables.some(t => t.name === history);
     const [applied] = exists ? await db.query(`SELECT * FROM ${quote(history)} ORDER BY file`) : [[]];
     const byName = new Map(files.map(f => [f.file, f]));
+    const deferredNames = new Set(deferredFiles);
     for (const row of applied) {
+      if (deferredNames.has(row.file)) {
+        assert(row.state === 'applied', `Blocked by ${row.state} migration: ${row.file}. Partial DDL may exist; manual recovery required.`);
+        // Discovery intentionally never opened this file. Its absence from the
+        // checksum map is not evidence of modification, nor permission to skip
+        // verification. Keep status/execution blocked without comparing a hash.
+        throw new Error(`Applied history references deferred migration: ${row.file}. Integrity is UNVERIFIED while the hold remains; status/execution is blocked. Do not alter history or lift the hold to bypass this check.`);
+      }
       assert(byName.get(row.file)?.checksum === row.checksum, `Applied file missing/modified: ${row.file}`);
       assert(row.state === 'applied', `Blocked by ${row.state} migration: ${row.file}. Partial DDL may exist; manual recovery required.`);
     }

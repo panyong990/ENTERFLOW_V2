@@ -1,5 +1,15 @@
 # Migration procedures and current safety hold
 
+> **2026-11-16 closure evidence:** [Tasks 28/29 report](../docs/TASKS_28_29_CLOSURE_2026-11-16.md).
+> Fresh fixture suite: **17 passed**, zero failures/skips. The existing safe
+> deferred-history diagnostic correction was verified, not bypassed. Task 28
+> remains **PARTIAL / BLOCKED for integrity reconciliation**. No database
+> connections/queries/writes or held-file inspection occurred in this pass.
+> Cloud execution is not supported by the current local-only CLI; target/TLS
+> changes, isolated recovery verification and exact migration effects require
+> a separately reviewed and authorized plan. Preserve all eight user-reported
+> local employees, audits and existing data; do not migrate/baseline development.
+
 Updated 2026-11-16. This is the current migration safety guide. Historical
 validation evidence is retained in [WORKFLOW_VALIDATION.md](WORKFLOW_VALIDATION.md)
 and the completed local database setup record in [DEVELOPMENT.md](DEVELOPMENT.md).
@@ -38,8 +48,12 @@ erased here.
   007 or later before `readFile`, checksum calculation, or SQL parsing. All
   such migration filenames are reported as `DEFERRED`; deferring later numbers
   as well prevents a later migration from running ahead of the held sequence.
-  An applied-history row for a deferred file is absent from the active file
-  map and therefore fails the existing missing/modified-file check.
+  A history row for a deferred file is absent from the active file map. The
+  runner now reports this explicitly as deferred history with integrity
+  `UNVERIFIED`, and still blocks status/execution. This replaces the misleading
+  generic missing/modified message without accepting the recorded checksum or
+  accessing deferred SQL. Deferred `applying`/`failed` rows still require manual
+  recovery. Active-file checksum, missing-file and ordering checks remain intact.
 - After file discovery and the database identity query, a database-name-derived
   MySQL advisory lock is acquired with zero wait and released in `finally`.
   It does not protect discovery/checksum work, which occurs first. The CLI

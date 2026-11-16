@@ -115,6 +115,85 @@ function existingHistoryDb(rows) {
   return { db, calls };
 }
 
+test('status distinguishes unverified deferred history without accepting it or reading its checksum', async () => {
+  const contents = 'CREATE TABLE active_fixture (id INT);';
+  const base = await createFixture({
+    'migrations/001_active_fixture.sql': contents,
+    'seeds/001_reference_fixture.sql': 'INSERT INTO reference_fixture VALUES (1);',
+  });
+  // A directory deliberately makes SQL reads impossible. This is synthetic
+  // temporary metadata, never the held project file or its stored checksum.
+  await mkdir(path.join(base, 'migrations', '007_deferred_fixture.sql'));
+  const { db, calls } = existingHistoryDb([
+    { file: 'migrations/001_active_fixture.sql', checksum: checksum(contents), state: 'applied' },
+    { file: 'migrations/007_deferred_fixture.sql', get checksum() { throw new Error('Deferred checksum must not be accessed'); }, state: 'applied' },
+  ]);
+  const messages = [];
+  try {
+    await assert.rejects(run(db, 'status', base, message => messages.push(message)), /Applied history references deferred migration: migrations\/007_deferred_fixture\.sql\. Integrity is UNVERIFIED/);
+    assert.ok(messages.includes('DEFERRED migrations/007_deferred_fixture.sql'));
+    assert.ok(!messages.some(message => message.startsWith('APPLIED ') || message.startsWith('PENDING ')));
+    assert.ok(!calls.some(sql => /^(CREATE|ALTER|INSERT|UPDATE|DELETE|DROP)\b/i.test(sql)));
+    assert.ok(calls.includes('SELECT RELEASE_LOCK(?)'));
+  } finally {
+    assert.ok(path.resolve(base).startsWith(path.resolve(tmpdir()) + path.sep));
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test('migrate also stays blocked by deferred history before any fixture writes', async () => {
+  const base = await createFixture({ 'migrations/001_active_fixture.sql': 'CREATE TABLE active_fixture (id INT);' });
+  await mkdir(path.join(base, 'migrations', '007_deferred_fixture.sql'));
+  const { db, calls } = existingHistoryDb([
+    { file: 'migrations/007_deferred_fixture.sql', get checksum() { throw new Error('Deferred checksum accessed'); }, state: 'applied' },
+  ]);
+  try {
+    await assert.rejects(run(db, 'migrate', base, () => {}), /Integrity is UNVERIFIED/);
+    assert.ok(!calls.some(sql => /^(CREATE|ALTER|INSERT|UPDATE|DELETE|DROP)\b/i.test(sql)));
+    assert.ok(calls.includes('SELECT RELEASE_LOCK(?)'));
+  } finally {
+    assert.ok(path.resolve(base).startsWith(path.resolve(tmpdir()) + path.sep));
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+for (const state of ['applying', 'failed']) test(`deferred ${state} history retains the manual-recovery block`, async () => {
+  const base = await createFixture({});
+  await mkdir(path.join(base, 'migrations', '007_deferred_fixture.sql'));
+  const { db, calls } = existingHistoryDb([
+    { file: 'migrations/007_deferred_fixture.sql', get checksum() { throw new Error('Deferred checksum accessed'); }, state },
+  ]);
+  try {
+    await assert.rejects(run(db, 'status', base, () => {}), new RegExp(`Blocked by ${state} migration:.*manual recovery required`));
+    assert.ok(!calls.some(sql => /^(CREATE|ALTER|INSERT|UPDATE|DELETE|DROP)\b/i.test(sql)));
+  } finally {
+    assert.ok(path.resolve(base).startsWith(path.resolve(tmpdir()) + path.sep));
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test('status can report active migration and seed markers when no history entry references a deferred file', async () => {
+  const migration = 'CREATE TABLE active_fixture (id INT);';
+  const seed = 'INSERT INTO reference_fixture VALUES (1);';
+  const base = await createFixture({ 'migrations/001_active_fixture.sql': migration, 'seeds/001_reference_fixture.sql': seed });
+  await mkdir(path.join(base, 'migrations', '007_deferred_fixture.sql'));
+  const { db, calls } = existingHistoryDb([
+    { file: 'migrations/001_active_fixture.sql', checksum: checksum(migration), state: 'applied' },
+    { file: 'seeds/001_reference_fixture.sql', checksum: checksum(seed), state: 'applied' },
+  ]);
+  const messages = [];
+  try {
+    await run(db, 'status', base, message => messages.push(message));
+    assert.ok(messages.includes('DEFERRED migrations/007_deferred_fixture.sql'));
+    assert.ok(messages.includes('APPLIED migrations/001_active_fixture.sql'));
+    assert.ok(messages.includes('APPLIED seeds/001_reference_fixture.sql'));
+    assert.ok(!calls.some(sql => /^(CREATE|ALTER|INSERT|UPDATE|DELETE|DROP)\b/i.test(sql)));
+  } finally {
+    assert.ok(path.resolve(base).startsWith(path.resolve(tmpdir()) + path.sep));
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
 test('rejects applied history whose checksum differs from the active fixture', async () => {
   const contents = 'CREATE TABLE active_fixture (id INT);';
   const base = await createFixture({ 'migrations/001_active_fixture.sql': contents });
@@ -124,7 +203,9 @@ test('rejects applied history whose checksum differs from the active fixture', a
     state: 'applied',
   }]);
   try {
-    await assert.rejects(run(db, 'migrate', base, () => {}), /Applied file missing\/modified: migrations\/001_active_fixture\.sql/);
+    for (const command of ['status', 'migrate']) {
+      await assert.rejects(run(db, command, base, () => {}), /Applied file missing\/modified: migrations\/001_active_fixture\.sql/);
+    }
     assert.ok(calls.includes('SELECT RELEASE_LOCK(?)'));
     assert.ok(!calls.includes('CREATE TABLE active_fixture (id INT)'));
   } finally {
@@ -140,7 +221,9 @@ test('rejects applied history with no corresponding active fixture file', async 
     state: 'applied',
   }]);
   try {
-    await assert.rejects(run(db, 'migrate', base, () => {}), /Applied file missing\/modified: migrations\/002_missing_fixture\.sql/);
+    for (const command of ['status', 'migrate']) {
+      await assert.rejects(run(db, command, base, () => {}), /Applied file missing\/modified: migrations\/002_missing_fixture\.sql/);
+    }
     assert.ok(calls.includes('SELECT RELEASE_LOCK(?)'));
     assert.ok(!calls.includes('CREATE TABLE active_fixture (id INT)'));
   } finally {
@@ -281,6 +364,39 @@ test('fails closed when the advisory lock cannot be acquired', async () => {
     assert.ok(!calls.includes('SELECT RELEASE_LOCK(?)'));
     assert.ok(!calls.includes('CREATE TABLE active_fixture (id INT)'));
   } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+for (const kind of ['migrations', 'seeds']) test(`rejects out-of-order ${kind} history before any writes`, async () => {
+  const first = kind === 'migrations' ? 'CREATE TABLE first_fixture (id INT);' : 'INSERT INTO reference_fixture VALUES (1);';
+  const second = kind === 'migrations' ? 'CREATE TABLE second_fixture (id INT);' : 'INSERT INTO reference_fixture VALUES (2);';
+  const base = await createFixture({ [`${kind}/001_first_fixture.sql`]: first, [`${kind}/002_second_fixture.sql`]: second });
+  const { db, calls } = existingHistoryDb([{ file: `${kind}/002_second_fixture.sql`, checksum: checksum(second), state: 'applied' }]);
+  try {
+    for (const command of ['status', 'migrate', 'seed']) {
+      await assert.rejects(run(db, command, base, () => {}), /Out-of-order history/);
+    }
+    assert.ok(!calls.some(sql => /^(CREATE|ALTER|INSERT|UPDATE|DELETE|DROP)\b/i.test(sql)));
+    assert.equal(calls.filter(sql => sql === 'SELECT RELEASE_LOCK(?)').length, 3);
+  } finally {
+    assert.ok(path.resolve(base).startsWith(path.resolve(tmpdir()) + path.sep));
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test('unsupported server identity is rejected before lock, session changes or writes', async () => {
+  const base = await createFixture({ 'migrations/001_active_fixture.sql': 'CREATE TABLE active_fixture (id INT);' });
+  const calls = [];
+  const db = {
+    query: async sql => { calls.push(sql); return [[{ name: 'fixture_db', version: '8.0.99' }], []]; },
+    execute: async () => { assert.fail('Rejected server must not acquire a lock or execute SQL'); },
+  };
+  try {
+    await assert.rejects(run(db, 'migrate', base, () => {}), /selected MySQL 8\.4 database/);
+    assert.deepEqual(calls, ['SELECT DATABASE() AS name, VERSION() AS version']);
+  } finally {
+    assert.ok(path.resolve(base).startsWith(path.resolve(tmpdir()) + path.sep));
     await rm(base, { recursive: true, force: true });
   }
 });

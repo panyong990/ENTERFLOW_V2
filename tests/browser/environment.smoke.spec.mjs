@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
-const databaseName = 'enterflow_browser_test_2f90dcd2bbc8a779';
+const databaseName = 'enterflow_browser_recovery_29caa4ce81d64f02';
 const serverVersion = '8.4.13';
 const credentialsPath = path.join(process.env.LOCALAPPDATA ?? '', 'EnterFlow', 'client-browser-test.credentials.dpapi');
 

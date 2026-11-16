@@ -15,6 +15,9 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   } catch { throw new ApiError(0, 'The request could not be confirmed. Refresh before retrying any change.', 'NETWORK_ERROR'); }
   let result: {success?:boolean;data:T;message?:string;code?:string;errors?:Record<string,string>};
   try { result=await response.json(); } catch { throw new ApiError(response.status,'The service returned an invalid response. Refresh before retrying.','INVALID_RESPONSE'); }
+  if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.success !== 'boolean') {
+    throw new ApiError(response.status,'The service returned an invalid response. Refresh before retrying.','INVALID_RESPONSE');
+  }
   if (!response.ok || result.success!==true) {
     if(response.status===401 && !options.public) window.dispatchEvent(new Event('enterflow:session-expired'));
     if(response.status===403 && !options.public) window.dispatchEvent(new Event('enterflow:session-recheck'));

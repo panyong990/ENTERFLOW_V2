@@ -5,7 +5,7 @@ import path from 'node:path';
 test.describe.configure({ mode: 'serial' });
 
 const API = 'http://127.0.0.1:3000';
-const databaseName = 'enterflow_browser_test_2f90dcd2bbc8a779';
+const databaseName = 'enterflow_browser_recovery_29caa4ce81d64f02';
 
 function credentials() {
   const file = path.join(process.env.LOCALAPPDATA ?? '', 'EnterFlow', 'client-browser-test.credentials.dpapi');

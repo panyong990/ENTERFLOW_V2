@@ -1,5 +1,60 @@
 # ENTER-FLOW V2 — Pre-Business Development Handoff
 
+> **Task 29 completed within its agreed testing scope:** [fresh authenticated results](TASK29_AUTHENTICATED_ACCEPTANCE_RESULTS.md).
+> Seven authenticated cases passed once; no failures/unexecuted cases or reruns.
+> Isolated synthetic mutations/audits retained. Normal development servers are
+> restored; eight real employees remain active. Prior unit/build/security
+> evidence is historical. Task 28/32 were not advanced or reassessed; stop here.
+
+> **Current Employee Management diagnosis:** [read-only findings](EMPLOYEE_MANAGEMENT_READONLY_DIAGNOSIS.md).
+> All eight development employees exist and are active. Normal frontend/backend
+> were stopped and have been restored; proxy health confirms `enterflow_db`.
+> Fourteen internal directory read checks passed without session/record writes.
+> Original screenshot environment remains unknown. No authenticated browser
+> testing or synthetic fixture changes occurred; prior work remains preserved.
+
+> **Current continuation - unauthenticated smoke PASSED:** [fresh evidence](TASK29_UNAUTHENTICATED_SMOKE_RESULTS.md).
+> One smoke case passed with one worker/zero retries on reviewed isolated port
+> 53045. Pre/post baseline remains 28 tables/69 rows/zero sessions. No writes or
+> authenticated acceptance ran. Stop pending separate Client/Admin write-scope
+> approval. Task 29 PARTIAL, Task 28 PARTIAL/BLOCKED, Task 32 pending.
+
+> **Current continuation - Gate D complete:** [actual results](TASK29_GATE_D_RESULTS.md).
+> Explicitly approved initialization at 53045 succeeded; 28 tables/69 synthetic
+> rows, constraint and two DPAPI exports verified read-only. Stop before Gate E:
+> no smoke/login/acceptance executed. Task 29 PARTIAL, Task 28 PARTIAL/BLOCKED,
+> Task 32 pending. No development access, migration/history or pin changes.
+
+> **Current continuation:** [Gate D approval review](TASK29_GATE_D_APPROVAL_REVIEW.md).
+> Recovery Gates A-C are applied and live identity/TLS checks pass at 53045.
+> Database schema and protected Admin/Client fixtures are absent. Initialize only
+> after explicit Gate D approval; no acceptance ran. Task 28 PARTIAL/BLOCKED,
+> Task 29 PARTIAL, Task 32 PENDING verification. Older absence/preparation notes
+> below are historical; no development database access or writes occurred here.
+
+> **Latest recovery preparation:** [review package and approval gates](TASK29_MINIMAL_RECOVERY_PLAN.md).
+> A minimal synthetic replacement is prepared offline (28 tables/69 rows), with
+> no active pin update, container creation, protected fixture writes or DB access.
+> Docker/Playwright/Chromium availability is now user-confirmed. Approve creation,
+> actual identity review, initialization and acceptance separately. Task 29 stays
+> PARTIAL and Task 32 pending; Migration 007 remains held.
+
+> **Latest Task 29 browser check:** [environment findings and exact write plan](TASK29_BROWSER_ACCEPTANCE_2026-11-16.md).
+> Docker access is confirmed under Stephanie; the pinned Task 19 container is
+> absent in `desktop-linux`, with Playwright/Chromium/protected fixtures missing
+> from checked locations. No browser acceptance ran, no database was contacted
+> and no infrastructure was rebuilt. Task 29 remains PARTIAL; Task 32 pending.
+
+> **Current continuation, 2026-11-16:** on `dev-phase`, inspected HEAD
+> `1f1fd2c78dc03ba446eec228a8e89aa1b6ac1be4`. Task 28 remains **PARTIAL / BLOCKED
+> for integrity reconciliation**, Task 29 **PARTIAL**, and Task 32 **PENDING
+> verification**. See [current closure evidence](TASKS_28_29_CLOSURE_2026-11-16.md)
+> for fresh 579-backend/70-frontend results, 17 fixture tests, proxy test, build,
+> security checks and exact blockers. The user reports eight provisioned local
+> employees; preserve these, all audits and business data. This pass made zero
+> database connections/writes and did not inspect Migration 007. Earlier counts,
+> HEADs and readiness decisions below are historical, not current verification.
+
 ## Purpose and continuation point
 
 ENTER-FLOW V2 is an ERP/workspace application with separate employee, client, and administrative experiences. This document records the pre-business foundation completed through Task 27 and is the continuation guide for the next developer.

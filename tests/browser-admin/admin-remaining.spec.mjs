@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 const API = 'http://127.0.0.1:3000';
-const databaseName = 'enterflow_browser_test_2f90dcd2bbc8a779';
+const databaseName = 'enterflow_browser_recovery_29caa4ce81d64f02';
 
 function adminFixture() {
   const file = path.join(process.env.LOCALAPPDATA ?? '', 'EnterFlow', 'admin-browser-test.credentials.dpapi');
@@ -11,7 +11,7 @@ function adminFixture() {
     '$enc=(Get-Content -Raw -LiteralPath $env:EF_TASK24_PATH).Trim(); $s=ConvertTo-SecureString -String $enc; $b=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s); try {[Runtime.InteropServices.Marshal]::PtrToStringBSTR($b)} finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($b)}'],
   { env: { ...process.env, EF_TASK24_PATH: file }, encoding: 'utf8' });
   const value = JSON.parse(plain);
-  if (value.database !== databaseName || value.container !== 'enterflow-browser-test-2f90dcd2bbc8a779') throw new Error('Task24 Admin fixture identity mismatch.');
+  if (value.database !== databaseName || value.container !== 'enterflow-browser-recovery-29caa4ce81d64f02') throw new Error('Task24 Admin fixture identity mismatch.');
   return value.account;
 }
 

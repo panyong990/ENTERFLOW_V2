@@ -10,7 +10,7 @@ function readAdminCredentials() {
   ], { env: { ...process.env, EF_TASK22_PATH: credentialPath }, encoding: 'utf8', timeout: 30_000 });
   if (result.status !== 0 || !result.stdout.trim()) throw new Error('Admin credential metadata could not be read securely.');
   const credentials = JSON.parse(result.stdout.trim());
-  if (credentials.database !== 'enterflow_browser_test_2f90dcd2bbc8a779' || credentials.container !== 'enterflow-browser-test-2f90dcd2bbc8a779' || credentials.account?.username !== 'browser_admin_2f90dcd2bbc8a779') throw new Error('Admin credential metadata identity mismatch.');
+  if (credentials.database !== 'enterflow_browser_recovery_29caa4ce81d64f02' || credentials.container !== 'enterflow-browser-recovery-29caa4ce81d64f02' || credentials.account?.username !== 'browser_admin_2f90dcd2bbc8a779') throw new Error('Admin credential metadata identity mismatch.');
   return credentials.account;
 }
 

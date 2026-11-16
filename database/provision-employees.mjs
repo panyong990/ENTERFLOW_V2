@@ -1,12 +1,13 @@
 import { createInterface } from 'node:readline/promises';
-import { emitKeypressEvents } from 'node:readline';
 import { stdin, stdout } from 'node:process';
 import {
   EMPLOYEE_ACCOUNTS,
   assertLocalDevelopmentTarget,
   previewEmployeeProvisioning,
-  provisionEmployeeAccounts
+  provisionEmployeeAccounts,
+  initialPasswordErrorMessage
 } from './employee-provisioning-core.mjs';
+import { collectInitialPasswords } from './employee-password-input.mjs';
 import { loadRuntimeEnvironment, validateRuntimeConfig } from '../backend/src/config/runtime-config.js';
 
 function argumentsFor(argv) {
@@ -16,41 +17,6 @@ function argumentsFor(argv) {
     throw new Error('Use --preview (default), --apply, or --help.');
   }
   return { apply: argv.includes('--apply'), help: argv.includes('--help') };
-}
-
-function promptSecret(message) {
-  if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
-    return Promise.reject(new Error('Password entry requires an interactive VS Code terminal.'));
-  }
-  emitKeypressEvents(stdin);
-  return new Promise((resolve, reject) => {
-    let value = '';
-    let finished = false;
-    const finish = (error, result) => {
-      if (finished) return;
-      finished = true;
-      stdin.removeListener('keypress', onKey);
-      stdin.setRawMode(false);
-      stdout.write('\n');
-      if (error) reject(error);
-      else resolve(result);
-    };
-    const onKey = (character, key = {}) => {
-      if (key.ctrl && key.name === 'c') {
-        finish(new Error('Password entry cancelled.'));
-      } else if (key.name === 'return' || key.name === 'enter') {
-        finish(null, value);
-      } else if (key.name === 'backspace') {
-        value = Array.from(value).slice(0, -1).join('');
-      } else if (!key.ctrl && !key.meta && character && value.length < 1024) {
-        value += character;
-      }
-    };
-    stdout.write(message);
-    stdin.setRawMode(true);
-    stdin.on('keypress', onKey);
-    stdin.resume();
-  });
 }
 
 function showAccounts() {
@@ -111,14 +77,10 @@ async function main() {
       prompt.close();
     }
 
-    const passwords = [];
+    console.log('Password policy: 8–1024 characters, distinct for every account. Confirmation must match exactly; spaces are preserved.');
+    let passwords = [];
     try {
-      for (const { username } of EMPLOYEE_ACCOUNTS) {
-        const password = await promptSecret(`Initial password for ${username} (input hidden): `);
-        const confirmation = await promptSecret(`Confirm password for ${username} (input hidden): `);
-        if (password !== confirmation) throw new Error('Passwords did not match; no provisioning was performed.');
-        passwords.push(password);
-      }
+      passwords = await collectInitialPasswords();
       const result = await provisionEmployeeAccounts({ db: pool, passwords, operator });
       if (!result.success) {
         console.log(`Provisioning stopped (${result.code}). No success is confirmed; do not retry until a read-only review confirms the account state.`);
@@ -142,6 +104,11 @@ main().catch(error => {
     'PASSWORD_HASH_FAILED'
   ]);
   const code = known.has(error?.code) ? error.code : 'PROVISIONING_STOPPED';
-  console.error(`Employee provisioning stopped (${code}). No database changes were confirmed.`);
+  const passwordIssue = initialPasswordErrorMessage(error);
+  if (passwordIssue) {
+    console.error(`Employee provisioning stopped (${code}). ${passwordIssue} No database writes were attempted.`);
+  } else {
+    console.error(`Employee provisioning stopped (${code}). No database changes were confirmed.`);
+  }
   process.exitCode = 1;
 });

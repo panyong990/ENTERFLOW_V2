@@ -1,0 +1,11 @@
+{
+  "context": "desktop-linux",
+  "container": "enterflow-browser-recovery-29caa4ce81d64f02",
+  "database": "enterflow_browser_recovery_29caa4ce81d64f02",
+  "labelKey": "enterflow.task29.recovery",
+  "label": "29caa4ce81d64f02",
+  "image": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "serverVersion": "8.4.13",
+  "serverName": "MySQL_Server_8.4.13_Auto_Generated_Server_Certificate",
+  "fixtureTag": "2f90dcd2bbc8a779"
+}

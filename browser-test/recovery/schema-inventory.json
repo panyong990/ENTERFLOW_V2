@@ -1,0 +1,151 @@
+{
+  "direct": [
+    "roles",
+    "modules",
+    "role_modules",
+    "clients",
+    "users",
+    "client_applications",
+    "user_sessions",
+    "audit_events",
+    "payment_terms",
+    "orders",
+    "order_stages",
+    "delivery_methods",
+    "order_items",
+    "product_specifications",
+    "quotations",
+    "quotation_lines",
+    "purchase_orders",
+    "job_orders",
+    "production_stages",
+    "shipments",
+    "invoices",
+    "payments",
+    "notifications",
+    "notification_recipients"
+  ],
+  "dependencyOnly": [
+    "filter_types",
+    "quotation_references",
+    "quotation_costing",
+    "replacement_requests"
+  ],
+  "tables": [
+    {
+      "name": "roles",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "modules",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "role_modules",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "payment_terms",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "clients",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "users",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "client_applications",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "filter_types",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "product_specifications",
+      "source": "001_identity_catalog.sql"
+    },
+    {
+      "name": "order_stages",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "delivery_methods",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "orders",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "order_items",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "quotation_references",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "quotations",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "quotation_lines",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "quotation_costing",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "purchase_orders",
+      "source": "002_orders_quotations.sql"
+    },
+    {
+      "name": "production_stages",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "replacement_requests",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "job_orders",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "shipments",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "invoices",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "payments",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "notifications",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "notification_recipients",
+      "source": "003_operations_billing.sql"
+    },
+    {
+      "name": "audit_events",
+      "source": "004_attachments_audit.sql"
+    },
+    {
+      "name": "user_sessions",
+      "source": "005_user_sessions.sql"
+    }
+  ],
+  "appliedMigrations": [],
+  "historyTables": [],
+  "liveVerification": false
+}

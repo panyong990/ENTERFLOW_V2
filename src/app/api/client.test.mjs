@@ -12,3 +12,24 @@ for(const status of [401,403,409,429,503])test(`HTTP ${status} remains distinct;
 test('network failure and malformed success response cannot imply mutation success',async t=>{const c=client();c.enableRealRequests(true);mock(t,async()=>{throw Error('offline');});await assert.rejects(c.api('/api/admin/employees',{method:'POST',body:{}}),error=>error.status===0);globalThis.fetch=async()=>new Response('not JSON');await assert.rejects(c.api('/api/admin/employees'),error=>error.code==='INVALID_RESPONSE');});
 test('explicit public registration preserves original password and excludes local credentials/IDs',async t=>{let captured;mock(t,async(path,options)=>{captured={path,body:JSON.parse(options.body)};return Response.json({success:true,data:{status:'pending'}});});const c=client();const body={companyName:'Synthetic',contactPerson:'Contact',email:'synthetic@example.invalid',username:'synthetic',phone:'',password:'synthetic-only-123'};const result=await c.api('/api/auth/register',{public:true,method:'POST',body});assert.equal(result.status,'pending');assert.deepEqual(captured.body,body);assert.ok(!('passwordHash' in captured.body));});
 test('safe account projection retains BIGINT IDs without adding passwords or invented active accounts',()=>{const c=client();const row=c.accountFromRow({id:'18446744073709551615',companyName:'Synthetic',accountId:null,active:null,revision:'x',createdAt:'2026-11-15T00:00:00Z',joinedOn:null},'client');assert.equal(row.id,'18446744073709551615');assert.equal(row.active,false);assert.equal(row.accountId,null);assert.ok(!('password' in row));});
+
+test('login sends the password unchanged and restores identity using the session cookie transport',async t=>{
+  const identity={userId:'9001',roleCode:'admin',accountType:'employee',displayName:'Synthetic'};
+  const calls=[];
+  mock(t,async(path,options)=>{calls.push({path,options});return Response.json({success:true,data:identity});});
+  const c=client();
+  await c.api('/api/auth/login',{public:true,method:'POST',body:{identifier:'synthetic',password:' untouched '}});
+  assert.deepEqual(await c.api('/api/auth/me',{public:true}),identity);
+  assert.deepEqual(JSON.parse(calls[0].options.body),{identifier:'synthetic',password:' untouched '});
+  assert.ok(calls.every(call=>call.options.credentials==='same-origin'));
+});
+
+test('unavailable backend error is actionable and never implies login success',async t=>{
+  mock(t,async()=>Response.json({success:false,code:'API_UNAVAILABLE',message:'Start the backend.'},{status:503}));
+  await assert.rejects(client().api('/api/auth/login',{public:true,method:'POST',body:{}}),error=>error.status===503&&error.code==='API_UNAVAILABLE');
+});
+
+for(const value of [null,[],{},'HTML substitute'])test(`invalid JSON envelope ${JSON.stringify(value)} is rejected safely`,async t=>{
+  mock(t,async()=>Response.json(value));
+  await assert.rejects(client().api('/api/auth/me',{public:true}),error=>error.code==='INVALID_RESPONSE');
+});

@@ -24,10 +24,12 @@ const canonicalAccounts = Object.freeze(EMPLOYEE_ACCOUNTS.map(({ username, roleC
 const identityValues = profiles => profiles.flatMap(profile => [profile.username, profile.email]);
 
 export class ProvisioningError extends Error {
-  constructor(code) {
+  constructor(code, details = {}) {
     super(code);
     this.name = 'ProvisioningError';
     this.code = code;
+    if (Number.isInteger(details.accountIndex)) this.accountIndex = details.accountIndex;
+    if (details.rule) this.rule = details.rule;
   }
 }
 
@@ -88,12 +90,42 @@ export function validateEmployeeProfiles(profiles = EMPLOYEE_ACCOUNTS) {
 }
 
 export function validateInitialPasswords(passwords) {
-  if (!Array.isArray(passwords) || passwords.length !== EMPLOYEE_ACCOUNTS.length ||
-      passwords.some(password => typeof password !== 'string' || password.length < 8 || password.length > 1024) ||
-      new Set(passwords).size !== passwords.length) {
-    throw new ProvisioningError('INVALID_INITIAL_PASSWORDS');
+  if (!Array.isArray(passwords) || passwords.length !== EMPLOYEE_ACCOUNTS.length) {
+    throw new ProvisioningError('INVALID_INITIAL_PASSWORDS', { rule: 'ACCOUNT_COUNT' });
+  }
+  for (let index = 0; index < passwords.length; index++) {
+    validateInitialPassword(passwords[index], index, passwords.slice(0, index));
   }
   return passwords;
+}
+
+export function validateInitialPassword(password, accountIndex, previousPasswords = []) {
+  const invalid = rule => { throw new ProvisioningError('INVALID_INITIAL_PASSWORDS', { accountIndex, rule }); };
+  if (typeof password !== 'string' || password.length === 0) invalid('EMPTY');
+  if (password.length < 8) invalid('TOO_SHORT');
+  if (password.length > 1024) invalid('TOO_LONG');
+  if (previousPasswords.includes(password)) invalid('REUSED');
+}
+
+export function validatePasswordConfirmation(password, confirmation, accountIndex) {
+  if (password !== confirmation) {
+    throw new ProvisioningError('INVALID_INITIAL_PASSWORDS', { accountIndex, rule: 'CONFIRMATION_MISMATCH' });
+  }
+}
+
+// Only canonical account names and fixed policy text are safe for CLI output.
+export function initialPasswordErrorMessage(error) {
+  const rules = {
+    ACCOUNT_COUNT: 'Exactly eight initial passwords are required.',
+    EMPTY: 'A nonempty password is required.',
+    TOO_SHORT: 'Use at least 8 characters.',
+    TOO_LONG: 'Use at most 1024 characters.',
+    REUSED: 'Use a distinct initial password for each account; this password repeats an earlier account.',
+    CONFIRMATION_MISMATCH: 'Password and confirmation must match exactly, including spaces.'
+  };
+  if (error?.code !== 'INVALID_INITIAL_PASSWORDS' || !Object.hasOwn(rules, error.rule)) return '';
+  const account = EMPLOYEE_ACCOUNTS[error.accountIndex];
+  return `${account ? `Account ${account.username}: ` : ''}${rules[error.rule]}`;
 }
 
 function assertColumns(actual, required, table) {

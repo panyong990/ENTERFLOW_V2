@@ -174,6 +174,58 @@ database.
 
 ## Apply only after review and explicit authorization
 
+### Password validation clarification (2026-11-16)
+
+The reported `INVALID_INITIAL_PASSWORDS` failure was caused by reusing an
+initial password across accounts, confirmed by the operator without disclosing
+any credential. The existing validator requires all eight initial passwords
+to be distinct. Previously this check ran only after all sixteen password and
+confirmation prompts and returned the same generic code for several rules.
+The security requirement is unchanged.
+
+The CLI now displays the policy before entry and checks each password before
+requesting its confirmation or proceeding to the next account. Errors identify
+only a canonical account username and fixed rule: required/nonempty, minimum 8,
+maximum 1024, reused initial password, or exact-confirmation mismatch. No entered
+value, hash, password length, or matching account's credential is printed.
+Core batch validation still runs before its database acquisition/hashing/write
+path, independent of the CLI. Read-only CLI preflight checks still occur first.
+
+The existing length measure is JavaScript string length (UTF-16 units). Input is
+not trimmed or normalized: leading/trailing spaces count and confirmations must
+match them exactly. No new complexity/composition policy was added. Use a strong,
+distinct private password for each account; do not share credentials in chat.
+
+The raw-mode handler was extracted for offline tests. It restores the prior
+terminal raw mode, removes its listener and pauses input when finished. A
+verified input-boundary issue was also corrected: typing beyond the maximum
+previously silently truncated the value; overflow is now retained sufficiently
+to reject it under the existing maximum. It is never shown or written to disk.
+
+Offline stream tests exercise Node's real keypress decoder with CR, LF and
+Windows CRLF, backspace, Unicode, spaces, Ctrl+C, empty input, overflow, and
+noninteractive refusal. These tests passed on Windows with Node 24.21.0. They
+are not a live interactive PowerShell/VS Code/ConPTY verification, which remains
+unverified because `--apply` and real password entry were not run in this fix.
+
+Safe regression command (mock connections only; no database access):
+
+```powershell
+node --test database/employee-provisioning-core.test.mjs database/employee-password-input.test.mjs
+```
+
+Result: **28 passed, 0 failed, 0 skipped**. Real Argon2id hash/verify is covered
+using synthetic input. DATABASE CHANGE REPORT for this fix: zero database
+connections/queries/writes, account changes, migrations or migration-history
+changes. Migration 007 was not accessed. Existing uncommitted work was preserved.
+
+A failure with these password-validation diagnostics occurs before provisioning
+writes, so it does not imply an uncertain commit. A later, separately authorized
+attempt can use distinct compliant passwords after the normal target/conflict
+preview. This does not authorize another apply or resolve any separate database
+conflict. Unknown-commit errors still require read-only review before retry.
+No password reset or existing-account overwrite is proposed.
+
 This task prepared the command but did **not** execute it. A responsible local
 developer must authorize apply after reviewing the diff, test results, local
 target, and preview. Then run:

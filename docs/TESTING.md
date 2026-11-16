@@ -1,5 +1,91 @@
 # ENTER-FLOW test procedures
 
+> **Task 29 authenticated acceptance COMPLETE:** [actual execution and retained state](TASK29_AUTHENTICATED_ACCEPTANCE_RESULTS.md).
+> Fresh: **7 passed, 0 failed, 0 unexecuted**, four single-attempt commands, one
+> worker/zero retries. Existing isolated fixtures retained at 28 tables/116 rows.
+> Development servers restored and health/eight active employees verified.
+> Task 29 is complete for the agreed scope using prior unit/build/security
+> evidence; no full-suite rerun or production-readiness claim. Stop after Task 29.
+
+> **Latest authenticated acceptance preflight:** [readiness and single next approval](TASK29_AUTHENTICATED_ACCEPTANCE_PREFLIGHT.md).
+> Isolated pins/TLS/28-table/69-row baseline and protected fixtures pass. Seven
+> authenticated cases discovered only; none executed. Development occupies ports
+> 3000/5173 and was left running. Temporary port handoff and documented isolated
+> session/business writes require explicit approval. Task 29 remains PARTIAL.
+
+> **Fresh unauthenticated Gate E smoke: PASSED** - [results and database report](TASK29_UNAUTHENTICATED_SMOKE_RESULTS.md).
+> Existing smoke ran once: 1 passed, exit 0, one worker/zero retries. Before/after
+> read-only checks passed: 28 tables/69 rows, zero sessions, one audit row.
+> No writes or authenticated cases. Task 29 remains PARTIAL; separate approval
+> required for the state-changing Client/Admin acceptance scopes.
+
+> **Gate D actual result:** [execution and read-only verification](TASK29_GATE_D_RESULTS.md).
+> Approved isolated initialization succeeded: 28 tables, 69 synthetic rows,
+> users(client_id) UNIQUE and both protected exports verified. Zero sessions.
+> Gate E smoke/authenticated tests NOT RUN; separate approval required. Task 29
+> remains PARTIAL. Development and Migration 007 untouched.
+
+> **Current Gate D assessment:** [verified target and exact pending writes](TASK29_GATE_D_APPROVAL_REVIEW.md).
+> Replacement pins/TLS verified at loopback 53045; Playwright 1.56.1 and Chromium
+> available. Schema and protected fixtures absent; initialization not executed.
+> One isolated connection/three SELECTs, no writes. Gate D approval required;
+> smoke/authenticated acceptance remain separately gated. Task 29 PARTIAL.
+
+> **Replacement preparation:** [minimal recovery runbook](TASK29_MINIMAL_RECOVERY_PLAN.md)
+> and `browser-test/recovery/` contain an inactive 28-table/69-row synthetic plan,
+> exact gated commands and offline validation. The user now confirms local
+> Docker/Playwright/Chromium availability. No replacement, protected credentials,
+> active pins or DB records were created/changed. Recovery and acceptance require
+> separate approvals; Task 29 remains PARTIAL.
+
+> **Latest browser follow-up:** [Task 29 environment and acceptance plan](TASK29_BROWSER_ACCEPTANCE_2026-11-16.md).
+> Docker 29.9.2 is reachable as Stephanie in `desktop-linux`. The exact Task 19
+> container is absent; Playwright, checked Chromium caches and protected fixtures
+> remain unavailable. Eight browser cases were reviewed; none ran. Task 29 stays
+> PARTIAL. No full suites were repeated, databases accessed or software installed.
+> Authenticated read checks also update sessions and require write approval.
+
+## Current execution and portable commands - 2026-11-16
+
+See [the current closure report](TASKS_28_29_CLOSURE_2026-11-16.md) and its
+linked logs. Fresh on Node v24.21.0/npm 11.19.0: **579 backend**, **70 frontend**,
+**17 migration-fixture**, and **1 synthetic auth-proxy** tests passed, with zero
+failures/skips/cancellations/todos in the final runs. Production build passed;
+106 JS syntax checks passed; npm audit reported zero known vulnerabilities.
+Browser and real-database suites were not run. Task 29 remains **PARTIAL**.
+
+The old directory-form commands below fail before discovery on this Node 24
+environment. Use explicit test-file lists from the repository root in PowerShell:
+
+```powershell
+$backendFiles = @(rg --files backend/src -g '*.test.js')
+node --import ./backend/test/support/mock-database.js --test @backendFiles
+$frontendFiles = @(rg --files src/app -g '*.test.mjs')
+node --test @frontendFiles
+node --test database/migration-core.test.mjs
+node --import ./backend/test/support/mock-database.js --test tests/auth-login.integration.test.mjs
+npm run build
+npm audit --json --ignore-scripts
+```
+
+The existing import hook replaces the eager database singleton before evaluation
+and throws on accidental live queries. Backend tests inject mocks; no credentials,
+CA files or real database are needed. Do not remove the hook to resolve a test
+failure. Stop and record failures. Check command exit codes individually.
+
+The sandbox blocked esbuild directory resolution during the first frontend/build
+attempts; approved retries outside it passed. Audit also required approved network
+access after its initial failure. Existing useLayoutEffect SSR and build chunk-size
+warnings remain. Exact Docker-pinned Node 24.15.0 is not verified by Node 24.21.0.
+
+`@playwright/test` cannot be resolved in the current installation. Docker and
+required protected browser fixtures are unavailable to the executing process.
+Do not install Chromium again, request Chrome Computer Use, start the harness
+against development, or create/reset a database. First restore/verify the approved
+isolated environment through authorized procedures and approve its test writes.
+
+## Historical testing record (superseded freshness claims)
+
 This guide records repository test entry points, fresh Task 29 unit-test
 results, and historical environment diagnostics separately. The root package
 has no unified `test` script.

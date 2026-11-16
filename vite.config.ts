@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { createApiProxy } from './config/api-proxy.mjs'
 
 
 function figmaAssetResolver() {
@@ -32,6 +33,6 @@ export default defineConfig({
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
-  server: { proxy: { '/api': { target: 'http://127.0.0.1:3000', changeOrigin: false } } },
+  server: { port: 5173, strictPort: true, proxy: { '/api': createApiProxy() } },
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

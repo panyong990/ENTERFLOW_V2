@@ -1,5 +1,15 @@
 # Frontend analysis and requirements review
 
+> **Historical requirements and frontend snapshot (Phase 1, 2026-11-11).**
+> This report intentionally preserves the earlier UI/database analysis and
+> design proposals. It predates Tasks 10–27 and is not a current implementation
+> inventory. The repository now has an Express/MySQL backend, authenticated
+> Admin and Client Portal APIs, Sales read APIs, and Real Mode adapters. These
+> later implementations must be assessed from current source and current test
+> evidence; proposed workflows below remain proposals unless separately
+> verified. See [PRE_BUSINESS_DEVELOPMENT_HANDOFF.md](../docs/PRE_BUSINESS_DEVELOPMENT_HANDOFF.md)
+> and [PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md](../docs/PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md).
+
 Phase 1, 2026-11-11. Current source is the implementation reference; SQL is a proposal, not an assertion that these features have a backend.
 
 ## Scope and evidence

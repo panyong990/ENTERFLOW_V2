@@ -1,0 +1,623 @@
+# Pre-Business Development task reports 28–32
+
+Date: 2026-11-16. Source of scope: the provided `PRE-BUSINESS DEVELOPMENT.pdf`,
+read before repository inspection. The PDF remains the authoritative handoff.
+
+**Safety deviation:** During initial inspection, a broad repository search
+unintentionally surfaced historical test-result lines containing Migration
+007's stored checksum. The Migration 007 SQL source was not opened or read, and
+no migration file, checksum, or history record was changed, but surfacing the
+historical value violated the instruction not to inspect its checksum/history.
+The value is not reproduced here, and no further search or use was made of it.
+
+## Consolidated decision
+
+**Task 32 readiness decision: PARTIAL.** The architectural, database, security,
+and portal foundations have substantial implementation and automated test
+evidence. The current migration runner safely defers migrations numbered 007
+and later before opening SQL; Task 28's earlier discovery blocker is resolved.
+The phase cannot be called COMPLETE because the required isolated browser
+database is absent, browser tests could not run, and production
+deployment/operations remain unconfigured. Bounded Business Module Development
+is conditionally cleared to begin under the handoff's inspection and
+authorization gates; this does not authorize database or production work.
+
+## Task 28 — Migration Procedures and Documentation Reconciliation
+
+Final Status: **PARTIAL**
+
+### 1. Objective
+
+Reconcile migration documentation with the runner while keeping Migration 007
+deferred, making no schema or record changes, and distinguishing verified code
+behavior from future procedure proposals.
+
+### 2. Initial inspection
+
+At the start of Task 28, inspected `database/migrate.mjs`, `database/migration-core.mjs`,
+`database/migration-core.test.mjs`, `package.json`, and the existing database
+guides. At that time, `filesAt()` enumerated and read/checksummed every numbered
+SQL file before command dispatch, and the unit test used real discovery. Those
+findings describe the pre-change implementation only. The Migration 007 SQL
+source was not opened/read and no migration file or history was changed.
+However, the safety deviation recorded above applies: a broad search surfaced
+a historical test-result line containing its stored checksum.
+
+### 3. Implementation
+
+Reconciled the runner ledger as `_enterflow_migration_history`; the legacy
+`schema_migrations` ledger is checked only as part of baseline verification.
+Documented BOM/line-ending-normalized SHA-256 integrity, ordering and applied
+file checks, database-scoped zero-wait advisory lock, local target/TLS guards,
+SQL allowlist, baseline comparisons, applying/applied/failed states, and the
+fact that MySQL DDL may commit partially. Removed the old manual import sequence
+from the legacy README and setup guidance and retired earlier manual execution
+proposals in the Phase 2 and MySQL 8.4 plans.
+The runner now defers migrations numbered 007 and later from filename metadata
+before opening, hashing, or parsing their SQL. Isolated temporary-fixture tests
+verify deferral, active-file ordering, applied-history integrity, failure
+handling (including failed-state ledger writes), advisory-lock behavior, lock
+release, and early rejection of seed/baseline commands with deferred migrations.
+Manual MySQL/phpMyAdmin
+migration instructions in the historical database README were replaced with a
+non-executable summary. The archived setup plan and earlier Phase 2/MySQL 8.4
+proposals now point to the current runner rather than suggesting direct
+per-file imports. Database execution remains separately unauthorized.
+
+### 4. Files changed
+
+- `database/migration-core.mjs` — excludes deferred migration numbers before
+  reading, hashing, or parsing SQL; exposes active-only discovery and enforces
+  migration history, lock, baseline, seed, and failure safeguards.
+- `database/migration-core.test.mjs` — isolated temporary-fixture and mock
+  connection coverage for deferred discovery, active ordering, history
+  integrity, failure/no-retry, advisory locking, and baseline/seed guards.
+- `database/test-migration-007.mjs` — limits its reported checksum scope to
+  active migrations and seeds and stops at the deferral preflight.
+- `database/test-workflow.mjs` — adds a deferred-migration preflight before
+  integration setup.
+- `database/TEAM_MIGRATIONS.md` — documents the actual ledger, integrity and
+  locking behavior, failure handling, safe procedures, deferral, and future
+  production prerequisites.
+- `database/DEVELOPMENT.md` — reconciles the current runner procedure with the
+  prior installation record and clarifies the migration hold.
+- `database/DEVELOPMENT_SETUP_PLAN.md` — retires the manual import path and
+  points to the current runner guides while preserving the setup history.
+- `database/README.md` — replaces executable legacy MySQL/phpMyAdmin
+  migration/import steps with a clearly historical summary and current guide
+  links.
+- `database/PHASE2_REVIEW.md` — marks the old manual execution sequence as
+  superseded and preserves its test recommendations as unverified proposal.
+- `database/MYSQL84_TEST_PLAN.md` — retires per-file SQL import instructions
+  and directs any approved test execution through the current runner.
+- `database/WORKFLOW_VALIDATION.md` — distinguishes historical test evidence
+  from current behavior and removes obsolete next-use authorization.
+
+`database/FRONTEND_ANALYSIS.md`, `docs/CLIENT_PORTAL_AUDIT.md`,
+`docs/DEPLOYMENT.md`, `docs/PRE_BUSINESS_DEVELOPMENT_HANDOFF.md`,
+`docs/TESTING.md`, and the Business Module handoff artifacts are present in
+the worktree for other tasks; they are not counted as Task 28 implementation
+changes.
+
+### 5. Testing
+
+Current approved-completion-pass evidence: `node --test
+database/migration-core.test.mjs` passed all 9 tests using synthetic temporary
+fixtures and mock connections; `git diff --check` passed. The focused suite
+does not discover or process the repository's real migration directory. No
+migration CLI, real migration-directory test, or database connection was used.
+The earlier 4-test result and historical integration results elsewhere in this
+report are historical evidence, not current execution evidence.
+
+### 6. Browser verification
+
+Not applicable to this migration documentation task.
+
+### 7. Database change report
+
+- Schema changes: none.
+- Migrations applied or changed: none.
+- Migration 007: untouched and deferred.
+- Seed changes: none.
+- Records changed: none.
+- Database accessed: no.
+
+### 8. Security
+
+Database TLS and the migration runner's local target guard remain as implemented.
+No credentials or `.env` files were displayed or changed. The documented
+runner parser is described as an allowlist guard, not a hostile-SQL sandbox.
+
+### 9. Git state
+
+At the start of the approved completion pass, branch was `dev-phase` and HEAD
+was `3b2701dc chore: complete pre-business development handoff`. The initial
+modified paths were `database/DEVELOPMENT.md`, `database/DEVELOPMENT_SETUP_PLAN.md`,
+`database/FRONTEND_ANALYSIS.md`, `database/README.md`,
+`database/TEAM_MIGRATIONS.md`, `database/WORKFLOW_VALIDATION.md`,
+`database/migration-core.mjs`, `database/migration-core.test.mjs`,
+`database/test-migration-007.mjs`, `database/test-workflow.mjs`,
+`docs/CLIENT_PORTAL_AUDIT.md`, `docs/DEPLOYMENT.md`, and
+`docs/PRE_BUSINESS_DEVELOPMENT_HANDOFF.md`. Initial untracked paths were
+`docs/BUSINESS MODULE DEVELOPMENT GUIDE.pdf`,
+`docs/BUSINESS_MODULE_DEVELOPMENT_HANDOFF.md`,
+`docs/BUSINESS_MODULE_TASK_01_SALES_WORKFLOW_DISCOVERY.md`,
+`docs/PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md`, and `docs/TESTING.md`.
+All pre-existing changes were preserved. The Task 28 file inventory above is
+attribution, not a claim that the whole worktree was clean or that no unrelated
+changes existed. No files were staged, committed, pushed, reset, cleaned,
+restored, merged, or rebased.
+
+### 10. Outstanding issues
+
+The original discovery blocker is resolved: the runner skips deferred
+migrations before opening SQL. Database commands still require separate target
+and operation authorization; production identity, backup, DDL account, and
+recovery prerequisites are not configured or verified. The historical
+restriction deviation above remains part of the record and is not erased by
+this completion pass. Recording `failed` is best-effort if the database refuses
+that update; the prior `applying` state still blocks a retry, but its error code
+may be absent and manual review is required.
+
+### 11. Acceptance criteria
+
+- Migration procedures match the actual code: **COMPLETE**. Evidence:
+  inspected `migration-core.mjs`, current runner guides, and the isolated
+  migration-core tests; retired the direct-import workflow.
+- No unsafe migration execution command is documented: **COMPLETE**. Evidence:
+  inspected the README, setup plan, Phase 2 review, and MySQL 8.4 test plan;
+  obsolete manual MySQL/phpMyAdmin migration/import procedures are clearly
+  retired and current operations refer to the runner guides.
+- Migration 007 remains untouched: **NOT COMPLETE**. No Migration 007 SQL,
+  file, or database record was modified in this pass, but the recorded prior
+  checksum-surfacing deviation violated the strict no-inspection restriction
+  and cannot be retroactively corrected.
+- No database schema or record changes occur: **COMPLETE**. Evidence: no
+  database connection, migration command, or schema/record operation was
+  performed.
+- Documentation distinguishes verified behavior from proposed procedures:
+  **COMPLETE**. Evidence: current runner behavior is separated from archived
+  setup history and explicitly labeled future production guidance.
+- Overall status remains **PARTIAL** because the historical Migration 007
+  restriction violation is irreversible; production prerequisites also remain
+  unverified and unauthorized.
+
+### 12. Handoff recommendation
+
+The runner's pre-read deferral is implemented and fixture-tested. Before any
+future database migration, separately authorize the exact operation and target,
+review the active file set and recovery plan, and retain the deferral unless an
+explicitly approved change revises it. Do not treat historical integration
+results as current validation.
+The historical checksum-surfacing deviation is preserved above; no further
+inspection of Migration 007 or its history is permitted.
+
+## Task 29 — Reproducible Full-Suite Testing
+
+Final Status: **PARTIAL**
+
+### 1. Objective
+
+Document the real backend, frontend, browser, and migration test entry points,
+their order and prerequisites; execute the safe suites and verify browser DB
+isolation without using development or production databases.
+
+### 2. Initial inspection
+
+Inspected root `package.json`, `playwright.config.mjs`,
+`playwright.admin.config.mjs`, `browser-test/backend.mjs`, the browser smoke
+specs, and test naming conventions. There is no root unified `test` script.
+The package has Client browser smoke/full commands, an Admin-config command
+(historically named `:smoke` but it includes all Admin specs), and a database
+migration test script.
+
+### 3. Implementation
+
+Added `docs/TESTING.md` with reproducible backend/frontend commands, browser
+execution order and prerequisites, safe failure reporting, runtime-version
+context, the browser identity gate, and explicit suite limitations. The fresh
+Task 29 results are 579 backend and 64 frontend tests passed; historical
+environment diagnostics are recorded separately.
+
+### 4. Files changed
+
+- `docs/TESTING.md` — test commands, prerequisites, isolation requirements, and
+  current execution record.
+
+### 5. Testing
+
+- `node --test backend/src` — **579 passed, 0 failed, 0 skipped**.
+- `node --test src/app` — **64 passed, 0 failed, 0 skipped**.
+- Combined — **643 passed, 0 failed, 0 skipped**.
+
+These are the fresh Task 29 test results. Historical environment diagnostics
+are separate and do not count as executed browser tests: a prior Playwright
+Chromium installation stalled during extraction; an earlier browser preflight
+found the isolated Task 19 container unavailable; and required DPAPI fixtures
+were unavailable. Do not retry Chromium installation. Backend startup did not
+complete because it requires a database connection and confirmation of the
+intended database target. No database connection or query was performed.
+
+### 6. Browser verification
+
+Browser tests were **NOT RUN**. The isolated Task 19 browser-test container was
+unavailable, Chromium installation had previously stalled, and DPAPI fixtures
+were unavailable. Do not retry the Chromium installation. Backend startup was
+not completed because it requires a database connection and confirmation of
+the intended database target. No database connection or query was performed.
+
+### 7. Database change report
+
+- Schema changes/migrations/seeds/records: none.
+- Migration 007: untouched.
+- Database connection/query: none.
+- Browser-test database, development database, or production database used: no.
+
+### 8. Security
+
+No credential, password, token, cookie, or DPAPI value was printed. Browser
+TLS, UUID, database name/version, and loopback checks remain mandatory in the
+existing harness. No identity assertion was skipped. Browser isolation could
+not be confirmed against a live container because that container was absent.
+
+### 9. Git state
+
+Branch and HEAD unchanged: `dev-phase` / `3b2701dcb266dddb11bbe6c9fcfc472545479cd6`.
+Initial tree was clean. `docs/TESTING.md` is new; no pre-existing work was
+present. No commit/push or history operation.
+
+### 10. Outstanding issues
+
+Restore the approved isolated Task 19 browser-test environment and DPAPI
+fixtures through authorized procedures. Do not retry Chromium installation
+until separately resolved. Confirm the intended database target and authorize
+the connection before attempting backend startup. Verify all identity/TLS
+checks before running Client/Admin suites. Align test Node version with Node 24
+or record supported-version policy. No database connection/query occurred in
+this update.
+
+### 11. Acceptance criteria
+
+- Actual commands documented and backend/frontend commands executed: **passed**.
+- Browser tests executed: **not run**; isolated container, Chromium, and DPAPI
+  prerequisites unavailable.
+- Browser DB identity/isolation verified live: **not met**; expected container
+  missing. No database connection/query performed.
+- No tests silently omitted: **passed**; blocked migration/browser suites are
+  called out explicitly.
+- Reproducibility: unit suites reproduced; full three-environment suite
+  **partial**.
+
+### 12. Handoff recommendation
+
+Backend and frontend unit suites have fresh passing results. Do not claim
+full-suite completion until the isolated browser environment is restored and
+Client/Admin browser suites pass. Backend startup also requires a confirmed
+target and authorized database connection.
+
+## Task 30 — Documentation Reconciliation
+
+Final Status: **COMPLETE**
+
+### 1. Objective
+
+Reconcile stale Client Portal/database analysis and the current architecture,
+Admin, Sales API, deployment, and readiness descriptions without deleting
+historical findings or overstating verification.
+
+### 2. Initial inspection
+
+Inspected `docs/CLIENT_PORTAL_AUDIT.md`, `database/DEVELOPMENT.md`,
+`database/FRONTEND_ANALYSIS.md`, `docs/PRE_BUSINESS_DEVELOPMENT_HANDOFF.md`,
+`docs/DEPLOYMENT.md`, the Admin/Client/Sales route and permission source, and
+the test commands/results executed for Task 29. No standalone Admin or Sales
+API documentation file exists under `docs/`.
+
+### 3. Implementation
+
+The Client Portal audit now distinguishes its 2026-11-15 static snapshot from
+current backend Real Mode and endpoint facts. The database frontend analysis is
+explicitly labeled as an earlier requirements/design snapshot. Database setup
+and migration documents identify old state and procedures as historical.
+The project handoff now points to the authoritative Task 28–32 sequence and
+records current branch/HEAD, browser-environment limitation, migration hold,
+and review/commit authorization boundary. Deployment documentation now
+describes current known logging/monitoring gaps. Test evidence is tied to the
+actual commands from this task.
+
+### 4. Files changed
+
+- `docs/CLIENT_PORTAL_AUDIT.md` — current Client Portal implementation and
+  verification status atop retained historical audit.
+- `database/FRONTEND_ANALYSIS.md` — retained and labeled historical analysis.
+- `docs/PRE_BUSINESS_DEVELOPMENT_HANDOFF.md` — corrected continuation point and
+  remaining-task description. Separate migration and deployment corrections
+  are attributed to Tasks 28 and 31.
+
+### 5. Testing
+
+Documentation/source consistency review and `git diff --check`; whitespace
+check passed with the line-ending warning noted under Task 28. Automated
+backend/frontend counts are listed under Task 29. No deployment build was run
+as part of documentation reconciliation.
+
+### 6. Browser verification
+
+No new browser verification. Earlier browser claims remain labeled as
+historical; this turn's browser limitation is stated explicitly.
+
+### 7. Database change report
+
+No schema, migration, seed, record, grant, or database configuration changes.
+No database access. Migration 007 remains untouched.
+
+### 8. Security
+
+Updated descriptions preserve backend session/permission/ownership controls,
+Demo/Real separation, TLS requirements, secrets handling, and explicit
+non-claims for unsupported writes. Historical frontend-only claims are not
+presented as current security controls.
+
+### 9. Git state
+
+Branch/HEAD unchanged. Initial status was clean; all files listed in section 4
+were changed during this task (the final report is added under Task 32). No
+pre-existing modifications, commit, push, merge, or branch operation.
+
+### 10. Outstanding issues
+
+No separate Admin/Sales documentation existed to reconcile; their current
+implementation claims are recorded in the handoff and final audit. Browser and
+production claims remain unverified in this turn. Historical documents retain
+some detailed old findings, clearly marked as snapshots.
+
+### 11. Acceptance criteria
+
+- Named stale documents reconciled: **passed**.
+- Architecture/Admin/Client/Sales/deployment status reviewed: **passed**;
+  source and test evidence distinguished from browser/production evidence.
+- Historical documentation preserved: **passed**.
+- Unsupported functions presented as implemented: **none found in added current
+  status sections**.
+
+### 12. Handoff recommendation
+
+Use the current summaries and date-labeled historical sections together. Update
+them again only when new source or test evidence changes status; do not infer
+operational readiness from UI or schema presence.
+
+## Task 31 — Logging, Monitoring, and Security Gap Review
+
+Final Status: **COMPLETE**
+
+### 1. Objective
+
+Review application logging, request identifiers, redaction, audit coverage,
+retention, error categories, health monitoring, alert needs, and remaining
+security gaps; implement only changes appropriate without production
+infrastructure.
+
+### 2. Initial inspection
+
+Inspected `backend/src/app.js`, authentication middleware, health controller and
+routes, server logging, audit-event write sites, deployment configuration, and
+the route/permission architecture. Static search found console logging,
+selected audit writes, no global request-ID middleware, and no configured
+central log/alert/retention service.
+
+### 3. Implementation
+
+Expanded the deployment operations section with the observed state and
+production recommendations. No code-level logging change was made: a generated
+response ID without a logging sink or audit propagation would not complete
+correlation, while production redaction, retention, and alert routing require
+deployment-owner decisions and infrastructure. Recommendations are explicitly
+identified as not implemented.
+
+### 4. Files changed
+
+- `docs/DEPLOYMENT.md` — logging, monitoring, redaction, audit, retention, and
+  alert requirements.
+
+### 5. Testing
+
+Static source review; no logging code changed and no dedicated logging tests
+were added. Backend/frontend suite results remain as Task 29. No production
+monitoring service was configured or tested.
+
+### 6. Browser verification
+
+Not performed; not required for logging documentation and browser prerequisites
+remain unavailable.
+
+### 7. Database change report
+
+None. No audit events or business records were inserted. No database access.
+
+### 8. Security
+
+- Structured logs/correlation IDs: not established globally.
+- Redaction: incomplete. Auth middleware logs an exception message; health
+  errors apply a narrow pattern-based message redaction and expose bounded
+  error metadata in logs. Neither is a global personal-data policy.
+- Audit: selected Admin/application/password changes write audit events, but
+  coverage is incomplete; request ID storage is not evidence of a propagated
+  correlation strategy.
+- Retention/access review/alerts/on-call: not configured.
+- Authentication, backend RBAC, client ownership, and TLS protections were not
+  changed. Never log secrets, personal request bodies, cookies, or tokens.
+
+### 9. Git state
+
+Branch and HEAD unchanged. Initial status clean; `docs/DEPLOYMENT.md` was changed
+in this task. No commit/push.
+
+### 10. Outstanding issues
+
+Define and deploy structured logging, server-generated IDs, safe propagation,
+error taxonomy, centralized redaction, audit event coverage, separate audit
+retention/access policy, service-health/error-rate alerts, alert owners, and
+incident runbooks before production operations.
+
+### 11. Acceptance criteria
+
+- Logging, IDs, redaction, audit coverage, retention, errors, health, alerts,
+  and security gaps reviewed: **passed**.
+- Infrastructure-dependent recommendations claimed as implemented: **no**.
+- Minimal code change: **not needed for an honest scoped review**; code changes
+  would require an integrated sink/propagation design and focused verification.
+
+### 12. Handoff recommendation
+
+Operations review is complete; keep the production logging/monitoring work open
+until a platform, owners, retention policy, redaction requirements, alert
+routes, and runbooks are approved and implemented.
+
+## Task 32 — Final Pre-Business Development Readiness Audit
+
+Final Status: **PARTIAL**
+
+### 1. Objective
+
+Evaluate Architecture, Database and migration safety, Authentication,
+Authorization and RBAC, Admin Portal, Client Portal, API foundation, Testing
+and reproducibility, Deployment, and Operations and maintenance. Distinguish
+fresh evidence from historical evidence and state whether each limitation
+blocks all business-module development or is a prerequisite for a narrower
+activity such as database changes or production release.
+
+### 2. Initial inspection
+
+Reviewed this report's Task 28–31 evidence, the project handoff, testing and
+deployment documentation, Client Portal audit, migration guide, and documented
+architecture/API/permission/test findings. Task 32 did not re-inspect
+Migration 007, connect to a database, rerun tests, or execute a deployment.
+The branch/HEAD and worktree notes below use the last recorded Git evidence;
+they were not refreshed because the requested final check was limited to
+`git diff --check`.
+
+### 3. Implementation
+
+The findings below classify each requirement against the available evidence.
+“Criticality” identifies what the gap blocks; a production or database-operation
+prerequisite is not automatically a blocker to bounded application development.
+
+| Category / requirement | Status | Supporting evidence and limitation | Unresolved item: critical blocker or carryable limitation |
+| --- | --- | --- | --- |
+| Architecture — frontend/backend separation, API adapters, runtime configuration, and typed identifier/decimal conventions | VERIFIED | Current handoff records React/TypeScript/Vite, Express/MySQL, runtime configuration, same-origin `/api`, string BIGINT IDs, and decimal-safe values. | None identified for starting scoped module work. |
+| Architecture — end-to-end runtime compatibility, including deployment Node version | PARTIALLY VERIFIED | Unit suites pass; backend image is documented on Node 24.15.0, while prior test execution evidence used Node 26.13.0. No fresh Node 24 verification. | Carryable during development; verify before deployment. |
+| Database — schema design, relationships, and historical integrity evidence | PARTIALLY VERIFIED | Existing schema and integrity tests are documented; the recorded MySQL integration suite is historical. No database connection or query occurred in the latest cycle. | Current live schema/data state is unverified; critical before DB writes/migrations, carryable for work not requiring DB access. |
+| Database — checksums, ordering, fail-closed behavior, lock and migration-history safeguards | VERIFIED | Source review and four isolated migration-core tests are recorded. The focused tests use temporary fixtures; there was no current database execution. | Database execution remains separately authorized. |
+| Database — Migration 007 remains deferred without opening its SQL | VERIFIED | Current cutoff defers migration numbers 007 and later before SQL access; the isolated fixture test covers deferred paths. No Migration 007 SQL was inspected in this audit. | Continue the hold; do not enable or execute the deferred migration without its separate approval. |
+| Database — compliance with the earlier strict no-checksum-inspection restriction | PARTIALLY VERIFIED | The Task 28 report transparently records that an earlier broad search surfaced a historical checksum. No SQL or database history was changed, and the deviation is not concealed. | Critical to migration-governance acceptance; not a blocker to unrelated module design/coding while restrictions are followed. |
+| Authentication — password/session implementation and automated coverage | PARTIALLY VERIFIED | Existing route/middleware and test evidence are documented; no live authentication/browser flow ran in the latest cycle. | Carryable for bounded development; live end-to-end authentication is a release gate. |
+| Authorization and RBAC — server-side permissions, role checks, and client ownership enforcement | PARTIALLY VERIFIED | Permission map, middleware, ownership guards, safe projections, and automated coverage are documented. No current browser cross-client authorization check. | Carryable for development only if each new endpoint has focused permission/ownership tests; live cross-client verification is a release gate. |
+| Admin Portal — account, employee, client, and client-application administration | PARTIALLY VERIFIED | Existing Admin routes/services/UI and automated tests are recorded; historical browser results are not current. | Carryable during development; current browser verification required before release. |
+| Client Portal — authenticated read APIs, Real Mode separation, and cancellation display/review changes | PARTIALLY VERIFIED | Client-owned reads and Real Mode adapters are documented; cancellation UI behavior was implemented earlier. Latest browser verification did not run, and cancellation persistence was not verified in the latest cycle. Payment submission and document operations remain incomplete. | Operational writes must be separately specified and tested; not a blocker to unrelated module work. |
+| API foundation — validation, parameterized queries, safe projections, pagination, and test conventions | PARTIALLY VERIFIED | Existing APIs and unit/integration test coverage are documented. Sales API foundations are primarily reads; broad transactional business workflows are not established as complete. | Missing workflows are the work of Business Module Development, not evidence that the whole foundation is blocked. |
+| Testing — backend and frontend unit suites | VERIFIED | Fresh Task 29 evidence: `node --test backend/src` 579 passed, 0 failed, 0 skipped; `node --test src/app` 64 passed, 0 failed, 0 skipped; combined 643 passed, 0 failed, 0 skipped. Results were supplied for documentation; they were not rerun during Task 32. | None for the recorded unit-test results. |
+| Testing — browser end-to-end verification | BLOCKED | Browser tests were NOT RUN in the latest cycle. The isolated Task 19 container was unavailable; Chromium installation previously stalled (do not retry); DPAPI fixtures were unavailable. Historical browser passes are not current evidence. | Critical before claiming current end-to-end/release acceptance; carryable for implementation with unit/API tests. |
+| Testing — live database/backend startup verification | NOT VERIFIED | Backend startup was not completed because it requires a database connection and confirmation of the intended target. No database connection or query occurred in the latest cycle. | Critical before DB-integrated acceptance or migration; carryable for mock/unit-based work. |
+| Deployment — container/nginx/runtime artifacts and build evidence | PARTIALLY VERIFIED | Dockerfiles, nginx configuration, runtime requirements, health endpoints, and historical image/nginx checks are documented. No current build was run. | Carryable before deployment. |
+| Deployment — production platform, ingress, secrets, TLS/database identity, rollout/rollback | NOT VERIFIED | No production platform or production deployment is configured or verified. | Critical for production release; not a blocker to bounded module development. |
+| Operations and maintenance — health endpoints and selected audit events | PARTIALLY VERIFIED | Liveness/readiness endpoints and selected audit writes are documented; no current runtime/production observation. | Carryable during development; readiness checks must be verified before deployment. |
+| Operations and maintenance — structured logging, global correlation/redaction, retention, monitoring, alerting, ownership, and runbooks | NOT VERIFIED | Task 31 documented these gaps and proposals; no operational service was implemented or tested. | Critical for production operations; carryable during business-module development, but must be resolved before production. |
+
+**Critical foundational blockers:** none identified that require halting all
+bounded Business Module Development. The hard gates are narrower: do not
+perform database migrations or writes without an authorized target and test
+strategy; do not claim browser/release verification without the missing
+isolated environment; do not deploy to production without its platform,
+secrets/TLS, rollback, and operational controls. The Task 28 deviation remains
+an explicit historical governance exception and must not be erased or repeated.
+
+### 4. Files changed
+
+- `docs/PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md` — final ten-category
+  evidence matrix, criticality distinction, and Task 32 decision.
+- `docs/PRE_BUSINESS_DEVELOPMENT_HANDOFF.md` — final project state and
+  continuation point.
+- `docs/BUSINESS_MODULE_DEVELOPMENT_HANDOFF.md` — proposed module-development
+  handoff, dependencies, safeguards, and acceptance criteria.
+
+### 5. Testing
+
+No tests, builds, installations, migration commands, or database operations
+were run during Task 32. Fresh Task 29 evidence remains 579 backend and 64
+frontend tests passed (643 combined; zero failures/skips). Task 28's four
+fixture-only migration-core tests and historical deployment/browser checks are
+identified as prior evidence, not Task 32 execution. `git diff --check` is the
+only validation command for this documentation update.
+
+### 6. Browser verification
+
+Browser tests were NOT RUN in the latest testing cycle. The isolated Task 19
+browser-test container was unavailable, Chromium installation previously
+stalled and is not to be retried, and DPAPI fixtures were unavailable.
+Historical Client/Admin browser passes are recorded only as historical
+evidence. The harness was not bypassed and no test database was recreated.
+
+### 7. Database change report
+
+- Schema changes/migrations/seeds/records: none.
+- Migration 007: untouched, deferred.
+- Latest testing cycle: no database connection or query; backend startup did
+  not complete pending database-target confirmation.
+- Production database: not accessed.
+
+### 8. Security
+
+No `.env` files or credentials were accessed or changed. Existing TLS,
+database-identity, authentication, RBAC, and ownership controls are documented
+but were not revalidated against live services in this audit. Task 31 records
+incomplete global log redaction/correlation, audit coverage, retention,
+monitoring, alerting, and incident ownership. Those are production-operation
+gaps; never treat recommendations as implemented controls.
+
+### 9. Git state
+
+Last recorded branch: `dev-phase`. Last recorded HEAD:
+`3b2701dcb266dddb11bbe6c9fcfc472545479cd6`. The worktree is known to contain
+uncommitted changes from prior work; exact current status was not re-queried
+because this task restricts validation to `git diff --check`. The two new
+handoff/report edits are added to that existing work. No reset, clean, restore,
+rebase, merge, commit, or push was performed. Recheck status before any later
+implementation and preserve every existing change.
+
+### 10. Outstanding issues
+
+1. Retain the Task 28 restriction deviation in the record; do not access the
+   deferred migration or its checksum. Database changes require a separately
+   reviewed and authorized target/procedure.
+2. Obtain authorized confirmation of the intended database target before
+   backend startup or live database verification.
+3. Restore the approved isolated Task 19 browser-test environment and DPAPI
+   fixtures through authorized procedures; do not retry Chromium installation.
+4. Confirm Node runtime support and run the appropriate test suite on the
+   backend deployment runtime when an approved environment is available.
+5. Before production, select/configure platform, secrets, ingress, TLS CA and
+   database identity; verify deployment, rollback, health and smoke checks.
+6. Implement structured logging, safe correlation/redaction, audit coverage,
+   retention, monitoring, alert routing/ownership, and runbooks before
+   production operations.
+7. Define and implement operational APIs module by module from approved
+   business requirements; do not infer missing workflow rules from UI or
+   schema alone.
+
+### 11. Acceptance criteria
+
+All ten categories were assessed with explicit evidence and status:
+**COMPLETE as an audit**. Formal Task 32 readiness is **PARTIAL**, not
+COMPLETE or BLOCKED. The foundation supports conditional, bounded Business
+Module Development. It does not clear database migrations, current browser
+acceptance, backend live startup, or production deployment/operations.
+
+### 12. Handoff recommendation
+
+Business Module Development is **conditionally cleared to begin** with a
+specific approved module brief, source/permission/dependency inspection,
+preservation of existing work, focused tests, and no unauthorized database
+access or schema changes. Start from
+`docs/BUSINESS_MODULE_DEVELOPMENT_HANDOFF.md`. Browser verification and
+production prerequisites remain gates for release, not reasons to halt all
+scoped module implementation.

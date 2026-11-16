@@ -1,5 +1,16 @@
 # Permanent local MySQL development database
 
+> **Historical installation record, not a current migration runbook.** The
+> installation and verification statements below describe earlier recorded
+> work and were not rechecked in this task. The former warning that discovery
+> read every migration file is superseded: the runner now defers migration
+> numbers 007 and later from filename metadata before opening SQL, and its
+> focused core test uses temporary fixtures. This does not authorize database
+> commands; see [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md) for the current safety
+> boundary. No database was accessed or changed for this reconciliation.
+> The historical statement below that no backend had been implemented is
+> superseded: the current Node/Express backend is under `backend/src`.
+
 **Installed and verified:** MySQL 8.4.13 in `enterflow-mysql-dev`, database `enterflow_db`, endpoint **127.0.0.1:3308**, persistent volume `enterflow-mysql-dev-data`. This is the primary local Enter-Flow development database. XAMPP and the separate validation container on 3307 are unchanged.
 
 ## Installation result
@@ -87,11 +98,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Restore failed; stop and inspect partial state
 
 Do not add --force. After restore, validate schema/ledger, row counts, financial totals, FKs/orphans and intended application behavior; re-enabling FK checks alone does not validate restored rows. No automatic recovery/drop/recreate is supplied. Backend/MySQL connection accounts are outside application-only dumps; manage their credentials separately.
 
-## Future migrations
+## Future migrations — on hold
 
-**Team workflow:** use [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md). Existing databases must pass the verified `npm run db:baseline` procedure once; subsequent changes use `npm run db:migrate`, `npm run db:seed` and `npm run db:status`. The checksum history adds one infrastructure table alongside the original 70. The old seed-only `dev_mysql.py verify` does not account for this extra table or later business data. The manual-import guidance below is historical and is superseded by the team runner after adoption.
+The earlier team workflow described below is superseded and must not be followed. The current runner defers migration numbers 007 and later from filename metadata before opening SQL; its focused migration-core test uses temporary fixtures only. `status` and `migrate` still connect to the configured database, and `migrate` can apply active migrations, so no database operation is authorized by this file-access change. `seed` and `baseline` fail before database queries while deferred migrations exist. See [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md).
 
-Create a new ordered migration; never rewrite/reimport migrations already applied here. Review it, back up the development target, check schema_migrations and apply only the next unapplied file with the administrative identity, using the same target-checked, stop-on-error import pattern in DEVELOPMENT_SETUP_PLAN.md. Include a unique completion marker only after its statements succeed. Do not run DDL with enterflow_app. DDL can commit partially; report failures and plan recovery before retrying. Validate schema changes in an authorized isolated environment before production deployment.
+Future migration execution remains blocked until the target, TLS, backup, recovery, and authorization checks are reviewed and separately approved. The exclusion behavior is implemented and fixture-tested; database execution and the proposed operational procedure remain unverified. See [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md).
 
 ## Persistence evidence
 

@@ -34,25 +34,28 @@ Official prerequisite reference: [Docker Desktop for Windows](https://docs.docke
 
 If the proposed container name or volume already exists, stop and report; do not attach old data, overwrite, remove, rename or automatically select another resource. If port 3307 is occupied, stop and propose another binding. Check that the application test schema is absent before creating it; use CREATE DATABASE without IF NOT EXISTS so an unexpected existing schema causes failure. MySQL initialization necessarily creates its own system schemas inside the new dedicated volume; existing servers/databases are not targeted.
 
-Use the MySQL client inside the verified container for migrations/tests. This keeps the execution route independent of XAMPP's client/port. Before any DDL, assert the exact container/image identity, MySQL 8.4 server version, server UUID and selected test database. Never fall back to localhost:3306 on Windows. No application SQL will target enterflow_db or either XAMPP schema.
+Any migration execution in this proposed test environment must use the current
+runner against the verified container; do not apply migration or seed files
+through an interactive MySQL client or phpMyAdmin. This keeps the route
+independent of XAMPP's client/port. Before any authorized DDL, assert the exact
+container/image identity, MySQL 8.4 server version, server UUID and selected
+test database. Never fall back to localhost:3306 on Windows. No application
+SQL will target enterflow_db or either XAMPP schema.
 
-## Test sequence after approval
+## Test sequence after approval — migration step superseded
+
+This proposal predates the current migration runner. Its former per-file
+application plan is historical only: do not import migration or seed SQL
+manually through a MySQL client or phpMyAdmin. Any separately approved test
+execution must use the current runner procedure in [DEVELOPMENT.md](DEVELOPMENT.md)
+and [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md), including active-file discovery
+and the Migration 007 deferral.
 
 1. **Prepare the local runtime.** Resolve the Docker prerequisite above; inspect local context/daemon, ports, available memory/disk and resource-name collisions. No remote engine or existing volume reuse.
 2. **Pin and start MySQL 8.4.** Pull the official image after approval, record its digest, create the dedicated volume/container and wait for readiness with bounded checks. Capture startup logs and server settings. No project dependency installation or frontend build is needed.
 3. **Establish a strict baseline.** Verify InnoDB, strict SQL mode, UTC session, FK/unique enforcement and CHECK enforcement metadata. Keep MySQL's standard referenced-key restrictions enabled; do not relax settings to force a pass. Migrations' explicit utf8mb4_unicode_ci declarations must work despite a different server default collation.
-4. **Verify hashes and create only the new test schema.** Compare every reviewed fingerprint immediately before use. Confirm application-schema absence and explicitly select enterflow_mysql84_test_db. Stop on a hash mismatch or unexpected existing object.
-5. **Apply the unchanged files, in order:**
-
-   | Order | File | Expected new tables |
-   | --- | --- | --- |
-   | 1 | migrations/001_identity_catalog.sql | 16 |
-   | 2 | migrations/002_orders_quotations.sql | 14 |
-   | 3 | migrations/003_operations_billing.sql | 29 |
-   | 4 | migrations/004_attachments_audit.sql | 11 |
-   | 5 | seeds/001_reference_data.sql | 0 |
-
-   One file per controlled batch operation; capture full errors/warnings and completion markers. No --force for migrations/seeds. Stop at the first migration/seed error. Preserve partial state for review; do not automatically alter the SQL, rerun, drop/recreate or import over it.
+4. **Verify the target and use the runner's active scope.** Any authorized runner invocation must validate the exact isolated server/database and discover/checksum only permitted active migrations. Do not separately enumerate, read, or hash deferred migrations. Stop on a target mismatch or unexpected existing object.
+5. **Apply through the current runner only.** Never import the migration or seed files manually. The runner is responsible for active ordering, history, locking, checksums, and stopping on failure; Migration 007 and later remain deferred under the current restriction. Capture runner output and preserve partial state for review; do not automatically alter SQL, retry a failed migration, drop/recreate the schema, or import over it.
 
 6. **Compare all actual definitions with the drafts.** Verify the exact 70-table set, all 562 columns, nullability/defaults/precision/enum labels/charset/collation, declared indexes, all 123 PK/unique definitions and all 141 FKs with their ordered columns/parent schemas/actions. Verify all 26 named CHECK expressions and ENFORCED state. Compare every seed value: 126 reference rows plus five migration markers; all other 59 tables should be empty. Additional implicit indexes may differ between engines: verify their purpose rather than requiring MariaDB's physical index count/names.
 7. **Run rollback-based tests.** Port the 81 MariaDB cases to the new MySQL-only runner. Exercise all 26 named CHECKs, critical same-order/client links, NULL-bypass protection, one accepted signed copy per DR, multiple staged/discarded copies, invoice evidence restricted to accepted same-order receipts, quote-reference ownership/revisions, idempotency, restrictive parent operations, valid links, UTF-8 and exact decimal round trips. Expected error codes/messages will be MySQL-specific. Use savepoints and final ROLLBACK, then compare all seed values/row counts and run orphan checks. A test-only --force mode may collect explicitly expected failures; any unclassified error fails validation. Test AUTO_INCREMENT gaps may persist even after rollback; document them and never reseed to hide them.

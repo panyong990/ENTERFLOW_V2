@@ -1,5 +1,15 @@
 # Migration workflow validation — 2026-11-12
 
+> Historical test evidence only; the reported results are not current. Its
+> future-use instructions and baseline recommendation are superseded. The
+> original runner discovered/read every SQL migration; that historical
+> limitation has since been addressed. The current runner defers migrations
+> numbered 007 and later from filename metadata before opening SQL. Its focused
+> migration-core test uses temporary fixtures only and passed 4/4; this is not
+> database execution evidence or authorization to run the CLI. See
+> [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md) for current safeguards and
+> authorization requirements.
+
 **Passed:** 4 Node unit tests, offline schema checks, and 16 MySQL 8.4.13 integration checks. See [machine-readable results](WORKFLOW_TEST_RESULTS.json) and [team instructions](TEAM_MIGRATIONS.md).
 
 ## Files
@@ -38,7 +48,7 @@ Development/validation container IDs, start timestamps, images, mounts and publi
 
 ## Limits and next use
 
-The real development database still requires its own backup, local migration-account provisioning and `npm run db:baseline` by its owner. Follow TEAM_MIGRATIONS.md. Baseline is deliberately strict; unexplained schema/seed differences must be reviewed, not accepted by editing the manifest.
+The earlier recommendation to baseline the real development database is not current authorization. The current runner excludes deferred migrations before SQL file access, but no database command was authorized or run in the current Task 28 work. The historical strict-baseline description is retained as context; do not act on it now.
 
 MySQL DDL is not transactionally reversible. Failure markers prevent automatic replay; recovery remains a reviewed manual operation. Status checks file history, not arbitrary post-adoption schema drift. Keep manual DDL/data writes paused during migration/baseline. New migrations and business policies need their own review/tests. This local MySQL validation does not establish Cloud SQL deployment readiness or backend integration.
 

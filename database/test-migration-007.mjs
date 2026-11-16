@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import mysql from 'mysql2/promise';
-import { run, filesAt, root, history } from './migration-core.mjs';
+import { run, discoverFilesAt, root, history } from './migration-core.mjs';
 import { hashPassword } from '../backend/src/services/password.service.js';
 
 const image = 'mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902';
@@ -19,7 +19,11 @@ const password = randomBytes(32).toString('hex');
 const dockerPath = process.env.DOCKER_EXE ?? 'docker';
 const report = { runId: id, image, container: name, storage: 'tmpfs /var/lib/mysql; no volumes', checks: [], status: 'running' };
 const reportPath = path.join(root, 'MIGRATION_007_TEST_RESULTS.json');
-let containerId, temp, db, ca, before, sourceFiles;
+const { files: activeSourceFiles, deferredFiles } = await discoverFilesAt(root);
+if (deferredFiles.includes('migrations/007_client_application_identity_uniqueness.sql')) {
+  throw new Error('Migration 007 test is blocked while its migration is deferred; no Docker or database operations started');
+}
+let containerId, temp, db, ca, before;
 const connections = new Set();
 const pass = label => { report.checks.push(label); console.log(`PASS ${label}`); };
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -86,11 +90,12 @@ try {
   docker(['image', 'inspect', image]); before = snapshot();
   assert.equal(docker(['container', 'inspect', name], true).status === 0, false, 'Unique test name must not exist');
   await new Promise((resolve, reject) => { const probe = net.createServer(); probe.once('error', () => reject(new Error('Port 3309 unavailable; no existing resource will be changed'))); probe.listen(port, '127.0.0.1', () => probe.close(resolve)); });
-  sourceFiles = await filesAt();
-  report.sourceChecksums = sourceFiles.map(f => ({ file: f.file, checksum: f.checksum }));
+  // Only active migration and reference-seed sources are fingerprinted or copied.
+  report.activeSourceChecksums = activeSourceFiles.map(f => ({ file: f.file, checksum: f.checksum }));
+  report.sourceChecksumScope = 'Active migrations and reference seeds only; deferred migrations excluded';
   temp = await fs.mkdtemp(path.join(os.tmpdir(), 'enterflow-m007-'));
   for (const kind of ['migrations', 'seeds']) await fs.mkdir(path.join(temp, kind));
-  for (const file of sourceFiles.filter(f => f.file !== 'migrations/007_client_application_identity_uniqueness.sql')) {
+  for (const file of activeSourceFiles) {
     await fs.copyFile(path.join(root, file.file), path.join(temp, file.file));
   }
   // Record ownership before startup so a failed startup can be cleaned up safely.
@@ -241,7 +246,7 @@ try {
       await fs.rm(absolute, { recursive: true }); report.temporaryFilesRemoved = true;
     }
     if (before) { const after = snapshot(); assert.deepEqual(after, before); report.existingDockerResourcesUnchanged = true; pass('Only the owned temporary container removed; every pre-existing container and volume preserved'); }
-    if (sourceFiles) { const after = await filesAt(); assert.deepEqual(after.map(f => ({file:f.file,checksum:f.checksum})), sourceFiles.map(f => ({file:f.file,checksum:f.checksum}))); pass('All migration and reference seed source checksums unchanged'); }
+    if (activeSourceFiles) { const { files: activeFilesAfter } = await discoverFilesAt(root); assert.deepEqual(activeFilesAfter.map(f => ({file:f.file,checksum:f.checksum})), activeSourceFiles.map(f => ({file:f.file,checksum:f.checksum}))); pass('Active migration and reference-seed checksums unchanged; deferred migrations excluded'); }
   } catch (error) { report.status = 'failed'; report.cleanupError = redact(error.code ?? error.message); console.error('CLEANUP/SAFETY CHECK FAILED ' + report.cleanupError); process.exitCode = 1; }
   report.finishedAt = new Date().toISOString(); await fs.writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
   console.log(`RESULT ${report.status}; ${report.checks.length} checks; report ${reportPath}`);

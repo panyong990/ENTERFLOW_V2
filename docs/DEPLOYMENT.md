@@ -82,11 +82,35 @@ The server handles `SIGINT` and `SIGTERM`, closes the HTTP server, and ends the 
 
 Do not run migrations automatically during container startup. Apply migrations through the separately reviewed migration procedure.
 
-## Logging and rollback
+## Logging, monitoring, and rollback
 
-Startup and shutdown messages are written to standard output/error. Platform log redaction and retention must be configured by the deployment owner. Do not log environment values, credentials, cookies, tokens, or certificate contents.
+The current application primarily uses `console.log` and `console.error`.
+There is no centralized structured logging implementation or global
+request/correlation-ID middleware. The authentication middleware logs an
+exception message; health-check errors apply a narrow secret-pattern redaction
+and return database error code metadata. This is not a complete personal-data
+or secret-redaction policy. Avoid logging request bodies, cookies, tokens,
+passwords, database configuration, or raw driver errors.
 
-Rollback requires switching the deployment to the prior reviewed image and preserving the database state. No automatic schema rollback is provided.
+Audit events are written for selected Admin/client-application decisions and
+password changes, but coverage is incomplete and no global request ID is
+currently attached. Audit-event records do not replace operational logs.
+Retention, access review, centralized redaction, alert delivery, and a
+production on-call process require deployment infrastructure and ownership;
+none is configured in this repository.
+
+Before production, define structured event fields (timestamp, severity,
+service/version, environment, generated request ID, stable error category),
+generate request IDs server-side, propagate them to responses and supported
+audit writes, and redact at the logging boundary. Define retention/access
+periods for application and audit data separately. Monitor liveness, database
+readiness, request error rates/latency, database connection failures, and
+authentication/authorization failure rates. Alerts need thresholds, routing,
+an owner, and runbooks. These are requirements, not implemented platform
+configuration.
+
+Rollback requires switching the deployment to the prior reviewed image and
+preserving the database state. No automatic schema rollback is provided.
 
 ## Known limitations
 

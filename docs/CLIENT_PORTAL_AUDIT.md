@@ -1,5 +1,36 @@
 # Client Portal lightweight audit
 
+> **Historical snapshot (2026-11-15), superseded by the reconciliation below.**
+> The original static audit is retained as history and must not be used as the
+> current implementation description.
+
+## Current reconciliation — 2026-11-16
+
+Source inspection and this task's automated frontend/backend suites confirm a
+backend-integrated Real Client Portal. Authenticated, permission-checked routes
+provide profile, dashboard, client-owned orders and order details, quotation
+history, purchase orders, job-order summaries, delivery summaries, sent invoice
+reads, payment reads, and notifications/read-state. The router applies
+no-store, session validation, client-account validation, and the role/resource
+permissions. Client ownership and safe projections are implemented in backend
+services. Real Mode has dedicated adapters and tests; Demo Mode remains a
+separate frontend path.
+
+Current test evidence for this reconciliation: `node --test backend/src`
+passed 579/579 tests and `node --test src/app` passed 64/64 tests on Node
+v26.13.0. These were automated tests, not browser verification. Browser tests
+were not run because the expected dedicated browser-test container was absent
+from the established Docker context, Playwright is not installed locally, and
+both DPAPI browser credential files are absent. No database was used by these
+two automated suites.
+
+The Client Portal API remains primarily read-only. Payment submission,
+password/profile mutations, general document upload/download, and complete
+operational workflows are not established by the inspected routes. Browser
+verification of the authenticated portal remains historical evidence only
+until the isolated test environment is restored and its identity/TLS checks
+pass. Refer to the current Task 28–32 report for detailed evidence and limits.
+
 Date: 2026-11-15. Static inspection only; no tests, servers, database queries, or application changes. Implementation findings describe source code, not verified runtime/deployment behavior.
 
 ## Architecture and implementation status

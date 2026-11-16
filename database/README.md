@@ -7,7 +7,7 @@ Use [DEVELOPMENT.md](DEVELOPMENT.md) for current connection and management comma
 
 - [Team SQL migration workflow: existing baseline, fresh installs and GitHub collaboration](TEAM_MIGRATIONS.md)
 - [Permanent local Docker database — installed, connection and management guide](DEVELOPMENT.md)
-- [Phase 5 permanent Docker development setup plan — awaiting approval](DEVELOPMENT_SETUP_PLAN.md)
+- [Archived Phase 5 permanent Docker development setup plan — completed](DEVELOPMENT_SETUP_PLAN.md)
 - [Phase 3 executed validation report and readiness](PHASE3_VALIDATION.md)
 - [MySQL 8.4 validation passed after approved reserved-identifier fix](MYSQL84_VALIDATION_FINAL.md)
 - [Proposed MySQL 8.4 compatibility test plan — not executed](MYSQL84_TEST_PLAN.md)
@@ -23,7 +23,7 @@ Use [DEVELOPMENT.md](DEVELOPMENT.md) for current connection and management comma
 - `migrations/004_attachments_audit.sql`
 - `seeds/001_reference_data.sql`
 
-These are ordered, one-time migrations. They deliberately omit `IF NOT EXISTS`, database creation, `USE`, destructive SQL and environment-specific paths: mismatched existing tables must fail visibly. Apply only to the explicitly selected `enterflow_db`. Do not edit a migration after it has been applied; add a new numbered migration. `schema_migrations` records completion of each file and the reference seed. Use Git history and release file hashes to identify exact migration contents. There is no automatic migration runner in Phase 1.
+The following migration-file list and execution description are retained as historical Phase 1 documentation only. They do not authorize migration execution under the current migration safety hold. The original files were ordered one-time migrations; current migration-runner behavior and restrictions are documented in TEAM_MIGRATIONS.md.
 
 ## Phase 1 local observations (historical)
 
@@ -52,84 +52,34 @@ Draft target: local MariaDB 10.4.32 and **Cloud SQL MySQL 8.4**, subject to conf
 
 Validation performed: offline checks plus successful Phase 3 execution of all four migrations/reference seed against enterflow_test_db on MariaDB 10.4.32. All 70 tables, 562 columns, 141 FKs, 123 primary/unique constraints and 26 CHECK definitions match; all seed values match; 81 targeted integrity cases passed and rolled back. The main database is unchanged. Cloud SQL MySQL, Node.js/backend/GCS integration and true concurrency remain untested; billing/cardinality decisions remain open. See PHASE3_VALIDATION.md for diagnostics and test counter side effects.
 
-## Historical XAMPP setup procedure — not the active workflow
+## Historical XAMPP setup procedure — retired
 
-Retained for Phase 1 context only. Do not use these port-3306/XAMPP instructions for current development. The approved permanent Docker setup is complete on port 3308; no approval exists to migrate XAMPP. Use DEVELOPMENT.md instead.
+This section preserves the historical Phase 1 approach, which assumed an empty
+`enterflow_db` on XAMPP at port 3306. It proposed a schema preflight, a private
+backup, manual ordered SQL imports through the MySQL command-line client or
+phpMyAdmin, and post-import checks. Those steps are historical evidence only:
+the executable commands and import instructions have been retired and must not
+be reconstructed or run.
 
-1. Resolve the highlighted requirements and branch mismatch. If `development-phase` is required, select/create that branch with the project owner; preserve existing work. Review the SQL and obtain approval for live inspection and migrations.
-2. Open XAMPP Control Panel and verify MySQL is started. Connect with an authorized database administrator using a password prompt (use the actual installation path if different):
-
-   ```powershell
-   $mysqlExe = 'C:\xampp\mysql\bin\mysql.exe'
-   $dbAdmin = Read-Host 'Database administrator username'
-   & $mysqlExe --host=127.0.0.1 --port=3306 --user=$dbAdmin --password --default-character-set=utf8mb4
-   ```
-
-3. **After SQL approval**, run this read-only preflight in that client:
-
-   ```sql
-   SELECT VERSION(), @@version_comment, @@port, @@sql_mode,
-          @@character_set_server, @@collation_server;
-   SELECT SCHEMA_NAME FROM information_schema.SCHEMATA
-     WHERE SCHEMA_NAME = 'enterflow_db';
-   SELECT TABLE_NAME, ENGINE, TABLE_COLLATION
-     FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = 'enterflow_db' ORDER BY TABLE_NAME;
-   ```
-
-   Stop if there are any existing tables/views or other schema objects until their schema/data is reviewed. The draft assumes an empty existing schema. Do not modify or import over existing objects. If the database is absent, stop and report it; database creation is outside this task. Its default collation need not change because each table is explicit. Exit the client before using PowerShell commands below. PHASE2_REVIEW.md specifies the complete approved preflight, including strict mode and constraint enforcement.
-
-4. Back up an existing approved target before any change. Choose an approved backup location outside Git; never add backup data to the repository. The command prompts for a password and exports only `enterflow_db`:
-
-   ```powershell
-   $dumpExe = 'C:\xampp\mysql\bin\mysqldump.exe'
-   $backupFile = Join-Path $env:TEMP ('enterflow-before-phase1-' + (Get-Date -Format yyyyMMdd-HHmmss) + '.sql')
-   & $dumpExe --host=127.0.0.1 --port=3306 --user=$dbAdmin --password --single-transaction --routines --triggers --events --result-file=$backupFile enterflow_db
-   if ($LASTEXITCODE -ne 0) { throw 'Backup failed; stop.' }
-   ```
-
-   Verify the backup file is nonempty and protect it as private business data. Restore-test it in an approved disposable environment before relying on it. Pause schema writes during backup; `--single-transaction` does not make concurrent DDL safe.
-
-5. Only for an approved empty `enterflow_db`, apply from the workspace root, in order. This is native PowerShell piping to the batch client; there is no shell input-redirection dependency. No `--force`: stop at the first error. Password is requested for each client invocation.
-
-   ```powershell
-   $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-   $dbFiles = @(
-     'database/migrations/001_identity_catalog.sql',
-     'database/migrations/002_orders_quotations.sql',
-     'database/migrations/003_operations_billing.sql',
-     'database/migrations/004_attachments_audit.sql',
-     'database/seeds/001_reference_data.sql'
-   )
-   foreach ($dbFile in $dbFiles) {
-     Get-Content -LiteralPath $dbFile -Raw -Encoding UTF8 |
-       & $mysqlExe --host=127.0.0.1 --port=3306 --user=$dbAdmin --password --database=enterflow_db --default-character-set=utf8mb4 --show-warnings
-     if ($LASTEXITCODE -ne 0) { throw "Stopped on $dbFile. Review partial DDL before recovery." }
-   }
-   ```
-
-   Alternative: select `enterflow_db` in phpMyAdmin, import each of the five files individually in that exact order, and inspect errors/completion rows after every file. Never import into the server root or another schema.
-
-6. With approval, verify completion and reference counts:
-
-   ```sql
-   SELECT DATABASE();
-   SELECT version, applied_at FROM enterflow_db.schema_migrations ORDER BY version;
-   SELECT COUNT(*) AS roles FROM enterflow_db.roles;                 -- 9
-   SELECT COUNT(*) AS filter_types FROM enterflow_db.filter_types;   -- 16
-   SELECT COUNT(*) AS production_stages FROM enterflow_db.production_stages; -- 9
-   SELECT TABLE_NAME FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = 'enterflow_db'
-       AND (ENGINE <> 'InnoDB' OR TABLE_COLLATION <> 'utf8mb4_unicode_ci'); -- none
-   ```
-
-   Expect five completion rows and 70 tables. Follow PHASE2_REVIEW.md for complete column/key/seed checks and the approval scope for rollback-only ownership/receipt tests against the existing enterflow_db. A rollback-only business-fixture test may still advance AUTO_INCREMENT counters; do not silently reseed them. No additional database will be created in this task. Later target-MySQL validation remains separate. Initial staff account creation must hash an operator-supplied password server-side; there are no seeded login credentials.
+The current migration runner owns migration discovery, checksums, ordering,
+history, locking, and failure handling. Its ledger is
+`_enterflow_migration_history`; `schema_migrations` is consulted only during
+baseline verification. Current verified behavior and any operation-specific
+approval requirements are documented in [DEVELOPMENT.md](DEVELOPMENT.md) and
+[TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md). This archived Phase 1 plan does not
+authorize direct MySQL imports, phpMyAdmin imports, schema changes, or database
+access. Historical Phase 2 validation results elsewhere are not current test
+evidence.
 
 ## Future Express / Cloud Run configuration
+
+PROPOSED FUTURE CONFIGURATION — NOT IMPLEMENTED OR DEPLOYED. The following describes design considerations only and does not authorize infrastructure provisioning or credential changes.
 
 Use server-only environment configuration: `DB_HOST`, `DB_PORT`, `DB_NAME=enterflow_db`, `DB_USER`, `DB_PASSWORD`, `DB_POOL_MAX`, `DB_SOCKET_PATH` (optional Cloud SQL connection route), `GCS_BUCKET`, `GOOGLE_CLOUD_PROJECT`, `NODE_ENV`, `FRONTEND_ORIGIN`. Define one validated configuration layer and a small connection pool per Cloud Run instance; bound total instances/connections to the Cloud SQL limit. Use a Cloud SQL connector or approved private networking/TLS; choose the connection route when deploying. Keep credentials out of frontend `VITE_*` variables, Git, migration files and logs. Use a separate migration identity; runtime needs only the required DML rights and must not run DDL on startup. Use Secret Manager/runtime identity in cloud and local ADC for GCS as documented in STORAGE.md. No backend or credentials are implemented here.
 
 ## Later migration / backups
+
+PROPOSED FUTURE PROCEDURE — NOT EXECUTED OR AUTHORIZED. The following steps are planning guidance only. Separate owner approval and verified backup, staging, migration, and recovery procedures are required before execution.
 
 1. Provision approved staging Cloud SQL MySQL and private staging storage separately. Reproduce schema from these migrations and reference seed first; do not import MariaDB system tables, physical data directories, routines or grant tables.
 2. During an agreed write freeze, export **application data only**, excluding the seeded lookup tables and `schema_migrations`. Use `mysqldump --single-transaction --no-create-info --skip-triggers --skip-add-locks --skip-disable-keys --skip-comments --default-character-set=utf8mb4 --result-file=<private-path>` with `enterflow_db` and an explicit reviewed table list. Do not blindly import a full MariaDB DDL dump into MySQL. Restore in parent-before-child order or in an isolated import session with FK checks temporarily disabled followed by explicit orphan validation; re-enabling checks alone does not validate existing rows. No such commands have been executed.

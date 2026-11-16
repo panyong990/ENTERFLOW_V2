@@ -5,6 +5,7 @@ import path from 'node:path';
 
 export const root = fileURLToPath(new URL('.', import.meta.url));
 export const history = '_enterflow_migration_history';
+const deferredMigrationsFrom = 7;
 export const normalize = text => text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
 export const checksum = text => createHash('sha256').update(normalize(text)).digest('hex');
 const quote = name => '`' + name.replaceAll('`', '``') + '`';
@@ -51,8 +52,8 @@ export function splitSql(text) {
   return result;
 }
 
-export async function filesAt(base = root) {
-  const files = [];
+export async function discoverFilesAt(base = root) {
+  const files = [], deferredFiles = [];
   for (const kind of ['migrations', 'seeds']) {
     const names = (await readdir(path.join(base, kind))).filter(x => x.endsWith('.sql')).sort();
     const numbers = new Set();
@@ -60,11 +61,20 @@ export async function filesAt(base = root) {
       assert(/^\d{3}_[a-z0-9_]+\.sql$/.test(name), `Invalid filename: ${name}`);
       assert(!numbers.has(name.slice(0, 3)), `Duplicate migration number: ${name}`);
       numbers.add(name.slice(0, 3));
+      if (kind === 'migrations' && Number(name.slice(0, 3)) >= deferredMigrationsFrom) {
+        deferredFiles.push(`${kind}/${name}`);
+        continue;
+      }
       const text = await readFile(path.join(base, kind, name), 'utf8');
       files.push({ file: `${kind}/${name}`, kind, checksum: checksum(text), statements: splitSql(text) });
     }
   }
-  return files;
+  return { files, deferredFiles };
+}
+
+// Returns active migrations plus seeds; use discoverFilesAt for deferred names.
+export async function filesAt(base = root) {
+  return (await discoverFilesAt(base)).files;
 }
 
 const queries = {
@@ -132,7 +142,14 @@ async function ensureHistory(db) {
 
 export async function run(db, command, base = root, log = console.log) {
   assert(['status', 'migrate', 'seed', 'baseline'].includes(command), 'Command must be status, migrate, seed or baseline');
-  const files = await filesAt(base);
+  const { files, deferredFiles } = await discoverFilesAt(base);
+  for (const file of deferredFiles) log(`DEFERRED ${file}`);
+  if (command === 'baseline' && deferredFiles.length) {
+    throw new Error('Baseline is blocked while deferred migrations exist; review and explicitly enable them first');
+  }
+  if (command === 'seed' && deferredFiles.length) {
+    throw new Error('Seeds are blocked while deferred migrations exist; review and explicitly enable them first');
+  }
   const [[identity]] = await db.query('SELECT DATABASE() AS name, VERSION() AS version');
   assert(identity.name && /^8\.4\./.test(identity.version), 'Runner requires a selected MySQL 8.4 database');
   const lockName = 'enterflow:' + createHash('sha256').update(identity.name).digest('hex').slice(0, 50);

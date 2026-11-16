@@ -4,9 +4,111 @@
 
 ENTER-FLOW V2 is an ERP/workspace application with separate employee, client, and administrative experiences. This document records the pre-business foundation completed through Task 27 and is the continuation guide for the next developer.
 
-The repository is currently on the existing `dev-phase` branch. The immediate continuation point is deployment preparation and controlled progression into the remaining business-module work. Preserve the current worktree and do not rebuild completed foundations.
+> **State reconciled 2026-11-16:** branch `dev-phase`, HEAD `3b2701dcb266dddb11bbe6c9fcfc472545479cd6` at the recorded snapshot. Task 28–32 objectives are supplied by the authoritative `PRE-BUSINESS DEVELOPMENT.pdf`; the previous statement below that their briefs were unknown is superseded. The dedicated browser-test container was absent from the configured Docker context during that review. Migration 007 remains deferred; the runner now excludes migrations numbered 007 and later before opening SQL, and the focused migration-core test uses temporary fixtures. Database-connected commands still require separate authorization. Detailed reports are in [PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md](PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md).
+
+The repository is recorded on the existing `dev-phase` branch. Task 32 concludes that bounded Business Module Development is conditionally cleared to begin; this is not production or database-migration authorization. Preserve the current worktree and do not rebuild completed foundations.
 
 This document describes repository state and verified behavior. Proposed future work is explicitly marked as pending; it is not an assertion that those features already exist.
+
+## Final Pre-Business Development state — Task 32
+
+**Decision: PARTIAL. Business Module Development is conditionally cleared to
+begin.** The current evidence does not justify a COMPLETE readiness claim, but
+the remaining blockers are specific to live database/browser verification and
+production operations; they do not require halting all bounded module work.
+See the detailed ten-category assessment in
+[PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md](PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md).
+
+### Completed work
+
+- Tasks 28–31: migration procedure/documentation reconciliation, repeatable
+  backend/frontend test documentation, technical-documentation reconciliation,
+  and logging/monitoring/security gap review.
+- Task 32: evidence-based review of architecture, database/migration safety,
+  authentication, authorization/RBAC, Admin Portal, Client Portal, API,
+  testing, deployment, and operations.
+- Business-rule and module status context is carried forward below; the
+  separate [BUSINESS_MODULE_DEVELOPMENT_HANDOFF.md](BUSINESS_MODULE_DEVELOPMENT_HANDOFF.md)
+  provides the proposed next-phase sequence and per-module acceptance criteria.
+
+### Verified functionality and test evidence
+
+- Fresh Task 29 results: backend **579 passed, 0 failed, 0 skipped**; frontend
+  **64 passed, 0 failed, 0 skipped**; combined **643 passed, 0 failed, 0
+  skipped**. These results were supplied for the Task 29 report and were not
+  rerun in Task 32.
+- Task 28 records four passing isolated migration-core tests using synthetic
+  fixtures. The current runner defers migrations numbered 007 and later before
+  opening their SQL; this is not database execution evidence.
+- Existing backend/frontend route, service, ownership, validation, and
+  permission tests are documented across the Task 28–31 reports.
+- Historical MySQL, browser, container-build, and nginx checks remain
+  historical and are not represented as current verification.
+
+### Partially implemented functionality
+
+- Sales has read APIs and Real Mode adapters for client directory, inquiries/
+  orders, quotation/PO history, dashboard metrics, job-order/delivery
+  summaries, and notifications. The reports do not establish complete
+  transactional Sales workflows or broad Sales write APIs.
+- Client Portal has authenticated, client-owned read APIs and Real Mode
+  integration. Payment submission and document operations remain incomplete.
+  Cancellation display/review behavior was implemented earlier, but latest
+  browser or live persistence verification is absent.
+- Admin routes, services, and UI support account, employee, client, and client
+  application administration; current browser verification is absent.
+- Schema, role/permission foundations, and operational UI/page areas exist for
+  other modules; do not infer complete operational APIs from their presence.
+
+### Outstanding issues
+
+- Browser tests were **NOT RUN** in the latest cycle: the isolated Task 19
+  browser-test container and DPAPI fixtures were unavailable; Chromium
+  installation previously stalled. Do not retry that installation.
+- Backend startup did not complete because it requires a database connection
+  and confirmation of the intended target. No database connection or query was
+  performed in the latest cycle.
+- Node 24 deployment-runtime test execution is unverified.
+- Production platform, ingress, secrets, database identity, deployment, and
+  rollback have not been established.
+- Structured logs, global request correlation/redaction, complete audit
+  coverage, retention, monitoring, alerts, and operational ownership remain
+  unimplemented or unverified.
+- Operational workflows must be specified and implemented module by module;
+  do not infer missing rules from screens, schema, or old reports.
+
+### Database, migration, security, and deployment status
+
+- No schema, seed, record, or grant changes were made for Tasks 28–32; no
+  database connection/query occurred in the latest testing cycle.
+- Migration 007 remains deferred and untouched. The runner's pre-read deferral
+  has isolated fixture evidence. Task 28 also records, without concealing it,
+  that an earlier broad search surfaced a historical checksum and violated the
+  strict no-inspection instruction. Do not repeat that deviation or inspect
+  the deferred migration.
+- Authentication, RBAC, ownership controls, TLS configuration, and deployment
+  artifacts are documented, but live production behavior has not been
+  verified. Docker/nginx checks in earlier reports are historical.
+- Production logging, monitoring, security operations, and deployment
+  prerequisites remain gates for production, not prerequisites to all
+  application development.
+
+### Git and exact continuation point
+
+Last recorded branch: `dev-phase`; last recorded HEAD:
+`3b2701dcb266dddb11bbe6c9fcfc472545479cd6`. The worktree contains accumulated
+uncommitted changes from Tasks 28–32; its exact current status was not refreshed
+for Task 32 because only `git diff --check` was run. Preserve all modified and
+untracked files. Do not reset, clean, restore, rebase, merge, commit, or push.
+
+**Exact continuation point:** begin the discovery-and-contract task in
+[BUSINESS_MODULE_TASK_01_SALES_WORKFLOW_DISCOVERY.md](BUSINESS_MODULE_TASK_01_SALES_WORKFLOW_DISCOVERY.md).
+It is the first bounded item in the proposed sequence; it inventories existing
+Sales inquiry/order behavior and obtains an owner-approved narrow workflow
+contract. The first implementation module is Sales & Orders only after that
+contract is complete. Inspect the worktree and relevant code, APIs, permissions,
+schema documentation, and tests before any later implementation. No database
+connection or schema/migration change is authorized by this readiness decision.
 
 ## Technical architecture
 
@@ -210,17 +312,24 @@ Before handoff, rerun only the checks needed for the next change and record exac
 
 Demo Mode retains the existing local stores, seeded records, and interactions. Real Mode uses authenticated API adapters and should keep empty, loading, retry, unavailable, and error states explicit. Unsupported writes in Real Mode must remain guarded rather than silently changing local Demo state. Mode switching must cancel or ignore stale requests and must not leak localStorage/IndexedDB Demo data into Real Mode.
 
-## Remaining Tasks 28–32
+## Task 28–32 completion and readiness
 
-The exact briefs for Tasks 28–32 are not stored in the repository files inspected for this handoff. They remain pending project-owner follow-up items and must be recovered from the project task record before implementation. Do not invent their scope. At minimum, each next task must be reviewed for:
+Tasks 28–32 have been assessed and their evidence/status is recorded in
+[PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md](PRE_BUSINESS_DEVELOPMENT_TASKS_28-32.md).
+Task 32 is **PARTIAL**. Business Module Development is conditionally cleared
+for bounded implementation under
+[BUSINESS_MODULE_DEVELOPMENT_HANDOFF.md](BUSINESS_MODULE_DEVELOPMENT_HANDOFF.md);
+this is not database-operation, migration, browser-release, or production
+authorization.
 
-1. Whether it is design, implementation, verification, or deployment work.
-2. Whether it requires approval for database, permissions, credentials, or live records.
-3. Whether it can use the isolated browser-test environment.
-4. Whether it affects the completed Client Portal, Sales, Admin, or runtime foundation.
-5. Its exact tests, rollback/safety requirements, and handoff evidence.
-
-The next developer must not begin a new business module until the relevant task brief is confirmed and the current branch/worktree has been audited.
+The migration runner defers migrations numbered 007 and later from filename
+metadata before opening SQL; the focused migration-core test uses temporary
+fixtures. `status` and `migrate` still connect to a configured database, and
+`migrate` may apply active migrations; `seed` and `baseline` reject when
+deferred migrations exist. Separate target/operation authorization remains
+required. Task 28's earlier checksum-inspection deviation is explicitly
+preserved in the task report; do not repeat it or inspect the deferred
+migration.
 
 ## Known limitations
 
@@ -230,7 +339,9 @@ The next developer must not begin a new business module until the relevant task 
 - The root package contains both frontend and backend dependencies, so the backend image installs the production subset of the shared package manifest.
 - The Vite build retains a large-chunk warning; this is not a deployment-blocking failure but may warrant future code splitting.
 - Migration 007 remains deferred.
-- Exact future Task 28–32 requirements are external to the repository and must not be guessed.
+- Browser tests were not run in the latest testing cycle; the isolated Task 19 container and DPAPI fixtures were unavailable, and Chromium installation previously stalled. Do not retry the installation.
+- The latest testing cycle made no database connection or query; backend startup awaits confirmation of the intended target and authorization.
+- Logging, global correlation/redaction, audit coverage, retention, monitoring, alerts, and operational ownership remain incomplete or unverified.
 - Browser fixtures and credentials are environment-specific and must never be committed.
 
 ## Repository preservation instructions
@@ -244,13 +355,21 @@ The next developer must not begin a new business module until the relevant task 
 - Keep Demo Mode behavior intact while extending Real Mode.
 - Report exact tests, warnings, skipped/todo counts, database changes, and unresolved limitations.
 
-## Final readiness requirements
+## Readiness gates
 
-The project is ready for the next development shift when:
+**Before Business Module Development:** confirm the selected module brief,
+applicable established business rules, acceptance criteria, current worktree,
+dependencies, permissions, and existing tests. Preserve every existing change.
+This limited development clearance does not authorize migrations or database
+access.
 
-- The handoff document and implementation/test files are committed to the intended development branch.
-- The branch is pushed to its configured upstream and the remote confirms the commit.
-- The working tree is clean except for explicitly documented local-only files.
-- Runtime configuration is supplied through the approved environment/secret mechanism.
-- Production deployment has a selected platform, ingress routing, TLS CA mounting, database identity verification, health checks, and rollback procedure.
-- The next task brief is confirmed before implementation begins.
+**Before database operations:** separately confirm and authorize the exact
+target and operation, use the approved migration procedure, preserve the
+Migration 007 deferral, and do not weaken checksums, locks, baseline
+verification, or failure handling.
+
+**Before production:** select a platform, configure ingress, secrets and TLS,
+verify database identity, complete authorized live health/authentication
+checks, and establish rollback, logging, monitoring, alerting, ownership, and
+runbooks. Review and authorize any commit or push separately; this handoff
+grants no Git-history or deployment authorization.

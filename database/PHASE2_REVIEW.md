@@ -74,26 +74,23 @@ python database/validate_drafts.py
 - No destructive/cross-schema statements, database creation, schema switches, triggers, routines, executable comments or global setting writes found.
 - Manual review found no apparent DDL syntax error. Engine parsing, FK/CHECK enforcement, server settings, live database contents and target MySQL remain untested.
 
-## Execution plan after explicit SQL approval
+## Historical execution proposal — superseded by the migration runner
 
-1. Recheck reviewed hashes; authenticate to local 127.0.0.1:3306 with `--database=enterflow_db` and confirm DATABASE(), runtime version/settings, InnoDB, strict mode and FK/unique/CHECK enforcement. Use session settings only; do not alter global configuration or create accounts/databases.
-2. Inspect only enterflow_db's live tables/views/triggers/routines/events. Last filesystem observation showed only db.opt, suggesting empty, but it is not catalog proof. If the database is absent or any existing object is found, stop before DDL; report/reconcile it. No replacement, cleanup or automatic rerun is authorized.
-3. Take a protected target-only logical baseline backup outside Git. Apply with foreign-key and CHECK enforcement enabled, one batch file per explicit target connection, without --force; stop on any error:
+The original proposal recommended a live target preflight,
+backup, manual ordered application of migration and seed files, schema/seed
+comparison, and rollback-only integrity tests. That proposal predates the
+current runner and is retained only as historical context. Do not follow its
+manual per-file execution approach, import files through a MySQL client, or
+use phpMyAdmin to apply schema files.
 
-   | Order | File | Tables |
-   | --- | --- | --- |
-   | 1 | migrations/001_identity_catalog.sql | 16 |
-   | 2 | migrations/002_orders_quotations.sql | 14 |
-   | 3 | migrations/003_operations_billing.sql | 29 |
-   | 4 | migrations/004_attachments_audit.sql | 11 |
-   | 5 | seeds/001_reference_data.sql | 0 |
-
-4. Compare all tables/columns/defaults/indexes/FKs/CHECKs against the current drafts, including column order in ownership keys, delete/update actions, engine/collation, all seed values and five completion markers. Confirm business tables remain empty after seed.
-5. Run approved non-destructive metadata/orphan/duplicate checks and rollback-only integrity tests. New test cases must exercise cross-order invoice/DR, pending/discarded evidence, cross-order quote/stock response, cross-client finished-good/order-item/specification, same-client valid links, quote-number ownership and two accepted copies of one DR. Also test multiple staged/discarded copies are allowed, different DRs may each have an accepted copy, and NULL cannot bypass state constraints. Use clearly tagged synthetic data, never existing business records, and confirm no test rows remain.
-6. Lookup-only smoke tests do not consume AUTO_INCREMENT identifiers. A full rollback-only business-fixture test can advance AUTO_INCREMENT counters even though rows roll back; disclose/approve that test scope before running it, never reseed counters to hide gaps. A true two-session race test may require an approved committed fixture; it remains separately untested unless such a fixture is authorized. No new database will be created for testing in this task.
-7. Report each engine/metadata/seed/test result and failures precisely. Node.js connectivity, application transactions/authorization, GCS, concurrency and Cloud SQL are not automatically passed by schema creation.
-
-No SQL is currently approved. Migration files use unqualified application object names; explicit database selection plus a checked DATABASE() is mandatory. They contain no commands switching schemas or writing to another database.
+Any future approved database operation must use the current migration runner
+and its active-file discovery, checksums, lock, history, target guards, and
+failure handling as documented in [DEVELOPMENT.md](DEVELOPMENT.md) and
+[TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md). Migration 007 remains deferred; its
+SQL must not be inspected or processed. This historical review does not
+authorize a database connection or migration operation. Its earlier metadata,
+seed, rollback, AUTO_INCREMENT, and concurrency test suggestions remain
+unverified proposals, not current test evidence.
 
 ## Compatibility and persistent effects
 

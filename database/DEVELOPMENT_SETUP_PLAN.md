@@ -1,10 +1,21 @@
 # Phase 5 — permanent local database setup plan
 
+> **Archived, completed plan — not an executable current runbook.** The former
+> manual SQL-import sequence has been retired; this document does not authorize
+> migration execution. Current runner behavior, procedures, and operation
+> approval requirements are in [DEVELOPMENT.md](DEVELOPMENT.md) and
+> [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md). Historical planning context is
+> retained below.
+
+The older “Awaiting approval” status below is retained as a planning snapshot;
+it is not the current project status. The completed outcome is recorded in
+[DEVELOPMENT.md](DEVELOPMENT.md).
+
 Approved and completed. This document preserves the original execution plan; see [DEVELOPMENT.md](DEVELOPMENT.md) for the installed state, verification results and operating instructions.
 
 **Awaiting approval.** Only read-only environment checks and configuration preparation have been performed. No permanent container/volume, secret file, database or SQL account has been created. No SQL was executed for this phase.
 
-## Verified environment
+## Historical environment snapshot — not current state
 
 - Docker Desktop's local `desktop-linux` engine is running (29.9.2, Linux, 12 CPUs, approximately 8 GB VM RAM).
 - `enterflow-mysql-dev` and `enterflow-mysql-dev-data` do not exist; port 3308 has no listener. Recheck all three immediately before creating resources; any collision is a stop condition.
@@ -58,25 +69,19 @@ Commands below run from the existing workspace root. They are a reviewable plan,
 
    `up` creates the new named volume/container and initializes enterflow_db. The health check runs SELECT 1 inside that container only. `pull_policy: never` ensures this uses the exact already-validated local image; if absent, stop rather than substituting another image.
 
-3. Confirm container ID, pinned image, loopback binding, exclusive data mount, MySQL 8.4.13, server UUID, strict mode and selected enterflow_db. Require it to be empty before imports. Do not run this phase's SQL through the XAMPP client or the old validation harness. Then apply the unchanged files in order, stopping on the first error:
+3. The original plan used a manual SQL import here. That executable import
+   sequence has been retired; migration execution belongs to the current
+   runner's checksum, lock, and history controls. Do not reproduce the import
+   manually. The runner defers migrations numbered 007 and later before reading
+   their SQL, and its baseline/seed safeguards are documented in
+   [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md). This archived setup plan does not
+   authorize a migration operation.
 
-   ```powershell
-   $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-   $migrationFiles = @(
-     'database/migrations/001_identity_catalog.sql',
-     'database/migrations/002_orders_quotations.sql',
-     'database/migrations/003_operations_billing.sql',
-     'database/migrations/004_attachments_audit.sql',
-     'database/seeds/001_reference_data.sql'
-   )
-   foreach ($migrationFile in $migrationFiles) {
-     Get-Content -LiteralPath $migrationFile -Raw -Encoding UTF8 |
-       docker --context desktop-linux compose --env-file database/.env.dev -f database/compose.dev.yaml exec -T mysql sh -c 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --protocol=socket --user=root --database=enterflow_db --batch --default-character-set=utf8mb4 --show-warnings'
-     if ($LASTEXITCODE -ne 0) { throw "Stopped at $migrationFile; inspect partial state before recovery." }
-   }
-   ```
-
-   No --force, DROP/DELETE/TRUNCATE, automatic reset or arbitrary business fixtures. DDL commits persist; an error is reported before any recovery. Runtime identity guards and process-stdin handling may be implemented in a small database-management helper rather than relying on manual shell context; the same target, files, order and error-stop behavior apply.
+   No --force, DROP/DELETE/TRUNCATE, automatic reset or arbitrary business
+   fixtures. DDL commits persist; an error requires reviewed recovery. The
+   current runner owns target checks, lock/history controls, and migration
+   execution; this archived plan does not authorize manual SQL or shell-based
+   migration handling. See [TEAM_MIGRATIONS.md](TEAM_MIGRATIONS.md).
 
 4. Provision `enterflow_app` inside this container using DB_PASSWORD from the ignored configuration, with only SELECT/INSERT/UPDATE/DELETE on enterflow_db.*. Initial installation/future DDL uses the separate root administrative identity inside the container. Root remains local to the container; do not enable root@% or grant backend DDL/global privileges. The reviewed SQL account operations are:
 

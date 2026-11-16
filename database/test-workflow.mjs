@@ -8,7 +8,7 @@ import path from 'node:path';
 import net from 'node:net';
 import assert from 'node:assert/strict';
 import mysql from 'mysql2/promise';
-import { run, filesAt, verifyBaseline, root, history } from './migration-core.mjs';
+import { run, discoverFilesAt, verifyBaseline, root, history } from './migration-core.mjs';
 
 const dockerPath = process.env.DOCKER_EXE ?? 'docker';
 const name = 'enterflow-migrations-workflow-test';
@@ -28,6 +28,8 @@ function snapshot() {
     return { name: n, id: data.Id, started: data.State.StartedAt, image: data.Image, mounts: data.Mounts, ports: data.HostConfig.PortBindings };
   });
 }
+const { files: activeFiles, deferredFiles } = await discoverFilesAt();
+assert.equal(deferredFiles.length, 0, 'Workflow integration test requires all migrations to be active; deferred migrations remain untouched');
 const before = snapshot();
 const context = JSON.parse(docker(['context', 'inspect', 'desktop-linux']).stdout)[0];
 assert.equal(context.Endpoints.docker.Host, 'npipe:////./pipe/dockerDesktopLinuxEngine');
@@ -69,7 +71,6 @@ try {
     } catch { await new Promise(r => setTimeout(r, 1000)); }
   }
   assert.ok(admin, 'Test MySQL startup failed; container retained');
-  const files = await filesAt();
   const runId = randomBytes(4).toString('hex');
   report.runId = runId;
   async function database(suffix) {
@@ -85,7 +86,7 @@ try {
   await database('fresh');
   await run(db, 'migrate', root, quiet);
   await run(db, 'seed', root, quiet);
-  await verifyBaseline(db, files);
+  await verifyBaseline(db, activeFiles);
   check('Fresh 001-004 + reference seeds: exact 70-table validated schema and required seed values');
   const [oldHistory] = await db.query(`SELECT * FROM ${history} ORDER BY file`);
   await run(db, 'migrate', root, quiet); await run(db, 'seed', root, quiet); await run(db, 'status', root, quiet);
@@ -107,12 +108,12 @@ try {
   check('Real CLI/env-file/TLS connection succeeds with database-scoped migration account');
   const copy = await mkdtemp(path.join(tmpdir(), 'enterflow-migrations-'));
   for (const kind of ['migrations', 'seeds']) await mkdir(path.join(copy, kind));
-  for (const f of files) await writeFile(path.join(copy, f.file), await readFile(path.join(root, f.file)));
-  await writeFile(path.join(copy, files[0].file), (await readFile(path.join(copy, files[0].file), 'utf8')).replace(/\r?\n/g, '\r\n'));
+  for (const f of activeFiles) await writeFile(path.join(copy, f.file), await readFile(path.join(root, f.file)));
+  await writeFile(path.join(copy, activeFiles[0].file), (await readFile(path.join(copy, activeFiles[0].file), 'utf8')).replace(/\r?\n/g, '\r\n'));
   await run(db, 'status', copy, quiet); check('CRLF checkout checksums accepted');
-  await writeFile(path.join(copy, files[0].file), '-- changed\n' + await readFile(path.join(copy, files[0].file), 'utf8'));
+  await writeFile(path.join(copy, activeFiles[0].file), '-- changed\n' + await readFile(path.join(copy, activeFiles[0].file), 'utf8'));
   await assert.rejects(run(db, 'migrate', copy, quiet), /missing\/modified/); check('Modified applied migration blocked');
-  await writeFile(path.join(copy, files[0].file), await readFile(path.join(root, files[0].file)));
+  await writeFile(path.join(copy, activeFiles[0].file), await readFile(path.join(root, activeFiles[0].file)));
   await writeFile(path.join(copy, 'migrations/005_test.sql'), 'CREATE TABLE workflow_sentinel (id INT PRIMARY KEY);');
   await run(db, 'migrate', copy, quiet); check('Future 005 migration runs once after baseline files');
   await run(db, 'migrate', copy, quiet);
@@ -121,7 +122,7 @@ try {
   await assert.rejects(run(db,'migrate',copy,quiet), /Out-of-order history/); check('Earlier newly inserted migration blocked');
 
   await database('baseline');
-  for (const f of files) for (const sql of f.statements) await db.query(sql);
+  for (const f of activeFiles) for (const sql of f.statements) await db.query(sql);
   await db.query("INSERT INTO clients (company_name) VALUES ('Workflow preservation sentinel')");
   await assert.rejects(run(db, 'migrate', root, quiet), /baseline/i);
   await run(db, 'baseline', root, quiet);
@@ -139,19 +140,19 @@ try {
   check('Concurrent runner blocked by advisory lock');
 
   await database('drift');
-  for (const f of files.filter(f => f.kind === 'migrations')) for (const sql of f.statements) await db.query(sql);
+  for (const f of activeFiles.filter(f => f.kind === 'migrations')) for (const sql of f.statements) await db.query(sql);
   await db.query('ALTER TABLE clients ADD COLUMN unexpected INT NULL');
   await assert.rejects(run(db, 'baseline', root, quiet), /schema mismatch/);
   const [[noHistory]] = await db.query('SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?', [history]);
   assert.equal(Number(noHistory.n), 0); check('Schema drift rejects baseline before creating history');
 
   await database('noseed');
-  for (const f of files.filter(f => f.kind === 'migrations')) for (const sql of f.statements) await db.query(sql);
-  await run(db, 'baseline', root, quiet); await run(db, 'seed', root, quiet); await verifyBaseline(db, files);
+  for (const f of activeFiles.filter(f => f.kind === 'migrations')) for (const sql of f.statements) await db.query(sql);
+  await run(db, 'baseline', root, quiet); await run(db, 'seed', root, quiet); await verifyBaseline(db, activeFiles);
   check('Unseeded manual baseline followed by reference seeds succeeds');
 
   await database('partialseed');
-  for (const f of files.filter(f => f.kind === 'migrations')) for (const sql of f.statements) await db.query(sql);
+  for (const f of activeFiles.filter(f => f.kind === 'migrations')) for (const sql of f.statements) await db.query(sql);
   await db.query("INSERT INTO roles (code,label) VALUES ('owner','Owner / CEO')");
   await assert.rejects(run(db,'baseline',root,quiet), /partial seed/);
   check('Partial unmarked reference seeds refuse baseline');
@@ -160,7 +161,7 @@ try {
   await run(db,'migrate',root,quiet);
   const seedCopy = await mkdtemp(path.join(tmpdir(),'enterflow-seed-'));
   for (const kind of ['migrations','seeds']) await mkdir(path.join(seedCopy,kind));
-  for (const f of files) await writeFile(path.join(seedCopy,f.file), await readFile(path.join(root,f.file)));
+  for (const f of activeFiles) await writeFile(path.join(seedCopy,f.file), await readFile(path.join(root,f.file)));
   const seedName = 'seeds/001_reference_data.sql';
   const badSeed = (await readFile(path.join(seedCopy,seedName),'utf8')).replace('COMMIT;', 'INSERT INTO roles(code,label) VALUES (\'owner\',\'Duplicate\');\nCOMMIT;');
   await writeFile(path.join(seedCopy,seedName),badSeed);

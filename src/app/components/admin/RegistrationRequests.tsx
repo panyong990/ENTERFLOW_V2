@@ -16,6 +16,30 @@ export function RegistrationRequests() {
  const locked=useRef(false);const request=useRef(0);
  const load=useCallback(async()=>{const token=++request.current;setLoading(true);setError('');try{const result=real?await api<List>(`/api/client-applications?limit=10${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`):{applications:getClientApplications().filter(item=>item.status==='pending'),nextCursor:null};if(token===request.current)setList(result);}catch(cause){if(token===request.current)setError((cause as Error).message);}finally{if(token===request.current)setLoading(false);}},[real,cursor]);
  useEffect(()=>{void load();return()=>{++request.current;};},[load]);
+  useEffect(() => {
+    if (!real || selected || busy) return;
+
+    const update = () => {
+      if (document.visibilityState !== "visible" || locked.current) return;
+      void load();
+    };
+
+    const visibility = () => {
+      if (document.visibilityState === "visible") update();
+    };
+
+    const timer = window.setInterval(update, 30000);
+    window.addEventListener("focus", update);
+    window.addEventListener("enterflow:admin-changed", update);
+    document.addEventListener("visibilitychange", visibility);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+      window.removeEventListener("enterflow:admin-changed", update);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [real, load, selected, busy]);
  const review=async(application:Application)=>{if(locked.current)return;locked.current=true;setBusy(true);setDialogError('');setError('');try{const detail=real?await api<Application>(`/api/client-applications/${application.id}`):application;setSelected(detail);setAction(null);setReason('');setUncertain(false);}catch(cause){setError((cause as Error).message);}finally{locked.current=false;setBusy(false);}};
  const refreshDecision=async()=>{if(!selected||locked.current)return;locked.current=true;setBusy(true);try{const latest=await api<Application>(`/api/client-applications/${selected.id}`);setSelected(latest);setUncertain(false);setAction(null);setDialogError(latest.status==='pending'?'Application is still pending. Review and confirm again if appropriate.':`Application is ${latest.status}.`);adminChanged();void load();}catch(cause){setDialogError((cause as Error).message);}finally{locked.current=false;setBusy(false);}};
  const decide=async()=>{
@@ -35,13 +59,6 @@ export function RegistrationRequests() {
    }catch(cause){setDialogError((cause as Error).message);const failure=cause as ApiError;if(real&&(failure.status===0||failure.status===409||failure.status===503||failure.code==='INVALID_RESPONSE'))setUncertain(true);}
    finally{locked.current=false;setBusy(false);}
  };
- useEffect(()=>{
-  if(!real||selected||busy)return;
-  const update=()=>{if(document.visibilityState!=='visible'||locked.current)return;void load();};
-  const visibility=()=>{if(document.visibilityState==='visible')update();};
-  const timer=window.setInterval(update,30000);window.addEventListener('focus',update);window.addEventListener('enterflow:admin-changed',update);document.addEventListener('visibilitychange',visibility);
-  return()=>{window.clearInterval(timer);window.removeEventListener('focus',update);window.removeEventListener('enterflow:admin-changed',update);document.removeEventListener('visibilitychange',visibility);};
- },[real,load,selected,busy]);
  return <div className="p-4 sm:p-5 space-y-4"><div className="flex items-center justify-between"><div><h2 className="text-lg font-bold">Pending Client Registrations</h2><p className="text-xs text-slate-500">Newest pending requests. Decisions require explicit confirmation.</p></div></div>
  <AdminFeedback loading={loading} error={error} retry={()=>void load()} />
  <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Application ID','Company','Contact person','Email','Submitted','Status','Action'].map(label=><th className="p-3" key={label}>{label}</th>)}</tr></thead><tbody>{list.applications.map(item=><tr key={item.id} className="border-t border-slate-100"><td className="p-3">{item.id}</td><td className="p-3 font-semibold">{item.companyName}</td><td className="p-3">{item.contactPerson}</td><td className="p-3">{item.email}</td><td className="p-3">{new Date(real?item.submittedAt.replace(' ','T')+'Z':item.submittedAt).toLocaleString()}</td><td className="p-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">Pending</span></td><td className="p-3"><button className={button} disabled={busy||loading||!!error} onClick={()=>void review(item)}>Review</button></td></tr>)}</tbody></table></div>

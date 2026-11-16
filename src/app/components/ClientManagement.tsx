@@ -54,15 +54,28 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
   const remote=useDirectory(real,'clients',{q:query,status,sort,page,pageSize});
   const directoryRefreshRef = useRef(remote.refresh);
   directoryRefreshRef.current = remote.refresh;
-  useEffect(()=>{
-    if(!real)return;
-    const update=()=>{if(document.visibilityState!=='visible'||mutation.current)return;void directoryRefreshRef.current();};
-    const visibility=()=>{if(document.visibilityState==='visible')update();};
-    const timer=window.setInterval(update,30000);
-    window.addEventListener('focus',update);
-    document.addEventListener('visibilitychange',visibility);
-    return()=>{window.clearInterval(timer);window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',visibility);};
-  },[real]);
+  useEffect(() => {
+    if (!real) return;
+
+    const update = () => {
+      if (document.visibilityState !== "visible" || mutation.current) return;
+      void directoryRefreshRef.current();
+    };
+
+    const visibility = () => {
+      if (document.visibilityState === "visible") update();
+    };
+
+    const timer = window.setInterval(update, 30000);
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", visibility);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [real]);
   useEffect(()=>{if(real&&remote.data)setAccounts(remote.data.items.map(row=>accountFromRow(row,'client')));},[real,remote.data]);
   useEffect(()=>{if(real)return;const refresh=()=>setAccounts(getAccounts());window.addEventListener('enterflow:admin-changed',refresh);return()=>window.removeEventListener('enterflow:admin-changed',refresh);},[real]);
   const clients = useMemo(() => accounts.filter(isClientAccount), [accounts]);

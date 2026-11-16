@@ -27,7 +27,7 @@ function projected(row) {
 }
 function assertWrite(result) { if (result.affectedRows !== 1 || result.warningStatus) throw new Error('Write failed.'); }
 const bump = 'updated_at=GREATEST(UTC_TIMESTAMP(3), updated_at + INTERVAL 1000 MICROSECOND)';
-const actions = ['employee.created', 'employee.updated', 'employee.role_changed', 'employee.activated', 'employee.deactivated',
+const actions = ['employee.created', 'employee.provisioned', 'employee.updated', 'employee.role_changed', 'employee.activated', 'employee.deactivated',
   'client.updated', 'client.activated', 'client.deactivated', 'client_application.approved', 'client_application.rejected'];
 // The first real Admin is designated by the reserved, unique bootstrap username.
 // Keep this marker stable so later profile edits cannot remove its safeguards.

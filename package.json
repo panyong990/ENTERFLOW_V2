@@ -11,6 +11,7 @@
     "db:baseline": "node database/migrate.mjs baseline",
     "db:seed": "node database/migrate.mjs seed",
     "db:test": "node --test database/migration-core.test.mjs",
+    "db:provision-employees": "node database/provision-employees.mjs",
     "server": "node backend/src/server.js",
     "test:browser:smoke": "playwright test --config=playwright.config.mjs tests/browser/environment.smoke.spec.mjs",
     "test:browser:admin:smoke": "playwright test --config=playwright.admin.config.mjs",

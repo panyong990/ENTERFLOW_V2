@@ -52,6 +52,33 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
   const [draft, setDraft] = useState({ name: "", contactPerson: "", email: "", username: "", phone: "" });
 
   const remote=useDirectory(real,'clients',{q:query,status,sort,page,pageSize});
+  const directoryRefreshRef = useRef(remote.refresh);
+  directoryRefreshRef.current = remote.refresh;
+
+  useEffect(() => {
+    if (!real) return;
+
+    const update = () => {
+      if (document.visibilityState !== "visible" || mutation.current) return;
+      void directoryRefreshRef.current();
+    };
+
+    const visibility = () => {
+      if (document.visibilityState === "visible") update();
+    };
+
+    const timer = window.setInterval(update, 30000);
+    window.addEventListener("focus", update);
+    window.addEventListener("enterflow:admin-changed", update);
+    document.addEventListener("visibilitychange", visibility);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+      window.removeEventListener("enterflow:admin-changed", update);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [real]);
   useEffect(()=>{if(real&&remote.data)setAccounts(remote.data.items.map(row=>accountFromRow(row,'client')));},[real,remote.data]);
   useEffect(()=>{if(real)return;const refresh=()=>setAccounts(getAccounts());window.addEventListener('enterflow:admin-changed',refresh);return()=>window.removeEventListener('enterflow:admin-changed',refresh);},[real]);
   const clients = useMemo(() => accounts.filter(isClientAccount), [accounts]);
@@ -179,8 +206,8 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
           <div className="flex flex-col justify-between gap-4 border-b border-slate-200/80 px-4 py-4 sm:px-5 md:flex-row md:items-center">
             <div role="tablist" aria-label="Client management sections" className="flex gap-1 rounded-xl bg-slate-100 p-1">
               <button type="button" role="tab" aria-selected={tab==='directory'} onClick={()=>setTab('directory')}
-                className="rounded-lg bg-white px-3 py-2.5 font-dm text-xs font-semibold text-red-800 shadow-sm">Client directory{!real?` (${clients.length})`:""}</button>
-              <button type="button" role="tab" aria-selected={tab==='requests'} onClick={()=>setTab('requests')} className="rounded-lg px-3 py-2.5 text-xs font-semibold">Registration Requests</button>
+                className={`rounded-lg px-3 py-2.5 font-dm text-xs font-semibold transition-colors ${tab === "directory" ? "bg-white text-red-800 shadow-sm" : "text-slate-600 hover:bg-white/60 hover:text-slate-900"}`}>Client directory{!real?` (${clients.length})`:""}</button>
+              <button type="button" role="tab" aria-selected={tab==='requests'} onClick={()=>setTab('requests')} className={`rounded-lg px-3 py-2.5 font-dm text-xs font-semibold transition-colors ${tab === "requests" ? "bg-white text-red-800 shadow-sm" : "text-slate-600 hover:bg-white/60 hover:text-slate-900"}`}>Registration Requests</button>
             </div>
             <div className={`${tab==='requests'?'hidden':'flex'} w-full items-center gap-2 md:max-w-xl`}>
               <label className="relative min-w-0 flex-1">
@@ -231,7 +258,7 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
             </div>
           </div>
           {tab==='requests'?<RegistrationRequests />:<>
-          {real&&<div className="px-5 py-3"><AdminFeedback loading={remote.loading} error={remote.error} retry={remote.refresh} /><button disabled={remote.loading||saving} onClick={remote.refresh} className="mt-2 rounded border px-3 py-1 text-xs">Refresh directory</button></div>}
+          {real&&<div className="px-5 py-3"><AdminFeedback loading={remote.loading} error={remote.error} retry={remote.refresh} /></div>}
             <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div><h2 className="font-syne text-lg font-bold text-slate-900">Client directory</h2><p className="mt-1 font-dm text-xs text-slate-500">{real&&!remote.data?"Records unavailable":total} client account{filteredClients.length === 1 ? "" : "s"}</p></div>
             </div>
@@ -257,7 +284,7 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
                       </div></td>
                     </tr>
                   ))}
-                  {visibleRows.length === 0 && (!real||(!remote.loading&&!remote.error)) && <tr><td colSpan={8} className="px-5 py-14 text-center font-dm text-sm text-slate-500">{hasDirectoryCriteria ? "No clients match the current search and filters." : "No client accounts are available."}</td></tr>}
+                  {visibleRows.length === 0 && (!real||(!remote.loading&&!remote.error)) && <tr><td colSpan={8} className="px-5 py-14 text-center font-dm text-sm text-slate-500">{hasDirectoryCriteria ? "No clients match the current search and filters." : "No client accounts yet. Approved client registrations will appear here."}</td></tr>}
                 </tbody>
               </table>
             </div>

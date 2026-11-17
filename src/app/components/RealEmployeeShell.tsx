@@ -11,6 +11,7 @@ import { SettingsProvider } from "../store/settings";
 import { Sidebar } from "./Sidebar";
 import { Unauthorized } from "./Unauthorized";
 import { RealRoleWorkspace } from "./RealRoleWorkspace";
+import { SalesSidebar } from "./sales/SalesSidebar";
 
 export function RealWorkspaceUnavailable({ title, detail, onLogout }: { title: string; detail?: string; onLogout?: () => void }) {
   return (
@@ -50,7 +51,7 @@ export function RealEmployeeShell({ identity, onLogout }: { identity: RealIdenti
       <NotificationsProvider mode="real">
       <StockRequestsProvider mode="real">
       <div className="flex h-full min-h-0 bg-[#F5F7FB]">
-        <Sidebar role={role} active={active} onNavigate={navigate} onLogout={onLogout} userName={identity.displayName} />
+        {role === "sales" ? <SalesSidebar active={active} onNavigate={navigate} onLogout={onLogout} userName={identity.displayName} /> : <Sidebar role={role} active={active} onNavigate={navigate} onLogout={onLogout} userName={identity.displayName} />}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center justify-between border-b bg-white px-4 py-2 text-xs text-slate-600">
             <span className="inline-flex items-center gap-2"><ShieldCheck size={14} aria-hidden /> Real Authenticated Access · {identity.displayName}</span>

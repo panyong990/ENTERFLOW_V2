@@ -28,7 +28,7 @@ async function shutdown() {
       console.log('Server and database connections closed.');
       process.exit(0);
     } catch (error) {
-      console.error('Shutdown error:', error.message);
+      console.error('Enter-Flow API shutdown failed.');
       process.exit(1);
     }
   });
@@ -38,7 +38,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 start().catch(async error => {
-  console.error('Enter-Flow API startup failed:', error.message);
+  console.error('Enter-Flow API startup failed.');
   await pool.end().catch(() => {});
   process.exitCode = 1;
 });

@@ -84,12 +84,15 @@ Do not run migrations automatically during container startup. Apply migrations t
 
 ## Logging, monitoring, and rollback
 
-The current application primarily uses `console.log` and `console.error`.
-There is no centralized structured logging implementation or global
-request/correlation-ID middleware. The authentication middleware logs an
-exception message; health-check errors apply a narrow secret-pattern redaction
-and return database error code metadata. This is not a complete personal-data
-or secret-redaction policy. Avoid logging request bodies, cookies, tokens,
+The application now generates server-side request IDs and returns them in the
+X-Request-ID response header. Completed HTTP requests produce structured JSON
+logs with request ID, method, status code, and duration. These logs intentionally
+exclude request URLs, query parameters, headers, cookies, and request bodies.
+Authentication and server startup/shutdown errors use generic log messages.
+Centralized log collection and comprehensive sensitive-data redaction are not
+yet implemented. Health-check errors retain their existing narrow redaction
+behavior. This is not a complete personal-data or secret-redaction policy.
+Avoid logging request bodies, cookies, tokens,
 passwords, database configuration, or raw driver errors.
 
 Audit events are written for selected Admin/client-application decisions and
@@ -101,7 +104,7 @@ none is configured in this repository.
 
 Before production, define structured event fields (timestamp, severity,
 service/version, environment, generated request ID, stable error category),
-generate request IDs server-side, propagate them to responses and supported
+retain server-generated request IDs in HTTP responses, propagate them to supported
 audit writes, and redact at the logging boundary. Define retention/access
 periods for application and audit data separately. Monitor liveness, database
 readiness, request error rates/latency, database connection failures, and

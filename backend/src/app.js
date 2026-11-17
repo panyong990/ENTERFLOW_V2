@@ -1,4 +1,6 @@
 ﻿import express from 'express';
+import { requestIdMiddleware } from './middleware/request-id.middleware.js';
+import { requestLogMiddleware } from './middleware/request-log.middleware.js';
 import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import clientApplicationsRoutes from './routes/client-applications.routes.js';
@@ -17,6 +19,9 @@ export function createApp({
   clientPortalRoutes = clientRoutes
 } = {}) {
   const app = express();
+
+  app.use(requestIdMiddleware);
+  app.use(requestLogMiddleware);
 
   app.use('/api/client-applications', clientApplicationsJson, applicationReviewRoutes, clientApplicationsError);
   app.use('/api/admin', adminJson, administrationRoutes, adminError);

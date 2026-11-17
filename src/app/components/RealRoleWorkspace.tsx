@@ -18,6 +18,7 @@ import { Clients } from "./Clients";
 import { NotificationsCenter } from "./NotificationsCenter";
 import { AnalyticsFullView } from "./AnalyticsFullView";
 import { Settings } from "./Settings";
+import { RealSalesWorkspace } from "./sales/RealSalesWorkspace";
 
 function LiveDataNotice({ role }: { role: EmployeeRole }) {
   const [salesAccess, setSalesAccess] = useState<"checking" | "confirmed" | "unavailable">(role === "sales" ? "checking" : "unavailable");
@@ -74,6 +75,7 @@ function DemoReferenceScreen({ role, route, onNavigate }: { role: EmployeeRole; 
 }
 
 export function RealRoleWorkspace({ role, route, onNavigate }: { role: EmployeeRole; route: string; onNavigate: (id: string) => void }) {
+  if (role === "sales") return <RealSalesWorkspace route={route} onNavigate={onNavigate} />;
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     <LiveDataNotice role={role} />
     <div className="min-h-0 flex-1 overflow-hidden" aria-label="Existing role workspace">

@@ -314,3 +314,41 @@ test('rejects invalid middleware dependencies', () => {
     /session activity function/
   );
 });
+
+test('authentication error logs do not expose sensitive infrastructure details', async (t) => {
+  const sensitiveMessage = 'SYNTHETIC_PRIVATE_DATABASE_DETAIL';
+  const loggedMessages = [];
+
+  t.mock.method(console, 'error', (...args) => {
+    loggedMessages.push(args.join(' '));
+  });
+
+  for (const failureAt of ['validation', 'activity']) {
+    const middleware = createAuthenticationMiddleware({
+      validateSession: async () => {
+        if (failureAt === 'validation') throw new Error(sensitiveMessage);
+        return createSession();
+      },
+      updateSessionActivity: async () => {
+        if (failureAt === 'activity') throw new Error(sensitiveMessage);
+        return true;
+      }
+    });
+
+    const response = createResponse();
+
+    await middleware(
+      createRequest(`enterflow_session=${validToken}`),
+      response,
+      () => assert.fail('next should not be called.')
+    );
+
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.body.message, 'Authentication service temporarily unavailable.');
+  }
+
+  assert.deepEqual(loggedMessages, [
+    'Authentication middleware error',
+    'Authentication middleware error'
+  ]);
+});

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const source = await readFile(new URL('./RealSalesOrders.tsx', import.meta.url), 'utf8');
+const source = await readFile(new URL('./sales/SalesRecordBrowser.tsx', import.meta.url), 'utf8');
 const hook = await readFile(new URL('./useSalesOrders.ts', import.meta.url), 'utf8');
 const jobHook = await readFile(new URL('./useSalesJobOrders.ts', import.meta.url), 'utf8');
 const deliveryApi = await readFile(new URL('../api/salesDelivery.js', import.meta.url), 'utf8');
@@ -20,7 +20,7 @@ test('Real Sales Orders loads detail records and displays only returned product 
   assert.match(source, /useSalesOrderDetail\(true, selectedId\)/);
   assert.match(source, /detail\.items\.map/);
   assert.match(source, /No product specifications are available/);
-  for (const unsupported of ['purchaseOrders', 'jobOrders', 'shipments', 'invoices']) assert.doesNotMatch(source, new RegExp(`detail\\.${unsupported}`));
+  for (const unsupported of ['jobOrders', 'shipments']) assert.doesNotMatch(source, new RegExp(`detail\\.${unsupported}`));
 });
 
 test('Real order details display backend payment records without inventing balance or receipt data', () => {

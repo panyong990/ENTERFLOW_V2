@@ -1,0 +1,135 @@
+import { useEffect, useState } from "react";
+import { ArrowRight, Calculator, ChevronDown, ChevronUp, FileText, Info, RefreshCw, Search } from "lucide-react";
+import { Toaster } from "sonner";
+import { useSalesOrders, type SalesOrderFilters, type SalesOrderRow, type SalesOrderDetail } from "../useSalesOrders";
+import { SalesRecordBrowser, OrderDetail } from "./SalesRecordBrowser";
+import { useSalesOrderDetail } from "../useSalesOrders";
+import { ReviewQuotationModal, GenerateJOModal } from "./OriginalSalesForms";
+import { inquiryDraft, pendingIntegration } from "./drafts";
+import { pipelineColumn, moneyAtLeast } from "./pipelineModel.mjs";
+import { sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
+import { usePipelineDetails } from "./usePipelineDetails";
+import { SalesInvoicePreparation } from "./SalesInvoicePreparation";
+import { SalesStockRequests } from "./SalesStockRequests";
+import { SalesNotificationBell } from "./SalesNotifications";
+
+const columns = [
+  { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
+  { id: "quotation", title: "QUOTATION SENT", tint: "#D97706" },
+  { id: "ready", title: "READY FOR JOB ORDER", tint: "#C9A84C" },
+];
+const statusOptions = [
+  ["all", "All Statuses"], ["inquiry", "New Inquiry"], ["quotation", "Quotation Sent · Awaiting Client PO"],
+  ["revision", "Revision Requested"], ["po", "PO Pending Sales Review"], ["approved", "PO Approved"],
+  ["rejected", "PO Rejected · Resubmission Required"], ["ready", "Ready for Job Order · Payment Verified"],
+  ["invoice-sent", "Invoice Sent · Awaiting Client Payment"], ["invoice-draft", "Invoice Draft · Ready for Sales Review"],
+  ["downpayment", "Required Downpayment Pending"], ["cancellation", "Cancellation Requested"],
+];
+
+export function SalesPipeline({ targetInquiryId }: { targetInquiryId?: string } = {}) {
+  const [filters, setFilters] = useState<SalesOrderFilters>({ q: "", status: "open", stage: "all", sort: "submitted-desc", page: 1, pageSize: 25 });
+  const [status, setStatus] = useState("all");
+  const [recordsView, setRecordsView] = useState(false);
+  const [stockOpen, setStockOpen] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => { if (targetInquiryId) setSelected(targetInquiryId); }, [targetInquiryId]);
+  const remote = useSalesOrders(!recordsView, filters);
+  const details = usePipelineDetails(remote.data?.items, !recordsView && !remote.loading && !remote.error);
+  const selectedDetail = useSalesOrderDetail(Boolean(selected), selected);
+  const update = (patch: Partial<SalesOrderFilters>) => setFilters(current => ({ ...current, page: 1, ...patch }));
+  const rows = remote.data?.items ?? [];
+  const otherRows = rows.filter(row => pipelineColumn(row, details.records[row.id]) === "other");
+  const page = remote.data?.page ?? filters.page;
+  const pages = Math.max(1, Math.ceil((remote.data?.total ?? 0) / filters.pageSize));
+  return <main className="h-full overflow-auto bg-[#F4F6F9]">
+    <Toaster position="bottom-right" richColors />
+    {recordsView ? <><button className="m-4 rounded border bg-white px-4 py-2" onClick={() => setRecordsView(false)}>Back to inquiry pipeline</button><SalesRecordBrowser /></> : <>
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/70 bg-white px-8 py-5">
+        <div><h1 className="font-syne text-[28px] font-extrabold leading-tight text-slate-900">Sales &amp; Orders</h1><p className="mt-1 font-dm text-[13px] text-slate-500">Pipeline overview · Inquiry → Quotation → PO → JO</p></div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative"><Search size={16} className="absolute left-3 top-3 text-slate-400" /><input maxLength={254} aria-label="Search inquiries" placeholder="Search inquiries..." value={filters.q} onChange={e => update({ q: e.target.value })} className="w-64 rounded-lg border border-slate-200 bg-[#F4F6F9] py-2.5 pl-9 pr-4 text-[13px]" /></label>
+          <select aria-label="Filter Sales & Orders by status" value={status} onChange={e => setStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs">
+            {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <span className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs text-slate-500">Pipeline <b className="ml-2 text-slate-900">{remote.data ? `${remote.data.total} records` : "Unverified"}</b></span>
+          <button onClick={() => setStockOpen(true)} className="rounded-lg bg-[#1A2B4A] px-4 py-2.5 text-xs font-bold text-white">Stock Requests</button>
+          <SalesNotificationBell />
+        </div>
+      </header>
+      <div className="px-8 pt-6"><div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-[13px] text-blue-950"><Info size={16} className="mt-0.5 shrink-0" />New inquiries appear automatically when clients submit through the Client Portal.</div></div>
+      <div className="flex flex-wrap items-center gap-3 px-8 pt-4 text-xs">
+        <button onClick={remote.refresh} className="flex items-center gap-2 rounded border bg-white px-3 py-2"><RefreshCw size={14} />Refresh records</button>
+        <select aria-label="Record status" value={filters.status} onChange={e => update({ status: e.target.value as SalesOrderFilters["status"] })} className="rounded border bg-white p-2"><option value="open">Open</option><option value="archived">Archived</option><option value="all">All records</option></select>
+        <select aria-label="Order sort" value={filters.sort} onChange={e => update({ sort: e.target.value as SalesOrderFilters["sort"] })} className="rounded border bg-white p-2"><option value="submitted-desc">Newest submitted</option><option value="submitted-asc">Oldest submitted</option><option value="client-asc">Client A–Z</option><option value="client-desc">Client Z–A</option></select>
+        <button onClick={() => setRecordsView(true)} className="rounded border bg-white px-3 py-2">All order records &amp; stages</button>
+        <span>Page {page} / {pages} · Columns show the current result page</span>
+        <button disabled={page <= 1 || remote.loading} onClick={() => update({ page: page - 1 })} className="rounded border bg-white px-3 py-2 disabled:opacity-40">Previous</button>
+        <button disabled={page >= pages || remote.loading} onClick={() => update({ page: page + 1 })} className="rounded border bg-white px-3 py-2 disabled:opacity-40">Next</button>
+      </div>
+      {remote.loading && <p role="status" className="px-8 pt-4 text-sm">Loading Sales inquiries…</p>}
+      {remote.error && !remote.loading && <p role="alert" className="m-8 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">{remote.error} <button onClick={remote.refresh}>Retry</button></p>}
+      {!remote.loading && !remote.error && <>
+        {["po", "approved", "rejected"].includes(status) && <p role="status" className="mx-8 mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-xs">This detailed PO review status is unavailable from the Sales API. PO records remain accessible through All Statuses and All order records; no approval or rejection is inferred.</p>}
+        {details.loading && <p role="status" className="px-8 pt-4 text-sm text-slate-500">Loading product specifications and readiness checks…</p>}
+        <div className="overflow-x-auto px-8 py-6"><div className="grid min-w-[900px] grid-cols-3 gap-6">
+          {columns.map(column => {
+            const visible = rows.filter(row => pipelineColumn(row, details.records[row.id]) === column.id && matches(row, details.records[row.id], status));
+            return <section key={column.id} className="flex min-h-[600px] flex-col rounded-xl border border-slate-200/70 bg-white">
+              <div className="flex items-center justify-between rounded-t-xl border-b border-slate-200/70 bg-[#F4F6F9] px-5 py-4"><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: column.tint }} /><h2 className="font-syne text-[13px] font-bold tracking-wide text-slate-900">{column.title}</h2></div><span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold">{visible.length}</span></div>
+              <div className="flex flex-1 flex-col gap-3 p-4">{visible.length ? visible.map(row => <PipelineCard key={row.id} row={row} detail={details.records[row.id]} error={details.errors[row.id]} ready={column.id === "ready"} onRecords={() => setSelected(row.id)} retry={remote.refresh} />) : <div className="flex flex-1 items-center justify-center text-xs text-slate-400">{details.loading ? "Checking records…" : "No items"}</div>}</div>
+            </section>;
+          })}
+        </div></div>
+        {otherRows.length > 0 && <section className="mx-8 mb-8 rounded-xl border bg-white p-5"><h2 className="font-syne font-bold">Archived and downstream order records</h2><div className="mt-3 flex flex-wrap gap-3">{otherRows.map(row => <button key={row.id} onClick={() => setSelected(row.id)} className="rounded border p-3 text-left text-xs"><b>{row.reference}</b> · {row.companyName}<br />{row.stageLabel} · {row.archivedAt ? "Archived" : "Open"}</button>)}</div></section>}
+      </>}
+    </>}
+    {selected && <OrderDetail detail={selectedDetail.data} loading={selectedDetail.loading} error={selectedDetail.error} retry={selectedDetail.retry} onClose={() => setSelected(null)} />}
+    {stockOpen && <SalesStockRequests onClose={() => setStockOpen(false)} rows={rows} />}
+  </main>;
+}
+
+function matches(row: SalesOrderRow, detail: SalesOrderDetail | undefined, status: string) {
+  const requests = (detail?.requests ?? []) as { kind: string; status: string }[];
+  if (status === "all") return true;
+  if (status === "ready") return pipelineColumn(row, detail) === "ready";
+  if (status === "revision") return requests.some(r => r.kind === "revision" && r.status === "pending");
+  if (status === "cancellation") return requests.some(r => r.kind === "cancellation" && r.status === "pending");
+  // PO review/rejection status is not returned by the current API. Never infer it.
+  if (["approved", "rejected", "po"].includes(status)) return false;
+  if (["invoice-sent", "invoice-draft", "downpayment"].includes(status)) return (detail?.invoices as { id: string; sentAt: string | null; amount: string; requiredDownpayment: string }[] | undefined)?.some(invoice => {
+    if (status === "invoice-draft") return !invoice.sentAt;
+    const required = status === "downpayment" ? invoice.requiredDownpayment : invoice.amount;
+    if (!invoice.sentAt || !/^\d+(\.\d+)?$/.test(String(required)) || !/[1-9]/.test(String(required))) return false;
+    const paid = sumVerifiedPaymentAmounts((detail?.payments ?? []).filter(payment => String(payment.invoiceId) === String(invoice.id)));
+    return !moneyAtLeast(paid, required);
+  }) ?? false;
+  return row.stageCode === status;
+}
+
+function PipelineCard({ row, detail, error, ready, onRecords, retry }: { row: SalesOrderRow; detail?: SalesOrderDetail; error?: string; ready: boolean; onRecords: () => void; retry: () => void }) {
+  const [expanded, setExpanded] = useState(row.stageCode === "inquiry");
+  const [productsOpen, setProductsOpen] = useState(false);
+  const [action, setAction] = useState<"quotation" | "jo" | "invoice" | "approve" | "reject" | "reject-inquiry" | null>(null);
+  const [reason, setReason] = useState("");
+  const draft = detail ? inquiryDraft(detail) : null;
+  return <article className="rounded-lg border bg-white p-5 transition-all hover:shadow-sm" style={{ borderColor: ready ? "#BBF7D0" : "#E2E8F0" }}>
+    <div className="mb-3 flex items-center justify-between gap-2"><b className="font-mono-jb text-xs text-[#1A2B4A]">{row.reference}</b><div className="flex items-center gap-2">{row.urgent && <span className="rounded-full bg-red-100 px-2 text-[10px] font-bold text-red-700">RUSH</span>}<button aria-label={expanded ? "Collapse order details" : "Expand order details"} aria-expanded={expanded} onClick={() => setExpanded(!expanded)} className="rounded-full p-1 hover:bg-slate-100">{expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button></div></div>
+    <div className="mb-1.5 text-sm font-semibold text-slate-900">{row.companyName}</div><div className="mb-2 text-xs text-slate-500">{row.contactPerson || "Contact unavailable"} · {row.paymentTermLabel}</div>
+    <span className="mb-3 inline-block rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">{row.stageLabel}</span>
+    {expanded && <div className="flex flex-col gap-3">
+      {detail ? <><button onClick={() => setProductsOpen(!productsOpen)} className="flex items-center gap-1 self-start rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">{detail.items.length} products {productsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</button>{productsOpen && <div className="space-y-2 rounded bg-slate-50 p-3">{detail.items.map(item => <div key={item.id} className="text-xs"><b>{item.filterName || item.filterTypeCode}</b> × {item.quantity}<div className="mt-1 grid grid-cols-2 gap-1 text-slate-500">{Object.entries(item).filter(([key, value]) => !["id", "lineNumber", "quantity", "filterName", "filterTypeCode"].includes(key) && value != null).map(([key, value]) => <span key={key}>{key}: {String(value)}</span>)}</div></div>)}</div>}</> : error ? <p role="alert" className="text-xs text-red-700">{error} <button onClick={retry}>Retry details</button></p> : <p role="status" className="text-xs text-slate-500">Loading product specifications…</p>}
+      <button onClick={onRecords} className="flex items-center gap-1 self-start rounded-md border border-red-200 px-2.5 py-1.5 text-[11px] font-semibold text-red-700"><FileText size={12} />View Quotation, PO &amp; Document History</button>
+      {row.latestQuotationReference && <p className="text-xs text-slate-500">Quotation: {row.latestQuotationReference} · {row.latestQuotationStatus || "Status unavailable"}</p>}
+      {detail?.quotations?.length > 0 && <p className="font-syne text-sm font-bold text-slate-900">Latest quotation total: ₱{(detail.quotations[0] as { totalAmount?: string }).totalAmount ?? "Unavailable"}</p>}
+      {row.purchaseOrderReference && <p className="text-xs text-slate-500">PO: {row.purchaseOrderReference} · Review and resubmission status unavailable from the Sales API</p>}
+      <button disabled={!draft || !draft.products.length} onClick={() => setAction("quotation")} className="flex items-center justify-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40"><Calculator size={13} />{row.stageCode === "inquiry" ? "REVIEW & SEND QUOTATION" : "PREPARE QUOTATION REVISION"}<ArrowRight size={14} /></button>
+      {row.stageCode === "po" && <><div className="flex gap-2"><button onClick={() => setAction("approve")} className="flex-1 rounded bg-green-600 py-2 text-xs font-bold text-white">APPROVE PO</button><button onClick={() => { setReason(""); setAction("reject"); }} className="flex-1 rounded border border-red-200 py-2 text-xs font-bold text-red-700">REJECT PO</button></div><button disabled={!draft?.products.length} onClick={() => setAction("invoice")} className="rounded border px-3 py-2 text-xs font-bold disabled:opacity-40">PREPARE INVOICE</button><button disabled={!draft?.products.length} onClick={() => setAction("jo")} className="rounded bg-[#C8102E] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">CONFIGURE / GENERATE JOB ORDER</button><p className="text-[11px] text-slate-500">Readiness uses received and cleared PO, accepted quotation, sent invoices and their verified payments. Server validation is required to generate a JO.</p></>}
+      <button onClick={() => { setReason(""); setAction("reject-inquiry"); }} className="text-xs text-red-700">Reject inquiry</button>
+      <button onClick={() => pendingIntegration("Cancellation review")} className="text-xs text-slate-500">Review cancellation</button>
+    </div>}
+    {draft && action === "quotation" && <ReviewQuotationModal inquiry={draft} onClose={() => setAction(null)} onSubmit={() => pendingIntegration("Quotation sending")} />}
+    {draft && action === "jo" && <GenerateJOModal inquiry={draft} onClose={() => setAction(null)} onConfirm={() => pendingIntegration("Job Order generation")} />}
+    {draft && action === "invoice" && <SalesInvoicePreparation inquiry={draft} onClose={() => setAction(null)} />}
+    {["approve", "reject", "reject-inquiry"].includes(action || "") && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><section role="dialog" aria-modal="true" aria-label="Sales review" className="w-full max-w-lg rounded-xl bg-white p-6"><h3 className="font-syne text-lg font-bold">{action === "approve" ? "Approve Purchase Order" : action === "reject" ? "Reject Purchase Order" : "Reject inquiry"}</h3><p className="my-3 text-sm">Backend integration pending. This review cannot be saved or sent. No client notification or resubmission request will be created.</p>{action !== "approve" && <textarea aria-label="Rejection reason" placeholder="Reason for rejection" value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded border p-3" />}<div className="mt-4 flex justify-end gap-3"><button onClick={() => setAction(null)}>Cancel</button><button disabled={action !== "approve" && !reason.trim()} onClick={() => pendingIntegration(action === "approve" ? "PO approval" : "Rejection")} className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-40">Confirm review</button></div></section></div>}
+  </article>;
+}

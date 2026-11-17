@@ -96,7 +96,7 @@ export function createAuthenticationMiddleware({
     } catch (error) {
       // Database or infrastructure failures are not authentication failures.
       // Do not expose internal error details to clients.
-      console.error('Authentication middleware error:', error.message);
+      console.error('Authentication middleware error');
 
       return response.status(503).json({
         success: false,

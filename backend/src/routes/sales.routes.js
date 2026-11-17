@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, json } from 'express';
+import { createOriginMiddleware } from '../middleware/origin.middleware.js';
 import { pool } from '../config/database.js';
 import { hasPermission } from '../config/permissions.js';
 import { createAuthenticationMiddleware } from '../middleware/auth.middleware.js';
@@ -34,6 +35,10 @@ export function createSalesRouter({
     validateSession: validateSessionService,
     updateSessionActivity: updateSessionActivityService
   }));
+  // Deliberately narrow exception to the existing Sales-only operational router.
+  router.get('/inquiry-rejections', createRoleMiddleware(['sales','owner','operations']),
+    (req,res,next) => req.auth.accountType === 'employee' ? next() : res.status(403).json({success:false,message:'Employee access is required.'}),
+    permission('orders','read'), createSalesOrdersController({service:ordersService})('rejectionHistory'));
   router.use((request, response, next) => {
     if (request.auth?.accountType !== 'employee') {
       return response.status(403).json({ success: false, message: 'Employee access is required.' });
@@ -41,6 +46,13 @@ export function createSalesRouter({
     return requireSalesRole(request, response, next);
   });
   router.get('/clients', permission('clients', 'read'), createSalesClientsController({ service })('list'));
+  router.post('/orders/:id/rejection', permission('inquiries','update'), permission('orders','update'),
+    createOriginMiddleware(), json({limit:'32kb'}), createSalesOrdersController({service:ordersService})('rejectInquiry'),
+    (error,req,res,next) => {
+      if (res.headersSent) return next(error);
+      const status=error?.type==='entity.too.large'?413:['charset.unsupported','encoding.unsupported'].includes(error?.type)?415:400;
+      return res.status(status).json({success:false,code:'VALIDATION_ERROR',message:'Invalid rejection request body.'});
+    });
   router.get('/clients/:id', permission('clients', 'read'), createSalesClientsController({ service })('detail'));
   router.get('/dashboard', permission('inquiries', 'read'), permission('quotations', 'read'), permission('orders', 'read'), permission('clients', 'read'), createSalesDashboardController({ service: dashboardService }));
   router.get('/notifications', permission('notifications', 'read'), createSalesNotificationsController({ service: notificationsService }));

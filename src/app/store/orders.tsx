@@ -271,7 +271,8 @@ export interface CancellationRequestHistory {
   reason: string;
   requestedAt: string;
   requestedBy: "client" | "management";
-  resolution: "pending" | "approved" | "declined";
+  resolution: "pending" | "approved" | "declined" | "completed";
+  response?: string;
   resolvedAt?: string;
 }
 
@@ -879,7 +880,7 @@ interface Ctx {
   uploadPO: (id: string, fileName: string, fileDataUrl: string, poNumber: string) => boolean;
   reviewPO: (id: string, status: "Approved" | "Rejected", reviewedBy: string, rejectionReason?: string) => boolean;
   finalizeJO: (id: string, data: FinalizeJOData) => void;
-  rejectInquiry: (id: string, reason?: string) => void;
+  rejectInquiry: (id: string, reason: string) => Promise<boolean>;
   cancelInquiry: (id: string, reason?: string) => void;
   cancelJOFromProduction: (joNumber: string, reason?: string) => void;
   /* Cancellation approval workflow */
@@ -1074,8 +1075,20 @@ export function persistOrders(mode: "demo" | "real", allInquiries: Inquiry[], cl
     if (!target) return;
     target.setItem(ORDERS_STORAGE_KEY, JSON.stringify({ inquiries: businessState(allInquiries), clearedPOs }));
   } catch (error) {
-    console.error("[EnterFlow] Could not persist order state to localStorage.", error);
+    console.error("[EnterFlow] Could not persist order state to localStorage.");
   }
+}
+
+
+/** Demo-only transition. No network, notification, or persistence side effects. */
+export function rejectDemoInquiry(inquiry: Inquiry | undefined, suppliedReason: string, at = new Date().toISOString()): Inquiry | null {
+  if (!inquiry || inquiry.archived || inquiry.archiveReason || inquiry.stage !== 'inquiry' || typeof suppliedReason !== 'string' || !suppliedReason.isWellFormed()) return null;
+  const reason = suppliedReason.trim();
+  if (!reason || [...reason].length > 1000) return null;
+  const history = [...(inquiry.cancellationHistory ?? [])];
+  if (inquiry.pendingCancellation && !history.some(entry => entry.resolution === 'pending')) history.push({...inquiry.pendingCancellation,resolution:'pending'});
+  return {...inquiry,archived:true,archiveReason:'rejected',archiveDate:at,archiveNote:reason,pendingCancellation:undefined,
+    cancellationHistory:history.map(entry=>entry.resolution==='pending'?{...entry,resolution:'completed',resolvedAt:at,response:'Resolved due to inquiry rejection.'}:entry)};
 }
 
 export function OrdersProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
@@ -1085,6 +1098,7 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
   const [clearedPOs, setClearedPOs] = useState<string[]>(() => realMode ? [] : savedOrders?.clearedPOs ?? []);
   const signedDRUploadsInProgress = useRef(new Set<string>());
   const paymentSequence = useRef(0);
+  const rejectionClaims = useRef(new Set<string>());
 
   useEffect(() => {
     setAllInquiries((current) => {
@@ -1153,7 +1167,7 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
           };
         }));
       } catch (error) {
-        console.error("[EnterFlow] Could not hydrate order attachments from IndexedDB.", error);
+        console.error("[EnterFlow] Could not hydrate order attachments from IndexedDB.");
       }
     };
     void hydrate();
@@ -1165,7 +1179,7 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
       try {
         await Promise.all(allInquiries.map((inquiry) => saveInquiryAttachments(inquiry.id, attachmentState(inquiry))));
       } catch (error) {
-        console.error("[EnterFlow] Could not persist order attachments to IndexedDB.", error);
+        console.error("[EnterFlow] Could not persist order attachments to IndexedDB.");
       }
     };
     void persistAttachments();
@@ -1328,9 +1342,18 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
     );
   };
 
-  const rejectInquiry: Ctx["rejectInquiry"] = (id, reason) => {
-    const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, archived: true, archiveReason: "rejected", archiveDate: now, archiveNote: reason } : x));
+  const rejectInquiry: Ctx["rejectInquiry"] = async (id, reason) => {
+    if (realMode || rejectionClaims.current.has(id)) return false;
+    if (!rejectDemoInquiry(allInquiries.find(row=>row.id===id),reason)) return false;
+    rejectionClaims.current.add(id);
+    const at=new Date().toISOString();
+    const result=await new Promise<boolean>(resolve=>setAllInquiries(previous=>{
+      const rejected=rejectDemoInquiry(previous.find(row=>row.id===id),reason,at);
+      resolve(!!rejected);
+      return rejected?previous.map(row=>row.id===id?rejected:row):previous;
+    }));
+    if(!result)rejectionClaims.current.delete(id);
+    return result;
   };
 
   const cancelInquiry: Ctx["cancelInquiry"] = (id, reason) => {

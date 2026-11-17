@@ -90,7 +90,7 @@ function loadRequests(): StockRequest[] {
     }
     return value;
   } catch (error) {
-    console.error("[EnterFlow] Could not load stock requests from localStorage.", error);
+    console.error("[EnterFlow] Could not load stock requests from localStorage.");
     return [];
   }
 }
@@ -106,7 +106,7 @@ export function StockRequestsProvider({ children, mode = "demo" }: { children: R
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
     } catch (error) {
-      console.error("[EnterFlow] Could not persist stock requests to localStorage.", error);
+      console.error("[EnterFlow] Could not persist stock requests to localStorage.");
     }
   }, [requests, realMode]);
 

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { auditRequestId } from './audit-request-id.js';
 import { registrationIdentityLockName } from './registration.service.js';
 import {
   validateApplicationId, validateApplicationReadParams,
@@ -147,7 +147,7 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
     return row.id;
   }
 
-  async function decide(action, request = {}) {
+  async function decide(action, request = {}, context) {
     try {
       const { actor: suppliedActor, applicationId, input } = request ?? {};
       const actor = snapshotActor(suppliedActor);
@@ -210,7 +210,7 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
           `INSERT INTO audit_events (actor_id, action, subject_type, subject_identifier, old_value, new_value, reason, request_id, occurred_at)
             VALUES (?, ?, 'client_application', ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))`,
           [actor.userId, `client_application.${status}`, applicationId,
-            JSON.stringify({ status: 'pending' }), JSON.stringify(decision), reason, randomUUID()]
+            JSON.stringify({ status: 'pending' }), JSON.stringify(decision), reason, auditRequestId(context)]
         );
         assertWrite(audit);
         return { success: true, data: decision, message: `Application ${status}.` };
@@ -218,5 +218,5 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
     } catch { return unavailable(); }
   }
 
-  return { listPending, getApplication, approve: args => decide('approve', args), reject: args => decide('reject', args) };
+  return { listPending, getApplication, approve: (args, context) => decide('approve', args, context), reject: (args, context) => decide('reject', args, context) };
 }

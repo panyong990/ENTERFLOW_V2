@@ -114,7 +114,7 @@ export function createAuthController({
 
   async function changeCurrentPassword(request, response) {
     try {
-      const result = await changePasswordService(request.auth.userId, request.body?.currentPassword, request.body?.newPassword);
+      const result = await changePasswordService(request.auth.userId, request.body?.currentPassword, request.body?.newPassword, { requestId: request.requestId });
       if (!result?.success) {
         const invalid = ['INVALID_REQUEST', 'INVALID_CREDENTIALS'].includes(result?.code);
         return response.status(invalid ? 400 : 503).json({

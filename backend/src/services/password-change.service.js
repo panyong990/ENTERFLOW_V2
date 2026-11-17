@@ -1,12 +1,12 @@
 import { pool } from '../config/database.js';
 import { hashPassword, verifyPassword } from './password.service.js';
-import { randomUUID } from 'node:crypto';
+import { auditRequestId } from './audit-request-id.js';
 
 export function createPasswordChangeService({ db, hash = hashPassword, verify = verifyPassword }) {
   if (!db || typeof db.getConnection !== 'function') throw new Error('A valid database pool is required.');
   if (typeof hash !== 'function' || typeof verify !== 'function') throw new Error('Password services are required.');
 
-  return async function changePassword(userId, currentPassword, newPassword) {
+  return async function changePassword(userId, currentPassword, newPassword, context) {
     if (typeof userId !== 'string' || !/^[1-9]\d{0,19}$/.test(userId) ||
       typeof currentPassword !== 'string' || currentPassword.length < 1 || currentPassword.length > 1024 ||
       typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 1024 ||
@@ -31,7 +31,7 @@ export function createPasswordChangeService({ db, hash = hashPassword, verify = 
       const [audit] = await connection.execute(`INSERT INTO audit_events
         (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at)
         VALUES (?,'user.password_changed','user',?,?,?,UTC_TIMESTAMP(3))`,
-      [userId, userId, JSON.stringify({ method: 'authenticated_password_change', sessionsRevoked: revoked.affectedRows }), randomUUID()]);
+      [userId, userId, JSON.stringify({ method: 'authenticated_password_change', sessionsRevoked: revoked.affectedRows }), auditRequestId(context)]);
       if (audit.affectedRows !== 1 || audit.warningStatus) throw new Error('Password audit did not complete.');
       await connection.commit();
       transaction = false;

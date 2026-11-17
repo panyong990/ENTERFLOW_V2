@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClientPortalService } from './client-portal.service.js';
 
+test('owned rejection history exposes approved narrative and date without archival actor or audit data',async()=>{
+  const row={id:'91',reference:'INQ-91',stageLabel:'Inquiry',archiveReason:'rejected',archiveNote:'Synthetic reason',archivedAt:'2026-11-17T00:00:00Z',archivedBy:'7',audit:'private',itemCount:0};
+  const h=harness({orderRows:[row]});const result=await h.service.detailOrder('2','91');
+  assert.equal(result.data.archiveReason,'rejected');assert.equal(result.data.archiveNote,'Synthetic reason');assert.equal(result.data.archivedAt,row.archivedAt);
+  assert.equal('archivedBy' in result.data,false);assert.equal('audit' in result.data,false);
+  assert.deepEqual(h.calls[0].params,['91','2']);assert.match(h.calls[0].sql,/WHERE o.id=\? AND o.client_id=\?/);
+});
+test('another client cannot retrieve rejection narrative from a missing owned parent',async()=>{
+  const h=harness();const result=await h.service.detailOrder('3','91');assert.equal(result.code,'NOT_FOUND');assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0].params,['91','3']);
+});
+
 function harness({ profileRows = [], orderRows = [], itemRows = [], quotationRows = [], quotationLineRows = [], purchaseOrderRows = [], jobOrderRows = [], shipmentRows = [], invoiceRows = [], paymentRows = [], dashboardCounts = {}, activityRows = [], deliveryRows = [], total = 0 } = {}) {
   const calls = [];
   const connection = {

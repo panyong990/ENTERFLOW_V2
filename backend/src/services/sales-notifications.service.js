@@ -1,6 +1,27 @@
 import { validateSalesNotificationListQuery } from '../validation/sales-notifications.validation.js';
 import { validateApplicationId } from '../validation/client-applications.validation.js';
 
+// Called with the business transaction's connection; no separate commit or delivery.
+export async function recordInquiryRejectionNotification(connection, order, actorId, reason) {
+  const [recipients] = await connection.execute(`SELECT CAST(id AS CHAR) id, account_type accountType
+    FROM users WHERE active=TRUE AND ((account_type='client' AND role_code='client' AND client_id=?)
+      OR (account_type='employee' AND role_code='sales')) ORDER BY id FOR SHARE`, [order.clientId]);
+  const ids = [...new Set(recipients.map(row => row.id))];
+  const clientRecipientAvailable = recipients.some(row => row.accountType === 'client');
+  const [event] = await connection.execute(`INSERT INTO notifications
+    (department,title,body,order_id,client_id,created_by) VALUES ('sales',?,?,?,?,?)`,
+  [`Inquiry rejected: ${order.reference}`, reason, order.id, order.clientId, actorId]);
+  if (event.affectedRows !== 1 || event.warningStatus || event.insertId == null) throw new Error('Notification write failed.');
+  if (typeof event.insertId==='number' && !Number.isSafeInteger(event.insertId)) throw new Error('Unsafe notification identifier.');
+  const notificationId = String(event.insertId);
+  if (!validateApplicationId(notificationId).success) throw new Error('Invalid notification identifier.');
+  for (const userId of ids) {
+    const [row] = await connection.execute('INSERT INTO notification_recipients (notification_id,user_id) VALUES (?,?)', [notificationId, userId]);
+    if (row.affectedRows !== 1 || row.warningStatus) throw new Error('Notification recipient write failed.');
+  }
+  return { notificationId, recipientCount: ids.length, clientRecipientAvailable };
+}
+
 async function withConnection(db, work) {
   const connection = await db.getConnection();
   try { return await work(connection); } finally { connection.release(); }

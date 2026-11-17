@@ -268,7 +268,8 @@ export interface CancellationRequestHistory {
   reason: string;
   requestedAt: string;
   requestedBy: "client" | "management";
-  resolution: "pending" | "approved" | "declined";
+  resolution: "pending" | "approved" | "declined" | "completed";
+  response?: string;
   resolvedAt?: string;
 }
 

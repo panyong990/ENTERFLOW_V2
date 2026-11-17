@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createAdminService} from './admin.service.js';
+import { auditHttp, uuidPattern } from '../../test/support/audit-http.js';
 const actor={userId:'7',roleCode:'admin',accountType:'employee'};
 const id='9007199254740993';
 const profile={employeeId:'QA-1',name:'Synthetic',department:'QA',jobTitle:'Tester',email:'qa@example.invalid',username:'qa',phone:''};
@@ -130,4 +131,45 @@ test('concurrent writers serialize before transaction and stale second write can
  const service=createAdminService({db});const initial=await service.execute('employee',{actor,id});order.length=0;
  const results=await Promise.all([1,2].map(()=>service.execute('deactivateEmployee',{actor,id,body:{revision:initial.data.revision}})));
  assert.equal(results.filter(result=>result.success).length,1);assert.equal(results.filter(result=>result.code==='STALE_RECORD').length,1);assert.equal(audits,1);assert.deepEqual(order,['lock','begin','lock','begin']);
+});
+
+test('HTTP Admin audit uses the response request ID and retains distinct requests and audit payloads', async t => {
+  const h = harness();
+  const http = await auditHttp(t, 'admin', h.service);
+  const ids = [];
+  for (let i = 0; i < 2; i++) {
+    const response = await http.post('/api/admin/employees', { ...profile, roleCode: 'sales', initialPassword: 'synthetic-only-123' });
+    assert.equal(response.status, 201);
+    const audit = h.state.audits[i];
+    assert.deepEqual(audit.slice(0, 5), ['7', 'employee.created', 'user', id, null]);
+    assert.deepEqual(JSON.parse(audit[5]), response.body.data);
+    assert.equal(audit[6], response.requestId);
+    assert.doesNotMatch(JSON.stringify(audit), /synthetic-only-123|argon2id/);
+    ids.push(response.requestId);
+  }
+  assert.notEqual(ids[0], ids[1]);
+  assert.equal(h.commits, 2);
+  assert.equal(h.rollbacks, 0);
+});
+
+test('Admin audit failure with HTTP context preserves rollback and safe HTTP failure', async t => {
+  const h = harness({ failAt: 'INSERT INTO audit_events' });
+  const http = await auditHttp(t, 'admin', h.service);
+  const response = await http.post('/api/admin/employees', { ...profile, roleCode: 'sales', initialPassword: 'synthetic-only-123' });
+  assert.equal(response.status, 503);
+  assert.equal(response.body.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(h.state.audits.length, 0);
+  assert.equal(h.commits, 0);
+  assert.equal(h.rollbacks, 1);
+  const attempt = h.calls.find(([sql]) => sql.startsWith('INSERT INTO audit_events'));
+  assert.equal(attempt[1][6], response.requestId);
+  assert.doesNotMatch(JSON.stringify(response.body), /PRIVATE_SQL/);
+});
+
+test('standalone Admin audits retain generated request IDs without HTTP context', async () => {
+  const h = harness();
+  await h.execute('createEmployee', { body: { ...profile, roleCode: 'sales', initialPassword: 'synthetic-only-123' } });
+  assert.equal(h.state.audits.length, 1);
+  assert.match(h.state.audits[0][6], uuidPattern);
+  assert.equal(h.commits, 1);
 });

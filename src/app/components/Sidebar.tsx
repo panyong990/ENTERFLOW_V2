@@ -1,3 +1,4 @@
+import { useSession } from "../store/session";
 import { useState } from "react";
 import { Sheet,SheetContent,SheetTitle,SheetTrigger } from "./ui/sheet";
 import { Menu, LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt, UserRoundCog, ShieldCheck, Users } from "lucide-react";
@@ -6,6 +7,7 @@ import { roleMetas } from "./Login";
 import { allowedFor } from "../role-access";
 
 const navItems = [
+  { id: "inquiry-rejections", label: "Rejected Inquiries", icon: ClipboardList },
   { id: "dashboard",  label: "Dashboard",         icon: LayoutDashboard },
   { id: "sales",      label: "Sales & Orders",    icon: ShoppingCart },
   { id: "production", label: "Production Floor",  icon: Factory },
@@ -46,8 +48,9 @@ interface SidebarProps {
 }
 
 function SidebarContent({ active = "dashboard", onNavigate, onLogout, role, badges = {}, unreadNotif = 0, userName }: SidebarProps) {
+  const {mode}=useSession();
   const allowed = allowedFor[role];
-  const visible = navItems.filter((n) => allowed.includes(n.id) && !(role === "accounting" && n.id === "sales"));
+  const visible = navItems.filter((n) => allowed.includes(n.id) && (n.id!=='inquiry-rejections'||mode==='real') && !(role === "accounting" && n.id === "sales"));
   const meta = roleMetas[role];
   const sb = { ...roleSidebar[role], user: userName ?? roleSidebar[role].user };
   const initials = sb.user.split(" ").map(s => s[0]).slice(0, 2).join("");

@@ -43,7 +43,7 @@ const stages: Record<string, Stage> = { Inquiry: 'inquiry', 'New Inquiry': 'inqu
 export function project(bundle: OrderBundle, profile: ClientProfile, surface: Surface): ClientView[] {
   const { order, quotations, purchaseOrder } = bundle;
   const latest = quotations.at(-1);
-  const base = { id: order.id, orderId: order.id, source: bundle, publicStage: order.stageLabel ?? 'Stage unavailable',
+  const base = { archived:!!order.archivedAt,archiveReason:order.archiveReason??undefined,archiveNote:order.archiveNote??undefined,archiveDate:order.archivedAt??undefined, id: order.id, orderId: order.id, source: bundle, publicStage: order.stageLabel ?? 'Stage unavailable',
     code: order.reference, clientName: profile.companyName, contactPerson: profile.contactPerson ?? '—',
     paymentTerms: order.paymentTermLabel ?? '—', submittedDate: order.submittedAt ? new Date(order.submittedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : 'Unavailable',
     stage: stages[order.stageLabel ?? ''] ?? 'unavailable', products: order.items.map(product),

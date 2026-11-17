@@ -1,44 +1,22 @@
 
-import app from './app.js';
-import { pool, testDatabaseConnection } from './config/database.js';
-import { resolveServerBinding, validateRuntimeConfig } from './config/runtime-config.js';
+// Catch module initialization failures too (for example CA file errors), whose
+// native exceptions can contain configured paths or other infrastructure data.
+try {
+  const { default: app } = await import('./app.js');
+  const { pool, testDatabaseConnection } = await import('./config/database.js');
+  const { resolveServerBinding, validateRuntimeConfig } = await import('./config/runtime-config.js');
+  const { createServerLifecycle } = await import('./server-lifecycle.js');
 
-const { host, port } = resolveServerBinding();
-validateRuntimeConfig();
+  const { host, port } = resolveServerBinding();
+  validateRuntimeConfig();
 
-let server;
-
-async function start() {
-  await testDatabaseConnection();
-  server = app.listen(port, host, () => {
-    console.log(`Enter-Flow API running at http://${host}:${port}`);
+  const lifecycle = createServerLifecycle({
+    app, testDatabaseConnection, pool, host, port, logger: console, processAdapter: process
   });
-}
-
-async function shutdown() {
-  console.log('\nShutting down Enter-Flow API...');
-
-  if (!server) {
-    await pool.end();
-    return;
-  }
-  server.close(async () => {
-    try {
-      await pool.end();
-      console.log('Server and database connections closed.');
-      process.exit(0);
-    } catch (error) {
-      console.error('Enter-Flow API shutdown failed.');
-      process.exit(1);
-    }
-  });
-}
-
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
-start().catch(async error => {
-  console.error('Enter-Flow API startup failed.');
-  await pool.end().catch(() => {});
+  await lifecycle.run();
+} catch {
+  console.error(JSON.stringify({
+    event: 'server_initialization_failed', category: 'startup_configuration_error'
+  }));
   process.exitCode = 1;
-});
+}

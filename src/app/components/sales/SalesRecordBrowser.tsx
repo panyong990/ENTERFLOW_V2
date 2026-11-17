@@ -148,7 +148,7 @@ export function OrderDetail({ detail, loading, error, retry, onClose }: { detail
       {detail && !loading && !error && <div className="space-y-6 p-6">
         <section className="grid grid-cols-2 gap-4 rounded-lg bg-slate-50 p-4">
           <DetailField label="Client" value={detail.companyName} /><DetailField label="Contact" value={fieldLabel(detail.contactPerson)} />
-          <DetailField label="Stage" value={detail.stageLabel} /><DetailField label="Record state" value={detail.archivedAt ? "Archived" : "Open"} />
+          {detail.archiveReason==='rejected'&&<section aria-label="Inquiry rejection"><b>Rejected ? {detail.archivedAt}</b><p className="whitespace-pre-wrap">{detail.archiveNote}</p></section>}<DetailField label="Stage" value={detail.stageLabel} /><DetailField label="Record state" value={detail.archivedAt ? "Archived" : "Open"} />
           <DetailField label="Submitted" value={formatDate(detail.submittedAt)} /><DetailField label="Requested delivery" value={formatDate(detail.requestedDeliveryDate)} />
           <DetailField label="Payment terms" value={detail.paymentTermLabel} /><DetailField label="Delivery method" value={fieldLabel(detail.deliveryMethodLabel)} />
         </section>

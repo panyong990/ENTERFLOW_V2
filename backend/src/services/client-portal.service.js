@@ -9,6 +9,7 @@ const profileColumns = `CAST(c.id AS CHAR) id, c.company_name companyName, c.ind
 
 const orderColumns = `CAST(o.id AS CHAR) id, o.reference,
  o.stage_code stageCode, os.label stageLabel, os.display_order stageDisplayOrder,
+ o.archive_reason archiveReason,o.archive_note archiveNote,DATE_FORMAT(o.archived_at,'%Y-%m-%dT%H:%i:%s.%fZ') archivedAt,
  pt.label paymentTermLabel, dm.label deliveryMethodLabel,
  DATE_FORMAT(o.submitted_at, '%Y-%m-%dT%H:%i:%s.%fZ') submittedAt,
  DATE_FORMAT(o.requested_delivery_date, '%Y-%m-%d') requestedDeliveryDate,
@@ -40,6 +41,7 @@ function publicOrder(row) {
   if (!row) return null;
   return {
     id: row.id, reference: row.reference, stageLabel: row.stageLabel,
+    archiveReason: row.archiveReason ?? null, archiveNote: row.archiveReason === 'rejected' ? row.archiveNote ?? null : null, archivedAt: row.archivedAt ?? null,
     paymentTermLabel: row.paymentTermLabel, deliveryMethodLabel: row.deliveryMethodLabel,
     submittedAt: row.submittedAt, requestedDeliveryDate: row.requestedDeliveryDate,
     fulfillmentCompletedAt: row.fulfillmentCompletedAt, updatedAt: row.updatedAt,

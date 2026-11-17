@@ -24,7 +24,48 @@ This report does not authorize database changes or production deployment.
 - Failed migration retry protection verified.
 - Advisory lock and server identity safeguards verified.
 
-### Latest test evidence
+### Task 28 evidence reconciliation - 2026-11-17
+
+Task 28 remains **PARTIAL / BLOCKED**. This documentation-only reconciliation
+does not rerun tests or inspections. The earlier 9-test result is historical;
+the latest recorded migration-core evidence remains **17 passed, 0 failed,
+0 skipped** (`npm run db:test`, underlying command
+`node --test database/migration-core.test.mjs`). Do not combine those stages or
+treat separate baseline-verifier evidence as a change to the core-suite count.
+
+The one approved container identity inspection succeeded, exit 0:
+
+```text
+Name=/enterflow-mysql-dev Image=mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902 State=running
+```
+
+The initial sandbox attempt was denied Docker named-pipe access; the authorized
+elevated retry succeeded. This proves the reported container name, configured
+image, and running state only. It does not verify port mapping, MySQL
+connectivity, selected database, contents, TLS identity, or migration-history
+integrity. The image digest is not a migration checksum. The inspection is
+previously obtained evidence, not a Docker operation performed in this update.
+
+Offline review identified a possible explicit-column history inspection using
+`file`, `state`, `method`, `started_at`, and `applied_at`, excluding `checksum`
+and `error_code` at retrieval. It remains **PROPOSED / NOT EXECUTED** and requires
+explicit target, operator, connection/TLS, SQL, output, and deferred-row metadata
+approval. It could provide recorded identity/state/timestamp evidence, not
+checksum integrity, proof of execution order, or schema/data correctness.
+
+The CLI connects before core preflight; its normal `SELECT *` history load is
+unsuitable for this limited inspection. Stephanie remains the sole designated
+recovery operator. No alternate operator, credential copying, permission
+workaround, or broader authorization follows from the container check.
+
+Actual live development migration-history integrity remains **UNVERIFIED /
+BLOCKED**. The historical checksum-inspection deviation disclosure is unchanged,
+and its formal disposition remains outstanding. Protected migration/checksum
+restrictions and applicable formal/production acceptance gates remain in force.
+See the [migration guide's evidence reconciliation](../database/TEAM_MIGRATIONS.md#evidence-reconciliation---2026-11-17)
+for the exact inspection command, evidence boundaries, and approval requirements.
+
+### Latest recorded Task 28 test evidence
 
 Command: npm run db:test
 Runtime: Node.js v24.21.0
@@ -32,12 +73,50 @@ Passed: 17
 Failed: 0
 Skipped: 0
 
+Underlying command: `node --test database/migration-core.test.mjs`.
+The earlier 9-test result in the readiness assessment is an earlier development
+stage. Preserve it as history; do not combine the counts. The 17/17 result is
+inherited recorded evidence, not a new execution in the 2026-11-17 documentation
+reconciliation. All fixtures and database services in this suite are synthetic;
+neither actual database nor live migration-history integrity is established.
+
+### Implemented safeguards versus outstanding acceptance
+
+The migration core performs preflight discovery/deferral and blocks seed or
+baseline operations before core database queries when deferred migrations exist.
+The CLI establishes its database connection before invoking the core. CLI
+`status`, `seed`, `baseline`, and `migrate` are therefore not safe under a
+no-database-connection restriction and were not executed in this reconciliation.
+
+Baseline schema/manifest/legacy-marker/seed safeguards are implemented locally,
+but dedicated `verifyBaseline` execution evidence is absent from the inspected
+17-test suite. This is not baseline acceptance or authorization to adopt one.
+
+Live migration-history integrity remains UNVERIFIED / BLOCKED pending exact
+target, operator, operation, and permitted-evidence authorization. The normal
+core history query uses `SELECT *`; skipping deferred checksum properties in
+application logic does not prevent retrieval of protected columns. Any future
+authorized metadata inspection must exclude protected values at retrieval.
+If restrictions prevent sufficient verification, retain the gap.
+
 ### Outstanding restrictions
 
 - Live migration-history integrity remains unverified.
 - Historical checksum-inspection deviation remains documented.
+- The deviation cannot be undone; formal disposition by the responsible approver
+  remains outstanding. No waiver or full Task 28 acceptance is granted here.
 - Migration 007 remains deferred and must not be inspected, modified, or executed without separate authorization.
 - Database-connected migration commands require explicit target-specific approval.
+- Stephanie remains the sole designated recovery operator under the integration
+  handoff. No alternate operators, identity/permission workarounds, or credential
+  copying are authorized; previous approvals do not override current restrictions.
+- This reconciliation prohibits database connections/queries, Docker operations,
+  migrations, and protected migration/checksum inspection or alteration.
+- Production prerequisites remain unverified: approved target identity, TLS CA
+  and certificate identity, separate least-privilege DDL credentials, tested
+  restorable backup, partial-DDL recovery plan, owner/change window and exact-set
+  approval, and post-change schema/data and application checks. The CLI is
+  local-only; synthetic evidence does not establish production readiness.
 
 Task 28 decision: OFFLINE SAFETY WORK VERIFIED; FORMAL TASK REMAINS PARTIAL/BLOCKED.
 
@@ -108,7 +187,10 @@ The migration-core tests used synthetic fixtures, not live migration-history ver
 
 ## Final Decision
 
-Task 28: Offline verification completed; formal closure blocked by authorized live history verification.
+Task 28: PARTIAL. Offline safeguards have recorded synthetic evidence; live
+history integrity verification is blocked pending authorization, formal
+disposition of the historical deviation is outstanding, dedicated baseline
+verifier evidence is missing, and production prerequisites remain unverified.
 
 Task 32: Local logging implementation and documentation completed; formal production readiness remains partial.
 

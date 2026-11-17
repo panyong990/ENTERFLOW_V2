@@ -22,6 +22,14 @@ function adapter() {
   return module.exports;
 }
 
+test('rejection adapter submits only reason and revision and history reads use bounded pagination',()=>{
+  const service=adapter();
+  assert.deepEqual(service.rejectSalesInquiry('91','Synthetic reason','a'.repeat(64)),{
+    path:'/api/sales/orders/91/rejection',options:{method:'POST',body:{reason:'Synthetic reason',revision:'a'.repeat(64)}}
+  });
+  assert.equal(service.listInquiryRejections(2).path,'/api/sales/inquiry-rejections?page=2&pageSize=25');
+});
+
 test('Sales order list adapter uses backend filters and forwards cancellation', () => {
   const { listSalesOrders } = adapter();
   const signal = new AbortController().signal;

@@ -1,4 +1,7 @@
-import { validateSalesOrderId, validateSalesOrderListQuery } from '../validation/sales.validation.js';
+import { createHash } from 'node:crypto';
+import { auditRequestId } from './audit-request-id.js';
+import { recordInquiryRejectionNotification } from './sales-notifications.service.js';
+import { validateInquiryRejection, validateSalesOrderId, validateSalesOrderListQuery } from '../validation/sales.validation.js';
 
 const orderColumns = `CAST(o.id AS CHAR) id, o.reference, CAST(o.client_id AS CHAR) clientId,
  c.company_name companyName, o.contact_person contactPerson, o.stage_code stageCode,
@@ -6,7 +9,7 @@ const orderColumns = `CAST(o.id AS CHAR) id, o.reference, CAST(o.client_id AS CH
  pt.label paymentTermLabel, o.delivery_method_code deliveryMethodCode, dm.label deliveryMethodLabel,
  DATE_FORMAT(o.submitted_at, '%Y-%m-%dT%H:%i:%s.%fZ') submittedAt, o.urgent,
  DATE_FORMAT(o.requested_delivery_date, '%Y-%m-%d') requestedDeliveryDate,
- o.general_notes generalNotes, o.archive_reason archiveReason,
+ o.general_notes generalNotes, o.archive_reason archiveReason, o.archive_note archiveNote, CAST(o.archived_by AS CHAR) archivedBy,
  DATE_FORMAT(o.archived_at, '%Y-%m-%dT%H:%i:%s.%fZ') archivedAt,
  DATE_FORMAT(o.fulfillment_completed_at, '%Y-%m-%dT%H:%i:%s.%fZ') fulfillmentCompletedAt,
  DATE_FORMAT(o.updated_at, '%Y-%m-%dT%H:%i:%s.%fZ') updatedAt,
@@ -22,6 +25,22 @@ const orderColumns = `CAST(o.id AS CHAR) id, o.reference, CAST(o.client_id AS CH
  (SELECT COALESCE(SUM(p.verified_amount), 0) FROM payments p WHERE p.order_id=o.id AND p.verification_status='verified') verifiedPaymentAmount`;
 
 const detailOrderColumns = orderColumns;
+
+// One canonical snapshot for read and locked mutation; child changes participate.
+export function inquiryRevision(order, requests = []) {
+  const state = Object.fromEntries(['id','clientId','stageCode','archiveReason','archiveNote','archivedAt','archivedBy','updatedAt'].map(key => [key, order[key] ?? null]));
+  state.cancellations = requests.filter(row => row.kind === 'cancellation' && row.status === 'pending')
+    .map(row => Object.fromEntries(['id','kind','reason','status','requestedBy','requestedAt'].map(key => [key, row[key] ?? null])))
+    .sort((a,b) => BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0);
+  return createHash('sha256').update(JSON.stringify(state)).digest('hex');
+}
+const cancellationColumns = `CAST(id AS CHAR) id, kind, reason, status, CAST(requested_by AS CHAR) requestedBy,
+ DATE_FORMAT(requested_at, '%Y-%m-%dT%H:%i:%s.%fZ') requestedAt`;
+const rejectionColumns = `CAST(o.id AS CHAR) id, o.reference, CAST(o.client_id AS CHAR) clientId,
+ o.stage_code stageCode, o.archive_reason archiveReason, o.archive_note archiveNote,
+ CAST(o.archived_by AS CHAR) archivedBy, DATE_FORMAT(o.archived_at, '%Y-%m-%dT%H:%i:%s.%fZ') archivedAt,
+ DATE_FORMAT(o.updated_at, '%Y-%m-%dT%H:%i:%s.%fZ') updatedAt`;
+
 
 function baseProject(row) {
   if (!row) return null;
@@ -125,12 +144,12 @@ export function createSalesOrdersService({ db }) {
         DATE_FORMAT(s.dispatched_at, '%Y-%m-%dT%H:%i:%s.%fZ') dispatchedAt,
         DATE_FORMAT(s.delivered_at, '%Y-%m-%dT%H:%i:%s.%fZ') deliveredAt FROM shipments s
         JOIN delivery_methods dm ON dm.code=s.delivery_method_code WHERE s.order_id=? ORDER BY s.id`, [id]);
-      const [requests] = await connection.execute(`SELECT CAST(r.id AS CHAR) id, r.kind, r.reason, r.response, r.status,
+      const [requests] = await connection.execute(`SELECT CAST(r.id AS CHAR) id, r.kind, r.reason, r.response, r.status, CAST(r.requested_by AS CHAR) requestedBy,
         DATE_FORMAT(r.requested_at, '%Y-%m-%dT%H:%i:%s.%fZ') requestedAt,
         DATE_FORMAT(r.decided_at, '%Y-%m-%dT%H:%i:%s.%fZ') decidedAt FROM order_requests r WHERE r.order_id=? ORDER BY r.id DESC`, [id]);
       return {
         success: true,
-        data: { ...order, items, quotations: quotations.map(q => ({ ...q, noteHighlighted: Boolean(Number(q.noteHighlighted)), lines: quotationLines.filter(line => line.quotationId === q.id) })), purchaseOrders, jobOrders: jobOrders.map(jo => ({ ...jo, paused: Boolean(Number(jo.paused)), currentStageCursor: Number(jo.currentStageCursor) })), invoices, payments, shipments, requests }
+        data: { ...order, revision: inquiryRevision(order, requests), items, quotations: quotations.map(q => ({ ...q, noteHighlighted: Boolean(Number(q.noteHighlighted)), lines: quotationLines.filter(line => line.quotationId === q.id) })), purchaseOrders, jobOrders: jobOrders.map(jo => ({ ...jo, paused: Boolean(Number(jo.paused)), currentStageCursor: Number(jo.currentStageCursor) })), invoices, payments, shipments, requests }
       };
     });
   }
@@ -308,5 +327,73 @@ export function createSalesOrdersService({ db }) {
     });
   }
 
-  return { list, detail, quotations, purchaseOrder, jobOrders, delivery };
+
+  async function rejectionHistory(query) {
+    const validation = validateSalesOrderListQuery(query);
+    if (!validation.success) return validation;
+    const { page: requestedPage, pageSize, q } = validation.data;
+    return withConnection(db, async connection => {
+      const where = "o.archive_reason='rejected' AND o.archived_at IS NOT NULL AND (LOCATE(?,o.reference)>0 OR LOCATE(?,c.company_name)>0)";
+      const [[count]] = await connection.execute(`SELECT COUNT(*) total FROM orders o JOIN clients c ON c.id=o.client_id WHERE ${where}`, [q,q]);
+      const total = Number(count.total), page = Math.min(requestedPage, Math.max(1, Math.ceil(total/pageSize)));
+      const [items] = await connection.execute(`SELECT CAST(o.id AS CHAR) id,o.reference,c.company_name companyName,
+        o.archive_note archiveNote,DATE_FORMAT(o.archived_at,'%Y-%m-%dT%H:%i:%s.%fZ') archivedAt
+        FROM orders o JOIN clients c ON c.id=o.client_id WHERE ${where} ORDER BY o.archived_at DESC,o.id DESC LIMIT ? OFFSET ?`, [q,q,String(pageSize),String((page-1)*pageSize)]);
+      return { success:true, data:{items,total,page,pageSize} };
+    });
+  }
+
+  async function rejectInquiry(id, body, actor, context) {
+    const validation = validateInquiryRejection(body);
+    if (!validation.success) return validation;
+    const identity = validateSalesOrderId(id);
+    if (!identity.success) return identity;
+    const failure = code => ({ success:false, code });
+    if (actor?.roleCode !== 'sales' || actor?.accountType !== 'employee' || !validateSalesOrderId(actor.userId).success) return failure('FORBIDDEN');
+    let connection, transaction=false, commitAttempted=false, reusable=true;
+    try {
+      connection = await db.getConnection();
+      await connection.beginTransaction(); transaction=true;
+      const [actors] = await connection.execute("SELECT id FROM users WHERE id=? AND active=TRUE AND role_code='sales' AND account_type='employee' FOR SHARE", [actor.userId]);
+      if (actors.length !== 1) return failure('FORBIDDEN');
+      const [orders] = await connection.execute(`SELECT ${rejectionColumns} FROM orders o WHERE o.id=? FOR UPDATE`, [id]);
+      const order = orders[0];
+      if (!order) return failure('NOT_FOUND');
+      if (order.archivedAt && order.archiveReason === 'rejected') return failure('INQUIRY_ALREADY_REJECTED');
+      const [requests] = await connection.execute(`SELECT ${cancellationColumns} FROM order_requests WHERE order_id=? AND kind='cancellation' AND status='pending' ORDER BY id FOR UPDATE`, [id]);
+      if (inquiryRevision(order,requests) !== validation.data.revision) return failure('STALE_RECORD');
+      if (order.archivedAt || order.archiveReason || order.stageCode !== 'inquiry') return failure('INVALID_STATE');
+      const [updated] = await connection.execute(`UPDATE orders SET archive_reason='rejected',archive_note=?,archived_by=?,archived_at=UTC_TIMESTAMP(3),
+        updated_at=GREATEST(UTC_TIMESTAMP(3),updated_at + INTERVAL 1000 MICROSECOND) WHERE id=? AND stage_code='inquiry' AND archived_at IS NULL AND archive_reason IS NULL`, [validation.data.reason,actor.userId,id]);
+      if (updated.affectedRows !== 1 || updated.warningStatus) throw new Error('Archive write failed.');
+      const [resolved] = await connection.execute(`UPDATE order_requests SET status='completed',response='Resolved due to inquiry rejection.',decided_by=?,decided_at=UTC_TIMESTAMP(3)
+        WHERE order_id=? AND kind='cancellation' AND status='pending'`, [actor.userId,id]);
+      if (resolved.affectedRows !== requests.length || resolved.warningStatus) throw new Error('Cancellation resolution failed.');
+      const notification = await recordInquiryRejectionNotification(connection,order,actor.userId,validation.data.reason);
+      const [saved] = await connection.execute(`SELECT ${rejectionColumns} FROM orders o WHERE o.id=?`, [id]);
+      if (!saved[0]) throw new Error('Archive result unavailable.');
+      const data = { ...saved[0], revision:inquiryRevision(saved[0],[]), resolvedCancellationIds:requests.map(row=>row.id), notification };
+      const [audit] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,old_value,new_value,reason,request_id,occurred_at)
+        VALUES (?,'inquiry.rejected','order',?,?,?,?,?,UTC_TIMESTAMP(3))`,
+      [actor.userId,id,JSON.stringify({id:order.id,clientId:order.clientId,stageCode:order.stageCode,archiveReason:order.archiveReason,archivedAt:order.archivedAt,revision:validation.data.revision,cancellations:requests.map(row=>({id:row.id,status:row.status}))}),
+        JSON.stringify({...data,resolvedCancellationStatus:'completed'}),validation.data.reason,auditRequestId(context)]);
+      if (audit.affectedRows !== 1 || audit.warningStatus) throw new Error('Audit write failed.');
+      commitAttempted=true; await connection.commit(); transaction=false;
+      if (!notification.clientRecipientAvailable) {
+        // A committed rejection is retained even when no active client can be notified.
+        try { console.warn(JSON.stringify({event:'inquiry_rejection_client_recipient_unavailable',requestId:auditRequestId(context),orderId:id})); } catch {}
+      }
+      return { success:true, data };
+    } catch {
+      reusable=false;
+      return failure(commitAttempted ? 'WRITE_OUTCOME_UNKNOWN' : 'SERVICE_UNAVAILABLE');
+    } finally {
+      if (connection) {
+        if (transaction) try { await connection.rollback(); } catch { reusable=false; }
+        try { reusable ? connection.release() : connection.destroy(); } catch { try { connection.destroy(); } catch {} }
+      }
+    }
+  }
+
+  return { list, detail, quotations, purchaseOrder, jobOrders, delivery, rejectInquiry, rejectionHistory };
 }

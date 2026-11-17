@@ -1,3 +1,4 @@
+import { InquiryRejectionArchive } from './sales/InquiryRejectionArchive';
 import { useEffect, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { api } from "../api/client";
@@ -75,6 +76,7 @@ function DemoReferenceScreen({ role, route, onNavigate }: { role: EmployeeRole; 
 }
 
 export function RealRoleWorkspace({ role, route, onNavigate }: { role: EmployeeRole; route: string; onNavigate: (id: string) => void }) {
+  if (route==='inquiry-rejections' && (role==='owner'||role==='operations')) return <InquiryRejectionArchive />;
   if (role === "sales") return <RealSalesWorkspace route={route} onNavigate={onNavigate} />;
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     <LiveDataNotice role={role} />

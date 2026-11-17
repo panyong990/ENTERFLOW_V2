@@ -110,6 +110,15 @@ owner decision before implementation.
 
 ## Confirmed frontend inquiry workflow
 
+**Task 05 approved-contract update:** the descriptions below preserve the earlier
+Demo discovery snapshot. The approved inquiry rejection contract now permits
+rejection despite pending cancellation, completes those requests without deleting
+history, and targets Client/Sales notifications rather than Owner/Operations by
+default. See [Sales Inquiry Rejection Contract](SALES_INQUIRY_REJECTION_CONTRACT.md)
+for implementation, revision/audit/notification semantics and verification limits.
+This update does not approve neighboring cancellation, quotation, PO, payment or
+JO workflows, database access, or migration work.
+
 The following workflow is confirmed from the current frontend implementation,
 primarily `src/app/components/ClientPortal.tsx`,
 `src/app/components/SalesOrders.tsx`, and `src/app/store/orders.tsx`. It

@@ -1,8 +1,8 @@
 export const allowedFor = {
   /* Owner sees high-level dashboards, client management, and a read-only workforce directory. */
-  owner: ["analytics", "clients", "users", "notifications", "settings"],
+  owner: ["inquiry-rejections", "analytics", "clients", "users", "notifications", "settings"],
   /* Operations Manager: full operational access — analytics and user management are owner-only */
-  operations: ["dashboard", "sales", "production", "inventory", "waybill", "logistics", "clients", "notifications", "settings"],
+  operations: ["inquiry-rejections", "dashboard", "sales", "production", "inventory", "waybill", "logistics", "clients", "notifications", "settings"],
   sales: ["dashboard", "sales", "clients", "notifications"],
   accounting: ["dashboard", "sales", "delivery-receipts", "accounting", "notifications"],
   production: ["dashboard", "production", "notifications"],

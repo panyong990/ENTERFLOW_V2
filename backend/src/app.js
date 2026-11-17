@@ -1,6 +1,7 @@
 ﻿import express from 'express';
 import { requestIdMiddleware } from './middleware/request-id.middleware.js';
 import { requestLogMiddleware } from './middleware/request-log.middleware.js';
+import { createRequire } from 'node:module';
 import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import clientApplicationsRoutes from './routes/client-applications.routes.js';
@@ -10,6 +11,9 @@ import salesWorkspaceRoutes from './routes/sales-workspace.routes.js';
 import { adminJson, adminError } from './middleware/admin-error.middleware.js';
 import salesRoutes from './routes/sales.routes.js';
 import clientRoutes from './routes/client.routes.js';
+
+// Resolve Express's own responder even when dependencies are not hoisted.
+const finalhandler = createRequire(import.meta.resolve('express'))('finalhandler');
 
 export function createApp({
   authenticationRoutes = authRoutes,
@@ -47,6 +51,23 @@ export function createApp({
       : status === 400 ? 'Invalid JSON request body.'
       : 'Registration service is temporarily unavailable.';
     return response.status(status).json({ success: false, message });
+  });
+
+  // Use Express's existing final responder with an allowlisted logging callback.
+  // Keep its status, headers, body and headers-sent behavior; never log the error.
+  app.use((error, request, response, next) => {
+    const parserFailure = ['entity.too.large', 'encoding.unsupported',
+      'charset.unsupported', 'entity.parse.failed', 'request.aborted',
+      'request.size.invalid'].includes(error?.type);
+    finalhandler(request, response, {
+      env: app.get('env'),
+      onerror: () => console.error(JSON.stringify({
+        event: 'http_request_failed',
+        category: parserFailure ? 'request_body_error' : 'unhandled_error',
+        requestId: request.requestId,
+        statusCode: response.statusCode
+      }))
+    })(error);
   });
 
   return app;

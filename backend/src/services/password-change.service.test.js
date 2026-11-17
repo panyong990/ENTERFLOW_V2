@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPasswordChangeService } from './password-change.service.js';
+import { auditHttp, uuidPattern } from '../../test/support/audit-http.js';
 
 function fixture({ active = 1, valid = true, failAt = '' } = {}) {
   const calls = [];
@@ -58,4 +59,37 @@ test('transaction rolls back if audit fails after password/session changes', asy
   assert.equal((await h.change('12', 'Current-password-123', 'New-password-123')).code, 'SERVICE_UNAVAILABLE');
   assert.equal(h.committed, false);
   assert.equal(h.rolledBack, true);
+});
+
+test('HTTP password-change audit matches the response request ID and keeps its safe payload', async t => {
+  const h = fixture();
+  const http = await auditHttp(t, 'password', h.change);
+  const response = await http.post('/api/auth/change-password', { currentPassword: 'Current-password-123', newPassword: 'New-password-123' });
+  assert.equal(response.status, 200);
+  const audit = h.calls.find(call => call.sql.startsWith('INSERT INTO audit_events'));
+  assert.deepEqual(audit.params.slice(0, 2), ['12', '12']);
+  assert.deepEqual(JSON.parse(audit.params[2]), { method: 'authenticated_password_change', sessionsRevoked: 2 });
+  assert.equal(audit.params[3], response.requestId);
+  assert.doesNotMatch(JSON.stringify(audit), /Current-password|New-password|OLD_HASH|NEW_HASH/);
+  assert.equal(h.committed, true);
+  assert.equal(h.rolledBack, false);
+});
+
+test('HTTP password audit failure rolls back and preserves the safe service-unavailable response', async t => {
+  const h = fixture({ failAt: 'INSERT INTO audit_events' });
+  const http = await auditHttp(t, 'password', h.change);
+  const response = await http.post('/api/auth/change-password', { currentPassword: 'Current-password-123', newPassword: 'New-password-123' });
+  assert.equal(response.status, 503);
+  assert.equal(h.committed, false);
+  assert.equal(h.rolledBack, true);
+  const audit = h.calls.find(call => call.sql.startsWith('INSERT INTO audit_events'));
+  assert.equal(audit.params[3], response.requestId);
+  assert.doesNotMatch(JSON.stringify(response.body), /PRIVATE_DATABASE_ERROR/);
+});
+
+test('standalone password audits retain generated request IDs without HTTP context', async () => {
+  const h = fixture();
+  assert.deepEqual(await h.change('12', 'Current-password-123', 'New-password-123'), { success: true });
+  const audit = h.calls.find(call => call.sql.startsWith('INSERT INTO audit_events'));
+  assert.match(audit.params[3], uuidPattern);
 });

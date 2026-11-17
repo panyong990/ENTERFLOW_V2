@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { auditRequestId } from './audit-request-id.js';
 import { hashPassword } from './password.service.js';
 import { registrationIdentityLockName } from './registration.service.js';
 import { getPermissions } from '../config/permissions.js';
@@ -75,10 +76,10 @@ export function createAdminService({ db, hash = hashPassword }) {
     const [rows] = await connection.execute(`SELECT ${clientColumns} FROM ${clientJoin} WHERE c.id=?${lock ? ' FOR UPDATE' : ''}`, [id]);
     return projected(rows[0]);
   }
-  async function audit(connection, actor, action, id, oldValue, newValue) {
+  async function audit(connection, actor, action, id, oldValue, newValue, context) {
     const [result] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,old_value,new_value,request_id,occurred_at)
       VALUES (?,?,?,?,?,?,?,UTC_TIMESTAMP(3))`, [actor.userId, action, action.startsWith('employee.') ? 'user' : 'client', id,
-      oldValue ? JSON.stringify(oldValue) : null, JSON.stringify(newValue), randomUUID()]);
+      oldValue ? JSON.stringify(oldValue) : null, JSON.stringify(newValue), auditRequestId(context)]);
     assertWrite(result);
   }
   async function identityConflict(connection, email, username, excludedUser = null, clientId = null) {
@@ -138,7 +139,7 @@ export function createAdminService({ db, hash = hashPassword }) {
     return { success: true, data: { roles: definitions.filter(role => role.code !== 'client').map(role => ({ ...role,
       modules: mappings.filter(mapping => mapping.roleCode === role.code).map(({code,label}) => ({code,label})), permissions: getPermissions(role.code) })), mismatches } };
   }
-  async function execute(operation, request) {
+  async function execute(operation, request, context) {
     const validation = validateAdminRequest(operation, request);
     if (!validation.success) return validation;
     const input = validation.data; const { actor } = request;
@@ -161,7 +162,7 @@ export function createAdminService({ db, hash = hashPassword }) {
         assertWrite(insert);
         const [[idRow]] = await connection.execute('SELECT CAST(LAST_INSERT_ID() AS CHAR) id');
         const data = await employee(connection,idRow.id);
-        await audit(connection,actor,'employee.created',data.id,null,data);
+        await audit(connection,actor,'employee.created',data.id,null,data,context);
         return { success:true,data };
       }
       const current = isEmployee ? await employee(connection,input.id,write) : await client(connection,input.id,write);
@@ -203,7 +204,7 @@ export function createAdminService({ db, hash = hashPassword }) {
         if (sessions.warningStatus) throw new Error('Session revocation failed.');
       }
       const data = isEmployee ? await employee(connection,input.id) : await client(connection,input.id);
-      await audit(connection,actor,action,input.id,current,data);
+      await audit(connection,actor,action,input.id,current,data,context);
       return { success:true,data };
     });
   }

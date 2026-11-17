@@ -10,7 +10,7 @@ const errors = {
 export function createAdminController({ service }) {
   return operation => async (request,response) => {
     try {
-      const result=await service.execute(operation,{actor:request.auth,id:request.params.id,query:request.query,body:request.body??{}});
+      const result=await service.execute(operation,{actor:request.auth,id:request.params.id,query:request.query,body:request.body??{}},{requestId:request.requestId});
       if (result?.success===true) return response.status(operation==='createEmployee'?201:200).json({success:true,data:result.data});
       const code=Object.hasOwn(errors,result?.code)?result.code:'SERVICE_UNAVAILABLE';
       const [status,message]=errors[code];

@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Calculator, ChevronDown, ChevronUp, FileText, Info, RefreshCw, Search } from "lucide-react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { useSalesOrders, type SalesOrderFilters, type SalesOrderRow, type SalesOrderDetail } from "../useSalesOrders";
 import { SalesRecordBrowser, OrderDetail } from "./SalesRecordBrowser";
 import { useSalesOrderDetail } from "../useSalesOrders";
 import { ReviewQuotationModal, GenerateJOModal } from "./OriginalSalesForms";
 import { inquiryDraft, pendingIntegration } from "./drafts";
 import { pipelineColumn, moneyAtLeast } from "./pipelineModel.mjs";
-import { sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
+import { rejectSalesInquiry, sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
 import { usePipelineDetails } from "./usePipelineDetails";
 import { SalesInvoicePreparation } from "./SalesInvoicePreparation";
 import { SalesStockRequests } from "./SalesStockRequests";
@@ -111,6 +111,27 @@ function PipelineCard({ row, detail, error, ready, onRecords, retry }: { row: Sa
   const [productsOpen, setProductsOpen] = useState(false);
   const [action, setAction] = useState<"quotation" | "jo" | "invoice" | "approve" | "reject" | "reject-inquiry" | null>(null);
   const [reason, setReason] = useState("");
+
+  const [rejecting,setRejecting] = useState(false), [rejectionError,setRejectionError] = useState('');
+  const rejectionLock = useRef(false);
+  const eligible = row.stageCode === 'inquiry' && !row.archivedAt && detail?.stageCode === 'inquiry' && !detail.archivedAt && !!detail.revision;
+  const submitRejection = async () => {
+    if (rejectionLock.current || !eligible) return;
+    const value=reason.trim();
+    if(!value || !value.isWellFormed() || [...value].length>1000) {setRejectionError('Enter a valid reason of 1 to 1000 Unicode characters.');return;}
+    rejectionLock.current=true;setRejecting(true);setRejectionError('');
+    try {
+      const result=await rejectSalesInquiry(row.id,value,detail!.revision!);
+      setAction(null);setReason('');
+      toast.success('Inquiry rejected and archived.');
+      if(result.notification?.clientRecipientAvailable===false)toast.warning('No eligible Client portal notification recipient was available. Rejection was saved.');
+      retry();
+    } catch(cause) {
+      setRejectionError(cause instanceof Error?cause.message:'Rejection could not be confirmed. Refresh before retrying.');
+      const code=(cause as {code?:string}).code;
+      if(['STALE_RECORD','INQUIRY_ALREADY_REJECTED','INVALID_STATE','WRITE_OUTCOME_UNKNOWN','NETWORK_ERROR'].includes(code??'')) {setAction(null);toast.error(cause instanceof Error?cause.message:'Refresh before retrying.');retry();}
+    } finally {rejectionLock.current=false;setRejecting(false);}
+  };
   const draft = detail ? inquiryDraft(detail) : null;
   return <article className="rounded-lg border bg-white p-5 transition-all hover:shadow-sm" style={{ borderColor: ready ? "#BBF7D0" : "#E2E8F0" }}>
     <div className="mb-3 flex items-center justify-between gap-2"><b className="font-mono-jb text-xs text-[#1A2B4A]">{row.reference}</b><div className="flex items-center gap-2">{row.urgent && <span className="rounded-full bg-red-100 px-2 text-[10px] font-bold text-red-700">RUSH</span>}<button aria-label={expanded ? "Collapse order details" : "Expand order details"} aria-expanded={expanded} onClick={() => setExpanded(!expanded)} className="rounded-full p-1 hover:bg-slate-100">{expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button></div></div>
@@ -124,12 +145,12 @@ function PipelineCard({ row, detail, error, ready, onRecords, retry }: { row: Sa
       {row.purchaseOrderReference && <p className="text-xs text-slate-500">PO: {row.purchaseOrderReference} · Review and resubmission status unavailable from the Sales API</p>}
       <button disabled={!draft || !draft.products.length} onClick={() => setAction("quotation")} className="flex items-center justify-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40"><Calculator size={13} />{row.stageCode === "inquiry" ? "REVIEW & SEND QUOTATION" : "PREPARE QUOTATION REVISION"}<ArrowRight size={14} /></button>
       {row.stageCode === "po" && <><div className="flex gap-2"><button onClick={() => setAction("approve")} className="flex-1 rounded bg-green-600 py-2 text-xs font-bold text-white">APPROVE PO</button><button onClick={() => { setReason(""); setAction("reject"); }} className="flex-1 rounded border border-red-200 py-2 text-xs font-bold text-red-700">REJECT PO</button></div><button disabled={!draft?.products.length} onClick={() => setAction("invoice")} className="rounded border px-3 py-2 text-xs font-bold disabled:opacity-40">PREPARE INVOICE</button><button disabled={!draft?.products.length} onClick={() => setAction("jo")} className="rounded bg-[#C8102E] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">CONFIGURE / GENERATE JOB ORDER</button><p className="text-[11px] text-slate-500">Readiness uses received and cleared PO, accepted quotation, sent invoices and their verified payments. Server validation is required to generate a JO.</p></>}
-      <button onClick={() => { setReason(""); setAction("reject-inquiry"); }} className="text-xs text-red-700">Reject inquiry</button>
+      {eligible && <button onClick={() => { setReason('');setRejectionError('');setAction('reject-inquiry'); }} className="text-xs text-red-700">Reject inquiry</button>}
       <button onClick={() => pendingIntegration("Cancellation review")} className="text-xs text-slate-500">Review cancellation</button>
     </div>}
     {draft && action === "quotation" && <ReviewQuotationModal inquiry={draft} onClose={() => setAction(null)} onSubmit={() => pendingIntegration("Quotation sending")} />}
     {draft && action === "jo" && <GenerateJOModal inquiry={draft} onClose={() => setAction(null)} onConfirm={() => pendingIntegration("Job Order generation")} />}
     {draft && action === "invoice" && <SalesInvoicePreparation inquiry={draft} onClose={() => setAction(null)} />}
-    {["approve", "reject", "reject-inquiry"].includes(action || "") && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><section role="dialog" aria-modal="true" aria-label="Sales review" className="w-full max-w-lg rounded-xl bg-white p-6"><h3 className="font-syne text-lg font-bold">{action === "approve" ? "Approve Purchase Order" : action === "reject" ? "Reject Purchase Order" : "Reject inquiry"}</h3><p className="my-3 text-sm">Backend integration pending. This review cannot be saved or sent. No client notification or resubmission request will be created.</p>{action !== "approve" && <textarea aria-label="Rejection reason" placeholder="Reason for rejection" value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded border p-3" />}<div className="mt-4 flex justify-end gap-3"><button onClick={() => setAction(null)}>Cancel</button><button disabled={action !== "approve" && !reason.trim()} onClick={() => pendingIntegration(action === "approve" ? "PO approval" : "Rejection")} className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-40">Confirm review</button></div></section></div>}
+    {["approve", "reject", "reject-inquiry"].includes(action || "") && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><section role="dialog" aria-modal="true" aria-label="Sales review" className="w-full max-w-lg rounded-xl bg-white p-6"><h3 className="font-syne text-lg font-bold">{action === "approve" ? "Approve Purchase Order" : action === "reject" ? "Reject Purchase Order" : "Reject inquiry"}</h3><p className="my-3 text-sm">{action==='reject-inquiry'?'Reject and archive this inquiry, preserving its history. Pending cancellation requests will be completed. In-app notifications will be recorded.':'Backend integration pending. This review cannot be saved or sent. No client notification or resubmission request will be created.'}</p>{action==='reject-inquiry'&&rejectionError&&<p role="alert">{rejectionError}</p>}{action !== "approve" && <textarea disabled={rejecting} aria-label="Rejection reason" placeholder="Reason for rejection" value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded border p-3" />}<div className="mt-4 flex justify-end gap-3"><button disabled={rejecting} onClick={() => {setAction(null);setReason('');setRejectionError('');}}>Cancel</button><button disabled={rejecting || (action !== 'approve' && !reason.trim()) || (action==='reject-inquiry'&&!eligible)} onClick={() => action==='reject-inquiry'?void submitRejection():pendingIntegration(action === 'approve' ? 'PO approval' : 'Rejection')} className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-40">{rejecting?'Rejecting?':'Confirm review'}</button></div></section></div>}
   </article>;
 }

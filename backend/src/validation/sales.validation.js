@@ -1,4 +1,16 @@
 import { validateApplicationId } from './client-applications.validation.js';
+import { validateApplicationRejection } from './client-applications.validation.js';
+
+export function validateInquiryRejection(body) {
+  try {
+    const input = ownData(body, ['reason', 'revision']);
+    if (!input) return fail({ body: 'Only reason and revision are allowed.' });
+    const reason = validateApplicationRejection({ reason: input.reason });
+    if (!reason.success) return fail(reason.errors);
+    if (typeof input.revision !== 'string' || !/^[a-f0-9]{64}$/.test(input.revision)) return fail({ revision: 'Reload this inquiry before rejecting it.' });
+    return { success: true, data: { reason: reason.data.reason, revision: input.revision } };
+  } catch { return fail({ body: 'Invalid rejection request.' }); }
+}
 
 const fail = errors => ({ success: false, code: 'VALIDATION_ERROR', errors });
 

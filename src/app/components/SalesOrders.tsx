@@ -555,7 +555,7 @@ function openProductSketch(sketch: ProductSketchAttachment) {
     window.open(objectUrl, "_blank", "noopener,noreferrer");
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   } catch (cause) {
-    console.error("[EnterFlow] Could not open the client-uploaded product sketch.", cause);
+    console.error("[EnterFlow] Could not open the client-uploaded product sketch.");
     toast.error("Could not open the attachment", {
       description: cause instanceof Error ? cause.message : "The saved file is invalid.",
     });
@@ -578,7 +578,7 @@ function OperationsProductSketch({ inquiryId, productId, product }: { inquiryId:
         setLoading(false);
       })
       .catch((cause: unknown) => {
-        console.error(`[EnterFlow] Could not load sketch for product ${productId} in inquiry ${inquiryId}.`, cause);
+        console.error("[EnterFlow] Could not load product sketch for inquiry.");
         if (!active) return;
         setError(cause instanceof Error ? cause.message : "Unknown attachment error");
         setLoading(false);
@@ -1140,6 +1140,7 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
                   </div>
                   <div className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{i.clientName}</div>
                   <div className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>{i.submittedDate} · {i.paymentTerms}</div>
+                  {i.archiveReason==='rejected'&&i.archiveNote&&<p className="whitespace-pre-wrap">Rejection reason: {i.archiveNote}</p>}
                   {i.cancellationHistory?.map((request, index) => (
                     <div key={`${request.requestedAt}-${index}`} className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>
                       Cancellation {request.resolution} · requested {request.requestedAt}
@@ -1222,8 +1223,8 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
                         }
                       }}
                       onViewInvoice={() => setViewInvoiceId(c.id)}
-                      onReject={(reason) => {
-                        rejectInquiry(c.id, reason);
+                      onReject={async (reason) => {
+                        if (!(await rejectInquiry(c.id, reason))) {toast.error('This inquiry could not be rejected. Refresh its state.');return;}
                         pushNotif({
                           dept: "sales",
                           title: `Inquiry rejected: ${c.code}`,
@@ -1231,7 +1232,7 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
                           link: "sales",
                           clientLink: "orders",
                           clientName: c.clientName,
-                          recipients: ["owner", "operations", "sales", "client"],
+                          recipients: ["sales", "client"],
                         });
                         toast.info("Inquiry rejected", { description: `${c.code} archived · client notified with reason` });
                       }}
@@ -1506,7 +1507,9 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
 }) {
   const [open, setOpen] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
+  const [rejectReason, setRejectReason] = useState('');
+  const demoRejectionLock=useRef(false);
+  const [demoRejecting,setDemoRejecting]=useState(false);
   const total = quotationTotal(inquiry);
   const payment = paymentState(inquiry);
   const verifiedPaymentRecords = verifiedPayments(inquiry);
@@ -1752,7 +1755,7 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
         </section>
       )}
 
-      {!inquiry.pendingCancellation && inquiry.stage === "inquiry" && (
+      {!inquiry.archived && inquiry.stage === "inquiry" && (
         <button
           onClick={onReview}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-white font-dm hover:opacity-90"
@@ -1930,11 +1933,14 @@ function InquiryCard({ inquiry, isNew, isReadyForJobOrder, collapsible, expanded
               <div className="flex items-center justify-end gap-2">
                 <button onClick={() => { setConfirmReject(false); setRejectReason(""); }} className="font-dm px-2 py-1 rounded hover:bg-white" style={{ fontSize: 11, color: "#64748B" }}>Cancel</button>
                 <button
-                  onClick={() => {
-                    if (!rejectReason.trim()) { toast.error("A reason is required"); return; }
-                    onReject(rejectReason.trim());
+                  onClick={async () => {
+                    if(demoRejectionLock.current)return;
+                    if (!rejectReason.trim() || !rejectReason.isWellFormed() || [...rejectReason.trim()].length>1000) { toast.error('Enter a reason of 1 to 1000 Unicode characters.'); return; }
+                    demoRejectionLock.current=true;setDemoRejecting(true);
+                    try {await onReject(rejectReason.trim());}
+                    finally {demoRejectionLock.current=false;setDemoRejecting(false);}
                   }}
-                  disabled={!rejectReason.trim()}
+                  disabled={demoRejecting || !rejectReason.trim()}
                   className="font-dm px-2.5 py-1 rounded text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                   style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#C8102E" }}
                 >

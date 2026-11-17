@@ -4,6 +4,7 @@ import { createClientApplicationsService } from './client-applications.service.j
 import { registrationIdentityLockName } from './registration.service.js';
 import { hashPassword, verifyPassword } from './password.service.js';
 import { validateApplicationReadParams } from '../validation/client-applications.validation.js';
+import { auditHttp, uuidPattern } from '../../test/support/audit-http.js';
 
 const ACTOR = { userId: '7', roleCode: 'admin', accountType: 'employee' };
 const ID = '9007199254740993';
@@ -473,4 +474,44 @@ test('unexpected input getters become confidential service failures; null reques
     assert.equal((await h.service[method](null)).code, 'AUTHENTICATION_REQUIRED');
   }
   assert.equal(h.events.length, 0);
+});
+
+for (const action of ['approve', 'reject']) {
+  test(`HTTP application ${action} audit matches response request ID without changing transaction payload`, async t => {
+    const h = harness();
+    const http = await auditHttp(t, 'review', h.service);
+    const response = await http.post(`/api/client-applications/${ID}/${action}`, action === 'reject' ? { reason: 'Synthetic reason' } : {});
+    assert.equal(response.status, 200);
+    const audit = h.shared.data.audits[0];
+    assert.equal(audit.requestId, response.requestId);
+    assert.equal(audit.actorId, ACTOR.userId);
+    assert.equal(audit.subject, ID);
+    assert.equal(audit.action, `client_application.${action === 'approve' ? 'approved' : 'rejected'}`);
+    assert.deepEqual(JSON.parse(audit.oldValue), { status: 'pending' });
+    assert.deepEqual(JSON.parse(audit.newValue), response.body.data);
+    assert.equal(audit.reason, action === 'reject' ? 'Synthetic reason' : null);
+    assert.equal(h.events.filter(event => event === 'commit').length, 1);
+    assert.equal(h.events.includes('rollback'), false);
+    safe(audit);
+  });
+}
+
+test('HTTP application audit failure preserves atomic rollback with the correlated ID', async t => {
+  const h = harness({ failAt: 'insertAudit' });
+  const http = await auditHttp(t, 'review', h.service);
+  const response = await http.post(`/api/client-applications/${ID}/approve`, {});
+  assert.equal(response.status, 503);
+  noDecision(h.shared.data);
+  assert.ok(h.events.includes('rollback'));
+  assert.equal(h.events.includes('commit'), false);
+  const attempt = h.calls.find(call => call.sql.startsWith('INSERT INTO audit_events'));
+  assert.equal(attempt.params[6], response.requestId);
+  safe(response.body);
+});
+
+test('standalone application decisions retain generated request IDs without HTTP context', async () => {
+  const h = harness();
+  const result = await h.service.reject(request({ input: { reason: 'Synthetic standalone reason' } }));
+  assert.equal(result.success, true);
+  assert.match(h.shared.data.audits[0].requestId, uuidPattern);
 });

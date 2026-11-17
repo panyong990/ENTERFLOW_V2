@@ -73,7 +73,7 @@ export function persistReminderHistory(mode: ReminderMode, reminderHistory: Reco
     if (!target) return;
     target.setItem(REMINDER_HISTORY_STORAGE_KEY, JSON.stringify(reminderHistory));
   } catch (error) {
-    console.error("[EnterFlow] Could not persist payment reminder history.", error);
+    console.error("[EnterFlow] Could not persist payment reminder history.");
   }
 }
 
@@ -629,7 +629,7 @@ export function Accounting() {
       const sentAt = new Date().toISOString();
       setReminderHistory((previous) => ({ ...previous, [invoice.id]: sentAt }));
     } catch (error) {
-      console.error("[EnterFlow] Could not create invoice reminder notification.", error);
+      console.error("[EnterFlow] Could not create invoice reminder notification.");
       toast.error("Reminder could not be sent", { description: `${invoice.inv} · Please try again.` });
       sendingReminderIdsRef.current.delete(invoice.id);
       setSendingReminderIds(new Set(sendingReminderIdsRef.current));
@@ -661,7 +661,7 @@ export function Accounting() {
           setReminderHistory((previous) => ({ ...previous, [invoice.id]: sentAt }));
           sentCount += 1;
         } catch (error) {
-          console.error(`[EnterFlow] Could not create invoice reminder notification for ${invoice.inv}.`, error);
+          console.error("[EnterFlow] Could not create invoice reminder notification.");
           failedInvoices.push(invoice.inv);
         }
       });

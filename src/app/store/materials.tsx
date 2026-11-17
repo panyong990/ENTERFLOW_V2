@@ -386,7 +386,7 @@ export function loadPersistedRawMaterials(storage: Storage | undefined = typeof 
     }
     return parsed;
   } catch (error) {
-    console.error("[EnterFlow] Could not load raw material inventory from localStorage.", error);
+    console.error("[EnterFlow] Could not load raw material inventory from localStorage.");
     return seedMaterials;
   }
 }
@@ -396,7 +396,7 @@ export function persistRawMaterials(mode: "demo" | "real", rawMaterials: RawMate
   try {
     storage.setItem(RAW_MATERIALS_STORAGE_KEY, JSON.stringify(rawMaterials));
   } catch (error) {
-    console.error("[EnterFlow] Could not persist raw material inventory to localStorage.", error);
+    console.error("[EnterFlow] Could not persist raw material inventory to localStorage.");
   }
 }
 

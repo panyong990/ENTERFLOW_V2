@@ -309,7 +309,9 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
   const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches } = useOrders();
   const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
-  const myOrders = byClient(clientName);
+  const allOrders=byClient(clientName);
+  const rejectedOrders=allOrders.filter(inquiry=>inquiry.archived&&inquiry.archiveReason==='rejected');
+  const myOrders=allOrders.filter(inquiry=>!(inquiry.archived&&inquiry.archiveReason==='rejected'));
   const { loading, error } = useClientData();
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
@@ -357,7 +359,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
 
 
   return (
-    <div className="px-8 py-8 flex flex-col gap-4">
+    <div className="px-8 py-8 flex flex-col gap-4"><section aria-label="Rejected inquiries">{rejectedOrders.map(inquiry=><article key={inquiry.id} className="rounded border p-4"><b>{inquiry.code} ? Rejected ? {inquiry.archiveDate}</b><p className="whitespace-pre-wrap">{inquiry.archiveNote}</p></article>)}</section>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-syne" style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>My Orders</h2>
@@ -842,7 +844,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
     };
     void loadSketches().catch((error) => {
       if (!cancelled) {
-        console.error("[EnterFlow] Could not load sketches for reorder.", error);
+        console.error("[EnterFlow] Could not load sketches for reorder.");
         toast.error("Could not load the previous order sketches", {
           description: error instanceof Error ? error.message : "Please attach the sketches again.",
         });
@@ -1580,7 +1582,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               {inquiry.cancellationHistory.filter((request) => request.resolution !== "pending").map((request, index) => (
                 <div key={`${request.requestedAt}-${index}`} className={index ? "mt-2 border-t border-slate-200 pt-2" : ""}>
                   <div style={{ fontWeight: 700 }}>
-                    Cancellation {request.resolution === "approved" ? "approved" : "declined"}
+                    Cancellation {request.resolution === "completed" ? "completed due to inquiry rejection" : request.resolution === "approved" ? "approved" : "declined"}
                     {request.resolvedAt ? ` · ${request.resolvedAt}` : ""}
                   </div>
                   <div>Requested {request.requestedAt} · Reason: {request.reason}</div>

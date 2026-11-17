@@ -65,7 +65,7 @@ export function createClientApplicationsController({ service }) {
           }
         }
 
-        const result = await service[method](args);
+        const result = await service[method](args, { requestId: request.requestId });
         if (result?.success !== true) {
           // Fixed public messages; never forward raw service messages/errors.
           return errorResponse(response, result?.success === false ? result.code : 'SERVICE_UNAVAILABLE');

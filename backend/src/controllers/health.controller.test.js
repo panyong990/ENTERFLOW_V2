@@ -55,7 +55,7 @@ test('database failure logs safe diagnostics but returns a generic response', as
     database: 'disconnected'
   });
   assert.deepEqual(logged, ['Health check failed:', {
-    code: 'HANDSHAKE_SSL_ERROR', errno: 2026, sqlState: 'HY000', message: 'certificate signature failure'
+    event: 'health_check_failed', category: 'database_unavailable'
   }]);
   assert.equal(JSON.stringify(response.body).includes('HANDSHAKE_SSL_ERROR'), false);
 });
@@ -68,6 +68,54 @@ test('diagnostic logging does not emit secret-shaped error messages', async () =
   });
   await controller({}, responseDouble());
   assert.equal(JSON.stringify(logged).includes('do-not-log'), false);
+});
+
+test('diagnostic logs exclude arbitrary error fields and nested sensitive values', async () => {
+  const markers = ['SYNTHETIC_MESSAGE', 'SYNTHETIC_CODE', 'SYNTHETIC_SQL_STATE',
+    'SYNTHETIC_STACK', 'SYNTHETIC_NESTED', 'SYNTHETIC_CAUSE'];
+  const error = new Error(markers[0]);
+  Object.assign(error, {
+    code: markers[1], sqlState: markers[2], stack: markers[3], errno: 2026,
+    details: { credentials: { value: markers[4] } },
+    cause: new Error(markers[5])
+  });
+  const logs = [];
+  const controller = createHealthController({
+    health: async () => { throw error; },
+    logger: { error: (...args) => logs.push(args) }
+  });
+  const response = responseDouble();
+
+  await controller({}, response);
+
+  assert.deepEqual(logs, [['Health check failed:', {
+    event: 'health_check_failed', category: 'database_unavailable'
+  }]]);
+  for (const marker of markers) {
+    assert.equal(JSON.stringify(logs).includes(marker), false, marker);
+    assert.equal(JSON.stringify(response.body).includes(marker), false, marker);
+  }
+  assert.equal(response.statusCode, 503);
+});
+
+test('diagnostic logging never reads properties of thrown values', async () => {
+  const error = new Proxy({}, {
+    get() { assert.fail('diagnostics must not inspect thrown values'); },
+    ownKeys() { assert.fail('diagnostics must not enumerate thrown values'); }
+  });
+  for (const thrown of [error, null, 'SYNTHETIC_THROWN_STRING']) {
+    const logs = [];
+    const controller = createHealthController({
+      health: async () => { throw thrown; },
+      logger: { error: (...args) => logs.push(args) }
+    });
+    const response = responseDouble();
+    await controller({}, response);
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(logs, [['Health check failed:', {
+      event: 'health_check_failed', category: 'database_unavailable'
+    }]]);
+  }
 });
 
 test('liveness does not query the database or expose database details', () => {

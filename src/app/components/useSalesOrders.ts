@@ -31,6 +31,8 @@ export interface SalesOrderRow {
   urgent: boolean;
   requestedDeliveryDate: string | null;
   generalNotes: string | null;
+  revision?: string;
+  archiveNote?: string | null;
   archiveReason: string | null;
   archivedAt: string | null;
   fulfillmentCompletedAt: string | null;

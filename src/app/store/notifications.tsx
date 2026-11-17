@@ -106,7 +106,7 @@ export function persistNotifications(mode: "demo" | "real", notifications: Notif
   try {
     storage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
   } catch (error) {
-    console.error("[EnterFlow] Could not persist notifications to localStorage.", error);
+    console.error("[EnterFlow] Could not persist notifications to localStorage.");
   }
 }
 

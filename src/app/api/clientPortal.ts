@@ -8,6 +8,7 @@ export interface ClientProfile {
 }
 
 export interface ClientOrder {
+  archiveReason?: "rejected" | "cancelled" | null; archiveNote?: string | null; archivedAt?: string | null;
   id: string; reference: string; stageLabel: string | null; paymentTermLabel: string | null;
   deliveryMethodLabel: string | null; submittedAt: string | null; requestedDeliveryDate: string | null;
   fulfillmentCompletedAt: string | null; updatedAt: string | null; itemCount: number;

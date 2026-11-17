@@ -46,3 +46,10 @@ export function mapSalesOrder(row) {
     ...(Array.isArray(row.payments) ? { payments: row.payments.map(mapSalesPayment) } : {}),
   };
 }
+
+export function rejectSalesInquiry(id, reason, revision) {
+  return api(`/api/sales/orders/${encodeURIComponent(id)}/rejection`, {method:'POST',body:{reason,revision}});
+}
+export function listInquiryRejections(page = 1) {
+  return api(`/api/sales/inquiry-rejections?${queryString({page,pageSize:25})}`);
+}

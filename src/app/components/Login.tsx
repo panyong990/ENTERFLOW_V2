@@ -34,7 +34,7 @@ export const roleMetas: Record<Role, RoleMeta> = {
   client:     { label: "Client",               short: "CL", bg: "#EFF6FF", fg: "#1E40AF", avatarBg: "#2563EB" },
 };
 
-export const staffAccounts: { email: string; password: string; role: Role; name: string }[] = [
+export const staffAccounts: { email: string; password: string; role: Role; name: string }[] = import.meta.env.DEV ? [
   { email: "owner@enter-fil.com",     password: "demo", role: "owner",      name: "T. Mendoza" },
   { email: "ops@enter-fil.com",       password: "demo", role: "operations", name: "M. Aquino" },
   { email: "sales@enter-fil.com",     password: "demo", role: "sales",      name: "R. Santos" },
@@ -43,11 +43,11 @@ export const staffAccounts: { email: string; password: string; role: Role; name:
   { email: "warehouse@enter-fil.com", password: "demo", role: "warehouse",  name: "F. Santos" },
   { email: "logistics@enter-fil.com", password: "demo", role: "logistics",  name: "P. Tan" },
   { email: "admin@enter-fil.com",     password: "demo", role: "admin",      name: "A. Garcia" },
-];
+] : [];
 
-export const clientAccounts: { email: string; password: string; role: Role; name: string }[] = [
+export const clientAccounts: { email: string; password: string; role: Role; name: string }[] = import.meta.env.DEV ? [
   { email: "client@be-aerospace.com", password: "demo", role: "client", name: "B.E. Aerospace" },
-];
+] : [];
 
 interface Props {
   onLogin: (role: Role, name: string) => void;

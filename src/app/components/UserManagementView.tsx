@@ -49,7 +49,7 @@ const newDraft = (type: AccountType): Omit<Account, "id" | "joined" | "active"> 
   username: "",
   phone: "",
   role: type === "client" ? "client" : "sales",
-  password: "demo",
+  password: import.meta.env.DEV ? "demo" : "",
   emailAlerts: true,
 });
 

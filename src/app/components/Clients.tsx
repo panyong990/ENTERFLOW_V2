@@ -35,7 +35,7 @@ interface Client {
   transactions: Transaction[]; jobs: JobOrder[];
 }
 
-const CLIENTS_DATA: Client[] = [
+const CLIENTS_DATA: Client[] = import.meta.env.DEV ? [
   {
     id: "c1", name: "B.E. Aerospace", industry: "Aerospace", contact: "M. Rivera",
     email: "procurement@be-aerospace.ph", phone: "+63 917 555 1212",
@@ -137,7 +137,7 @@ const CLIENTS_DATA: Client[] = [
     totalOrders: 1, totalRevenue: 4680, status: "inactive",
     transactions: [], jobs: [],
   },
-];
+] : [];
 
 const txStyle: Record<string, { bg: string; fg: string }> = {
   Paid: { bg: "#DCFCE7", fg: "#15803D" },

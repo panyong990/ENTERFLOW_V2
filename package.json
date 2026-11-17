@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "check:production-demo-assets": "node scripts/check-production-demo-assets.mjs",
     "dev": "vite",
     "db:migrate": "node database/migrate.mjs migrate",
     "db:status": "node database/migrate.mjs status",

@@ -32,7 +32,7 @@ export const deptStyle: Record<Department, { color: string; bg: string; label: s
   system:     { color: "#475569", bg: "#E2E8F0", label: "System" },
 };
 
-const seed: Notification[] = [
+const seed: Notification[] = import.meta.env.DEV ? [
   {
     id: "n1", dept: "sales", title: "New inquiry from Monaco",
     body: "INQ-007 · 50 pcs Air Oil Separator · marked URGENT",
@@ -63,7 +63,7 @@ const seed: Notification[] = [
     time: "Yesterday", link: "inventory", read: true,
     recipients: ["owner", "operations", "warehouse"],
   },
-];
+] : [];
 
 interface Ctx {
   notifications: Notification[];
@@ -80,10 +80,10 @@ const NotifContext = createContext<Ctx | null>(null);
 
 const NOTIFICATIONS_STORAGE_KEY = "enterflow.notifications.v1";
 
-function loadPersistedNotifications(): Notification[] {
-  if (typeof window === "undefined") return seed;
+export function loadPersistedNotifications(storage: Storage | undefined = typeof window === "undefined" ? undefined : window.localStorage): Notification[] {
+  if (!import.meta.env.DEV || !storage) return seed;
   try {
-    const raw = window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+    const raw = storage.getItem(NOTIFICATIONS_STORAGE_KEY);
     if (!raw) return seed;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return seed;
@@ -98,6 +98,15 @@ function loadPersistedNotifications(): Notification[] {
     return parsed as Notification[];
   } catch {
     return seed;
+  }
+}
+
+export function persistNotifications(mode: "demo" | "real", notifications: Notification[], storage: Storage | undefined = typeof window === "undefined" ? undefined : window.localStorage): void {
+  if (mode !== "demo" || !import.meta.env.DEV || !storage) return;
+  try {
+    storage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
+  } catch (error) {
+    console.error("[EnterFlow] Could not persist notifications to localStorage.", error);
   }
 }
 
@@ -139,13 +148,8 @@ export function NotificationsProvider({ children, mode = "demo" }: { children: R
   const nextNotificationId = useRef(0);
 
   useEffect(() => {
-    if (realMode || typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(list));
-    } catch (error) {
-      console.error("[EnterFlow] Could not persist notifications to localStorage.", error);
-    }
-  }, [list, realMode]);
+    persistNotifications(mode, list);
+  }, [list, mode]);
 
   const unreadFor: Ctx["unreadFor"] = (role, clientName) => {
     const key = recipientKey(role, clientName);

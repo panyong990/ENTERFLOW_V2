@@ -676,7 +676,7 @@ export const exactDownpaymentValidationMessage = (inq: Inquiry, submittedAmount:
   return `Please enter the exact required downpayment amount of ₱${formatMoney(fromMoneyCents(requiredCents))}. Partial or excess downpayment amounts are not accepted.`;
 };
 
-const seed: Inquiry[] = [
+const seed: Inquiry[] = import.meta.env.DEV ? [
   {
     id: "i1", code: "INQ-005", clientName: "B.E. Aerospace", contactPerson: "M. Rivera",
     paymentTerms: "30-Day Terms", submittedDate: "Apr 10, 2026", stage: "po", poUploaded: true,
@@ -863,7 +863,7 @@ const seed: Inquiry[] = [
     stageHistory: Array.from({ length: 4 }, (_, i) => ({ stage: i, completedAt: new Date(Date.now() - (4 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: ["F. Santos", "J. Reyes", "M. Tan", "J. Reyes"][i], status: "done" as const })),
     inventoryDeducted: true,
   },
-];
+] : [];
 
 interface Ctx {
   inquiries: Inquiry[];
@@ -974,6 +974,7 @@ function addDevelopmentDemoInquiries(inquiries: Inquiry[]): Inquiry[] {
 }
 
 function repairPersistedDemoOilfilBom(inquiries: Inquiry[]): { inquiries: Inquiry[]; changed: boolean } {
+  if (!import.meta.env.DEV) return { inquiries, changed: false };
   const matches = inquiries.filter((inquiry) => {
     if (inquiry.products.length !== 1) return false;
     const product = inquiry.products[0];
@@ -1032,10 +1033,14 @@ function attachmentState(inquiry: Inquiry) {
   };
 }
 
-function loadPersistedOrders(): PersistedOrdersState | null {
-  if (typeof window === "undefined") return null;
+type OrdersStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function loadPersistedOrders(storage?: OrdersStorage): PersistedOrdersState | null {
+  if (!import.meta.env.DEV) return null;
   try {
-    const raw = window.localStorage.getItem(ORDERS_STORAGE_KEY);
+    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
+    if (!target) return null;
+    const raw = target.getItem(ORDERS_STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
@@ -1051,7 +1056,7 @@ function loadPersistedOrders(): PersistedOrdersState | null {
     const repaired = repairPersistedDemoOilfilBom(value.inquiries as Inquiry[]);
     const inquiries = addDevelopmentDemoInquiries(repaired.inquiries);
     if (repaired.changed || inquiries !== repaired.inquiries) {
-      window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify({
+      target.setItem(ORDERS_STORAGE_KEY, JSON.stringify({
         inquiries: businessState(inquiries),
         clearedPOs: value.clearedPOs,
       }));
@@ -1059,6 +1064,17 @@ function loadPersistedOrders(): PersistedOrdersState | null {
     return { inquiries, clearedPOs: value.clearedPOs as string[] };
   } catch {
     return null;
+  }
+}
+
+export function persistOrders(mode: "demo" | "real", allInquiries: Inquiry[], clearedPOs: string[], storage?: OrdersStorage): void {
+  if (mode === "real" || !import.meta.env.DEV) return;
+  try {
+    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
+    if (!target) return;
+    target.setItem(ORDERS_STORAGE_KEY, JSON.stringify({ inquiries: businessState(allInquiries), clearedPOs }));
+  } catch (error) {
+    console.error("[EnterFlow] Could not persist order state to localStorage.", error);
   }
 }
 
@@ -1104,13 +1120,7 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
   }, [allInquiries]);
 
   useEffect(() => {
-    if (realMode || typeof window === "undefined") return;
-    try {
-      const value: PersistedOrdersState = { inquiries: businessState(allInquiries), clearedPOs };
-      window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(value));
-    } catch (error) {
-      console.error("[EnterFlow] Could not persist order state to localStorage.", error);
-    }
+    persistOrders(realMode ? "real" : "demo", allInquiries, clearedPOs);
   }, [allInquiries, clearedPOs, realMode]);
 
   useEffect(() => {

@@ -14,7 +14,7 @@ import { FinishedGoodsOrderActivity } from "./FinishedGoodsOrderActivity";
 import type { Role } from "./Login";
 import { useSession } from "../store/session";
 
-const weekly = [
+const weekly = import.meta.env.DEV ? [
   { day: "Mon", orders: 14 },
   { day: "Tue", orders: 22 },
   { day: "Wed", orders: 18 },
@@ -22,38 +22,70 @@ const weekly = [
   { day: "Fri", orders: 31 },
   { day: "Sat", orders: 19 },
   { day: "Sun", orders: 9 },
-];
+] : [];
 
-const revenueTrend = [
+const revenueTrend = import.meta.env.DEV ? [
   { m: "Nov", v: 820 },
   { m: "Dec", v: 940 },
   { m: "Jan", v: 880 },
   { m: "Feb", v: 1050 },
   { m: "Mar", v: 1120 },
   { m: "Apr", v: 1200 },
-];
+] : [];
 
-const stages = [
+const stages = import.meta.env.DEV ? [
   { name: "Molding", value: 5, color: "#C8102E" },
   { name: "Cutting", value: 4, color: "#1A2B4A" },
   { name: "Assembling", value: 6, color: "#C9A84C" },
   { name: "Heating / Gasket", value: 3, color: "#D97706" },
   { name: "Inspection", value: 2, color: "#2563EB" },
   { name: "Completed", value: 4, color: "#16A34A" },
-];
+] : [];
 
-const activeJobs = [
+const activeJobs = import.meta.env.DEV ? [
   { jo: "JO-2026-001", client: "B.E. Aerospace", item: "Air Filter 115×103×500mm", status: "in-progress" as const, stage: "Quality Inspection", due: "Apr 30" },
   { jo: "JO-2026-002", client: "Maynilad", item: "Filter KF-OF.175.20.87", status: "pending" as const, stage: "Assembling", due: "May 02" },
   { jo: "JO-2026-003", client: "G.U. Engineering", item: "Oil Separator KF-OS.200", status: "in-progress" as const, stage: "Molding", due: "May 05" },
   { jo: "JO-2026-004", client: "Emerald Vinyl", item: "Column Filter", status: "pending" as const, stage: "Holding — Awaiting Material", due: "May 10" },
-];
+] : [];
 
-const alerts = [
+const alerts = import.meta.env.DEV ? [
   { kind: "error", title: "Filter Media below threshold", body: "Only 5 rolls left · reorder triggered" },
   { kind: "warning", title: "JO-2026-001 deadline approaching", body: "3 days remaining · B.E. Aerospace" },
   { kind: "error", title: "Payment overdue: Maynilad", body: "Invoice INV-2026-0042 · 8 days past due" },
-];
+] : [];
+
+const demoProductionSchedule = import.meta.env.DEV ? [
+  { week: "Week 1 · Apr 27 – May 3", items: [{ jo: "JO-2026-001", client: "B.E. Aerospace", qty: 50, urgent: true }, { jo: "JO-2026-002", client: "Maynilad", qty: 100, urgent: false }] },
+  { week: "Week 2 · May 4 – 10", items: [{ jo: "JO-2026-003", client: "G.U. Engineering", qty: 30, urgent: false }, { jo: "JO-2026-004", client: "Emerald Vinyl", qty: 20, urgent: false }] },
+  { week: "Week 3 · May 11 – 17", items: [{ jo: "PLAN-1", client: "Maynilad (recurring)", qty: 200, urgent: false }] },
+  { week: "Week 4 · May 18 – 24", items: [{ jo: "PLAN-2", client: "B.E. Aerospace (recurring)", qty: 30, urgent: false }] },
+] : [];
+
+const demoTopClients = import.meta.env.DEV ? [
+  { rank: 1, client: "Maynilad", orders: 22, revenue: 2108400, last: "Mar 31, 2026", status: "Active" },
+  { rank: 2, client: "B.E. Aerospace", orders: 14, revenue: 1248600, last: "Apr 10, 2026", status: "Active" },
+  { rank: 3, client: "G.U. Engineering", orders: 6, revenue: 368100, last: "Apr 12, 2026", status: "Active" },
+  { rank: 4, client: "Emerald Vinyl", orders: 2, revenue: 85200, last: "—", status: "Holding" },
+  { rank: 5, client: "Monaco", orders: 1, revenue: 4680, last: "Apr 22, 2026", status: "New Inquiry" },
+] : [];
+
+const demoDueDates = import.meta.env.DEV ? [
+  { inv: "SI-2026-9533", client: "Maynilad", amount: 46800, due: "Apr 29, 2026", days: 1, status: "Due tomorrow" },
+  { inv: "SI-2026-0418", client: "B.E. Aerospace", amount: 46800, due: "May 10, 2026", days: 12, status: "Upcoming" },
+  { inv: "SI-2026-0421", client: "G.U. Engineering", amount: 67500, due: "Apr 30, 2026", days: 2, status: "Due in 2d" },
+] : [];
+
+const demoPartialPayments = import.meta.env.DEV ? [
+  { inv: "SI-2026-9533", client: "Maynilad", total: 46800, paid: 23400, remaining: 23400 },
+] : [];
+
+const demoDemandForecast = import.meta.env.DEV ? [
+  { product: "Air Filter (Microglass)", topClient: "B.E. Aerospace", avgMonthly: 40, bufferMin: 20, inStock: 0, trend: "↑ +15%", urgent: true },
+  { product: "Oil Separator Filter", topClient: "G.U. Engineering", avgMonthly: 25, bufferMin: 10, inStock: 0, trend: "→ Stable", urgent: false },
+  { product: "Pleated Filter ZS20", topClient: "Maynilad", avgMonthly: 80, bufferMin: 50, inStock: 0, trend: "↑ +20%", urgent: true },
+  { product: "Column Filter", topClient: "Emerald Vinyl", avgMonthly: 15, bufferMin: 5, inStock: 0, trend: "New Client", urgent: false },
+] : [];
 
 const alertColors: Record<string, { bg: string; bd: string; fg: string }> = {
   error: { bg: "#FEF2F2", bd: "#C8102E", fg: "#991B1B" },
@@ -751,7 +783,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
 
       <div className={role === "production" ? "px-4 sm:px-8 py-5 sm:py-8" : "px-8 py-8"} style={role === "production" ? undefined : { paddingLeft: 32, paddingRight: 32 }}>
         {realMode && <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">The original role dashboard is shown with isolated real-mode stores. Operational read APIs are not connected, so metrics are not verified database counts.</div>}
-        {isAcc && !realMode && (
+        {import.meta.env.DEV && isAcc && !realMode && (
           <div
             className="rounded-xl p-4 mb-6 flex items-start gap-3"
             style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}
@@ -984,12 +1016,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
               action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DCFCE7", color: "#166534" }}>Plan ahead based on recurring orders</span>}
             >
               <div className="grid grid-cols-4 gap-3">
-                {[
-                  { week: "Week 1 · Apr 27 – May 3", items: [{ jo: "JO-2026-001", client: "B.E. Aerospace", qty: 50, urgent: true }, { jo: "JO-2026-002", client: "Maynilad", qty: 100, urgent: false }] },
-                  { week: "Week 2 · May 4 – 10",   items: [{ jo: "JO-2026-003", client: "G.U. Engineering", qty: 30, urgent: false }, { jo: "JO-2026-004", client: "Emerald Vinyl", qty: 20, urgent: false }] },
-                  { week: "Week 3 · May 11 – 17",  items: [{ jo: "PLAN-1", client: "Maynilad (recurring)", qty: 200, urgent: false }] },
-                  { week: "Week 4 · May 18 – 24",  items: [{ jo: "PLAN-2", client: "B.E. Aerospace (recurring)", qty: 30, urgent: false }] },
-                ].map((w, i) => (
+                {demoProductionSchedule.map((w, i) => (
                   <div key={i} className="rounded-lg border border-slate-200 p-3 flex flex-col gap-2" style={{ backgroundColor: i === 0 ? "#FEF2F2" : "#F8FAFC" }}>
                     <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: i === 0 ? "#C8102E" : "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>
                       {w.week}
@@ -1028,13 +1055,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                   </tr>
                 </thead>
                 <tbody>
-                  {(realMode ? [] : [
-                    { rank: 1, client: "Maynilad", orders: 22, revenue: 2108400, last: "Mar 31, 2026", status: "Active" },
-                    { rank: 2, client: "B.E. Aerospace", orders: 14, revenue: 1248600, last: "Apr 10, 2026", status: "Active" },
-                    { rank: 3, client: "G.U. Engineering", orders: 6, revenue: 368100, last: "Apr 12, 2026", status: "Active" },
-                    { rank: 4, client: "Emerald Vinyl", orders: 2, revenue: 85200, last: "—", status: "Holding" },
-                    { rank: 5, client: "Monaco", orders: 1, revenue: 4680, last: "Apr 22, 2026", status: "New Inquiry" },
-                  ]).map((r) => (
+                  {(realMode ? [] : demoTopClients).map((r) => (
                     <tr key={r.rank} className="border-t border-slate-200/70 hover:bg-slate-50">
                       <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 800, color: r.rank === 1 ? "#C9A84C" : "#0F172A" }}>#{r.rank}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
@@ -1058,11 +1079,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
               action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#FEF3C7", color: "#92400E" }}>Auto-flag overdue</span>}
             >
               <div className="flex flex-col gap-2">
-                {(realMode ? [] : [
-                  { inv: "SI-2026-9533", client: "Maynilad", amount: 46800, due: "Apr 29, 2026", days: 1, status: "Due tomorrow" },
-                  { inv: "SI-2026-0418", client: "B.E. Aerospace", amount: 46800, due: "May 10, 2026", days: 12, status: "Upcoming" },
-                  { inv: "SI-2026-0421", client: "G.U. Engineering", amount: 67500, due: "Apr 30, 2026", days: 2, status: "Due in 2d" },
-                ]).map((r) => (
+                {(realMode ? [] : demoDueDates).map((r) => (
                   <div key={r.inv} className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-slate-200">
                     <div className="flex-1">
                       <div className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{r.inv}</div>
@@ -1079,9 +1096,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             </Card>
             <Card title="Partial Payments In Progress" className="col-span-5">
               <div className="flex flex-col gap-3">
-                {(realMode ? [] : [
-                  { inv: "SI-2026-9533", client: "Maynilad", total: 46800, paid: 23400, remaining: 23400 },
-                ]).map((p) => {
+                {(realMode ? [] : demoPartialPayments).map((p) => {
                   const pct = (p.paid / p.total) * 100;
                   return (
                     <div key={p.inv} className="rounded-lg border border-slate-200 p-3">
@@ -1161,12 +1176,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             action={<span className="font-dm px-2 py-1 rounded-full" style={{ fontSize: 11, fontWeight: 600, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>Based on last 6 months order history</span>}
           >
             <div className="grid grid-cols-4 gap-4">
-              {[
-                { product: "Air Filter (Microglass)", topClient: "B.E. Aerospace", avgMonthly: 40, bufferMin: 20, inStock: 0, trend: "↑ +15%", urgent: true },
-                { product: "Oil Separator Filter", topClient: "G.U. Engineering", avgMonthly: 25, bufferMin: 10, inStock: 0, trend: "→ Stable", urgent: false },
-                { product: "Pleated Filter ZS20", topClient: "Maynilad", avgMonthly: 80, bufferMin: 50, inStock: 0, trend: "↑ +20%", urgent: true },
-                { product: "Column Filter", topClient: "Emerald Vinyl", avgMonthly: 15, bufferMin: 5, inStock: 0, trend: "New Client", urgent: false },
-              ].map((item) => (
+              {demoDemandForecast.map((item) => (
                 <div key={item.product} className="rounded-lg p-4 flex flex-col gap-2" style={{ border: item.urgent ? "1.5px solid #FECACA" : "1px solid #E2E8F0", backgroundColor: item.urgent ? "#FEF2F2" : "#F8FAFC" }}>
                   <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: item.urgent ? "#991B1B" : "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>
                     {item.urgent ? "⚠️ HIGH DEMAND" : "MONITOR"}

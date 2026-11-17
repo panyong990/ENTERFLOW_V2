@@ -91,12 +91,12 @@ export function getFinishedGoodStockStatus(item: FinishedGood): RawMaterialStock
   return { key: "in-stock", label: "🟢 In Stock", bg: "#DCFCE7", fg: "#15803D" };
 }
 
-const seedFinishedGoods: FinishedGood[] = [
+const seedFinishedGoods: FinishedGood[] = import.meta.env.DEV ? [
   { id: "f1", itemCode: "OILSEP-00001", enterFilPN: "KF-OS.107.65.252", itemName: "Air Filter", client: "B.E. Aerospace", qtyInStock: 12, bufferMin: 30, lastUpdated: "Apr 26, 2026", updatedBy: "F. Santos", specs: { od1: "115", od2: "103", id1: "64.6", height: "500", media: "Microglass Fiber" }, demand: "HIGH DEMAND", history: [] },
   { id: "f2", itemCode: "OILSEP-00002", enterFilPN: "KF-OS.200/167.108.160", itemName: "Oil Separator Filter", client: "G.U. Engineering", qtyInStock: 18, bufferMin: 15, lastUpdated: "Apr 24, 2026", updatedBy: "F. Santos", specs: { od1: "200", od2: "167", id1: "108", height: "160", media: "Microglass Fiber" }, demand: "STABLE", history: [] },
   { id: "f3", itemCode: "OILFIL-00181", enterFilPN: "KF-OF.175.20.87", itemName: "Pleated Filter ZS20", client: "Maynilad", qtyInStock: 80, bufferMin: 100, lastUpdated: "Apr 25, 2026", updatedBy: "F. Santos", specs: { od1: "175", id1: "20", height: "87", media: "Pleated ZS20" }, demand: "HIGH DEMAND", history: [] },
   { id: "f4", itemCode: "OILFIL-00182", enterFilPN: "KF-OF.180.41.115", itemName: "Column Filter", client: "Emerald Vinyl", qtyInStock: 5, bufferMin: 10, lastUpdated: "Apr 22, 2026", updatedBy: "F. Santos", specs: { od1: "180", id1: "41", height: "115", media: "Round Fiberglass H13" }, demand: "MONITOR", history: [] },
-];
+] : [];
 
 export interface BOMLine {
   materialId: string;
@@ -263,7 +263,7 @@ const MAT = (
  * Filter media is uniformly tracked in kg (Section B — Filter media unit change), except for
  * spring plates and a few legacy roll-only stocks.
  */
-const seedMaterials: RawMaterial[] = [
+const seedMaterials: RawMaterial[] = import.meta.env.DEV ? [
   /* ───── Filter Media (kg unit per Section B) ───── */
   MAT("F-FMI.FM-043",  "FILTER120 1/4\"T × 82\"W × 20m L",                      "filter_media", "kg", 1600,  35, 10),
   MAT("F-FMI.FM-044",  "FILTER200 1/2\" T × 82\" W × 20m L",                    "filter_media", "kg", 2640,  30, 10),
@@ -350,7 +350,7 @@ const seedMaterials: RawMaterial[] = [
   MAT("OFF-SI-137",    "SALES INVOICE",       "packaging", "pcs", 260, 24, 8),
   MAT("OFF-DR-138",    "DELIVERY RECEIPT",    "packaging", "pcs", 190, 30, 8),
   MAT("OFF-CR-139",    "COLLECTION RECEIPT",  "packaging", "pcs", 190, 28, 8),
-];
+] : [];
 
 const RAW_MATERIALS_STORAGE_KEY = "enterflow.raw-materials.v1";
 const rawMaterialUnits: readonly string[] = ["roll", "plate", "sheet", "kg", "gal", "pcs", "set", "m"];
@@ -374,10 +374,10 @@ function isRawMaterial(value: unknown): value is RawMaterial {
     && Array.isArray(material.history);
 }
 
-function loadPersistedRawMaterials(): RawMaterial[] {
-  if (typeof window === "undefined") return seedMaterials;
+export function loadPersistedRawMaterials(storage: Storage | undefined = typeof window === "undefined" ? undefined : window.localStorage): RawMaterial[] {
+  if (!import.meta.env.DEV || !storage) return seedMaterials;
   try {
-    const stored = window.localStorage.getItem(RAW_MATERIALS_STORAGE_KEY);
+    const stored = storage.getItem(RAW_MATERIALS_STORAGE_KEY);
     if (!stored) return seedMaterials;
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed) || !parsed.every(isRawMaterial)) {
@@ -391,8 +391,17 @@ function loadPersistedRawMaterials(): RawMaterial[] {
   }
 }
 
+export function persistRawMaterials(mode: "demo" | "real", rawMaterials: RawMaterial[], storage: Storage | undefined = typeof window === "undefined" ? undefined : window.localStorage): void {
+  if (mode !== "demo" || !import.meta.env.DEV || !storage) return;
+  try {
+    storage.setItem(RAW_MATERIALS_STORAGE_KEY, JSON.stringify(rawMaterials));
+  } catch (error) {
+    console.error("[EnterFlow] Could not persist raw material inventory to localStorage.", error);
+  }
+}
+
 /* Pre-saved BOM templates — material IDs match the new seedMaterials list. */
-const seedTemplates: BOMTemplate[] = [
+const seedTemplates: BOMTemplate[] = import.meta.env.DEV ? [
   {
     id: "tpl-pocket-610",
     name: "Pocket Bag — 610×610×560mm, 8 pockets",
@@ -434,7 +443,7 @@ const seedTemplates: BOMTemplate[] = [
     costConfig: { laborCost: 150, markupPct: 20, vatType: "Exclusive", vatRate: 12, includeLabor: true, applyMarkup: true, applyVAT: true },
     notes: "ASL Printing standard recipe",
   },
-];
+] : [];
 
 /* ─────────── Backward-compat: legacy MaterialKey for old code paths ─────────── */
 
@@ -510,13 +519,8 @@ export function MaterialsProvider({ children, mode = "demo" }: { children: React
   const [templates, setTemplates] = useState<BOMTemplate[]>(() => realMode ? [] : seedTemplates);
 
   useEffect(() => {
-    if (realMode || typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(RAW_MATERIALS_STORAGE_KEY, JSON.stringify(rawMaterials));
-    } catch (error) {
-      console.error("[EnterFlow] Could not persist raw material inventory to localStorage.", error);
-    }
-  }, [rawMaterials, realMode]);
+    persistRawMaterials(mode, rawMaterials);
+  }, [rawMaterials, mode]);
 
   const commitRawMaterials = (update: (current: RawMaterial[]) => RawMaterial[]) => {
     const next = update(rawMaterialsRef.current);

@@ -107,7 +107,7 @@ export interface ClientRegistrationApplication {
   rejectionReason?: string;
 }
 
-const seedAccounts: Account[] = [
+const seedAccounts: Account[] = import.meta.env.DEV ? [
   { id: "employee-admin", type: "employee", name: "A. Garcia", email: "admin@enter-fil.com", username: "admin", phone: "—", role: "admin", password: "demo", joined: "Oct 6, 2026", active: true, emailAlerts: true },
   { id: "employee-owner", type: "employee", name: "T. Mendoza", email: "owner@enter-fil.com", username: "owner", phone: "+63 917 100 0000", role: "owner", password: "demo", joined: "Jan 15, 2024", active: true, emailAlerts: true },
   { id: "employee-operations", type: "employee", name: "M. Aquino", email: "ops@enter-fil.com", username: "ops", phone: "+63 917 200 0000", role: "operations", password: "demo", joined: "Apr 2, 2026", active: true, emailAlerts: true },
@@ -117,7 +117,7 @@ const seedAccounts: Account[] = [
   { id: "employee-warehouse", type: "employee", name: "F. Santos", email: "warehouse@enter-fil.com", username: "warehouse", phone: "+63 917 600 0000", role: "warehouse", password: "demo", joined: "Apr 2, 2026", active: true, emailAlerts: false },
   { id: "employee-logistics", type: "employee", name: "P. Tan", email: "logistics@enter-fil.com", username: "logistics", phone: "+63 917 700 0000", role: "logistics", password: "demo", joined: "Apr 2, 2026", active: true, emailAlerts: true },
   { id: "client-be-aerospace", type: "client", name: "B.E. Aerospace", email: "client@be-aerospace.com", username: "client", phone: "—", role: "client", password: "demo", joined: "Mar 2023", active: true, emailAlerts: true },
-];
+] : [];
 
 export function getAccounts(): Account[] {
   if (typeof window === "undefined") return seedAccounts;

@@ -1949,13 +1949,13 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
 }
 
 /* ---------- Status Tab ---------- */
-const DEMO_JO_DATA: JOTemplateData = {
+const DEMO_JO_DATA: JOTemplateData | undefined = import.meta.env.DEV ? {
   jo: "JO-2026-001", client: "B.E. Aerospace", product: "Air / Oil Separator Filter",
   qty: 50, date: "Apr 26, 2026", itemCode: "OILSEP-00001", enterFilPN: "KF-OS.107.65.252",
   poRef: "PO-2026-9901",
   specs: { od1: "115", od2: "103", id1: "64.6", height: "500", endCap: "E.G. (1.0mm)", media: "Microglass Fiber / Inside", innerCore: "Expanded Metal Perfo 2mm", oem: "—", brand: "Hitachi Comp." },
   preparedBy: "Tricia (Management)",
-};
+} : undefined;
 
 type ClientDeliveryStatus = "PENDING DELIVERY" | "IN TRANSIT" | "DELIVERED";
 
@@ -2171,7 +2171,7 @@ function StatusTab({ clientName }: { clientName: string }) {
       {/* Section O — pass live inquiry data so the JO doc shows the user-entered filterName, not the type code */}
       {showJO && (() => {
         const jo = myInquiries.find((i) => i.joNumber);
-        if (!jo) return <JOTemplateModal data={DEMO_JO_DATA} onClose={() => setShowJO(false)} />;
+        if (!jo) return DEMO_JO_DATA ? <JOTemplateModal data={DEMO_JO_DATA} onClose={() => setShowJO(false)} /> : null;
         const p0 = jo.products[0];
         const liveData: JOTemplateData = {
           jo: jo.joNumber!,
@@ -3583,9 +3583,9 @@ function SettingsTab({ clientName }: { clientName: string }) {
   const [address2, setAddress2] = useState(initialCompanySettings?.addressLine2 ?? "");
   const [cityProvince, setCityProvince] = useState(initialCompanySettings?.cityProvince ?? "");
   const [zip, setZip] = useState(initialCompanySettings?.zip ?? "");
-  const [contactName, setContactName] = useState("M. Rivera");
-  const [phone, setPhone] = useState("+63 917 555 1212");
-  const [email] = useState("procurement@be-aerospace.ph");
+  const [contactName, setContactName] = useState(import.meta.env.DEV ? "M. Rivera" : "");
+  const [phone, setPhone] = useState(import.meta.env.DEV ? "+63 917 555 1212" : "");
+  const [email] = useState(import.meta.env.DEV ? "procurement@be-aerospace.ph" : "");
   const [deliveryMethod, setDeliveryMethod] = useState<"Company Vehicle" | "Lalamove" | "AP Cargo" | "Fast Cargo" | "Client Pick-up">("Company Vehicle");
   /* Password change */
   const [currentPwd, setCurrentPwd] = useState("");
@@ -3858,7 +3858,7 @@ function Txt({ v, onChange }: { v: string; onChange: (v: string) => void }) {
 }
 
 /* ---------- Main Export ---------- */
-export function ClientPortal({ onLogout, clientName = "B.E. Aerospace" }: { onLogout?: () => void; clientName?: string } = {}) {
+export function ClientPortal({ onLogout, clientName = import.meta.env.DEV ? "B.E. Aerospace" : "Client" }: { onLogout?: () => void; clientName?: string } = {}) {
   const [tab, setTab] = useState<Tab>("orders");
   const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
   const [targetInquiryId, setTargetInquiryId] = useState<string | undefined>();

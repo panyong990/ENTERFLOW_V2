@@ -50,10 +50,15 @@ const DUE_SOON_WINDOW_DAYS = 7;
 const REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const REMINDER_HISTORY_STORAGE_KEY = "enterflow.paymentReminderHistory.v1";
 
-function loadReminderHistory(): Record<string, string> {
-  if (typeof window === "undefined") return {};
+type ReminderMode = "demo" | "real";
+type ReminderHistoryStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function loadReminderHistory(mode: ReminderMode = "demo", storage?: ReminderHistoryStorage): Record<string, string> {
+  if (mode === "real") return {};
   try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(REMINDER_HISTORY_STORAGE_KEY) ?? "{}");
+    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
+    if (!target) return {};
+    const parsed: unknown = JSON.parse(target.getItem(REMINDER_HISTORY_STORAGE_KEY) ?? "{}");
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     return Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "string"));
   } catch {
@@ -61,7 +66,18 @@ function loadReminderHistory(): Record<string, string> {
   }
 }
 
-function reminderNextEligibleAt(lastReminderAt: string): number {
+export function persistReminderHistory(mode: ReminderMode, reminderHistory: Record<string, string>, storage?: ReminderHistoryStorage): void {
+  if (mode === "real") return;
+  try {
+    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
+    if (!target) return;
+    target.setItem(REMINDER_HISTORY_STORAGE_KEY, JSON.stringify(reminderHistory));
+  } catch (error) {
+    console.error("[EnterFlow] Could not persist payment reminder history.", error);
+  }
+}
+
+export function reminderNextEligibleAt(lastReminderAt: string): number {
   return new Date(lastReminderAt).getTime() + REMINDER_COOLDOWN_MS;
 }
 
@@ -230,12 +246,13 @@ export function Accounting() {
   const [rejectionReason, setRejectionReason] = useState("");
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
-  const { name: issuingStaff } = useSession();
+  const { name: issuingStaff, mode = "demo" } = useSession();
   const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
   const [sendingReminderIds, setSendingReminderIds] = useState<Set<string>>(() => new Set());
   const [sendingAllReminders, setSendingAllReminders] = useState(false);
-  const [reminderHistory, setReminderHistory] = useState<Record<string, string>>(loadReminderHistory);
+  const [reminderHistory, setReminderHistory] = useState<Record<string, string>>(() => loadReminderHistory(mode));
+  const reminderModeRef = useRef(mode);
   const sendingReminderIdsRef = useRef(new Set<string>());
   const sendingAllRemindersRef = useRef(false);
   const [now, setNow] = useState(() => new Date());
@@ -246,12 +263,14 @@ export function Accounting() {
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(REMINDER_HISTORY_STORAGE_KEY, JSON.stringify(reminderHistory));
-    } catch (error) {
-      console.error("[EnterFlow] Could not persist payment reminder history.", error);
+    const modeChanged = reminderModeRef.current !== mode;
+    reminderModeRef.current = mode;
+    if (modeChanged) {
+      setReminderHistory(loadReminderHistory(mode));
+      return;
     }
-  }, [reminderHistory]);
+    persistReminderHistory(mode, reminderHistory);
+  }, [mode, reminderHistory]);
 
   /* DERIVED: invoices come from the orders store. Anything past delivery is invoiced. */
   const trackedInquiries = useMemo(

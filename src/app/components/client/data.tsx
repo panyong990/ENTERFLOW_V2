@@ -7,7 +7,7 @@ import { project, type OrderBundle, type Surface } from './adapters';
 export const unavailableMessage = 'This feature is not yet connected to the backend. Your draft has not been submitted.';
 export function unavailable(..._args: unknown[]) { toast.info(unavailableMessage); return false; }
 const blocked = (..._args: unknown[]): never => { throw new Error(unavailableMessage); };
-type State = { profile: ClientProfile | null; bundles: OrderBundle[]; notifications: ClientNotification[]; loading: boolean; error: string; refresh: () => void; markRead: (id: string) => Promise<void> };
+type State = { profile: ClientProfile | null; bundles: OrderBundle[]; notifications: ClientNotification[]; loading: boolean; error: string; refresh: () => void; markRead: (id: string) => Promise<void>; realMode: true };
 const Context = createContext<State | null>(null);
 export function useClientData() { const data = useContext(Context); if (!data) throw new Error('Client data provider required'); return data; }
 async function allPages<T>(read: (page: number) => Promise<{ items: T[]; total: number; page: number; pageSize: number }>, signal: AbortSignal) {
@@ -66,7 +66,7 @@ export function ClientDataProvider({ children }: { children: ReactNode }) {
       setNotifications(current => current.map(item => item.id === id ? { ...item, isRead: true } : item));
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Notification update failed.'); }
   };
-  return <Context.Provider value={{ profile, bundles, notifications, loading, error, refresh: () => setRevision(v => v + 1), markRead }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ profile, bundles, notifications, loading, error, refresh: () => setRevision(v => v + 1), markRead, realMode: true }}>{children}</Context.Provider>;
 }
 export function useOrders(surface: Surface = 'orders') {
   const { profile, bundles } = useClientData();

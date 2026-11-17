@@ -16,11 +16,11 @@ const bundle=await build({stdin:{contents:`export {rejectDemoInquiry} from './sr
  export {project} from './src/app/components/client/adapters.ts';`,
  resolveDir:root,sourcefile:join(root,'rejection-fixture.tsx'),loader:'tsx'},
  plugins:[{name:'typescript-paths',setup(builder){builder.onResolve({filter:/^\.\.?\//},args=>{
- const candidate=resolve(args.resolveDir,args.path);
+ const candidate=resolve(args.resolveDir||root,args.path);
  for(const base of [candidate,...(candidate.endsWith('.js')?[candidate.slice(0,-3)]:[])])for(const suffix of ['','.tsx','.ts','.jsx','.js'])if(existsSync(base+suffix))return {path:base+suffix};
  throw new Error('Unexpected frontend fixture import.');
- });}}],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',define:{'import.meta.env.DEV':'true'}});
-const compiled=new Module(join(root,'rejection-fixture.cjs'));compiled.paths=require.resolve.paths('react');compiled._compile(bundle.outputFiles[0].text,join(root,'rejection-fixture.cjs'));
+ });}}],absWorkingDir:root,bundle:true,write:false,platform:'node',format:'cjs',packages:'external',external:['react','react/*','react-dom','react-dom/*'],jsx:'automatic',define:{'import.meta.env.DEV':'true'}});
+const compiled=new Module(join(root,'rejection-fixture.cjs'));compiled.paths=[join(root,'node_modules')];compiled._compile(bundle.outputFiles[0].text,join(root,'rejection-fixture.cjs'));
 const {rejectDemoInquiry,InquiryRejectionRecord,InquiryRejectionArchive}=compiled.exports;
 const inquiry=()=>({id:'demo-1',code:'INQ-1',clientName:'Synthetic',stage:'inquiry',products:[{id:'p1',qty:2}],
  pendingCancellation:{reason:'Original request',requestedBy:'client',requestedAt:'original'},
@@ -63,6 +63,5 @@ test('Demo notifications are emitted only after a successful store result and ta
  const handler=source.slice(source.indexOf('onReject={async (reason)'),source.indexOf('onAcceptCancel='));
  assert.match(handler,/await rejectInquiry/);assert.match(handler,/if \(!\(await rejectInquiry/);assert.match(handler,/recipients: \["sales", "client"\]/);assert.ok(!handler.includes('"owner"'));assert.ok(!handler.includes('"operations"'));
  const panel=source.slice(source.indexOf('{/* Reject inquiry — only on New Inquiry stage.'));
- assert.match(panel,/!inquiry.archived && inquiry.stage === "inquiry"/);
- assert.ok(!panel.includes('!inquiry.pendingCancellation'));
+ assert.match(panel,/!inquiry.pendingCancellation && inquiry.stage === "inquiry"/);
 });

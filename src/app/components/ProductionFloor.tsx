@@ -8,6 +8,7 @@ import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 import { PRODUCTION_STAGES, poNumberForDisplay, useOrders, type Stage, type Inquiry } from "../store/orders";
+import { useSession } from "../store/session";
 
 const STAGES = [...PRODUCTION_STAGES];
 
@@ -205,7 +206,10 @@ function getJOTemplateData(job: Job): JOTemplateData {
   };
 }
 
-export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
+export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readOnly?: boolean }) {
+  const { mode } = useSession();
+  const realMode = mode === "real";
+  const readOnly = requestedReadOnly || realMode;
   const [stageFilter, setStageFilter] = useState("all");
   const [joStatusFilter, setJoStatusFilter] = useState<"active" | "completed">("active");
   const [dateFilter, setDateFilter] = useState<"today" | "7days" | "30days" | "all">("all");
@@ -367,6 +371,10 @@ export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
 
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-6 lg:px-8">
+        Real Production records are not connected to an authenticated production API. This complete monitoring interface excludes Demo job orders; stage history, quantities, and activity remain unavailable until a read API is provided.
+      </div>}
+
       <div className={`px-4 py-5 ${readOnly ? "pb-8" : "pb-28"} sm:px-6 lg:px-8 lg:py-8`}>
         <div className="relative mb-5 flex w-full max-w-[450px] flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           <div className="relative w-full min-w-0 sm:flex-1">
@@ -514,7 +522,7 @@ export function ProductionFloor({ readOnly = false }: { readOnly?: boolean }) {
         </div>
         {visible.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-            No matching job orders found
+            {realMode ? "Production records are unavailable" : "No matching job orders found"}
           </div>
         ) : (
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">

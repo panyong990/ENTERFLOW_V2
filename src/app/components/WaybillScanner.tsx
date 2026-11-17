@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { Printer, CheckCircle2, X, ScanLine, Info, Camera, Search, Filter, QrCode, ShieldCheck } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useOrders } from "../store/orders";
+import { useSession } from "../store/session";
 import { clientCompanyAddress, getClientCompanySettings } from "../store/clientCompanySettings";
 import { NotificationBell } from "./NotificationBell";
 import { inquiryToDispatchRow, type DispatchRow } from "./waybillData";
@@ -41,6 +42,8 @@ function cameraErrorMessage(error: unknown): string {
 
 export function WaybillScanner() {
   const { inquiriesByStage, updateInquiry } = useOrders();
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanPopup, setScanPopup] = useState<DispatchRow | null>(null);
   const [waybillPreview, setWaybillPreview] = useState<WaybillPreviewData | null>(null);
@@ -198,6 +201,10 @@ export function WaybillScanner() {
   }, []);
 
   const startScanner = async () => {
+    if (realMode) {
+      toast.info("Real waybill scanning is unavailable", { description: "An authenticated waybill verification API is required; no scan was started." });
+      return;
+    }
     if (cameraRequestPendingRef.current || cameraStreamRef.current || scanControlsRef.current) return;
 
     const scanSession = scanSessionRef.current + 1;
@@ -279,6 +286,10 @@ export function WaybillScanner() {
   };
 
   const handlePrintWaybill = () => {
+    if (realMode) {
+      toast.info("Real waybill printing is unavailable", { description: "No authenticated waybill update API is connected; nothing was saved." });
+      return;
+    }
     if (!waybillPreview) return;
 
     const inquiry = shipmentInquiries.find((item) => item.id === waybillPreview.shipment.id);
@@ -332,6 +343,8 @@ export function WaybillScanner() {
         <NotificationBell />
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real waybill records are unavailable. The scanner, lookup, preview, history, and print workflow remain visible, but Demo records are excluded and scan verification or waybill updates require an authenticated API.</div>}
+
       <div className="px-6 md:px-8 py-6 md:py-8 flex flex-col gap-6">
         <section aria-label="Waybill Scanner" className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
           <div className="grid lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -352,12 +365,12 @@ export function WaybillScanner() {
                     <Camera size={15} /> Stop Camera
                   </button>
                 ) : (
-                  <button onClick={startScanner} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>
+                  <button onClick={startScanner} disabled={realMode} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>
                     <Camera size={15} /> {cameraError ? "Retry Camera" : "Start QR Scanner"}
                   </button>
                 )}
                 <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>
-                  {isCameraStarting ? "Waiting for camera access. You can cancel while the request is pending." : isScanning ? "Point the camera at the Waybill QR code." : "Allow camera access to scan the QR code. The QR contains only the Waybill identifier."}
+                  {realMode ? "Live scan verification is unavailable until an authenticated waybill API is connected." : isCameraStarting ? "Waiting for camera access. You can cancel while the request is pending." : isScanning ? "Point the camera at the Waybill QR code." : "Allow camera access to scan the QR code. The QR contains only the Waybill identifier."}
                 </span>
               </div>
               {cameraError && <p className="font-dm mt-3" role="alert" style={{ fontSize: 12, color: "#B91C1C" }}>{cameraError}</p>}
@@ -507,7 +520,7 @@ export function WaybillScanner() {
               </thead>
               <tbody>
                 {ready.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No items ready for dispatch.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{realMode ? "Real dispatch records are unavailable." : "No items ready for dispatch."}</td></tr>
                 ) : filteredReady.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No matching job orders found.</td></tr>
                 ) : filteredReady.map((c) => {

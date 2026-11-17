@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Search, SlidersHorizontal } from "lucide-react";
 import { useOrders } from "../store/orders";
+import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
 import { buildWaybillHistory, inquiryToDispatchRow } from "./waybillData";
 
@@ -34,6 +35,8 @@ function isWithinDateFilter(value: string, filter: DateFilter, dateFrom: string,
 
 export function WaybillMonitoring() {
   const { inquiriesByStage } = useOrders();
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const [tab, setTab] = useState<Tab>("ready");
   const [query, setQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
@@ -132,13 +135,15 @@ export function WaybillMonitoring() {
         <NotificationBell />
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real dispatch and waybill records are unavailable. Monitoring tabs, search, filters, and detail panels remain visible, but Demo records are excluded until an authenticated read API is connected.</div>}
+
       <main className="px-6 md:px-8 py-6 md:py-8">
         <section className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
           <div className="border-b border-slate-200/70 px-5 pt-4">
             <div className="flex gap-2" role="tablist" aria-label="Waybill monitoring records">
               {([
-                ["ready", "Ready for Packing", readyRows.length],
-                ["history", "Waybill History", historyRows.length],
+                ["ready", "Ready for Packing", realMode ? "—" : readyRows.length],
+                ["history", "Waybill History", realMode ? "—" : historyRows.length],
               ] as const).map(([id, label, count]) => (
                 <button
                   key={id}
@@ -171,8 +176,8 @@ export function WaybillMonitoring() {
                 </h2>
                 <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>
                   {tab === "ready"
-                    ? `${readyRows.length} order${readyRows.length === 1 ? "" : "s"} awaiting dispatch processing`
-                    : `${historyRows.length} recorded waybill entr${historyRows.length === 1 ? "y" : "ies"}`}
+                    ? (realMode ? "Real dispatch records are unavailable" : `${readyRows.length} order${readyRows.length === 1 ? "" : "s"} awaiting dispatch processing`)
+                    : (realMode ? "Real waybill history is unavailable" : `${historyRows.length} recorded waybill entr${historyRows.length === 1 ? "y" : "ies"}`)}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

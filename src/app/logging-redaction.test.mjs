@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { readFile, existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { createRequire, Module } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const files = [
-  'app/store/materials.tsx', 'app/store/notifications.tsx',
-  'app/store/orders.tsx', 'app/store/stockRequests.tsx',
-  'app/components/Accounting.tsx', 'app/components/ClientPortal.tsx',
-  'app/components/client/ClientPortal.tsx', 'app/components/SalesOrders.tsx'
+  'src/app/store/materials.tsx', 'src/app/store/notifications.tsx',
+  'src/app/store/orders.tsx', 'src/app/store/stockRequests.tsx',
+  'src/app/components/Accounting.tsx', 'src/app/components/ClientPortal.tsx',
+  'src/app/components/client/ClientPortal.tsx', 'src/app/components/SalesOrders.tsx'
 ];
 
 // A focused source guard supplements the executed storage failure tests below:
@@ -32,7 +32,7 @@ for (const file of files) {
 }
 
 const require = createRequire(import.meta.url);
-const repositoryRoot = dirname(root.replace(/[\\/]$/, ''));
+const repositoryRoot = root;
 const bundle = await build({
   stdin: {
     contents: `export {loadPersistedRawMaterials,persistRawMaterials} from './src/app/store/materials.tsx';
@@ -43,7 +43,7 @@ const bundle = await build({
   },
   plugins: [{ name: 'existing-ts-imports', setup(builder) {
     builder.onResolve({ filter: /^\.\.?\// }, args => {
-      const candidate = resolve(args.resolveDir, args.path);
+      const candidate = resolve(args.resolveDir || repositoryRoot, args.path);
       for (const base of [candidate, ...(candidate.endsWith('.js') ? [candidate.slice(0, -3)] : [])]) {
         for (const suffix of ['', '.tsx', '.ts', '.jsx', '.js']) {
           if (existsSync(base + suffix)) return { path: base + suffix };
@@ -52,11 +52,11 @@ const bundle = await build({
       throw new Error('Unresolved synthetic frontend import.');
     });
   } }],
-  bundle: true, write: false, platform: 'node', format: 'cjs',
-  packages: 'external', jsx: 'automatic', define: { 'import.meta.env.DEV': 'true' }
+  absWorkingDir: repositoryRoot, bundle: true, write: false, platform: 'node', format: 'cjs',
+  packages: 'external', external: ['react', 'react/*', 'sonner', 'lucide-react', '@radix-ui/*', 'clsx', 'tailwind-merge'], jsx: 'automatic', define: { 'import.meta.env.DEV': 'true' }
 });
 const compiled = new Module(join(repositoryRoot, 'redaction-fixture.cjs'));
-compiled.paths = require.resolve.paths('react');
+compiled.paths = [join(repositoryRoot, 'node_modules')];
 compiled._compile(bundle.outputFiles[0].text, join(repositoryRoot, 'redaction-fixture.cjs'));
 const runtime = compiled.exports;
 

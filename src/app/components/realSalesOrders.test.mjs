@@ -10,10 +10,37 @@ const deliveryHook = await readFile(new URL('./useSalesDelivery.ts', import.meta
 const screen = await readFile(new URL('./SalesOrders.tsx', import.meta.url), 'utf8');
 
 test('Real Sales Orders uses the backend-supported filters and pagination', () => {
-  for (const value of ['status', 'stage', 'sort', 'page', 'pageSize']) assert.match(source, new RegExp(`filters\\.${value}|"${value}"`));
-  for (const value of ['inquiry', 'quotation', 'po', 'in_production', 'quality_inspection', 'ready_for_dispatch', 'dispatched', 'delivered', 'paid', 'overdue']) assert.match(source, new RegExp(`"${value}"`));
+  for (const value of ['status', 'sort', 'page', 'pageSize']) assert.match(source, new RegExp(`filters\\.${value}|"${value}"`));
   assert.match(source, /useSalesOrders\(true, filters\)/);
   assert.match(source, /No inquiries or orders match/);
+});
+
+test('All Order Records exposes only production and subsequent stage filters', () => {
+  const stageSection = source.slice(source.indexOf('const stages'), source.indexOf('function recordStatusLabel'));
+  for (const stage of ['all', 'in_production', 'quality_inspection', 'ready_for_dispatch', 'dispatched', 'delivered', 'paid', 'overdue']) {
+    assert.match(stageSection, new RegExp(`value: "${stage}"`));
+  }
+  for (const earlyStage of ['inquiry', 'quotation', 'po', 'jo']) {
+    assert.doesNotMatch(stageSection, new RegExp(`value: "${earlyStage}"`));
+  }
+  assert.match(source, /aria-label="Order stage"/);
+  assert.match(source, /updateFilter\("stage", event\.target\.value/);
+});
+
+test('All Order Records keeps lifecycle categories separate from cancellation-request rejection', () => {
+  const lifecycleSection = source.slice(source.indexOf('aria-label="Record lifecycle"'), source.indexOf('aria-label="Order sort"'));
+  for (const label of ['All records', 'Active and progressing', 'Completed orders', 'Cancelled records']) assert.match(lifecycleSection, new RegExp(label));
+  assert.doesNotMatch(lifecycleSection, /Rejected inquiries/);
+  assert.match(source, /recordStatus === "cancelled"/);
+  assert.match(source, /archiveReason === "rejected"/);
+});
+
+test('All Order Records is a document register without Inquiry as a bookkeeping type', () => {
+  for (const label of ['All Documents', 'Quotation', 'Purchase Order', 'Job Order', 'Invoice']) assert.match(source, new RegExp(label));
+  assert.match(source, /aria-label="Document type"/);
+  assert.match(source, /documentTypesFor/);
+  for (const field of ['latestQuotationReference', 'purchaseOrderReference', 'jobOrderCount', 'invoiceReference']) assert.match(source, new RegExp(`row\\.${field}`));
+  assert.doesNotMatch(source, /value: "inquiry"/);
 });
 
 test('Real Sales Orders loads detail records and displays only returned product specifications', () => {

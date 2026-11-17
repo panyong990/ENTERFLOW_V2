@@ -771,16 +771,16 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             {meta.subtitle}
           </p>
         </div>
-        {role !== "logistics" && role !== "sales" && role !== "production" && (
+        {role !== "logistics" && role !== "production" && (
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative">
+            {role !== "sales" && <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
               <input
                 placeholder="Search PO, JO, client..."
                 className="font-dm pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 outline-none focus:border-slate-400 w-72 max-[1200px]:w-48"
                 style={{ fontSize: 13, backgroundColor: "#F4F6F9" }}
               />
-            </div>
+            </div>}
             <NotificationBell role={role} onNavigate={onNavigate} />
           </div>
         )}
@@ -922,7 +922,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           </div>
         )}
 
-        {remote.loading && <p role="status">Loading Sales dashboard…</p>}{remote.error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-4 text-sm">{remote.error}<button onClick={remote.refresh}>Retry dashboard</button></p>}
+        {remote.loading && <p role="status">Loading Sales dashboard…</p>}
+        {remote.error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-4 text-sm">{remote.error}<button className="ml-3 rounded border border-red-300 px-2 py-1 font-semibold" onClick={remote.refresh}>Retry dashboard</button></p>}
         {remote.data && <details className="mb-6 rounded-xl border bg-white p-4"><summary className="cursor-pointer text-sm font-bold">Monthly verified revenue · server records</summary>{remote.data.monthlyVerifiedRevenue.length ? remote.data.monthlyVerifiedRevenue.map(record => <p key={record.month} className="mt-2 text-sm">{record.month}: ₱{record.amount}</p>) : <p className="mt-2 text-sm text-slate-500">No verified monthly payments returned.</p>}</details>}
         {/* Charts row — Owner / Sales only */}
         {(role === "owner" || role === "sales") && (

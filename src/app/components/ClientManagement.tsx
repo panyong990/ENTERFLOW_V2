@@ -331,6 +331,10 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
           <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             {[["Client ID", selected.id], ["Contact person", selected.contactPerson || "—"], ["Email address", selected.email], ["Username", selected.username], ["Contact number", selected.phone || "—"], ["Account status", real&&!selected.accountId?"No portal account":selected.active ? "Active" : "Deactivated"], ["Registration date", selected.joined]].map(([label, value]) => <div key={label}><dt className="font-dm text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-1 font-dm text-sm text-slate-800">{value}</dd></div>)}
           </dl>
+          {real && <section aria-label="Transactions & Orders" className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h3 className="font-dm text-xs font-bold uppercase tracking-wide text-slate-500">Transactions &amp; Orders</h3>
+            <p className="mt-2 font-dm text-sm leading-6 text-slate-600">Client-scoped quotations, purchase orders, Job Orders, and invoices are not available from the authenticated Admin Client API. No records are inferred from Demo data or unrelated company-wide results.</p>
+          </section>}
           <div className="mt-6 flex justify-end gap-2"><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => beginEdit(selected)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-700">Edit details</button><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => void toggleClient(selected)} className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white">{selected.active ? "Deactivate" : "Activate"} account</button>{!real&&<button type="button" disabled={saving} onClick={() => { setResetting(selected); setNewPassword(""); }} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 font-dm text-sm font-semibold text-amber-800">Reset password</button>}</div>
       </AdminDialog>}
 

@@ -33,6 +33,7 @@ import {
   type Inquiry,
 } from "../store/orders";
 import { NotificationBell } from "./NotificationBell";
+import { useSession } from "../store/session";
 
 type DeliveryFilter = "all" | "ready" | "generated" | "signed";
 type SortOrder = "newest" | "oldest";
@@ -230,7 +231,7 @@ function SummaryCard({
   tone,
 }: {
   label: string;
-  count: number;
+  count: number | string;
   icon: LucideIcon;
   tone: string;
 }) {
@@ -263,6 +264,8 @@ const filters: { id: DeliveryFilter; label: string }[] = [
 
 export function DeliveryReceipts() {
   const { inquiriesByStage, generateDeliveryReceipt, sendDeliveryReceiptToLogistics } = useOrders();
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<DeliveryFilter>("all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
@@ -320,6 +323,10 @@ export function DeliveryReceipts() {
   const pendingLogisticsSend = deliveries.find((inquiry) => inquiry.id === pendingLogisticsSendId);
 
   const requestGenerate = (inquiry: Inquiry) => {
+    if (realMode) {
+      toast.info("Delivery Receipt generation is unavailable", { description: "No authenticated receipt-generation API is connected; nothing was saved." });
+      return;
+    }
     if (inquiry.deliveryReceiptNumber) {
       toast.info("A Delivery Receipt already exists for this order.", { description: inquiry.deliveryReceiptNumber });
       return;
@@ -328,6 +335,10 @@ export function DeliveryReceipts() {
   };
 
   const confirmGenerate = () => {
+    if (realMode) {
+      toast.info("Delivery Receipt generation is unavailable", { description: "No authenticated receipt-generation API is connected; nothing was saved." });
+      return;
+    }
     if (generationInProgress.current || !pendingGenerationId) return;
     const inquiry = deliveries.find((item) => item.id === pendingGenerationId);
     if (!inquiry) {
@@ -362,6 +373,10 @@ export function DeliveryReceipts() {
   };
 
   const confirmSendToLogistics = () => {
+    if (realMode) {
+      toast.info("Sending to Logistics is unavailable", { description: "No authenticated handoff API is connected; nothing was saved." });
+      return;
+    }
     if (logisticsSendInProgress.current || !pendingLogisticsSendId) return;
     const inquiry = deliveries.find((item) => item.id === pendingLogisticsSendId);
     if (!inquiry) {
@@ -425,12 +440,14 @@ export function DeliveryReceipts() {
         <NotificationBell />
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 font-dm text-xs text-amber-950 sm:px-8">Real Delivery Receipt records are unavailable. The complete receipt list, filters, details, preview, and handoff presentation remain visible, but Demo records are excluded until authenticated receipt APIs are connected.</div>}
+
       <div className="flex flex-col gap-6 px-5 py-6 sm:px-8 sm:py-8">
         <section aria-label="Delivery Receipt summaries" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <SummaryCard label="Ready for DR" count={counts.ready} icon={FileText} tone="bg-amber-50 text-amber-700" />
-          <SummaryCard label="DR Generated" count={counts.generated} icon={Receipt} tone="bg-blue-50 text-blue-700" />
-          <SummaryCard label="Signed DR Received" count={counts.signed} icon={FileCheck2} tone="bg-green-50 text-green-700" />
-          <SummaryCard label="Fulfillment Completed" count={counts.fulfilled} icon={ClipboardCheck} tone="bg-emerald-50 text-emerald-700" />
+          <SummaryCard label="Ready for DR" count={realMode ? "—" : counts.ready} icon={FileText} tone="bg-amber-50 text-amber-700" />
+          <SummaryCard label="DR Generated" count={realMode ? "—" : counts.generated} icon={Receipt} tone="bg-blue-50 text-blue-700" />
+          <SummaryCard label="Signed DR Received" count={realMode ? "—" : counts.signed} icon={FileCheck2} tone="bg-green-50 text-green-700" />
+          <SummaryCard label="Fulfillment Completed" count={realMode ? "—" : counts.fulfilled} icon={ClipboardCheck} tone="bg-emerald-50 text-emerald-700" />
         </section>
 
         <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
@@ -475,7 +492,7 @@ export function DeliveryReceipts() {
 
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
             <div className="font-dm text-sm font-bold text-slate-800">Handover deliveries</div>
-            <div className="font-dm text-xs text-slate-500">{visible.length} {visible.length === 1 ? "record" : "records"}</div>
+            <div className="font-dm text-xs text-slate-500">{realMode ? "—" : `${visible.length} ${visible.length === 1 ? "record" : "records"}`}</div>
           </div>
 
           {visible.length === 0 ? (

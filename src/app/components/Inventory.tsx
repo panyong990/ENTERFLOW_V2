@@ -26,12 +26,14 @@ type EditableMaterialFields = Pick<RawMaterial, "name" | "category" | "unit" | "
 
 export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finished" }) {
   const { rawMaterials, finishedGoods: fg, updateMaterial, addMaterial } = useMaterials();
-  const { role } = useSession();
+  const { role, mode } = useSession();
+  const realMode = mode === "real";
   const { inquiries, completedJOs } = useOrders();
   const { requests: stockRequests } = useStockRequests();
   const { push: pushNotif } = useNotifications();
 
   const isOperationsReadOnly = role === "operations";
+  const readOnly = isOperationsReadOnly || realMode;
   const [tab, setTab] = useState<"raw" | "finished">(initialTab);
   const [editing, setEditing] = useState<RawMaterial | null>(null);
   const [historyFor, setHistoryFor] = useState<RawMaterial | null>(null);
@@ -221,13 +223,13 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
         <div>
           <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Inventory</h1>
           <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
-            {isOperationsReadOnly
+            {readOnly
               ? "Monitor raw materials, finished goods, and stock availability."
               : "Component-based raw materials · finished goods · audit log"}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {!isOperationsReadOnly && (
+          {!readOnly && (
             <button
               onClick={() => setShowStockRequests(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-dm"
@@ -237,7 +239,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
               <span className="px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 10, fontWeight: 800 }}>{warehouseStockRequestCount}</span>
             </button>
           )}
-          {!isOperationsReadOnly && tab === "raw" && (
+          {!readOnly && tab === "raw" && (
             <button
               onClick={() => setShowAdd(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
@@ -249,6 +251,10 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
           <NotificationBell />
         </div>
       </header>
+
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-950">
+        Real Inventory records are not connected to an authenticated inventory API. The complete inventory interface remains available for navigation and filtering, but Demo records are excluded and no quantities, movements, or updates are inferred.
+      </div>}
 
       {/* Tabs */}
       <nav className="bg-white border-b border-slate-200/70 px-8 flex gap-1">
@@ -277,12 +283,12 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
       </nav>
 
       <div className="px-8 py-8 flex flex-col gap-6">
-        {isOperationsReadOnly && (
+        {readOnly && (
           <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" aria-label="Inventory summary">
-            <InventoryMetric label="Total Inventory Items" value={inventorySummary.total} icon={<Boxes size={18} />} accent="#1A2B4A" />
-            <InventoryMetric label="In Stock" value={inventorySummary.inStock} icon={<CheckCircle2 size={18} />} accent="#15803D" />
-            <InventoryMetric label="Low Stock" value={inventorySummary.lowStock} icon={<AlertTriangle size={18} />} accent="#C2410C" />
-            <InventoryMetric label="Out of Stock" value={inventorySummary.outOfStock} icon={<CircleX size={18} />} accent="#991B1B" />
+            <InventoryMetric label="Total Inventory Items" value={realMode ? "—" : inventorySummary.total} icon={<Boxes size={18} />} accent="#1A2B4A" />
+            <InventoryMetric label="In Stock" value={realMode ? "—" : inventorySummary.inStock} icon={<CheckCircle2 size={18} />} accent="#15803D" />
+            <InventoryMetric label="Low Stock" value={realMode ? "—" : inventorySummary.lowStock} icon={<AlertTriangle size={18} />} accent="#C2410C" />
+            <InventoryMetric label="Out of Stock" value={realMode ? "—" : inventorySummary.outOfStock} icon={<CircleX size={18} />} accent="#991B1B" />
           </section>
         )}
 
@@ -299,7 +305,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                   style={{ fontSize: 13 }}
                 />
               </div>
-              {isOperationsReadOnly && (
+              {readOnly && (
                 <div ref={filterRef} className="relative">
                   <button
                     type="button"
@@ -347,12 +353,12 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
               const meta = partCategoryMeta[cat];
               const items = grouped[cat].filter((item) =>
                 filterRow(item) &&
-                (!isOperationsReadOnly || !statusFilter || getRawMaterialStockStatus(item).key === statusFilter)
+                (!readOnly || !statusFilter || getRawMaterialStockStatus(item).key === statusFilter)
               );
               const lowCount = items.filter((m) => getRawMaterialStockStatus(m).key !== "in-stock").length;
               const collapsed = collapsedCats.has(cat);
-              if (items.length === 0 && (query !== "" || (isOperationsReadOnly && (categoryFilter || statusFilter)))) return null;
-              if (isOperationsReadOnly && categoryFilter && categoryFilter !== cat) return null;
+              if (items.length === 0 && (query !== "" || (readOnly && (categoryFilter || statusFilter)))) return null;
+              if (readOnly && categoryFilter && categoryFilter !== cat) return null;
               return (
                 <section key={cat} className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
                   <button onClick={() => toggleCat(cat)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
@@ -380,25 +386,25 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                           return (
                             <tr
                               key={m.id}
-                              onClick={isOperationsReadOnly ? () => setSelectedItem({ kind: "raw", item: m }) : undefined}
-                              onKeyDown={isOperationsReadOnly ? (event) => {
+                              onClick={readOnly ? () => setSelectedItem({ kind: "raw", item: m }) : undefined}
+                              onKeyDown={readOnly ? (event) => {
                                 if (event.key === "Enter" || event.key === " ") {
                                   event.preventDefault();
                                   setSelectedItem({ kind: "raw", item: m });
                                 }
                               } : undefined}
                               onContextMenu={(event) => {
-                                if (isOperationsReadOnly) {
+                                if (readOnly) {
                                   event.preventDefault();
                                   return;
                                 }
                                 event.preventDefault();
                                 setContextMenu({ material: m, x: event.clientX, y: event.clientY });
                               }}
-                              className={`border-t border-slate-200/70 hover:bg-slate-50${isOperationsReadOnly ? " cursor-pointer" : ""}`}
-                              role={isOperationsReadOnly ? "button" : undefined}
-                              tabIndex={isOperationsReadOnly ? 0 : undefined}
-                              title={isOperationsReadOnly ? "View item details" : undefined}
+                              className={`border-t border-slate-200/70 hover:bg-slate-50${readOnly ? " cursor-pointer" : ""}`}
+                              role={readOnly ? "button" : undefined}
+                              tabIndex={readOnly ? 0 : undefined}
+                              title={readOnly ? "View item details" : undefined}
                             >
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
                                 {m.name}
@@ -422,7 +428,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
         )}
 
         {tab === "finished" && (
-          <FinishedGoodsOrderActivity onItemClick={isOperationsReadOnly ? (item) => setSelectedItem({ kind: "finished", item }) : undefined} />
+          <FinishedGoodsOrderActivity onItemClick={readOnly ? (item) => setSelectedItem({ kind: "finished", item }) : undefined} />
         )}
       </div>
 
@@ -448,7 +454,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
         <HistoryDrawer m={historyFor} onClose={() => setHistoryFor(null)} />
       )}
       {showStockRequests && <StockRequestsModal mode="warehouse" onClose={() => setShowStockRequests(false)} />}
-      {isOperationsReadOnly && selectedItem && (
+      {readOnly && selectedItem && (
         <InventoryDetailsDrawer
           selection={selectedItem}
           onClose={() => setSelectedItem(null)}
@@ -465,7 +471,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
   );
 }
 
-function InventoryMetric({ label, value, icon, accent }: { label: string; value: number; icon: React.ReactNode; accent: string }) {
+function InventoryMetric({ label, value, icon, accent }: { label: string; value: number | string; icon: React.ReactNode; accent: string }) {
   return (
     <article className="bg-white rounded-xl border border-slate-200/70 p-4 flex items-center justify-between" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
       <div>

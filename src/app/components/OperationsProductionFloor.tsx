@@ -4,6 +4,7 @@ import {
   Clock3, Eye, Factory, FileText, Filter, PackageCheck, Search, X,
 } from "lucide-react";
 import { useOrders, PRODUCTION_STAGES, poNumberForDisplay, stageColor, stageLabel, type Inquiry } from "../store/orders";
+import { useSession } from "../store/session";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 
 const ACTIVE_STAGES = new Set(["jo", "in_production", "quality_inspection"]);
@@ -137,6 +138,8 @@ function jobOrderDocument(inquiry: Inquiry): JOTemplateData {
 }
 
 export function OperationsProductionFloor() {
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const { completedJOs } = useOrders();
   const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -233,12 +236,16 @@ export function OperationsProductionFloor() {
         </p>
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950 sm:px-7 lg:px-9">
+        Real Production records are not connected to an authenticated production API. Filters, job-order layout, stage tracking, and detail panels remain available, while Demo records and unverified operational counts are excluded.
+      </div>}
+
       <div className="px-5 py-6 sm:px-7 lg:px-9">
         <section aria-label="Production job order metrics" className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Active Job Orders" value={activeCount} icon={Factory} accent="#1A2B4A" />
-          <MetricCard label="In Progress" value={inProgressCount} icon={Clock3} accent="#2563EB" />
-          <MetricCard label="Overdue Jobs" value={overdueCount} icon={AlertTriangle} accent="#C8102E" />
-          <MetricCard label="Completed Jobs" value={completedCount} icon={PackageCheck} accent="#16A34A" />
+          <MetricCard label="Active Job Orders" value={realMode ? "—" : activeCount} icon={Factory} accent="#1A2B4A" />
+          <MetricCard label="In Progress" value={realMode ? "—" : inProgressCount} icon={Clock3} accent="#2563EB" />
+          <MetricCard label="Overdue Jobs" value={realMode ? "—" : overdueCount} icon={AlertTriangle} accent="#C8102E" />
+          <MetricCard label="Completed Jobs" value={realMode ? "—" : completedCount} icon={PackageCheck} accent="#16A34A" />
         </section>
 
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -341,8 +348,8 @@ export function OperationsProductionFloor() {
         {visibleJobs.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center">
             <ClipboardList size={28} className="mx-auto mb-3 text-slate-300" />
-            <p className="font-dm text-sm font-semibold text-slate-700">No matching job orders</p>
-            <p className="font-dm mt-1 text-xs text-slate-500">Try changing your search or filters.</p>
+            <p className="font-dm text-sm font-semibold text-slate-700">{realMode ? "Production records are unavailable" : "No matching job orders"}</p>
+            <p className="font-dm mt-1 text-xs text-slate-500">{realMode ? "No live job orders were loaded; this is not a verified empty database result." : "Try changing your search or filters."}</p>
           </div>
         ) : (
           <section aria-label="Job orders" className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -513,7 +520,7 @@ export function OperationsProductionFloor() {
   );
 }
 
-function MetricCard({ label, value, icon: Icon, accent }: { label: string; value: number; icon: typeof Factory; accent: string }) {
+function MetricCard({ label, value, icon: Icon, accent }: { label: string; value: number | string; icon: typeof Factory; accent: string }) {
   return (
     <article className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" style={{ color: accent, backgroundColor: `${accent}14` }}>

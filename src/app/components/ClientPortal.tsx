@@ -305,7 +305,7 @@ const FILTRATION_RATINGS = [
 ];
 
 function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void; targetInquiryId?: string }) {
-  const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches } = useOrders();
+  const { uploadPO, requestCancellation, cancelInquiry, byClient, addInquiry, addInquiryWithProductSketches } = useOrders();
   const rejectedOrders=byClient(clientName).filter(inquiry=>inquiry.archived&&inquiry.archiveReason==='rejected');
   const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
@@ -514,15 +514,17 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
           onPayInvoice={() => onPayInvoice(inq.id)}
           onUploadPO={() => setPoForId(inq.id)}
           onCancel={(reason) => {
-            requestCancellation(inq.id, reason, "client");
+            const isVerifiedPO = inq.stage === "po" && inq.poReceived && poReviewStatus(inq) === "Approved";
+            if (isVerifiedPO) requestCancellation(inq.id, reason, "client");
+            else cancelInquiry(inq.id, reason);
             pushNotif({
               dept: "sales",
-              title: `🚨 Cancellation request from ${clientName}`,
-              body: `${inq.code} · Reason: ${reason} · awaiting your accept/decline`,
+              title: isVerifiedPO ? `🚨 Cancellation request from ${clientName}` : `Client cancellation: ${inq.code}`,
+              body: isVerifiedPO ? `${inq.code} · Reason: ${reason} · awaiting your accept/decline` : `${clientName} cancelled ${inq.code} directly · Reason: ${reason}`,
               link: "sales",
               recipients: ["owner", "operations", "sales"],
             });
-            toast.info("Cancellation request sent", { description: "Enter-Fil will accept or decline soon. You'll be notified." });
+            toast.info(isVerifiedPO ? "Cancellation request sent" : "Order cancelled", { description: isVerifiedPO ? "Enter-Fil will accept or decline soon. You'll be notified." : "The cancelled record remains available in your order history." });
           }}
         />
       ))}
@@ -1409,6 +1411,22 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
   );
 }
 
+function CancellationTermsPanel() {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 font-dm" style={{ fontSize: 12, color: "#78350F", lineHeight: 1.6 }}>
+      <div className="mb-2" style={{ fontWeight: 800 }}>Terms &amp; Conditions — Included with Quotation</div>
+      <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
+        <li><strong>Payment:</strong> Payment terms are indicated in the quotation. Required downpayments must be verified before the order proceeds.</li>
+        <li><strong>No Refunds:</strong> All sales are final. No refunds will be issued once the order has been confirmed and processed.</li>
+        <li><strong>No Replacements:</strong> Products are not eligible for replacement after delivery.</li>
+        <li><strong>Delivery:</strong> Delivery arrangements and schedules are based on the confirmed order. Actual delivery may vary depending on production completion and logistics.</li>
+        <li><strong>Contact:</strong> Tel: +63 (2) 8861-5737 / +63 (2) 8653-3750 · Mobile: +63 (956) 657-3837 · Email: enterfil.filtration@yahoo.com / zuluetaellen@gmail.com</li>
+        <li><strong>Office Hours:</strong> Monday–Friday, 8:00 AM–6:00 PM · Sitio Hulo, Brgy. Balasing – San Jose Rd, Santa Maria, 3022 Bulacan</li>
+      </ul>
+    </div>
+  );
+}
+
 function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void; onPayInvoice: () => void }) {
   const { updateInquiry } = useOrders();
   const { push: pushNotif } = useNotifications();
@@ -1425,6 +1443,8 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const [showInvoice, setShowInvoice] = useState(false);
   /* View terms & conditions */
   const [showTerms, setShowTerms] = useState(false);
+  const [cancelTermsOpen, setCancelTermsOpen] = useState(false);
+  const [cancelTermsAcknowledged, setCancelTermsAcknowledged] = useState(false);
   const total = inquiry.quotationDoc?.total ?? quotationTotal(inquiry);
   const invoicePayment = paymentState(inquiry);
   const submittedPayments = paymentRecords(inquiry);
@@ -1432,6 +1452,14 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const poSubmissions = inquiry.poSubmissions ?? [];
   const status = clientOrderStatus(inquiry);
   const isInvoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
+  const hasRecordedDownpayment = invoicePayment.downpaymentStatus === "COMPLETE";
+  const cancellationMode = !inquiry.archived && !inquiry.pendingCancellation && !hasRecordedDownpayment
+    ? inquiry.stage === "inquiry" || inquiry.stage === "quotation"
+      ? "direct"
+      : inquiry.stage === "po" && inquiry.poReceived && poReviewStatus(inquiry) === "Approved"
+        ? "request"
+        : "unavailable"
+    : "unavailable";
   const quotationDocToView = historicalQuotationDoc ?? (showQuotationDoc ? inquiry.quotationDoc : undefined);
 
   const submitRevision = () => {
@@ -1767,7 +1795,12 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
           )}
 
           {/* Cancel order — only before PO is confirmed and not already pending */}
-          {!inquiry.archived && inquiry.stage !== "po" && !inquiry.pendingCancellation && (
+          {hasRecordedDownpayment && !inquiry.archived && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-100 p-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+              Cancellation is unavailable because a downpayment has been recorded for this order.
+            </div>
+          )}
+          {cancellationMode !== "unavailable" && (
             <div className="pt-3 border-t border-slate-200 mt-2">
               {!confirmCancel ? (
                 <button
@@ -1781,7 +1814,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                 <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA" }}>
                   <div className="flex items-center gap-2">
                     <span style={{ fontSize: 16 }}>⚠️</span>
-                    <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#991B1B" }}>Cancel this order</span>
+                    <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#991B1B" }}>{cancellationMode === "direct" ? "Cancel this order" : "Request cancellation"}</span>
                   </div>
                   {/* Order details preview */}
                   <div className="rounded-md p-3 font-dm bg-white" style={{ fontSize: 12, color: "#0F172A", border: "1px solid #FECACA" }}>
@@ -1802,18 +1835,27 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                       autoFocus
                     />
                   </div>
+                  <button type="button" onClick={() => setCancelTermsOpen((value) => !value)} className="self-start rounded-md border border-amber-300 bg-amber-50 px-3 py-2 font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>
+                    {cancelTermsOpen ? "Hide Terms & Conditions" : "View Terms & Conditions"}
+                  </button>
+                  {cancelTermsOpen && <CancellationTermsPanel />}
+                  <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 font-dm" style={{ fontSize: 11, color: "#78350F" }}>
+                    <input type="checkbox" checked={cancelTermsAcknowledged} onChange={(event) => setCancelTermsAcknowledged(event.target.checked)} className="mt-0.5" />
+                    <span>I have read and acknowledge the applicable Terms &amp; Conditions.</span>
+                  </label>
                   <div className="rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px dashed #FDE68A" }}>
-                    ℹ️ This will <strong>not</strong> cancel instantly. Enter-Fil will be notified and may accept or decline. If declined, they'll contact you via email.
+                    {cancellationMode === "direct" ? "This cancellation takes effect immediately in the Client portal." : "Sales will review this cancellation request and notify you of the decision."}
                   </div>
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setConfirmCancel(false); setCancelReason(""); }} className="font-dm px-3 py-2 rounded-md hover:bg-white" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
+                    <button onClick={() => { setConfirmCancel(false); setCancelReason(""); setCancelTermsAcknowledged(false); setCancelTermsOpen(false); }} className="font-dm px-3 py-2 rounded-md hover:bg-white" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
                     <button
                       onClick={() => {
                         if (!cancelReason.trim()) { toast.error("A reason is required"); return; }
+                        if (!cancelTermsAcknowledged) { toast.error("Please acknowledge the Terms & Conditions"); return; }
                         onCancel(cancelReason.trim());
-                        setConfirmCancel(false); setCancelReason("");
+                        setConfirmCancel(false); setCancelReason(""); setCancelTermsAcknowledged(false); setCancelTermsOpen(false);
                       }}
-                      disabled={!cancelReason.trim()}
+                      disabled={!cancelReason.trim() || !cancelTermsAcknowledged}
                       className="font-dm px-3 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
                       style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#C8102E" }}
                     >

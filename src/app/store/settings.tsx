@@ -80,20 +80,28 @@ const defaults: CompanySettings = {
   ],
 };
 
+const realUnavailableSettings: CompanySettings = {
+  companyName: "", addressLine1: "", addressLine2: "", cityProvince: "", zip: "",
+  mainPhone: "", secondaryPhone: "", email: "", officeHours: "", defaultPlate: "",
+  defaultDriver: "", defaultDriverContact: "", documentFooter: "",
+  bankDetails: { bankName: "", accountName: "", accountNumber: "" }, paymentMethods: [],
+};
+
 interface Ctx {
   settings: CompanySettings;
+  mode: "demo" | "real";
   update: (patch: Partial<CompanySettings>) => void;
   save: () => void;
 }
 
 const SettingsContext = createContext<Ctx | null>(null);
 
-export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<CompanySettings>(defaults);
+export function SettingsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
+  const [settings, setSettings] = useState<CompanySettings>(mode === "real" ? realUnavailableSettings : defaults);
   const update: Ctx["update"] = (patch) => setSettings((p) => ({ ...p, ...patch }));
   const save: Ctx["save"] = () => {};
   return (
-    <SettingsContext.Provider value={{ settings, update, save }}>
+    <SettingsContext.Provider value={{ settings, mode, update, save }}>
       {children}
     </SettingsContext.Provider>
   );

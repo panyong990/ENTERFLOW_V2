@@ -23,6 +23,7 @@ interface Props {
 
 export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: Props = {}) {
   const session = useSession();
+  const realMode = session.mode === "real";
   const role = roleProp ?? session.role;
   const notificationClient = role === "client" ? clientName ?? session.name : undefined;
   const navigate = onNavigate ?? session.navigate;
@@ -36,6 +37,9 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
   /* Section G — per-notification reply drafts for urgent-upgrade requests */
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
   const [receiptToView, setReceiptToView] = useState<NonNullable<ReturnType<typeof findReceiptForNotification>> | null>(null);
+  const unavailable = (operation: string) => {
+    toast.info(`${operation} is unavailable`, { description: "No authenticated general notification API is connected; nothing was changed." });
+  };
 
   const visible = items.filter((n) => {
     const q = query.toLowerCase();
@@ -47,7 +51,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
   });
 
   const handleClick = (notification: (typeof items)[number]) => {
-    markRead(notification.id, role, notificationClient);
+    if (!realMode) markRead(notification.id, role, notificationClient);
     if (isOfficialReceiptNotification(notification)) {
       const receipt = findReceiptForNotification(notification, allInqs, notificationClient);
       if (receipt) setReceiptToView(receipt);
@@ -79,31 +83,33 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
         )}
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real notifications are unavailable. The complete notification center, filters, detail presentation, and navigation remain visible, but Demo notifications are excluded until an authenticated general notification API is connected.</div>}
+
       <div className="px-8 py-8 flex flex-col gap-5">
         {/* Stats + actions */}
         <div className="grid grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-slate-200/70 p-4">
             <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Total</div>
-            <div className="font-syne mt-1" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{items.length}</div>
+            <div className="font-syne mt-1" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{realMode ? "—" : items.length}</div>
           </div>
           <div className="bg-white rounded-xl border-2 p-4" style={{ borderColor: "#C8102E" }}>
             <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#991B1B", letterSpacing: 0.5, textTransform: "uppercase" }}>Unread</div>
-            <div className="font-syne mt-1" style={{ fontSize: 28, fontWeight: 800, color: "#C8102E", lineHeight: 1 }}>{items.filter(n => !isReadFor(n, role, notificationClient)).length}</div>
+            <div className="font-syne mt-1" style={{ fontSize: 28, fontWeight: 800, color: "#C8102E", lineHeight: 1 }}>{realMode ? "—" : items.filter(n => !isReadFor(n, role, notificationClient)).length}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200/70 p-4">
             <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Read</div>
-            <div className="font-syne mt-1" style={{ fontSize: 28, fontWeight: 800, color: "#16A34A", lineHeight: 1 }}>{items.filter(n => isReadFor(n, role, notificationClient)).length}</div>
+            <div className="font-syne mt-1" style={{ fontSize: 28, fontWeight: 800, color: "#16A34A", lineHeight: 1 }}>{realMode ? "—" : items.filter(n => isReadFor(n, role, notificationClient)).length}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200/70 p-4 flex flex-col gap-2 justify-center">
             <button
-              onClick={() => { markAllRead(role, notificationClient); toast.success("All marked as read"); }}
+              onClick={() => { if (realMode) unavailable("Mark all as read"); else { markAllRead(role, notificationClient); toast.success("All marked as read"); } }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-slate-50 border border-slate-200"
               style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
             >
               <CheckCheck size={12} /> Mark all read
             </button>
             <button
-              onClick={() => { removeAllRead(role, notificationClient); toast.success("Read notifications cleared"); }}
+              onClick={() => { if (realMode) unavailable("Clear read notifications"); else { removeAllRead(role, notificationClient); toast.success("Read notifications cleared"); } }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-red-50 border border-red-200"
               style={{ fontSize: 11, fontWeight: 600, color: "#C8102E" }}
             >
@@ -176,7 +182,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
           {visible.length === 0 ? (
             <div className="px-6 py-12 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
               <Bell size={32} style={{ color: "#CBD5E1", margin: "0 auto 8px" }} />
-              No notifications match your filters.
+              {realMode ? "Real notifications are unavailable." : "No notifications match your filters."}
             </div>
           ) : (
             visible.map((n) => {
@@ -191,6 +197,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
               const draft = replyDraft[n.id] ?? "";
               const sendReply = () => {
                 if (draft.trim().length < 3) { toast.error("Type your reply first"); return; }
+                if (realMode) { unavailable("Notification replies"); return; }
                 if (linkedInq) {
                   updateInquiry(linkedInq.id, { urgentUpgradeResponse: draft.trim() });
                   pushNotif({
@@ -245,7 +252,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
                     )}
                   </button>
                   <button
-                    onClick={() => { remove(n.id, role, notificationClient); toast("Notification hidden from your history"); }}
+                    onClick={() => { if (realMode) unavailable("Hide notification"); else { remove(n.id, role, notificationClient); toast("Notification hidden from your history"); } }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 rounded-md hover:bg-red-50 flex items-center justify-center"
                     style={{ color: "#94A3B8" }}
                     title="Hide notification from your history"

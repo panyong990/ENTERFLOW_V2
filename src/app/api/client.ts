@@ -30,6 +30,8 @@ export function queryString(values: Record<string,string|number>) { return new U
 export interface RealIdentity { userId:string;roleCode:import('../components/Login').Role;accountType:'employee'|'client';displayName:string }
 export interface DirectoryRow { id:string;name?:string;companyName?:string;employeeId?:string;department?:string;jobTitle?:string;email:string;username:string|null;phone:string|null;roleCode?:string;active:boolean|null;accountId?:string|null;joinedOn:string|null;createdAt:string;revision:string }
 export interface DirectoryResult { items:DirectoryRow[];total:number;page:number;pageSize:number;summary?:{total:number;active:number;departments:string[]} }
+export interface OwnerEmployeeDirectoryRow { id:string;employeeId:string|null;name:string;department:string|null;jobTitle:string|null;email:string|null;phone:string|null;roleCode:string|null;active:boolean|null }
+export interface OwnerEmployeeDirectoryResult { items:OwnerEmployeeDirectoryRow[];total:number;page:number;pageSize:number;summary:{total:number;active:number;departments:string[]} }
 export function accountFromRow(row:DirectoryRow, type:'employee'|'client') {
   return {...row,type,name:row.name??row.companyName??'',email:row.email??'',username:row.username??'',phone:row.phone??'',
     role:(type==='client'?'client':row.roleCode) as import('../store/accounts').AccountRole,active:row.active===true,

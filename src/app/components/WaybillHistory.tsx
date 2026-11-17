@@ -1,12 +1,15 @@
 import { Fragment, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Eye, Filter, Paperclip, Search } from "lucide-react";
 import { useOrders } from "../store/orders";
+import { useSession } from "../store/session";
 import { toast } from "sonner";
 import { NotificationBell } from "./NotificationBell";
 import { buildWaybillHistory } from "./waybillData";
 
 export function WaybillHistory() {
   const { inquiriesByStage } = useOrders();
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const [logQuery, setLogQuery] = useState("");
   const [logDateFilter, setLogDateFilter] = useState<"today" | "7days" | "30days" | "all">("all");
   const [isLogFilterOpen, setIsLogFilterOpen] = useState(false);
@@ -50,6 +53,8 @@ export function WaybillHistory() {
         </div>
         <NotificationBell />
       </header>
+
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real waybill history is unavailable. Search, filters, expansion, and document presentation remain available, but Demo scan records are excluded until an authenticated read API is connected.</div>}
 
       <div className="px-8 py-8">
         <section aria-label="Waybill History Log">
@@ -119,7 +124,7 @@ export function WaybillHistory() {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No waybills match your filters.</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{realMode ? "Real waybill history is unavailable." : "No waybills match your filters."}</td></tr>
                 ) : filtered.map((row) => {
                   const isExpanded = expandedLogId === row.id;
                   const matchedJob = row.matchedJob;

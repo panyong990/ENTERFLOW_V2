@@ -219,10 +219,11 @@ function downpaymentDisplayStatus(inv: Invoice): GranularStatus {
 }
 
 function KPI({ label, value, accent = "#0F172A" }: { label: string; value: string; accent?: string }) {
+  const { mode } = useSession();
   return (
     <div className="bg-white rounded-xl border border-slate-200/70 p-5" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
       <div className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</div>
-      <div className="font-syne mt-2" style={{ fontSize: 28, fontWeight: 800, color: accent, lineHeight: 1.1 }}>{value}</div>
+      <div className="font-syne mt-2" style={{ fontSize: 28, fontWeight: 800, color: accent, lineHeight: 1.1 }}>{mode === "real" ? "—" : value}</div>
     </div>
   );
 }
@@ -247,6 +248,10 @@ export function Accounting() {
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
   const { name: issuingStaff, mode = "demo" } = useSession();
+  const realMode = mode === "real";
+  const unavailableFinancialOperation = (operation: string) => {
+    toast.info(`${operation} is unavailable`, { description: "No authenticated financial API is connected; nothing was saved." });
+  };
   const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
   const [sendingReminderIds, setSendingReminderIds] = useState<Set<string>>(() => new Set());
@@ -413,6 +418,10 @@ export function Accounting() {
   };
 
   const editReceipt = (invId: string, oldEntry: PaymentEntry, next: { amount: number; method: string; ref: string; date: string }) => {
+    if (realMode) {
+      unavailableFinancialOperation("Receipt updates");
+      return;
+    }
     const inquiry = rows.find((row) => row.id === invId);
     const source = inquiry ? byClient(inquiry.client).find((item) => item.id === invId) : undefined;
     if (!source) {
@@ -463,6 +472,10 @@ export function Accounting() {
   };
 
   const addPayment = (id: string) => {
+    if (realMode) {
+      unavailableFinancialOperation("Payment recording");
+      return;
+    }
     const invoice = rows.find((row) => row.id === id);
     if (!invoice || invoice.paymentState.currentPaymentType === null) {
       toast.info("This invoice is already fully paid; no further payment can be recorded.");
@@ -511,6 +524,10 @@ export function Accounting() {
   };
 
   const clearAccount = (id: string) => {
+    if (realMode) {
+      unavailableFinancialOperation("Account clearing");
+      return;
+    }
     const inv = rows.find(r => r.id === id);
     if (!inv) return;
     if (inv.paymentState.state !== "FULLY_PAID") {
@@ -532,6 +549,10 @@ export function Accounting() {
   };
 
   const handleVerifyClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
+    if (realMode) {
+      unavailableFinancialOperation("Payment verification");
+      return;
+    }
     if (payment.verificationStatus !== "pending" || payment.submittedAmount <= 0 || !payment.receiptDataUrl) return;
     const remainingCents = Math.max(0, toMoneyCents(invoice.paymentState.remainingInvoiceBalance) - toMoneyCents(payment.submittedAmount));
     const verifiedDownpaymentCents = toMoneyCents(invoice.paymentState.verifiedDownpaymentAmount)
@@ -564,12 +585,20 @@ export function Accounting() {
   };
 
   const handleRejectClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
+    if (realMode) {
+      unavailableFinancialOperation("Payment rejection");
+      return;
+    }
     if (payment.verificationStatus !== "pending") return;
     setRejectionReason("");
     setPaymentToReject({ invoice, payment });
   };
 
   const confirmRejectClientPayment = () => {
+    if (realMode) {
+      unavailableFinancialOperation("Payment rejection");
+      return;
+    }
     const reason = rejectionReason.trim();
     if (!paymentToReject || !reason) return;
     const { invoice, payment } = paymentToReject;
@@ -604,6 +633,10 @@ export function Accounting() {
   const filteredReminderRows = filterReminderRows(reminderCandidates, reminderFilter, now);
 
   const createReminderNotification = (invoice: Invoice) => {
+    if (realMode) {
+      unavailableFinancialOperation("Payment reminders");
+      return false;
+    }
     if (!isEligibleReminder(invoice)) {
       throw new Error("This invoice no longer has an eligible outstanding balance.");
     }
@@ -684,6 +717,10 @@ export function Accounting() {
   };
 
   const beginOfficialReceipt = (invoice: Invoice) => {
+    if (realMode) {
+      unavailableFinancialOperation("Official Receipt issuance");
+      return;
+    }
     const current = rows.find((row) => row.id === invoice.id);
     if (!current || current.officialReceipt) {
       toast.error("This invoice already has an issued Official Receipt.");
@@ -700,6 +737,10 @@ export function Accounting() {
   };
 
   const issueReceipt = (invoice: Invoice, orNumber: string) => {
+    if (realMode) {
+      unavailableFinancialOperation("Official Receipt issuance");
+      return;
+    }
     const succeeded = issueOfficialReceipt(invoice.id, orNumber, issuingStaff);
     if (!succeeded) {
       toast.error("Official Receipt could not be issued. Verify the invoice state and OR number.");
@@ -770,9 +811,11 @@ export function Accounting() {
         </div>
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real financial records are unavailable. The complete Payments Ledger, invoice views, payment history, filters, detail panels, and document previews remain visible, but Demo financial records are excluded until authenticated invoice and payment APIs are connected.</div>}
+
       <div className="px-8 py-8 flex flex-col gap-6">
         <div className="grid grid-cols-4 gap-6">
-          <KPI label="Total Invoices" value={String(rows.length)} />
+          <KPI label="Total Invoices" value={realMode ? "—" : String(rows.length)} />
           <KPI label="Total Billed" value={`₱${formatMoney(fromMoneyCents(rows.reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#1A2B4A" />
           <KPI label="Pending Collection" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "pending").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#D97706" />
           <KPI label="Paid & Closed" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#16A34A" />
@@ -955,7 +998,7 @@ export function Accounting() {
                   {section.rows.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-4 py-4 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>
-                        No orders in this payment stage.
+                        {realMode ? "Real payment records are unavailable." : "No orders in this payment stage."}
                       </td>
                     </tr>
                   )}

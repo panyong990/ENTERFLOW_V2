@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, FileText, RefreshCw, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, FileText, Search, X } from "lucide-react";
 import { sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
 import { useSalesOrderDetail, useSalesOrders, type SalesOrderFilters, type SalesOrderItem, type SalesOrderRow, type SalesPayment } from "../useSalesOrders";
 import { useSalesOrderDocuments, type SalesPurchaseOrder, type SalesQuotation } from "../useSalesOrderDocuments";
@@ -7,21 +7,6 @@ import { useSalesJobOrders, type SalesJobOrder, type SalesProductionEvent } from
 import { useSalesDelivery, type SalesDelivery, type SalesDeliveryReceipt, type SalesShipment } from "../useSalesDelivery";
 import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { POViewerModal } from "./OriginalSalesForms";
-
-const stages: { value: SalesOrderFilters["stage"]; label: string }[] = [
-  { value: "all", label: "All stages" },
-  { value: "inquiry", label: "Inquiry" },
-  { value: "quotation", label: "Quotation" },
-  { value: "po", label: "PO received" },
-  { value: "jo", label: "JO" },
-  { value: "in_production", label: "In production" },
-  { value: "quality_inspection", label: "Quality inspection" },
-  { value: "ready_for_dispatch", label: "Ready for dispatch" },
-  { value: "dispatched", label: "Dispatched" },
-  { value: "delivered", label: "Delivered" },
-  { value: "paid", label: "Paid" },
-  { value: "overdue", label: "Overdue" },
-];
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "—";
@@ -37,12 +22,54 @@ function itemDescription(item: SalesOrderItem) {
   return item.filterName || item.filterTypeCode || "Product specification";
 }
 
+const stages: { value: SalesOrderFilters["stage"]; label: string }[] = [
+  { value: "all", label: "All stages" },
+  { value: "in_production", label: "In production" },
+  { value: "quality_inspection", label: "Quality inspection" },
+  { value: "ready_for_dispatch", label: "Ready for dispatch" },
+  { value: "dispatched", label: "Dispatched" },
+  { value: "delivered", label: "Delivered" },
+  { value: "paid", label: "Paid" },
+  { value: "overdue", label: "Overdue" },
+];
+
+function recordStatusLabel(row: SalesOrderRow) {
+  if (row.archiveReason === "rejected") return "Rejected inquiry";
+  if (row.archiveReason === "cancelled") return "Cancelled";
+  if (row.fulfillmentCompletedAt || row.stageCode === "paid") return "Completed";
+  return row.archivedAt ? "Archived" : "Active";
+}
+
+type BookkeepingDocumentType = "all" | "quotation" | "purchase-order" | "job-order" | "invoice";
+const bookkeepingDocumentTypes: { value: BookkeepingDocumentType; label: string }[] = [
+  { value: "all", label: "All Documents" },
+  { value: "quotation", label: "Quotation" },
+  { value: "purchase-order", label: "Purchase Order" },
+  { value: "job-order", label: "Job Order" },
+  { value: "invoice", label: "Invoice" },
+];
+function documentTypesFor(row: SalesOrderRow): BookkeepingDocumentType[] {
+  const types: BookkeepingDocumentType[] = [];
+  if (row.latestQuotationReference) types.push("quotation");
+  if (row.purchaseOrderReference) types.push("purchase-order");
+  if (row.jobOrderCount > 0) types.push("job-order");
+  if (row.invoiceReference) types.push("invoice");
+  return types;
+}
+
 export function SalesRecordBrowser() {
-  const [filters, setFilters] = useState<SalesOrderFilters>({ q: "", status: "open", stage: "all", sort: "submitted-desc", page: 1, pageSize: 25 });
+  const [filters, setFilters] = useState<SalesOrderFilters>({ q: "", status: "all", stage: "all", sort: "submitted-desc", page: 1, pageSize: 25 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [recordStatus, setRecordStatus] = useState("all");
+  const [documentType, setDocumentType] = useState<BookkeepingDocumentType>("all");
   const remote = useSalesOrders(true, filters);
   const detail = useSalesOrderDetail(true, selectedId);
-  const total = remote.data?.total ?? 0;
+  const allRows = remote.data?.items ?? [];
+  const rows = allRows.filter(row => {
+    const lifecycleMatches = recordStatus === "all" || (recordStatus === "active" && !row.archivedAt && !row.fulfillmentCompletedAt) || (recordStatus === "completed" && (Boolean(row.fulfillmentCompletedAt) || row.stageCode === "paid")) || (recordStatus === "cancelled" && row.archiveReason === "cancelled");
+    return lifecycleMatches && (documentType === "all" || documentTypesFor(row).includes(documentType));
+  });
+  const total = recordStatus === "all" && documentType === "all" ? (remote.data?.total ?? 0) : rows.length;
   const currentPage = remote.data?.page ?? filters.page;
   const pageCount = Math.max(1, Math.ceil(total / filters.pageSize));
 
@@ -55,18 +82,15 @@ export function SalesRecordBrowser() {
       <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-center justify-between gap-4">
         <div>
           <h1 className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Sales &amp; Orders</h1>
-          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Live company-wide inquiries and order records.</p>
+          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>Authenticated quotation, purchase order, Job Order, and invoice register.</p>
         </div>
-        <button type="button" onClick={remote.refresh} disabled={remote.loading} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 font-dm text-xs font-semibold text-slate-700 disabled:opacity-50">
-          <RefreshCw size={14} className={remote.loading ? "animate-spin" : ""} /> Refresh
-        </button>
       </header>
 
-      <div className="px-8 pt-6">
+      <div className="hidden">
         <div className="grid grid-cols-3 gap-4">
-          <Metric label="Records on current result" value={String(remote.data?.items.length ?? 0)} />
-          <Metric label="Total matching records" value={String(total)} />
-          <Metric label="Current page" value={`${currentPage} / ${pageCount}`} />
+          <Metric label="Records on current result" value={remote.loading || remote.error || !remote.data ? "—" : String(remote.data.items.length)} />
+          <Metric label="Total matching records" value={remote.loading || remote.error || !remote.data ? "—" : String(total)} />
+          <Metric label="Current page" value={remote.loading || remote.error || !remote.data ? "—" : `${currentPage} / ${pageCount}`} />
         </div>
       </div>
 
@@ -78,10 +102,16 @@ export function SalesRecordBrowser() {
               <input value={filters.q} onChange={event => updateFilter("q", event.target.value)} placeholder="Search reference, client, contact, or ID" className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 font-dm text-sm outline-none" />
             </label>
             <select aria-label="Order status" value={filters.status} onChange={event => updateFilter("status", event.target.value as SalesOrderFilters["status"])} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm">
-              <option value="open">Open</option><option value="archived">Archived</option><option value="all">All statuses</option>
+              <option value="all">All Statuses</option><option value="open">Open Records</option><option value="archived">Archived Records</option>
+            </select>
+            <select aria-label="Document type" value={documentType} onChange={event => { setDocumentType(event.target.value as BookkeepingDocumentType); updateFilter("page", 1); }} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm">
+              {bookkeepingDocumentTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
             <select aria-label="Order stage" value={filters.stage} onChange={event => updateFilter("stage", event.target.value as SalesOrderFilters["stage"])} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm">
               {stages.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
+            </select>
+            <select aria-label="Record lifecycle" value={recordStatus} onChange={event => setRecordStatus(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm">
+              <option value="all">All records</option><option value="active">Active and progressing</option><option value="completed">Completed orders</option><option value="cancelled">Cancelled records</option>
             </select>
             <select aria-label="Order sort" value={filters.sort} onChange={event => updateFilter("sort", event.target.value as SalesOrderFilters["sort"])} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-sm">
               <option value="submitted-desc">Newest submitted</option><option value="submitted-asc">Oldest submitted</option>
@@ -94,7 +124,7 @@ export function SalesRecordBrowser() {
           {remote.error && !remote.loading && <div role="alert" className="mt-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{remote.error}</span><button type="button" onClick={remote.refresh} className="rounded border border-red-300 px-3 py-1.5 font-semibold">Retry</button></div>}
 
           {!remote.loading && !remote.error && (
-            remote.data?.items.length ? <OrderTable rows={remote.data.items} onSelect={setSelectedId} /> : <div className="py-16 text-center text-sm text-slate-500">No inquiries or orders match the current filters.</div>
+            rows.length ? <OrderTable rows={rows} onSelect={setSelectedId} /> : <div className="py-16 text-center text-sm text-slate-500">No inquiries or orders match the current filters.</div>
           )}
 
           <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 font-dm text-xs text-slate-500">
@@ -115,17 +145,15 @@ export function SalesRecordBrowser() {
 function OrderTable({ rows, onSelect }: { rows: SalesOrderRow[]; onSelect: (id: string) => void }) {
   return <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
     <table className="w-full min-w-[900px]">
-      <thead className="bg-slate-50"><tr>{["Reference", "Client", "Stage", "Submitted", "Quotation", "PO", "Job Orders", "Status", ""].map(label => <th key={label} className="px-3 py-3 text-left font-dm text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</th>)}</tr></thead>
+      <thead className="bg-slate-50"><tr>{["Order reference", "Client", "Documents", "Stage", "Submitted", "Status", ""].map(label => <th key={label} className="px-3 py-3 text-left font-dm text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</th>)}</tr></thead>
       <tbody>
         {rows.map(row => <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50">
           <td className="px-3 py-3 font-mono text-xs font-semibold text-slate-800">{row.reference}</td>
           <td className="px-3 py-3 text-sm text-slate-700">{row.companyName}<div className="text-xs text-slate-400">{row.contactPerson || "—"}</div></td>
+          <td className="px-3 py-3"><div className="flex max-w-xs flex-wrap gap-1.5">{documentTypesFor(row).length ? documentTypesFor(row).map(type => <span key={type} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">{bookkeepingDocumentTypes.find(item => item.value === type)?.label}</span>) : <span className="text-xs text-slate-500">No document metadata</span>}</div></td>
           <td className="px-3 py-3"><span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{row.stageLabel}</span></td>
           <td className="px-3 py-3 text-xs text-slate-600">{formatDate(row.submittedAt)}</td>
-          <td className="px-3 py-3 text-xs text-slate-600">{row.latestQuotationReference || "—"}</td>
-          <td className="px-3 py-3 text-xs text-slate-600">{row.purchaseOrderReference || "—"}</td>
-          <td className="px-3 py-3 text-xs text-slate-600">{row.jobOrderCount}</td>
-          <td className="px-3 py-3 text-xs font-semibold">{row.archivedAt ? "Archived" : "Open"}</td>
+          <td className="px-3 py-3 text-xs font-semibold">{recordStatusLabel(row)}</td>
           <td className="px-3 py-3"><button type="button" aria-label={`View ${row.reference}`} onClick={() => onSelect(row.id)} className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700"><Eye size={13} /> View</button></td>
         </tr>)}
       </tbody>

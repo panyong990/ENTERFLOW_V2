@@ -65,6 +65,8 @@ type SalesOrdersStatusFilter =
   | "downpaymentPending"
   | "cancellationRequested";
 
+type SalesWorkspaceSection = "pipeline" | "cancellations" | "cancelled" | "completed";
+
 const salesOrdersStatusOptions: { value: SalesOrdersStatusFilter; label: string }[] = [
   { value: "all", label: "All Statuses" },
   { value: "newInquiry", label: "New Inquiry" },
@@ -545,6 +547,88 @@ function SummaryCard({ label, value, accent }: { label: string; value: number; a
   );
 }
 
+function SalesWorkspaceRecords({
+  section,
+  pending,
+  cancelled,
+  completed,
+  onApprove,
+  onDecline,
+}: {
+  section: Exclude<SalesWorkspaceSection, "pipeline">;
+  pending: Inquiry[];
+  cancelled: Inquiry[];
+  completed: Inquiry[];
+  onApprove: (inquiry: Inquiry) => void;
+  onDecline: (inquiry: Inquiry) => void;
+}) {
+  const title = section === "cancellations" ? "Cancellation Requests" : section === "cancelled" ? "Cancelled" : "Completed";
+  const rows = section === "cancellations" ? pending : section === "cancelled" ? cancelled : completed;
+
+  return (
+    <section className="px-8 py-6" aria-labelledby={`sales-${section}-title`}>
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div>
+          <h2 id={`sales-${section}-title`} className="font-syne" style={{ fontSize: 22, fontWeight: 800, color: "#0F172A" }}>{title}</h2>
+          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>
+            {section === "cancellations" ? "Review pending Client requests before they are archived." : section === "cancelled" ? "Historical cancellations retained outside the active pipeline." : "Completed job orders and downstream order history."}
+          </p>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{rows.length} records</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>No {title.toLowerCase()} records.</div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {rows.map((inquiry) => {
+            const pendingRequest = inquiry.pendingCancellation;
+            const latestHistory = inquiry.cancellationHistory?.[inquiry.cancellationHistory.length - 1];
+            return (
+              <article key={inquiry.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{inquiry.code}</span>
+                  <span className="rounded-full px-2 py-1 font-dm" style={{ fontSize: 10, fontWeight: 800, color: section === "cancellations" ? "#92400E" : section === "cancelled" ? "#991B1B" : "#166534", backgroundColor: section === "cancellations" ? "#FEF3C7" : section === "cancelled" ? "#FEE2E2" : "#DCFCE7" }}>
+                    {section === "cancellations" ? "Pending" : section === "cancelled" ? "Cancelled" : "Completed"}
+                  </span>
+                </div>
+                <div className="mt-2 font-dm" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{inquiry.clientName}</div>
+                <div className="mt-1 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{inquiry.submittedDate} · {inquiry.products.length} product(s)</div>
+                {inquiry.poNumber && <div className="mt-2 font-mono-jb" style={{ fontSize: 11, color: "#475569" }}>PO: {inquiry.poNumber}</div>}
+                {section === "cancellations" && pendingRequest && (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 font-dm" style={{ fontSize: 12, color: "#78350F" }}>
+                    <div><strong>Reason:</strong> {pendingRequest.reason}</div>
+                    <div className="mt-1">Requested {pendingRequest.requestedAt} · by {pendingRequest.requestedBy === "client" ? "Client" : "Management"}</div>
+                  </div>
+                )}
+                {section === "cancelled" && (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+                    <div><strong>Reason:</strong> {inquiry.archiveNote ?? latestHistory?.reason ?? "Not recorded"}</div>
+                    <div className="mt-1">Cancelled {inquiry.archiveDate ?? "Date unavailable"} · {inquiry.cancellationType === "direct" ? "Direct Client cancellation" : "Sales-approved request"}</div>
+                    {latestHistory?.resolvedAt && <div className="mt-1">Resolution: {latestHistory.resolution} · {latestHistory.resolvedAt}</div>}
+                  </div>
+                )}
+                {section === "completed" && (
+                  <div className="mt-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+                    <div>Stage: {stageLabel[inquiry.stage]}</div>
+                    {inquiry.joNumber && <div className="mt-1">JO: {inquiry.joNumber}</div>}
+                    {inquiry.deliveredDate && <div className="mt-1">Delivered: {inquiry.deliveredDate}</div>}
+                  </div>
+                )}
+                {section === "cancellations" && (
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" onClick={() => onApprove(inquiry)} className="flex-1 rounded-md bg-emerald-600 px-3 py-2 font-dm text-white" style={{ fontSize: 12, fontWeight: 700 }}>Approve</button>
+                    <button type="button" onClick={() => onDecline(inquiry)} className="flex-1 rounded-md border border-red-200 px-3 py-2 font-dm text-red-700" style={{ fontSize: 12, fontWeight: 700 }}>Reject</button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function openProductSketch(sketch: ProductSketchAttachment) {
   try {
     const [metadata, encodedData] = sketch.dataUrl.split(",", 2);
@@ -967,6 +1051,7 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
   const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [showStockRequests, setShowStockRequests] = useState(false);
   const [statusFilter, setStatusFilter] = useState<SalesOrdersStatusFilter>("all");
+  const [workspaceSection, setWorkspaceSection] = useState<SalesWorkspaceSection>("pipeline");
   const [expandedCards, setExpandedCards] = useState<{ quotation: string | null; readyForJobOrder: string | null }>({
     quotation: null,
     readyForJobOrder: null,
@@ -994,6 +1079,9 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
   }, [inquiries, targetInquiryId]);
 
   const salesStockRequestCount = stockRequests.filter((request) => request.status === "responded" || request.status === "updated").length;
+  const pendingCancellationRecords = inquiries.filter((inquiry) => Boolean(inquiry.pendingCancellation));
+  const cancelledRecords = archivedInquiries.filter((inquiry) => inquiry.archiveReason === "cancelled");
+  const rejectedRecords = archivedInquiries.filter((inquiry) => inquiry.archiveReason === "rejected");
 
   const reviewing = inquiries.find((i) => i.id === reviewId);
   const viewing = inquiries.find((i) => i.id === viewQuoteId);
@@ -1093,10 +1181,6 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200">
-            <span className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Pipeline</span>
-            <span className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{inquiries.length} items</span>
-          </div>
           <button onClick={() => setShowStockRequests(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ backgroundColor: "#1A2B4A" }}>
             <span className="font-dm text-white/75" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>Stock Requests</span>
             <span className="font-syne text-white px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 800 }}>{salesStockRequestCount}</span>
@@ -1114,23 +1198,63 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
         </div>
       </header>
 
-      <div className="px-8 pt-6">
+      <nav className="px-8 pt-5" aria-label="Sales & Orders sections">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+          {([
+            ["pipeline", "Active Pipeline"],
+            ["cancellations", `Cancellation Requests${pendingCancellationRecords.length ? ` (${pendingCancellationRecords.length})` : ""}`],
+            ["cancelled", `Cancelled${cancelledRecords.length ? ` (${cancelledRecords.length})` : ""}`],
+            ["completed", `Completed${completedJOs.length ? ` (${completedJOs.length})` : ""}`],
+          ] as [SalesWorkspaceSection, string][]).map(([section, label]) => (
+            <button
+              key={section}
+              type="button"
+              onClick={() => setWorkspaceSection(section)}
+              className="rounded-lg px-4 py-2.5 font-dm transition-colors"
+              style={{ fontSize: 12, fontWeight: 700, color: workspaceSection === section ? "#FFFFFF" : "#475569", backgroundColor: workspaceSection === section ? "#1A2B4A" : "#F8FAFC" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {workspaceSection !== "pipeline" && (
+        <SalesWorkspaceRecords
+          section={workspaceSection}
+          pending={pendingCancellationRecords}
+          cancelled={cancelledRecords}
+          completed={completedJOs}
+          onApprove={(inquiry) => {
+            approveCancellation(inquiry.id);
+            pushNotif({ dept: "sales", title: `Cancellation accepted: ${inquiry.code}`, body: `${inquiry.clientName} · order archived as cancelled`, link: "orders", clientName: inquiry.clientName, recipients: ["client"] });
+            toast.success("Cancellation accepted", { description: `${inquiry.code} archived as cancelled` });
+          }}
+          onDecline={(inquiry) => {
+            declineCancellation(inquiry.id);
+            pushNotif({ dept: "sales", title: `Cancellation declined: ${inquiry.code}`, body: `${inquiry.clientName} · cancellation request declined`, link: "orders", clientName: inquiry.clientName, recipients: ["client"] });
+            toast.info("Cancellation declined", { description: `${inquiry.code} returned to the active pipeline` });
+          }}
+        />
+      )}
+
+      {workspaceSection === "pipeline" && <div className="px-8 pt-6">
         <div className="flex items-start gap-2 rounded-lg px-4 py-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
           <Info size={16} style={{ color: "#1D4ED8", marginTop: 2 }} />
           <span className="font-dm" style={{ fontSize: 13, color: "#1E3A8A" }}>
             New inquiries appear automatically when clients submit through the Client Portal.
           </span>
         </div>
-      </div>
+      </div>}
 
-      <div className="px-8 pt-4 pb-0">
-        {archivedInquiries.length > 0 && (
+      {workspaceSection === "pipeline" && <div className="px-8 pt-4 pb-0">
+        {rejectedRecords.length > 0 && (
           <details className="rounded-xl border border-slate-200 bg-white overflow-hidden">
             <summary className="px-5 py-3 flex items-center gap-2 cursor-pointer font-dm select-none" style={{ fontSize: 13, fontWeight: 600, color: "#64748B" }}>
-              🗂 Archived / Rejected Inquiries ({archivedInquiries.length})
+              🗂 Rejected Inquiries ({rejectedRecords.length})
             </summary>
             <div className="border-t border-slate-200 p-4 grid grid-cols-3 gap-3">
-              {archivedInquiries.map(i => (
+              {rejectedRecords.map(i => (
                 <div key={i.id} className="rounded-lg border border-slate-200 p-3 flex flex-col gap-1" style={{ backgroundColor: "#FAFBFC" }}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono-jb" style={{ fontSize: 11, color: "#1A2B4A", fontWeight: 600 }}>{i.code}</span>
@@ -1156,18 +1280,20 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
             </div>
           </details>
         )}
-      </div>
+      </div>}
 
-      <div className="px-8 py-6">
+      {workspaceSection === "pipeline" && <div className="px-8 py-6">
         <div className="grid grid-cols-3 gap-6">
           {columns.map((col) => {
             /* Part 4B will provide the payment-verified source for the ready-for-job-order column. */
             const isCollapsibleColumn = col.id === "quotation" || col.id === "readyForJobOrder";
-            const colCards = col.id === "readyForJobOrder"
-              ? filtered.filter(isReadyForJobOrder)
-              : filtered.filter((c) => col.id === "quotation"
-                ? (c.stage === "quotation" || (c.stage === "po" && !isReadyForJobOrder(c)))
-                : c.stage === col.id);
+             const colCards = col.id === "readyForJobOrder"
+               ? filtered.filter((c) => !c.pendingCancellation && isReadyForJobOrder(c))
+               : filtered.filter((c) => !c.pendingCancellation && (
+                 col.id === "quotation"
+                   ? (c.stage === "quotation" || (c.stage === "po" && !isReadyForJobOrder(c)))
+                   : c.stage === col.id
+               ));
             return (
               <div key={col.id} className="rounded-xl border border-slate-200/70 flex flex-col bg-white" style={{ minHeight: 600 }}>
                 <div className="px-5 py-4 border-b border-slate-200/70 flex items-center justify-between rounded-t-xl" style={{ backgroundColor: "#F4F6F9" }}>
@@ -1267,7 +1393,7 @@ function DemoSalesOrders({ targetInquiryId }: { targetInquiryId?: string }) {
             );
           })}
         </div>
-      </div>
+      </div>}
 
       {reviewing && (
         <ReviewQuotationModal

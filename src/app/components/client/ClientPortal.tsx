@@ -30,7 +30,7 @@ import {
 } from "./model";
 import { useNotifications } from "./data";
 import { useSettings } from "./data";
-import { useOrders, useClientData, unavailable } from "./data";
+import { useOrders, useClientData, unavailable, unavailableMessage } from "./data";
 import type { ClientView } from "./adapters";
 import { RelatedRecords } from "./RelatedRecords";
 import { loadProductSketchAttachment, readFileAsDataUrl } from "./data";
@@ -61,6 +61,10 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: "accounting", label: "Accounting", icon: CreditCard },
   { id: "settings", label: "Settings", icon: Settings },
 ];
+
+function RealModePending({ children }: { children: React.ReactNode }) {
+  return <div role="status" className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-dm text-xs leading-5 text-blue-950">{children}</div>;
+}
 
 const isClientDestination = (id: string): id is Tab =>
   id === "notifications" || tabs.some((tab) => tab.id === id);
@@ -312,7 +316,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
   const allOrders=byClient(clientName);
   const rejectedOrders=allOrders.filter(inquiry=>inquiry.archived&&inquiry.archiveReason==='rejected');
   const myOrders=allOrders.filter(inquiry=>!(inquiry.archived&&inquiry.archiveReason==='rejected'));
-  const { loading, error } = useClientData();
+  const { loading, error, refresh } = useClientData();
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<ClientOrderStatusId | "all">("all");
   const [orderSortOrder, setOrderSortOrder] = useState<"newest" | "oldest">("newest");
@@ -380,12 +384,16 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
         </button>
       </div>
 
+      {loading && <div role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-4 font-dm text-sm text-blue-950">Loading authenticated orders…</div>}
+      {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 font-dm text-sm text-red-900">Unable to load authenticated orders. {error}<button type="button" className="ml-3 underline" onClick={refresh}>Retry</button></div>}
+
       {myOrders.length === 0 && !loading && !error && (
-        <div className="bg-white rounded-xl border border-slate-200/70 p-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-          No orders returned. Use <strong>Create Order</strong> to prepare an unsaved inquiry.
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-7 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
+          <div className="font-semibold text-slate-800">No orders are available for this account.</div>
+          <div className="mt-1 text-xs text-slate-500">Create Order opens an unsaved inquiry draft. Submission is unavailable until the authenticated service supports it.</div>
         </div>
       )}
-      {myOrders.length > 0 && (
+      {(myOrders.length > 0 || loading || error) && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/70 bg-white p-3">
           <input
             type="search"
@@ -464,6 +472,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
               </div>
               <button onClick={() => setShowCreateOptions(false)} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="Close create order options"><X size={16} /></button>
             </div>
+            <div className="px-5 pt-4 sm:px-6"><RealModePending>Order creation and reorder submission are unavailable in Real Mode. You can review a draft, but nothing will be saved.</RealModePending></div>
             <div className="flex flex-col gap-3 p-5 sm:p-6">
               <button
                 onClick={() => { setShowCreateOptions(false); setShowWizard(true); }}
@@ -1130,8 +1139,8 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
                 Next: {STEPS[step].label} →
               </button>
             ) : (
-              <button onClick={submit} disabled={isSubmitting} className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-                <ClipboardList size={15} strokeWidth={2.5} /> {isSubmitting ? "Submitting..." : "Submit Inquiry"}
+              <button onClick={submit} disabled className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+                <ClipboardList size={15} strokeWidth={2.5} /> Submission unavailable
               </button>
             )}
           </div>
@@ -1269,6 +1278,8 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const [open, setOpen] = useState(inquiry.stage === "quotation" || poReviewStatus(inquiry) === "Rejected");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelTermsOpen, setCancelTermsOpen] = useState(false);
+  const [cancelTermsAcknowledged, setCancelTermsAcknowledged] = useState(false);
   /* Section C — revision request modal */
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [revisionNoteDraft, setRevisionNoteDraft] = useState("");
@@ -1282,6 +1293,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const [showTerms, setShowTerms] = useState(false);
   const total = inquiry.quotationDoc?.total ?? NaN;
   const invoicePayment = paymentState(inquiry);
+  const hasRecordedDownpayment = invoicePayment.downpaymentStatus === "COMPLETE";
+  const cancellationStage = inquiry.stage === "inquiry" || inquiry.stage === "quotation" || inquiry.stage === "po";
+  const cancellationIsDirect = inquiry.stage === "inquiry" || inquiry.stage === "quotation";
   const submittedPayments = paymentRecords(inquiry);
   const latestSubmittedPayment = submittedPayments[submittedPayments.length - 1];
   const poSubmissions = inquiry.poSubmissions ?? [];
@@ -1563,7 +1577,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             </section>
           )}
 
-          {/* Cancel — pending approval */}
+          {/* Cancellation status/history is shown when the authenticated API supplies it. */}
           {inquiry.pendingCancellation && (
             <div className="pt-3 border-t border-slate-200 mt-2">
               <div className="rounded-lg p-3 font-dm flex items-start gap-2" style={{ fontSize: 12, color: "#92400E", backgroundColor: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
@@ -1591,22 +1605,33 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             </section>
           )}
 
-          {/* Cancel order — only before PO is confirmed and not already pending */}
-          {!inquiry.archived && inquiry.stage !== "po" && !inquiry.pendingCancellation && (
+          {!inquiry.pendingCancellation && !inquiry.cancellationHistory?.length && !inquiry.archived && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 font-dm" style={{ fontSize: 11, color: "#64748B" }}>
+              Cancellation history is unavailable from the authenticated Client API. No cancellation request or outcome is inferred.
+            </div>
+          )}
+
+          {/* Cancellation — the real API is read-only until a protected cancellation endpoint exists. */}
+          {!inquiry.archived && cancellationStage && !inquiry.pendingCancellation && (
             <div className="pt-3 border-t border-slate-200 mt-2">
-              {!confirmCancel ? (
+              {hasRecordedDownpayment && (
+                <div className="mb-3 rounded-lg border border-slate-200 bg-slate-100 p-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
+                  Cancellation is unavailable because a verified downpayment has been recorded for this order.
+                </div>
+              )}
+              {!hasRecordedDownpayment && (!confirmCancel ? (
                 <button
                   onClick={() => setConfirmCancel(true)}
                   className="flex items-center gap-2 px-4 py-2 rounded-md font-dm border-2 hover:bg-red-50 transition-colors"
                   style={{ fontSize: 12, fontWeight: 700, color: "#C8102E", borderColor: "#FECACA", backgroundColor: "white", letterSpacing: 0.4 }}
                 >
-                  ⚠️ CANCEL THIS ORDER
+                  ⚠️ {cancellationIsDirect ? "CANCEL THIS ORDER" : "REQUEST CANCELLATION"}
                 </button>
               ) : (
                 <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA" }}>
                   <div className="flex items-center gap-2">
                     <span style={{ fontSize: 16 }}>⚠️</span>
-                    <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#991B1B" }}>Cancel this order</span>
+                    <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#991B1B" }}>{cancellationIsDirect ? "Cancel this order" : "Request cancellation"}</span>
                   </div>
                   {/* Order details preview */}
                   <div className="rounded-md p-3 font-dm bg-white" style={{ fontSize: 12, color: "#0F172A", border: "1px solid #FECACA" }}>
@@ -1627,26 +1652,36 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                       autoFocus
                     />
                   </div>
+                  <button type="button" onClick={() => setCancelTermsOpen((value) => !value)} className="self-start rounded-md border border-amber-300 bg-amber-50 px-3 py-2 font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>
+                    {cancelTermsOpen ? "Hide Terms & Conditions" : "View Terms & Conditions"}
+                  </button>
+                  {cancelTermsOpen && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 font-dm" style={{ fontSize: 11, color: "#78350F" }}>
+                    Cancellation requests are subject to the applicable order terms. A cancellation is not confirmed until the authenticated service records the outcome.
+                  </div>}
+                  <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 font-dm" style={{ fontSize: 11, color: "#78350F" }}>
+                    <input type="checkbox" checked={cancelTermsAcknowledged} onChange={(event) => setCancelTermsAcknowledged(event.target.checked)} className="mt-0.5" />
+                    <span>I have read and acknowledge the applicable Terms &amp; Conditions.</span>
+                  </label>
                   <div className="rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px dashed #FDE68A" }}>
-                    ℹ️ This will <strong>not</strong> cancel instantly. Enter-Fil will be notified and may accept or decline. If declined, they'll contact you via email.
+                    ℹ️ Cancellation submission is currently unavailable in Real Mode. {cancellationIsDirect ? "The inquiry/quotation remains unchanged." : "Sales review has not been requested."}
                   </div>
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setConfirmCancel(false); setCancelReason(""); }} className="font-dm px-3 py-2 rounded-md hover:bg-white" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
+                    <button onClick={() => { setConfirmCancel(false); setCancelReason(""); setCancelTermsAcknowledged(false); setCancelTermsOpen(false); }} className="font-dm px-3 py-2 rounded-md hover:bg-white" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
                     <button
                       onClick={() => {
                         if (!cancelReason.trim()) { toast.error("A reason is required"); return; }
-                        onCancel(cancelReason.trim());
-                        setConfirmCancel(false); setCancelReason("");
+                        if (!cancelTermsAcknowledged) { toast.error("Please acknowledge the Terms & Conditions"); return; }
+                        unavailable();
                       }}
-                      disabled={!cancelReason.trim()}
+                      disabled
                       className="font-dm px-3 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
                       style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#C8102E" }}
                     >
-                      ⚠️ Send Cancellation Request
+                      ⚠️ Cancellation unavailable
                     </button>
                   </div>
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>
@@ -1678,6 +1713,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               <button onClick={() => setShowRevisionModal(false)} className="ml-auto w-8 h-8 rounded-md hover:bg-amber-100 flex items-center justify-center"><X size={16} /></button>
             </div>
             <div className="p-5 overflow-auto flex flex-col gap-4">
+              <RealModePending>Quotation revision requests are unavailable in Real Mode. This draft will not be sent to Sales.</RealModePending>
               <div className="rounded-lg p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                 <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Current Quotation</div>
                 <div className="flex items-baseline gap-2">
@@ -1698,8 +1734,8 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             </div>
             <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
               <button onClick={() => setShowRevisionModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-              <button onClick={submitRevision} disabled={revisionNoteDraft.trim().length < 5} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}>
-                Send Revision Request
+              <button disabled className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}>
+                Revision submission unavailable
               </button>
             </div>
           </div>
@@ -1736,6 +1772,7 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
         <div className="p-6 flex flex-col gap-4">
+          <RealModePending>Purchase-order submission is unavailable in Real Mode. You may review the selected file, but it will not be uploaded.</RealModePending>
           <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) readPOFile(f); }} className="flex flex-col items-center justify-center gap-2 py-10 rounded-lg cursor-pointer transition-colors" style={{ border: `2px dashed ${drag ? "#C8102E" : "#CBD5E1"}`, backgroundColor: drag ? "#FEF2F2" : "#F8FAFC" }}>
             <Upload size={28} style={{ color: file ? "#16A34A" : "#94A3B8" }} />
             <span className="font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{file ? file.name : "Drop your PO here or click to browse"}</span>
@@ -1747,8 +1784,8 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
             <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
           </div>
           {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
-          <button onClick={() => setConfirmSubmit(true)} disabled={!file || !fileDataUrl} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-            {isResubmission ? "REVIEW REVISED PURCHASE ORDER" : "REVIEW PURCHASE ORDER"} ({autoRef})
+          <button disabled className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm disabled:cursor-not-allowed disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+            Purchase-order submission unavailable
           </button>
         </div>
       </div>
@@ -2653,10 +2690,10 @@ function LogisticsTab({ clientName }: { clientName: string }) {
                             <button
                               type="button"
                               onClick={() => setSubmitSignedDRId(r.id)}
-                              disabled={uploadingSignedDRId === r.id || !r.pendingSignedDRDataUrl}
+                              disabled
                               className="mt-3 block min-h-11 rounded-lg bg-[#1A2B4A] px-4 py-2.5 font-dm text-xs font-extrabold tracking-wide text-white hover:bg-[#263d62] disabled:cursor-wait disabled:opacity-60"
                             >
-                              SUBMIT SIGNED DR
+                              SIGNED DR SUBMISSION UNAVAILABLE
                             </button>
                           </div>
                         )}
@@ -2779,15 +2816,8 @@ function LogisticsTab({ clientName }: { clientName: string }) {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={Boolean(uploadingSignedDRId)} className="font-dm">CANCEL</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={Boolean(uploadingSignedDRId) || !submitInquiry?.pendingSignedDeliveryReceiptFileName || !submitInquiry.pendingSignedDeliveryReceiptDataUrl}
-              className="font-dm bg-[#1A2B4A] text-white hover:bg-[#263d62]"
-              onClick={(event) => {
-                event.preventDefault();
-                void confirmSignedDRSubmission();
-              }}
-            >
-              {uploadingSignedDRId ? "SUBMITTING..." : "CONFIRM / SUBMIT SIGNED DR"}
+            <AlertDialogAction disabled className="font-dm bg-[#1A2B4A] text-white disabled:cursor-not-allowed disabled:opacity-60">
+              SIGNED DR SUBMISSION UNAVAILABLE
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2859,6 +2889,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const { byClient, submitPayment } = useOrders("invoices");
   /* Section M — payment instructions come from the Settings store, not hardcoded */
   const { settings } = useSettings();
+  const paymentMethodsAvailable = settings.paymentMethods.length > 0;
   const bank = settings.bankDetails;
   const { push: pushNotif } = useNotifications();
   const [prepareDraft, setPrepareDraft] = useState<Record<string, boolean>>({});
@@ -3178,6 +3209,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                             {/* Payment instructions */}
                             {isPayable && (
                             <>
+                            {!paymentMethodsAvailable && <RealModePending>Payment methods and bank instructions are unavailable from the authenticated Client API. Payment receipt submission is disabled.</RealModePending>}
                             <div className="rounded-lg p-4 flex flex-col gap-2 mb-3" style={{ backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0" }}>
                               <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Payment Instructions</div>
                               <select value={rf.methodId ?? selectedMethod?.id ?? ""} onChange={(e) => setReceiptForm(p => ({ ...p, [r.id]: { ...rf, methodId: e.target.value } }))} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
@@ -3274,9 +3306,9 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                               </div>
                               <button
                                 onClick={() => submitReceipt(r.id, r.inv)}
-                                disabled={Number(rf.amount) > r.submissionAllowance.maxAmount || submittingPayments.current.has(r.id)}
-                                className="flex items-center justify-center gap-2 py-2.5 rounded-md text-white font-dm hover:opacity-90"
-                                style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.3, opacity: Number(rf.amount) > r.submissionAllowance.maxAmount ? 0.5 : 1 }}
+                                disabled={!paymentMethodsAvailable || Number(rf.amount) > r.submissionAllowance.maxAmount || submittingPayments.current.has(r.id)}
+                                className="flex items-center justify-center gap-2 py-2.5 rounded-md text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.3 }}
                               >
                                 <Send size={14} strokeWidth={2.5} /> {submissionLabel}
                               </button>
@@ -3381,6 +3413,7 @@ function SettingsTab({ clientName }: { clientName: string }) {
   return (
     <div className="px-8 py-8 max-w-2xl">
       <h1 className="font-syne mb-6" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Company Settings</h1>
+      <div className="mb-6"><RealModePending>Profile details are read-only in Real Mode. Delivery and notification preferences are local until an authenticated settings API is available.</RealModePending></div>
 
       {/* Company Info */}
       <section className="bg-white rounded-xl border border-slate-200/70 p-6 mb-6" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
@@ -3388,24 +3421,24 @@ function SettingsTab({ clientName }: { clientName: string }) {
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <SField label="Company Name">
-              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+              <input value={companyName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
             </SField>
             <SField label="Industry">
-              <input value={industry} onChange={(e) => setIndustry(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+              <input value={industry} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
             </SField>
           </div>
           <SField label="Address Line 1">
-            <input value={address1} onChange={(e) => setAddress1(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+            <input value={address1} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
           </SField>
           <SField label="Address Line 2">
-            <input value={address2} onChange={(e) => setAddress2(e.target.value)} placeholder="Apt, suite, building (optional)" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+            <input value={address2} disabled placeholder="Apt, suite, building (optional)" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
           </SField>
           <div className="grid grid-cols-2 gap-4">
             <SField label="City / Province">
-              <input value={cityProvince} onChange={(e) => setCityProvince(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+              <input value={cityProvince} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
             </SField>
             <SField label="ZIP Code">
-              <input value={zip} onChange={(e) => setZip(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+              <input value={zip} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
             </SField>
           </div>
         </div>
@@ -3416,10 +3449,10 @@ function SettingsTab({ clientName }: { clientName: string }) {
         <div className="font-syne mb-4" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Contact Person</div>
         <div className="flex flex-col gap-4">
           <SField label="Full Name">
-            <input value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+            <input value={contactName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
           </SField>
           <SField label="Phone">
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+            <input value={phone} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
           </SField>
           <SField label="Email">
             <input value={email} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#94A3B8" }} />
@@ -3494,7 +3527,7 @@ function SettingsTab({ clientName }: { clientName: string }) {
             </SField>
             <div className="flex justify-end gap-2 mt-1">
               <button onClick={() => { setShowPwdSection(false); setCurrentPwd(""); setNewPwd(""); setConfirmPwd(""); }} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-              <button onClick={changePassword} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Update Password</button>
+              <button disabled className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Password change unavailable</button>
             </div>
           </div>
         )}
@@ -3547,11 +3580,7 @@ function SettingsTab({ clientName }: { clientName: string }) {
         </div>
       </section>
 
-      <button
-        onClick={save}
-        className="w-full py-3 rounded-md text-white font-dm hover:opacity-90"
-        style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}
-      >
+      <button disabled className="w-full py-3 rounded-md text-white font-dm disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
         💾 Save Settings
       </button>
     </div>
@@ -3617,10 +3646,6 @@ export function ClientPortal({ onLogout, clientName = "Client" }: { onLogout?: (
   };
   return (
     <Shell active={tab} onChange={navigateFromNotification} clientName={clientName} onLogout={onLogout}>
-      <div className="border-b border-slate-200 bg-white px-5 py-2 text-xs text-slate-600" aria-live="polite">
-        {data.loading ? <span role="status">Loading authenticated Client records...</span> : data.error ? <span role="alert">{data.error}</span> : <span>Real Client records. Drafts are unsaved. Final business actions are not yet connected to the backend.</span>}
-        <button className="ml-3 underline" onClick={data.refresh}>Refresh records</button>
-      </div>
       {tab === "orders" && <OrdersTab clientName={clientName} targetInquiryId={targetInquiryId} onSubmitted={() => setTab("status")} onPayInvoice={(id) => { setPaymentInvoiceId(id); setTab("accounting"); }} />}
       {tab === "status" && <StatusTab clientName={clientName} />}
       {tab === "logistics" && <LogisticsTab clientName={clientName} />}

@@ -24,6 +24,7 @@ import {
 } from "../store/orders";
 import { readFileAsDataUrl } from "../store/attachments";
 import { useNotifications } from "../store/notifications";
+import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
 import {
   AlertDialog,
@@ -1411,6 +1412,8 @@ export function LogisticsActiveJobs({
 }
 
 export function Logistics() {
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<LogisticsView>("active");
@@ -1533,6 +1536,10 @@ export function Logistics() {
   );
 
   const handleMarkDelivered = (id: string) => {
+    if (realMode) {
+      toast.info("Delivery updates are unavailable", { description: "No authenticated delivery-status API is connected; nothing was saved." });
+      return;
+    }
     const inquiry = deliveryInquiries.find(
       (item) => item.id === id,
     );
@@ -1563,6 +1570,10 @@ export function Logistics() {
   };
 
   const handleSendToClient = (id: string) => {
+    if (realMode) {
+      toast.info("Sending delivery information is unavailable", { description: "No authenticated logistics notification API is connected; nothing was saved." });
+      return;
+    }
     const inquiry = deliveryInquiries.find(
       (item) => item.id === id,
     );
@@ -1630,13 +1641,23 @@ export function Logistics() {
   const handleTrackingLinkChange = (
     id: string,
     deliveryTrackingLink: string,
-  ) => updateInquiry(id, { deliveryTrackingLink });
+  ) => {
+    if (realMode) {
+      toast.info("Tracking updates are unavailable", { description: "No authenticated delivery update API is connected; nothing was saved." });
+      return;
+    }
+    updateInquiry(id, { deliveryTrackingLink });
+  };
 
   const handleStageSignedDR = async (
     id: string,
     file: File,
     fileDataUrl: string,
   ): Promise<boolean> => {
+    if (realMode) {
+      toast.info("Signed Delivery Receipt upload is unavailable", { description: "No authenticated document API is connected; nothing was saved." });
+      return false;
+    }
     try {
       await savePendingSignedDeliveryReceipt(
         id,
@@ -1668,6 +1689,10 @@ export function Logistics() {
   const handleSubmitSignedDR = async (
     id: string,
   ): Promise<boolean> => {
+    if (realMode) {
+      toast.info("Signed Delivery Receipt submission is unavailable", { description: "No authenticated receipt API is connected; nothing was saved." });
+      return false;
+    }
     try {
       await submitPendingSignedDeliveryReceipt(id);
 
@@ -1755,6 +1780,8 @@ export function Logistics() {
           <NotificationBell />
         </div>
       </header>
+
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 font-dm text-xs text-amber-950 sm:px-8">Real logistics records are unavailable. Delivery overview, active/history lists, filters, shipment details, receipt presentation, and navigation remain visible, but Demo records are excluded until authenticated logistics APIs are connected.</div>}
 
       <div className="flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-8">
         <div className="flex flex-wrap items-center gap-3">
@@ -2115,7 +2142,7 @@ function OperationsMetric({
   accent,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   icon: typeof Truck;
   accent: string;
 }) {
@@ -2140,6 +2167,8 @@ function OperationsMetric({
 }
 
 export function OperationsLogistics() {
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<LogisticsView>("active");
@@ -2248,6 +2277,8 @@ export function OperationsLogistics() {
         </div>
       </header>
 
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 font-dm text-xs text-amber-950 sm:px-8">Real logistics records are unavailable. Monitoring layout, tabs, search, filters, and detail panels remain visible, but Demo records and unverified counts are excluded until an authenticated read API is connected.</div>}
+
       <div className="flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-8">
         <section
           className="grid grid-cols-1 gap-4 sm:grid-cols-3"
@@ -2255,23 +2286,23 @@ export function OperationsLogistics() {
         >
           <OperationsMetric
             label="Active Deliveries"
-            value={activeInquiries.length}
+            value={realMode ? "—" : activeInquiries.length}
             icon={Truck}
             accent="#1A2B4A"
           />
           <OperationsMetric
             label="Pending Delivery"
-            value={
+            value={realMode ? "—" : (
               activeInquiries.filter(
                 (inquiry) => inquiry.stage === "ready_for_dispatch",
               ).length
-            }
+            )}
             icon={Clock3}
             accent="#C8102E"
           />
           <OperationsMetric
             label="Delivered"
-            value={historyInquiries.length}
+            value={realMode ? "—" : historyInquiries.length}
             icon={CheckCircle2}
             accent="#15803D"
           />

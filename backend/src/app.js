@@ -11,6 +11,7 @@ import salesWorkspaceRoutes from './routes/sales-workspace.routes.js';
 import { adminJson, adminError } from './middleware/admin-error.middleware.js';
 import salesRoutes from './routes/sales.routes.js';
 import clientRoutes from './routes/client.routes.js';
+import ownerEmployeeDirectoryRoutes from './routes/owner-employee-directory.routes.js';
 
 // Resolve Express's own responder even when dependencies are not hoisted.
 const finalhandler = createRequire(import.meta.resolve('express'))('finalhandler');
@@ -19,6 +20,7 @@ export function createApp({
   authenticationRoutes = authRoutes,
   applicationReviewRoutes = clientApplicationsRoutes,
   administrationRoutes = adminRoutes,
+  ownerEmployeeDirectory = ownerEmployeeDirectoryRoutes,
   clientDirectoryRoutes = salesRoutes,
   clientPortalRoutes = clientRoutes
 } = {}) {
@@ -29,6 +31,7 @@ export function createApp({
 
   app.use('/api/client-applications', clientApplicationsJson, applicationReviewRoutes, clientApplicationsError);
   app.use('/api/admin', adminJson, administrationRoutes, adminError);
+  app.use('/api/owner', ownerEmployeeDirectory);
   app.use('/api/workspace/sales', salesWorkspaceRoutes);
   app.use('/api/sales', clientDirectoryRoutes);
   app.use('/api/client', clientPortalRoutes);

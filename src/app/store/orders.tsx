@@ -305,6 +305,7 @@ export interface Inquiry {
   archiveReason?: "rejected" | "cancelled";
   archiveDate?: string;
   archiveNote?: string;
+  cancellationType?: "direct" | "sales-approved";
   /* — JO finalization — */
   joNumber?: string;
   joCompletedAt?: string;
@@ -1358,7 +1359,21 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
 
   const cancelInquiry: Ctx["cancelInquiry"] = (id, reason) => {
     const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    setAllInquiries((prev) => prev.map((x) => x.id === id ? { ...x, archived: true, archiveReason: "cancelled", archiveDate: now, archiveNote: reason } : x));
+    setAllInquiries((prev) => prev.map((x) => {
+      if (x.id !== id || x.archived || x.pendingCancellation || !["inquiry", "quotation"].includes(x.stage)) return x;
+      return {
+        ...x,
+        archived: true,
+        archiveReason: "cancelled",
+        archiveDate: now,
+        archiveNote: reason,
+        cancellationType: "direct",
+        cancellationHistory: [
+          ...(x.cancellationHistory ?? []),
+          { reason: reason ?? "", requestedAt: now, requestedBy: "client" as const, resolution: "approved" as const, resolvedAt: now },
+        ],
+      };
+    }));
   };
 
   const cancelJOFromProduction: Ctx["cancelJOFromProduction"] = (joNumber, reason) => {
@@ -1400,6 +1415,7 @@ export function OrdersProvider({ children, mode = "demo" }: { children: ReactNod
         archiveReason: "cancelled",
         archiveDate: now,
         archiveNote: x.pendingCancellation.reason,
+        cancellationType: "sales-approved",
         pendingCancellation: undefined,
         cancellationHistory,
       };

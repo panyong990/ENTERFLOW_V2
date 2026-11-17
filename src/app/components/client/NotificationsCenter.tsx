@@ -96,16 +96,18 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
           </div>
           <div className="bg-white rounded-xl border border-slate-200/70 p-4 flex flex-col gap-2 justify-center">
             <button
-              onClick={() => { markAllRead(role, notificationClient); unavailable("All marked as read"); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-slate-50 border border-slate-200"
+              disabled
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm border border-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
               style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
+              title="Mark all as read is unavailable in Real Mode"
             >
               <CheckCheck size={12} /> Mark all read
             </button>
             <button
-              onClick={() => { removeAllRead(role, notificationClient); unavailable("Read notifications cleared"); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-red-50 border border-red-200"
+              disabled
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm border border-red-200 disabled:cursor-not-allowed disabled:opacity-50"
               style={{ fontSize: 11, fontWeight: 600, color: "#C8102E" }}
+              title="Clearing notifications is unavailable in Real Mode"
             >
               <Trash2 size={12} /> Clear read
             </button>
@@ -245,8 +247,8 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
                     )}
                   </button>
                   <button
-                    onClick={() => { remove(n.id, role, notificationClient); unavailable(); }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 rounded-md hover:bg-red-50 flex items-center justify-center"
+                    disabled
+                    className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 rounded-md flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ color: "#94A3B8" }}
                     title="Hide notification from your history"
                     aria-label="Hide notification from your history"

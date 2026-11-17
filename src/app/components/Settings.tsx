@@ -3,9 +3,12 @@ import { Save, Building2, Phone, Truck, FileText, Bell, Mail } from "lucide-reac
 import { Toaster, toast } from "sonner";
 import { useSettings, type CompanySettings } from "../store/settings";
 import { NotificationBell } from "./NotificationBell";
+import { useSession } from "../store/session";
 
 export function Settings() {
-  const { settings, update, save } = useSettings();
+  const { settings, update, save, mode } = useSettings();
+  const { mode: sessionMode } = useSession();
+  const realMode = mode === "real" || sessionMode === "real";
   // Email gateway not implemented
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [emailTriggers, setEmailTriggers] = useState({
@@ -15,6 +18,10 @@ export function Settings() {
   });
 
   const handleSave = () => {
+    if (realMode) {
+      toast.info("Settings save is unavailable", { description: "No authenticated settings persistence endpoint is connected. No changes were saved." });
+      return;
+    }
     save();
     toast.success("Settings saved", { description: "Auto-populated across logistics, portal, and document footers" });
   };
@@ -22,6 +29,10 @@ export function Settings() {
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
+
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">
+        <strong>Real Mode settings limitation:</strong> no authenticated profile, company-settings, password, or notification-preference persistence API is connected. Demo values are excluded. Organization fields are read-only; notification toggles below are local to this session and are not saved.
+      </div>}
 
       <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-center justify-between">
         <div>
@@ -36,9 +47,10 @@ export function Settings() {
           <button
             onClick={handleSave}
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
-            style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}
+            disabled={realMode}
+            style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4, opacity: realMode ? 0.55 : 1 }}
           >
-            <Save size={15} strokeWidth={2.5} /> SAVE SETTINGS
+            <Save size={15} strokeWidth={2.5} /> {realMode ? "SAVE UNAVAILABLE" : "SAVE SETTINGS"}
           </button>
           <NotificationBell />
         </div>
@@ -133,14 +145,15 @@ export function Settings() {
 
         <Section icon={FileText} title="Document Footer" desc="Shown on all PDFs (Quotation, JO, SI, DR)">
           <textarea
-            value={settings.documentFooter}
+            value={settings.documentFooter || "—"}
             onChange={(e) => update({ documentFooter: e.target.value })}
+            readOnly={realMode}
             rows={3}
             className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 resize-none bg-white"
             style={{ fontSize: 13, color: "#0F172A" }}
           />
           <div className="rounded-md p-3 font-mono-jb" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", fontSize: 11, color: "#475569" }}>
-            Preview: <span style={{ color: "#0F172A" }}>{previewFooter(settings)}</span>
+            Preview: <span style={{ color: "#0F172A" }}>{realMode ? "—" : previewFooter(settings)}</span>
           </div>
         </Section>
 
@@ -197,9 +210,13 @@ function Field({ label, children, wide }: { label: string; children: React.React
 }
 
 function Input({ v, onChange }: { v: string; onChange: (v: string) => void }) {
+  const { mode } = useSession();
+  const unavailable = mode === "real";
   return (
     <input
       value={v}
+      placeholder={unavailable ? "—" : undefined}
+      disabled={unavailable}
       onChange={(e) => onChange(e.target.value)}
       className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
       style={{ fontSize: 13, color: "#0F172A" }}

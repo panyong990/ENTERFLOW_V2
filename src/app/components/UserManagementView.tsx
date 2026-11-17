@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Building2, Check, KeyRound, Pencil, Plus, Power, Search, ShieldCheck, SlidersHorizontal, UserRound, UserRoundCog, Users, X } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { getAccounts, getEmployeeDirectory, saveAccounts, type Account, type AccountRole, type EmployeeDirectoryEntry } from "../store/accounts";
+import { useOwnerEmployeeDirectory } from "./admin/useDirectory";
 import { useSession } from "../store/session";
 import { Unauthorized } from "./Unauthorized";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -75,22 +76,45 @@ const workforceTitleByRole: Record<StaffRole, string> = {
 
 const workforcePageSize = 10;
 
+type DirectoryEmployee = EmployeeDirectoryEntry & { email?: string; phone?: string };
+
 function EmployeeDirectory() {
   const { mode } = useSession();
   const realMode = mode === "real";
-  const [employees] = useState<EmployeeDirectoryEntry[]>(() => realMode ? [] : getEmployeeDirectory());
+  const [demoEmployees] = useState<EmployeeDirectoryEntry[]>(() => realMode ? [] : getEmployeeDirectory());
   const [query, setQuery] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState<EmployeeDirectoryEntry["role"] | "all">("all");
+  const [departmentFilter, setDepartmentFilter] = useState<string | "all">("all");
+  const [roleFilter, setRoleFilter] = useState<EmployeeDirectoryEntry["role"] | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [draftDepartmentFilter, setDraftDepartmentFilter] = useState<EmployeeDirectoryEntry["role"] | "all">("all");
+  const [draftDepartmentFilter, setDraftDepartmentFilter] = useState<string | "all">("all");
+  const [draftRoleFilter, setDraftRoleFilter] = useState<EmployeeDirectoryEntry["role"] | "all">("all");
   const [draftStatusFilter, setDraftStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [selectedEmployee, setSelectedEmployee] = useState<DirectoryEmployee | null>(null);
+  const remote = useOwnerEmployeeDirectory(realMode, { q: query, department: departmentFilter, role: roleFilter, status: statusFilter, page, pageSize: workforcePageSize });
+  const employees: DirectoryEmployee[] = realMode
+    ? (remote.data?.items ?? []).map((employee) => ({
+      id: employee.id,
+      employeeId: employee.employeeId ?? employee.id,
+      name: employee.name ?? "",
+      role: employee.roleCode as EmployeeDirectoryEntry["role"],
+      active: employee.active === true,
+      department: employee.department,
+      jobTitle: employee.jobTitle,
+      email: employee.email,
+      phone: employee.phone ?? undefined,
+    }))
+    : demoEmployees;
   const activeEmployees = employees.filter((employee) => employee.active);
-  const departmentOptions = Array.from(new Set(employees.map((employee) => employee.role)));
+  const departmentOptions = realMode
+    ? (remote.data?.summary?.departments ?? [])
+    : Array.from(new Set(employees.map((employee) => employee.department).filter((department): department is string => Boolean(department))));
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredEmployees = employees.filter((employee) => {
-    if (departmentFilter !== "all" && employee.role !== departmentFilter) return false;
+  const filteredEmployees = realMode ? employees : employees.filter((employee) => {
+    if (departmentFilter === "__unspecified" && employee.department) return false;
+    if (departmentFilter !== "all" && departmentFilter !== "__unspecified" && employee.department !== departmentFilter) return false;
+    if (roleFilter !== "all" && employee.role !== roleFilter) return false;
     if (statusFilter === "active" && !employee.active) return false;
     if (statusFilter === "inactive" && employee.active) return false;
     return !normalizedQuery || [
@@ -99,12 +123,11 @@ function EmployeeDirectory() {
       workforceTitleByRole[employee.role],
     ].some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
   });
-  const pageCount = Math.max(1, Math.ceil(filteredEmployees.length / workforcePageSize));
-  const currentPage = Math.min(page, pageCount);
-  const visibleEmployees = filteredEmployees.slice(
-    (currentPage - 1) * workforcePageSize,
-    currentPage * workforcePageSize,
-  );
+  const pageCount = realMode ? Math.max(1, Math.ceil((remote.data?.total ?? 0) / workforcePageSize)) : Math.max(1, Math.ceil(filteredEmployees.length / workforcePageSize));
+  const currentPage = realMode ? (remote.data?.page ?? page) : Math.min(page, pageCount);
+  const visibleEmployees = realMode
+    ? filteredEmployees
+    : filteredEmployees.slice((currentPage - 1) * workforcePageSize, currentPage * workforcePageSize);
   const updateQuery = (value: string) => {
     setQuery(value);
     setPage(1);
@@ -112,12 +135,14 @@ function EmployeeDirectory() {
   const openFilters = (open: boolean) => {
     if (open) {
       setDraftDepartmentFilter(departmentFilter);
+      setDraftRoleFilter(roleFilter);
       setDraftStatusFilter(statusFilter);
     }
     setFiltersOpen(open);
   };
   const applyFilters = () => {
     setDepartmentFilter(draftDepartmentFilter);
+    setRoleFilter(draftRoleFilter);
     setStatusFilter(draftStatusFilter);
     setPage(1);
     setFiltersOpen(false);
@@ -127,22 +152,29 @@ function EmployeeDirectory() {
     setDepartmentFilter("all");
     setStatusFilter("all");
     setDraftDepartmentFilter("all");
+    setRoleFilter("all");
+    setDraftRoleFilter("all");
     setDraftStatusFilter("all");
     setPage(1);
     setFiltersOpen(false);
   };
-  const activeFilterCount = Number(departmentFilter !== "all") + Number(statusFilter !== "all");
+  const activeFilterCount = Number(departmentFilter !== "all") + Number(roleFilter !== "all") + Number(statusFilter !== "all");
 
   return (
     <main className="flex-1 min-w-0 h-full overflow-auto" style={{ backgroundColor: "#F5F7FB" }}>
       <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/95 px-5 py-5 backdrop-blur sm:px-8">
         <div className="mx-auto flex max-w-[1600px] items-center justify-end">
-          <div aria-live="polite" className="font-dm text-sm font-semibold text-slate-600">{realMode ? "—" : filteredEmployees.length} employees</div>
+          <div className="flex items-center gap-3">
+            <div aria-live="polite" className="font-dm text-sm font-semibold text-slate-600">{realMode ? "—" : filteredEmployees.length} employees</div>
+            {realMode && <button type="button" onClick={remote.refresh} disabled={remote.loading} className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-dm text-xs font-semibold text-slate-700 disabled:opacity-50">Refresh</button>}
+          </div>
         </div>
       </header>
 
       <section className="mx-auto flex max-w-[1600px] flex-col gap-6 px-5 py-6 sm:px-8 sm:py-8">
-        {realMode && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Employee directory API is not connected for this role. Demo accounts are excluded; this is not a verified empty database result.</div>}
+        {realMode && remote.loading && <div role="status" className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">Loading authorized employee records…</div>}
+        {realMode && remote.error && !remote.loading && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">{remote.error} <button type="button" onClick={remote.refresh} className="ml-2 rounded border border-red-300 px-2 py-1 font-semibold">Retry</button></div>}
+        {realMode && !remote.loading && !remote.error && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Employee records are limited to what the authenticated directory API permits. Demo accounts are excluded.</div>}
         <section aria-label="Workforce summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {[
             { label: "Total Employees", count: realMode ? "—" : employees.length, icon: Users, color: "text-blue-700", background: "bg-blue-50" },
@@ -197,14 +229,27 @@ function EmployeeDirectory() {
                       Department
                       <select
                         value={draftDepartmentFilter}
-                        onChange={(event) => setDraftDepartmentFilter(event.target.value as EmployeeDirectoryEntry["role"] | "all")}
+                        onChange={(event) => setDraftDepartmentFilter(event.target.value)}
                         aria-label="Filter by department"
                         className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
                       >
                         <option value="all">All Departments</option>
-                        {departmentOptions.map((role) => (
-                          <option key={role} value={role}>{workforceTitleByRole[role]}</option>
+                        {!realMode && departmentOptions.length === 0 && <option value="__unspecified">Unspecified</option>}
+                        {departmentOptions.map((department) => (
+                          <option key={department} value={department}>{department}</option>
                         ))}
+                      </select>
+                    </label>
+                    <label className="block font-dm text-xs font-semibold text-slate-600">
+                      Assigned Role
+                      <select
+                        value={draftRoleFilter}
+                        onChange={(event) => setDraftRoleFilter(event.target.value as EmployeeDirectoryEntry["role"] | "all")}
+                        aria-label="Filter by role"
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50"
+                      >
+                        <option value="all">All Roles</option>
+                        {Object.entries(workforceTitleByRole).map(([role, label]) => <option key={role} value={role}>{label}</option>)}
                       </select>
                     </label>
                     <label className="block font-dm text-xs font-semibold text-slate-600">
@@ -246,7 +291,7 @@ function EmployeeDirectory() {
             <table className="w-full min-w-[640px]">
               <thead className="bg-slate-50/80">
                 <tr>
-                  {["Employee ID", "Employee Name", "Assigned Position", "Account Status"].map((heading) => (
+                  {["Employee ID", "Employee Name", "Assigned Position", "Contact", "Account Status"].map((heading) => (
                     <th key={heading} className="px-5 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500">{heading}</th>
                   ))}
                 </tr>
@@ -255,8 +300,8 @@ function EmployeeDirectory() {
                 {visibleEmployees.map((employee) => {
                   const initials = employee.name.trim().split(/\s+/).map((part) => part[0]?.toUpperCase() ?? "").slice(0, 2).join("");
                   return (
-                    <tr key={employee.id} className="border-t border-slate-100 transition-colors hover:bg-slate-50/70">
-                      <td className="px-5 py-3.5 font-dm text-xs text-slate-600">{employee.id}</td>
+                    <tr key={employee.id} onClick={() => setSelectedEmployee(employee)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedEmployee(employee); }} tabIndex={0} className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50/70">
+                  <td className="px-5 py-3.5 font-dm text-xs text-slate-600">{employee.employeeId || employee.id}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 font-syne text-xs font-bold text-blue-700">{initials}</span>
@@ -264,8 +309,9 @@ function EmployeeDirectory() {
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 font-dm text-[11px] font-semibold text-slate-700">{workforceTitleByRole[employee.role]}</span>
+                        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 font-dm text-[11px] font-semibold text-slate-700">{employee.jobTitle || workforceTitleByRole[employee.role] || "—"}</span>
                       </td>
+                      <td className="px-5 py-3.5 font-dm text-xs text-slate-600">{employee.email || employee.phone || "—"}</td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-dm text-[11px] font-semibold ${employee.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${employee.active ? "bg-emerald-500" : "bg-slate-400"}`} />{employee.active ? "Active" : "Inactive"}
@@ -276,7 +322,7 @@ function EmployeeDirectory() {
                 })}
                 {visibleEmployees.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-5 py-14 text-center font-dm text-sm text-slate-500">
+                    <td colSpan={5} className="px-5 py-14 text-center font-dm text-sm text-slate-500">
                       {employees.length === 0 ? "No employee records available." : "No employees match the current search and filters."}
                     </td>
                   </tr>
@@ -312,6 +358,7 @@ function EmployeeDirectory() {
           </div>
         </section>
       </section>
+      {selectedEmployee && <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-900/40" role="presentation" onClick={() => setSelectedEmployee(null)}><aside className="h-full w-full max-w-md overflow-auto bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-label="Employee details" onClick={(event) => event.stopPropagation()}><div className="flex items-start justify-between"><div><p className="font-dm text-xs font-bold uppercase tracking-widest text-red-700">Employee profile</p><h2 className="mt-1 font-syne text-xl font-bold text-slate-900">{selectedEmployee.name}</h2></div><button type="button" onClick={() => setSelectedEmployee(null)} aria-label="Close employee details" className="rounded p-2 hover:bg-slate-100"><X size={18} /></button></div><dl className="mt-6 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-xs font-semibold uppercase text-slate-500">Employee ID</dt><dd className="mt-1">{selectedEmployee.employeeId || selectedEmployee.id}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-500">Role</dt><dd className="mt-1">{workforceTitleByRole[selectedEmployee.role] || "—"}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-500">Department</dt><dd className="mt-1">{selectedEmployee.department || "—"}</dd></div><div><dt className="text-xs font-semibold uppercase text-slate-500">Status</dt><dd className="mt-1">{selectedEmployee.active ? "Active" : "Inactive"}</dd></div><div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Email</dt><dd className="mt-1">{selectedEmployee.email || "—"}</dd></div><div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Phone</dt><dd className="mt-1">{selectedEmployee.phone || "—"}</dd></div></dl></aside></div>}
     </main>
   );
 }

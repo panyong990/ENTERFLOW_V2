@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import type { RealIdentity } from "../api/client";
 import { isAllowedWorkspaceRoute, landingFor, type EmployeeRole } from "../role-access";
 import { SessionProvider } from "../store/session";
@@ -45,7 +45,7 @@ export function RealEmployeeShell({ identity, onLogout }: { identity: RealIdenti
 
   return (
     <SessionProvider mode="real" role={role} name={identity.displayName} userId={identity.userId} navigate={navigate}>
-      <SettingsProvider>
+      <SettingsProvider mode="real">
       <OrdersProvider mode="real">
       <MaterialsProvider mode="real">
       <NotificationsProvider mode="real">
@@ -55,7 +55,6 @@ export function RealEmployeeShell({ identity, onLogout }: { identity: RealIdenti
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center justify-between border-b bg-white px-4 py-2 text-xs text-slate-600">
             <span className="inline-flex items-center gap-2"><ShieldCheck size={14} aria-hidden /> Real Authenticated Access · {identity.displayName}</span>
-            {isAllowedWorkspaceRoute(role, "notifications") && <button type="button" className="inline-flex items-center gap-1 rounded border px-2 py-1" onClick={() => navigate("notifications")}><Bell size={14} aria-hidden /> Notifications</button>}
           </div>
           {screen}
         </div>

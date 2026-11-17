@@ -281,6 +281,8 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
   const [draftYear, setDraftYear] = useState(Number(localMonth().slice(0, 4)));
   const { rawMaterials } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
+  const { mode } = useSession();
+  const realMode = mode === "real";
 
   const allOrders = useMemo(() => {
     const unique = new Map<string, Inquiry>();
@@ -488,13 +490,19 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
       .filter((category) => category.items > 0);
   }, [inventoryRows]);
 
-  const companyHealth = criticalInventory.length || currentOverdueReceivables > 0 || delayedOrders.length
+  const companyHealth = realMode
+    ? { label: "—", color: palette.muted, background: "#F8FAFC" }
+    : criticalInventory.length || currentOverdueReceivables > 0 || delayedOrders.length
     ? { label: "Needs attention", color: "#B91C1C", background: "#FEF2F2" }
     : lowInventory.length
       ? { label: "Monitor closely", color: "#B45309", background: "#FFFBEB" }
       : { label: "On track", color: "#15803D", background: "#F0FDF4" };
 
   const exportReport = (report: ReportKey) => {
+    if (realMode) {
+      toast.info("Report export is unavailable", { description: "No authenticated reporting dataset is connected in Real Mode. No report was generated." });
+      return;
+    }
     const ordersSubmitted = allOrders.filter((inquiry) => inPeriodThrough(inquiry.submittedDate, reportMonth, periodEnd));
     const invoicesInPeriod = jobOrders.filter((inquiry) => Boolean(inquiry.invoiceNo) && inPeriodThrough(invoiceDate(inquiry), reportMonth, periodEnd));
     const deliveredInPeriod = jobOrders.filter((inquiry) =>
@@ -566,6 +574,12 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
   return (
     <div className="ceo-analytics flex-1 h-full min-w-0 overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
+
+      {realMode && (
+        <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 font-dm text-xs text-amber-950 sm:px-6 lg:px-8">
+          <strong>Live analytics data unavailable:</strong> this complete dashboard is shown for navigation and presentation, but no authenticated reporting endpoint is connected to the Real Mode workspace. Metrics, charts, tables, and report exports do not use Demo records or inferred zero values.
+        </div>
+      )}
 
       <header className="border-b border-slate-200/70 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-3 sm:px-6 lg:px-8">
@@ -698,7 +712,9 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
       >
         {!periodAvailable && (
           <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 font-dm" style={{ fontSize: 12, color: "#92400E" }}>
-            No transaction records are available for {periodDisplay(reportMonth)}. Current workflow and inventory indicators reflect the latest available system status.
+            {realMode
+              ? `No authenticated reporting records are available for ${periodDisplay(reportMonth)}. The sections below remain visible, but live metrics cannot be verified.`
+              : `No transaction records are available for ${periodDisplay(reportMonth)}. Current workflow and inventory indicators reflect the latest available system status.`}
           </div>
         )}
         {view === "all" && (
@@ -1048,7 +1064,8 @@ function SnapshotRow({ label, value, icon: Icon, alert = false }: { label: strin
 }
 
 function EmptyState({ children }: { children: string }) {
-  return <div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{children}</div>;
+  const { mode } = useSession();
+  return <div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{mode === "real" ? "Live reporting data is unavailable from the authenticated APIs." : children}</div>;
 }
 
 function RevenueChart({ data }: { data: MonthSummary[] }) {

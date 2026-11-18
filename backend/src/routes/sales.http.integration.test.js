@@ -194,6 +194,22 @@ test('Sales quotation preparation enforces authentication, create/update permiss
   assert.equal(h.calls[0][2].clientId, '999');
 });
 
+test('quotation stale response is a safe conflict and write permissions and origin remain required', async t => {
+  const denied = await harness(t, { ordersUpdateAllowed: false });
+  const options = { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: '{}' };
+  assert.equal((await denied.request('/orders/91/quotations', true, options)).status, 403);
+  assert.equal(denied.calls.length, 0);
+  const h = await harness(t, { ordersService: { async createQuotation() { return { success: false, code: 'QUOTATION_STALE' }; } } });
+  const response = await h.request('/orders/91/quotations', true, options);
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.code, 'QUOTATION_STALE');
+  assert.match(body.message, /newer quotation revision/);
+  const badOrigin = await harness(t);
+  assert.equal((await badOrigin.request('/orders/91/quotations', true, { ...options, headers: { ...options.headers, Origin: 'https://untrusted.invalid' } })).status, 403);
+  assert.equal(badOrigin.calls.length, 0);
+});
+
 test('Sales notifications require authentication, employee Sales role, and notifications:read without mutation', async t => {
   const unauthenticated = await harness(t);
   assert.equal((await unauthenticated.request('/notifications', false)).status, 401);

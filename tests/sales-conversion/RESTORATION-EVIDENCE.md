@@ -39,3 +39,9 @@ Original Demo behavior uses the existing component branch. The integrated applic
 | Client | Orders, Status, Logistics, Accounting, Settings | Current populated forms, history, documents and notifications need direct comparison. |
 
 No role-wide restoration or full-application visual acceptance is claimed. Reference capture and quotation restoration are concrete progress; remaining roles are not declared complete.
+
+## 18 November 2026 Warehouse reference recovery
+
+The recorded integrated MAIN commit e59364c1c9bd0257c82319df29e84081740ff694 is available locally. Its frontend was previewed from read-only Git object loads in isolation, without switching branches or restoring the working tree. Warehouse was opened through its existing preview control. New Warehouse-only MAIN/current captures and provenance are now in `.vite/integrated-main-browser/`; this does not restore all previously listed nine-role screenshots.
+
+The full 71-material backing catalog was compared with the current repository: codes, names, categories, units, prices and thresholds match exactly, with no duplicate codes/names. Default stock quantities were not accepted as verified physical counts. See `docs/WAREHOUSE_INVENTORY_PHASE_1_REPORT.md` and `docs/inventory-reconciliation/` for scope, tests, data approvals and remaining acceptance limits.

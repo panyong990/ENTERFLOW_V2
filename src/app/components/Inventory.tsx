@@ -26,7 +26,7 @@ type EditableMaterialFields = Pick<RawMaterial, "name" | "category" | "unit" | "
 /* ─────────── Component ─────────── */
 
 export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finished" }) {
-  const { rawMaterials, finishedGoods: fg, updateMaterial, addMaterial } = useMaterials();
+  const { rawMaterials, finishedGoods: fg, updateMaterial, addMaterial, inventoryLoading, inventoryError, refreshInventory } = useMaterials();
   const { role, mode } = useSession();
   const realMode = mode === "real";
   const { inquiries, completedJOs } = useOrders();
@@ -240,8 +240,10 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
               {!realMode && <span className="px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 10, fontWeight: 800 }}>{warehouseStockRequestCount}</span>}
             </button>
           )}
-          {!readOnly && tab === "raw" && (
+          {(!readOnly || (realMode && role === "warehouse")) && tab === "raw" && (
             <button
+              disabled={realMode}
+              title={realMode ? "Material registration requires an approved catalog import." : undefined}
               onClick={() => setShowAdd(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
               style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}
@@ -254,8 +256,11 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
       </header>
 
       {realMode && <div role="status" className="border-b border-blue-200 bg-blue-50 px-8 py-3 text-sm text-blue-950">
-        Inventory quantities and Stock Requests are loaded from authenticated APIs. Demo records are excluded; stock updates remain manually authorized for Warehouse users.
+        Business catalog reference values are preserved from integrated MAIN. Stock quantities and Stock Requests require authenticated records; unrecorded stock is never treated as zero.
       </div>}
+      {realMode && inventoryLoading && <p role="status" className="px-8 py-3 text-sm">Loading authenticated inventory…</p>}
+      {realMode && inventoryError && <div className="px-8 py-3"><p role="alert" className="text-sm text-red-800">{inventoryError}</p><button type="button" onClick={refreshInventory} className="mt-2 rounded border px-3 py-1 text-sm">Retry inventory</button></div>}
+      {realMode && !inventoryLoading && !inventoryError && <p role="status" className="px-8 py-3 text-sm text-slate-600">{rawMaterials.filter(item=>item.source==='database').length} authenticated material records · {rawMaterials.filter(item=>item.source==='catalog_reference').length} catalog references without a verified database mapping. Quantities marked Not recorded are unavailable.</p>}
 
       {/* Tabs */}
       <nav className="bg-white border-b border-slate-200/70 px-8 flex gap-1">
@@ -284,7 +289,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
       </nav>
 
       <div className="px-8 py-8 flex flex-col gap-6">
-        {readOnly && (
+        {readOnly && role !== "warehouse" && (
           <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" aria-label="Inventory summary">
             <InventoryMetric label="Total Inventory Items" value={realMode ? "—" : inventorySummary.total} icon={<Boxes size={18} />} accent="#1A2B4A" />
             <InventoryMetric label="In Stock" value={realMode ? "—" : inventorySummary.inStock} icon={<CheckCircle2 size={18} />} accent="#15803D" />
@@ -459,6 +464,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
       {showStockRequests && (realMode ? <RealWarehouseStockRequests onClose={() => setShowStockRequests(false)} /> : <StockRequestsModal mode="warehouse" onClose={() => setShowStockRequests(false)} />)}
       {readOnly && selectedItem && (
         <InventoryDetailsDrawer
+          realMode={realMode}
           selection={selectedItem}
           onClose={() => setSelectedItem(null)}
           relatedJobs={selectedItem.kind === "raw"
@@ -490,7 +496,8 @@ type InventorySelection =
   | { kind: "raw"; item: RawMaterial }
   | { kind: "finished"; item: FinishedGood };
 
-function InventoryDetailsDrawer({ selection, onClose, relatedJobs }: {
+function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
+  realMode?: boolean;
   selection: InventorySelection;
   onClose: () => void;
   relatedJobs: string[];
@@ -506,7 +513,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs }: {
   const details = isRaw
     ? [
       ["Category", partCategoryMeta[selection.item.category].label],
-      ["Quantity on hand", `${selection.item.qtyInStock.toFixed(2)} ${selection.item.unit}`],
+      ["Quantity on hand", Number.isFinite(selection.item.qtyInStock) ? `${selection.item.qtyInStock.toFixed(2)} ${selection.item.unit}` : "Not recorded"],
       ["Unit", selection.item.unit],
       ["Unit price", `₱${selection.item.unitPrice.toLocaleString("en-PH")}`],
       ["Low-stock threshold", `${selection.item.threshold} ${selection.item.unit}`],
@@ -516,7 +523,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs }: {
       ["Item code", selection.item.itemCode],
       ["Enter-Fil PN", selection.item.enterFilPN],
       ["Client", selection.item.client],
-      ["Quantity on hand", `${selection.item.qtyInStock} pcs`],
+      ["Quantity on hand", Number.isFinite(selection.item.qtyInStock) ? `${selection.item.qtyInStock} pcs` : "Not recorded"],
       ["Buffer minimum", `${selection.item.bufferMin} pcs`],
       ["Demand", selection.item.demand],
       ["Last updated", selection.item.lastUpdated],
@@ -582,7 +589,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs }: {
           <section className="mt-5">
             <h3 className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Recent stock movements</h3>
             {movements.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 px-3 py-4 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No stock movements recorded.</p>
+              <p className="rounded-lg bg-slate-50 px-3 py-4 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{realMode ? "Stock movement history is not supplied by the inventory API." : "No stock movements recorded."}</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {movements.slice(0, 5).map((movement) => {

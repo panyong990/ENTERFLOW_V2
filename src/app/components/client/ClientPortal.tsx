@@ -1,3 +1,8 @@
+import { CompanySettingsSection } from "./CompanySettingsSection";
+import { ApiError } from '../../api/client';
+import { clientPortalApi, type ClientInquiryInput, type InquirySketchInput } from '../../api/clientPortal';
+import { EngineerSketchSection } from '../EngineerSketches';
+import { recoveryKey, retainRecoveryKey } from '../../api/inquiryRecovery';
 import { displayNumber, product } from "./adapters";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
@@ -402,7 +407,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
       {myOrders.length === 0 && !loading && !error && (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-7 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
           <div className="font-semibold text-slate-800">No orders are available for this account.</div>
-          <div className="mt-1 text-xs text-slate-500">Create Order opens an unsaved inquiry draft. Submission is unavailable until the authenticated service supports it.</div>
+          <div className="mt-1 text-xs text-slate-500">Create Order opens an inquiry form. Sketch attachments require configured private document storage.</div>
         </div>
       )}
       {(myOrders.length > 0 || loading || error) && (
@@ -836,6 +841,27 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   const [sketchFiles, setSketchFiles] = useState<Record<string, File | null>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionStarted = useRef(false);
+  const submissionKey = useRef<string | null>(recoveryKey(window.location.href));
+  const pendingInquiry = useRef<{ input: ClientInquiryInput; sketches: InquirySketchInput[] } | null>(null);
+  const [submissionError, setSubmissionError] = useState('');
+  const { refresh: refreshInquiries } = useClientData();
+  useEffect(() => {
+    const key = submissionKey.current;
+    if (!key) return;
+    const controller = new AbortController();
+    clientPortalApi.inquirySubmission(key, controller.signal).then(created => {
+      if (controller.signal.aborted) return;
+      if (created) {
+        retainRecoveryKey(null);
+        refreshInquiries();
+        window.dispatchEvent(new Event('enterflow:client-inquiry-submitted'));
+        toast.success(`Inquiry ${created.reference} was already submitted`);
+        onSubmitted(); onClose();
+      } else setSubmissionError('A previous submission is not yet confirmed. Reattach the original sketches and retry.');
+    }).catch(() => { if (!controller.signal.aborted) setSubmissionError('The previous submission could not be checked. Keep the same form and retry.'); });
+    return () => controller.abort();
+    // Recovery runs once when this wizard opens; callbacks change on provider refresh.
+  }, []);
 
   useEffect(() => {
     if (!reorderSource) return;
@@ -905,15 +931,12 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   const submit = async () => {
     if (!contactPerson.trim()) { toast.error("Contact person required"); return; }
     if (products.some(p => !Number.isInteger(p.qty) || p.qty < 10)) { toast.error("Each product must have a whole-number quantity of at least 10"); return; }
-    if (Object.values(sketchFiles).some(Boolean)) {
-      toast.info("Sketch attachments are not yet connected to the authenticated service", { description: "Remove the sketch attachment before submitting this inquiry." });
-      return;
-    }
     if (submissionStarted.current) return;
     submissionStarted.current = true;
     setIsSubmitting(true);
+    setSubmissionError('');
     try {
-      const created = await addInquiry({
+      const input: ClientInquiryInput = {
         contactPerson: contactPerson.trim(),
         paymentTermCode: paymentTerms === "30-Day Terms" ? "NET30" : "NET15",
         requestedDeliveryDate: requestedDeliveryDate || null,
@@ -936,13 +959,31 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
             notes: product.notes,
           },
         })),
-      });
+      };
+      const retrying = pendingInquiry.current !== null || submissionKey.current !== null;
+      submissionKey.current ??= crypto.randomUUID();
+      retainRecoveryKey(submissionKey.current);
+      pendingInquiry.current ??= { input, sketches: products.flatMap((product, index) => {
+        const file = sketchFiles[product.id];
+        return file ? [{ lineNumber: index + 1, file }] : [];
+      }) };
+      const previous = retrying ? await clientPortalApi.inquirySubmission(submissionKey.current) : null;
+      const created = previous ?? await addInquiry(pendingInquiry.current.input, pendingInquiry.current.sketches, submissionKey.current);
+      retainRecoveryKey(null);
+      if (previous) {
+        refreshInquiries();
+        window.dispatchEvent(new Event('enterflow:client-inquiry-submitted'));
+      }
       toast.success(`Inquiry ${created.reference} submitted`);
       onSubmitted();
       onClose();
     } catch (error) {
       submissionStarted.current = false;
-      toast.error(error instanceof Error ? error.message : "Inquiry submission failed. No inquiry was created.");
+      const uncertain = !(error instanceof ApiError) || ['NETWORK_ERROR', 'INVALID_RESPONSE', 'SUBMISSION_UNCONFIRMED', 'SUBMISSION_CONFLICT', 'SERVICE_UNAVAILABLE'].includes(error.code ?? '');
+      if (!uncertain) pendingInquiry.current = null;
+      const message = error instanceof Error ? error.message : 'The inquiry could not be confirmed.';
+      setSubmissionError(message + (uncertain ? ' Keep this form open. Retry checks the original inquiry and resends the same details and sketches safely.' : ' Review the files and retry.'));
+      toast.error(message);
     } finally { setIsSubmitting(false); }
   };
 
@@ -972,6 +1013,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
           <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center" style={{ color: "white" }}><X size={16} /></button>
         </div>
 
+        {submissionError && <div role="alert" className="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 p-3 font-dm text-xs text-red-800">{submissionError}</div>}
         {/* Product tabs (multi-product) — always visible, with + Add Another */}
         <div className="px-6 py-3 border-b border-slate-200 flex items-center gap-2 overflow-auto" style={{ backgroundColor: "#FAFBFC" }}>
           {products.map((p, i) => (
@@ -1437,6 +1479,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             </section>
           )}
 
+          {inquiry.products.map(item => <EngineerSketchSection key={item.id} orderId={(inquiry as ClientView).orderId} itemId={item.id} label={item.filterName || item.type} />)}
           {invoiceViews.map(invoice => <section key={invoice.id} className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><div className="font-syne text-sm font-bold text-emerald-900">{invoice.invoiceNo}</div><div className="font-dm mt-1 text-xs text-emerald-800">Amount: ₱{invoice.sourceInvoice?.amount} · Due: {invoice.invoiceDueDate ?? 'Unavailable'}</div></div>
@@ -3504,179 +3547,178 @@ function SettingsTab({ clientName }: { clientName: string }) {
 
   const save = () => { unavailable(); };
 
+  const [openSection, setOpenSection] = useState<string | null>("company");
+  const toggleSection = (id: string) => setOpenSection(current => current === id ? null : id);
+
   return (
-    <div className="px-8 py-8 max-w-2xl">
-      <h1 className="font-syne mb-6" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Company Settings</h1>
-      <div className="mb-6"><RealModePending>Profile details are read-only in Real Mode. Delivery and notification preferences are local until an authenticated settings API is available.</RealModePending></div>
+    <div className="mx-auto w-full min-w-0 max-w-[1000px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <h1 className="font-syne mb-4" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>Company Settings</h1>
+      <div className="mb-4"><RealModePending>Profile details are read-only in Real Mode. Delivery and notification preferences are local until an authenticated settings API is available.</RealModePending></div>
 
-      {/* Company Info */}
-      <section className="bg-white rounded-xl border border-slate-200/70 p-6 mb-6" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        <div className="font-syne mb-4" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Company Information</div>
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <SField label="Company Name">
-              <input value={companyName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-            </SField>
-            <SField label="Industry">
-              <input value={industry} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-            </SField>
-          </div>
-          <SField label="Address Line 1">
-            <input value={address1} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-          </SField>
-          <SField label="Address Line 2">
-            <input value={address2} disabled placeholder="Apt, suite, building (optional)" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-          </SField>
-          <div className="grid grid-cols-2 gap-4">
-            <SField label="City / Province">
-              <input value={cityProvince} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-            </SField>
-            <SField label="ZIP Code">
-              <input value={zip} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-            </SField>
-          </div>
-        </div>
-      </section>
-
-      {/* Contact Person */}
-      <section className="bg-white rounded-xl border border-slate-200/70 p-6 mb-6" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        <div className="font-syne mb-4" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Contact Person</div>
-        <div className="flex flex-col gap-4">
-          <SField label="Full Name">
-            <input value={contactName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-          </SField>
-          <SField label="Phone">
-            <input value={phone} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
-          </SField>
-          <SField label="Email">
-            <input value={email} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#94A3B8" }} />
-            <p className="font-dm mt-1" style={{ fontSize: 11, color: "#94A3B8" }}>Contact your Enter-Fil account manager to change your login email.</p>
-          </SField>
-        </div>
-      </section>
-
-      {/* Delivery Preferences */}
-      <section className="bg-white rounded-xl border border-slate-200/70 p-6 mb-6" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        <div className="font-syne mb-4" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Delivery Preferences</div>
-        <div className="font-dm mb-3" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Preferred Delivery Method <span className="text-slate-400 font-normal">(Enter-Fil has final approval)</span></div>
-        <div className="flex flex-col gap-2 mb-4">
-          {([
-            { id: "Company Vehicle", desc: "Batangas / Laguna / nearby provinces" },
-            { id: "Lalamove",        desc: "Local · urgent same-day" },
-            { id: "AP Cargo",        desc: "Cagayan / Isabela / northern provinces" },
-            { id: "Fast Cargo",      desc: "Davao / Mindanao / southern provinces" },
-            { id: "Client Pick-up",  desc: "Pick up from Enter-Fil warehouse" },
-          ] as const).map((m) => {
-            const active = deliveryMethod === m.id;
-            return (
-              <label key={m.id} className="flex items-center gap-3 p-3 rounded-lg cursor-pointer" style={{ border: active ? "2px solid #C8102E" : "1px solid #CBD5E1", backgroundColor: active ? "#FEF2F2" : "white", padding: active ? 11 : 12 }}>
-                <input type="radio" checked={active} onChange={() => setDeliveryMethod(m.id)} style={{ accentColor: "#C8102E" }} />
-                <div className="flex-1">
-                  <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{m.id}</div>
-                  <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{m.desc}</div>
-                </div>
-              </label>
-            );
-          })}
-        </div>
-
-        {deliveryMethod === "Client Pick-up" && (
-          <div className="flex flex-col gap-4 pt-4 border-t border-slate-200">
-            <div className="font-dm mb-1" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Pick-up Person</div>
-            <div className="grid grid-cols-2 gap-4">
-              <SField label="Name">
-                <input value={pickupName} onChange={(e) => setPickupName(e.target.value)} placeholder="Full name" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+      <div className="flex flex-col gap-3">
+        {/* Company Info */}
+        <CompanySettingsSection id="company" title="Company Information" description="Company name, industry, and address" expanded={openSection === "company"} onToggle={() => toggleSection("company")}>
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <SField label="Company Name">
+                <input value={companyName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
               </SField>
-              <SField label="Phone">
-                <input value={pickupPhone} onChange={(e) => setPickupPhone(e.target.value)} placeholder="+63..." className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+              <SField label="Industry">
+                <input value={industry} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
+              </SField>
+            </div>
+            <SField label="Address Line 1">
+              <input value={address1} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
+            </SField>
+            <SField label="Address Line 2">
+              <input value={address2} disabled placeholder="Apt, suite, building (optional)" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
+            </SField>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <SField label="City / Province">
+                <input value={cityProvince} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
+              </SField>
+              <SField label="ZIP Code">
+                <input value={zip} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
               </SField>
             </div>
           </div>
-        )}
-      </section>
+        </CompanySettingsSection>
 
-      {/* Change Password */}
-      <section className="bg-white rounded-xl border border-slate-200/70 p-6 mb-6" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="font-syne" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>🔒 Change Password</div>
-            <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Update your portal login password</p>
+        {/* Contact Person */}
+        <CompanySettingsSection id="contact" title="Contact Person" description="Primary contact and login email" expanded={openSection === "contact"} onToggle={() => toggleSection("contact")}>
+          <div className="flex flex-col gap-4">
+            <SField label="Full Name">
+              <input value={contactName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
+            </SField>
+            <SField label="Phone">
+              <input value={phone} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#64748B" }} />
+            </SField>
+            <SField label="Email">
+              <input value={email} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-50" style={{ fontSize: 13, color: "#94A3B8" }} />
+              <p className="font-dm mt-1" style={{ fontSize: 11, color: "#94A3B8" }}>Contact your Enter-Fil account manager to change your login email.</p>
+            </SField>
           </div>
-          {!showPwdSection && (
-            <button onClick={() => setShowPwdSection(true)} className="font-dm px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
-              Change password
-            </button>
+        </CompanySettingsSection>
+
+        {/* Delivery Preferences */}
+        <CompanySettingsSection id="delivery" title="Delivery Preferences" description="Preferred delivery method and pick-up details" expanded={openSection === "delivery"} onToggle={() => toggleSection("delivery")}>
+          <div className="font-dm mb-3" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Preferred Delivery Method <span className="text-slate-400 font-normal">(Enter-Fil has final approval)</span></div>
+          <div className="flex flex-col gap-2 mb-4">
+            {([
+              { id: "Company Vehicle", desc: "Batangas / Laguna / nearby provinces" },
+              { id: "Lalamove",        desc: "Local · urgent same-day" },
+              { id: "AP Cargo",        desc: "Cagayan / Isabela / northern provinces" },
+              { id: "Fast Cargo",      desc: "Davao / Mindanao / southern provinces" },
+              { id: "Client Pick-up",  desc: "Pick up from Enter-Fil warehouse" },
+            ] as const).map((m) => {
+              const active = deliveryMethod === m.id;
+              return (
+                <label key={m.id} className="flex items-center gap-3 p-3 rounded-lg cursor-pointer" style={{ border: active ? "2px solid #C8102E" : "1px solid #CBD5E1", backgroundColor: active ? "#FEF2F2" : "white", padding: active ? 11 : 12 }}>
+                  <input type="radio" checked={active} onChange={() => setDeliveryMethod(m.id)} style={{ accentColor: "#C8102E" }} />
+                  <div className="flex-1">
+                    <div className="font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{m.id}</div>
+                    <div className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{m.desc}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          {deliveryMethod === "Client Pick-up" && (
+            <div className="flex flex-col gap-4 pt-4 border-t border-slate-200">
+              <div className="font-dm mb-1" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Pick-up Person</div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <SField label="Name">
+                  <input value={pickupName} onChange={(e) => setPickupName(e.target.value)} placeholder="Full name" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+                </SField>
+                <SField label="Phone">
+                  <input value={pickupPhone} onChange={(e) => setPickupPhone(e.target.value)} placeholder="+63..." className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+                </SField>
+              </div>
+            </div>
           )}
-        </div>
-        {showPwdSection && (
-          <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-            <SField label="Current Password">
-              <input type="password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
-            </SField>
-            <SField label="New Password">
-              <input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="Min 8 characters" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
-            </SField>
-            <SField label="Confirm New Password">
-              <input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
-            </SField>
-            <div className="flex justify-end gap-2 mt-1">
-              <button onClick={() => { setShowPwdSection(false); setCurrentPwd(""); setNewPwd(""); setConfirmPwd(""); }} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-              <button disabled className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Password change unavailable</button>
+        </CompanySettingsSection>
+
+        {/* Notification Preferences */}
+        <CompanySettingsSection id="notifications" title="Notification Preferences" description="Choose how Enter-Fil reaches you with order updates" expanded={openSection === "notifications"} onToggle={() => toggleSection("notifications")}>
+
+          <div className="grid grid-cols-1 gap-3 mb-4">
+            <ChannelToggle
+              icon="✉️"
+              label="Email Alerts"
+              email={email}
+              enabled={emailAlerts}
+              onToggle={() => setEmailAlerts(v => !v)}
+              accent="#2563EB"
+            />
+          </div>
+
+          <div className="rounded-lg p-4" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+            <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Notify me about:</div>
+            <div className="flex flex-col gap-2">
+              {[
+                ["quotationReceived", "Quotation received from Enter-Fil"],
+                ["joCreated", "Job order created (production starting)"],
+                ["inProduction", "Production stage updates"],
+                ["readyForDispatch", "Order ready for dispatch"],
+                ["deliveryUpdate", "Delivery in transit / delivered"],
+                ["invoiceIssued", "Invoice issued"],
+                ["paymentReminders", "Payment reminders before due date"],
+                ["overdueAlerts", "Overdue payment alerts"],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center gap-3 cursor-pointer hover:bg-white rounded p-2">
+                  <input
+                    type="checkbox"
+                    checked={notifTriggers[key as keyof typeof notifTriggers]}
+                    onChange={() => setNotifTriggers(p => ({ ...p, [key]: !p[key as keyof typeof notifTriggers] }))}
+                    style={{ accentColor: "#C8102E" }}
+                  />
+                  <span className="font-dm flex-1" style={{ fontSize: 13, color: "#0F172A" }}>{label}</span>
+                </label>
+              ))}
             </div>
           </div>
-        )}
-      </section>
 
-      {/* Notification Preferences */}
-      <section className="bg-white rounded-xl border border-slate-200/70 p-6 mb-6" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-        <div className="font-syne mb-1" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Notification Preferences</div>
-        <p className="font-dm mb-4" style={{ fontSize: 12, color: "#64748B" }}>Choose how Enter-Fil reaches you with order updates</p>
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <ChannelToggle
-            icon="✉️"
-            label="Email Alerts"
-            email={email}
-            enabled={emailAlerts}
-            onToggle={() => setEmailAlerts(v => !v)}
-            accent="#2563EB"
-          />
-        </div>
-
-        <div className="rounded-lg p-4" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-          <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Notify me about:</div>
-          <div className="flex flex-col gap-2">
-            {[
-              ["quotationReceived", "Quotation received from Enter-Fil"],
-              ["joCreated", "Job order created (production starting)"],
-              ["inProduction", "Production stage updates"],
-              ["readyForDispatch", "Order ready for dispatch"],
-              ["deliveryUpdate", "Delivery in transit / delivered"],
-              ["invoiceIssued", "Invoice issued"],
-              ["paymentReminders", "Payment reminders before due date"],
-              ["overdueAlerts", "Overdue payment alerts"],
-            ].map(([key, label]) => (
-              <label key={key} className="flex items-center gap-3 cursor-pointer hover:bg-white rounded p-2">
-                <input
-                  type="checkbox"
-                  checked={notifTriggers[key as keyof typeof notifTriggers]}
-                  onChange={() => setNotifTriggers(p => ({ ...p, [key]: !p[key as keyof typeof notifTriggers] }))}
-                  style={{ accentColor: "#C8102E" }}
-                />
-                <span className="font-dm flex-1" style={{ fontSize: 13, color: "#0F172A" }}>{label}</span>
-              </label>
-            ))}
+          <div className="rounded-md p-3 mt-3 font-dm" style={{ fontSize: 11, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+            ℹ️ Email alerts via SendGrid. You can unsubscribe anytime.
           </div>
-        </div>
+        </CompanySettingsSection>
 
-        <div className="rounded-md p-3 mt-3 font-dm" style={{ fontSize: 11, color: "#1E40AF", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-          ℹ️ Email alerts via SendGrid. You can unsubscribe anytime.
-        </div>
-      </section>
+        {/* Change Password */}
+        <CompanySettingsSection id="password" title="Change Password" description="Update your portal login password" expanded={openSection === "password"} onToggle={() => toggleSection("password")}>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            {!showPwdSection && (
+              <button onClick={() => setShowPwdSection(true)} className="font-dm px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
+                Change password
+              </button>
+            )}
+          </div>
+          {showPwdSection && (
+            <div className="rounded-lg p-4 grid grid-cols-1 gap-4 md:grid-cols-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+              <SField label="Current Password">
+                <input type="password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+              </SField>
+              <SField label="New Password">
+                <input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="Min 8 characters" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+              </SField>
+              <SField label="Confirm New Password">
+                <input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+              </SField>
+              <div className="flex flex-wrap justify-end gap-2 mt-1 md:col-span-3">
+                <button onClick={() => { setShowPwdSection(false); setCurrentPwd(""); setNewPwd(""); setConfirmPwd(""); }} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+                <button disabled className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>Password change unavailable</button>
+              </div>
+            </div>
+          )}
+        </CompanySettingsSection>
+      </div>
 
-      <button disabled className="w-full py-3 rounded-md text-white font-dm disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-        💾 Save Settings
-      </button>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-dm text-xs text-slate-500">Delivery and notification preferences are local only. Saving is unavailable.</p>
+        <button disabled className="w-full sm:w-auto px-6 py-3 rounded-md text-white font-dm disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+          💾 Save Settings
+        </button>
+      </div>
     </div>
   );
 }

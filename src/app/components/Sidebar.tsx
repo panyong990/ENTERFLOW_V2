@@ -1,7 +1,7 @@
 import { useSession } from "../store/session";
 import { useState } from "react";
 import { Sheet,SheetContent,SheetTitle,SheetTrigger } from "./ui/sheet";
-import { Menu, LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt, UserRoundCog, ShieldCheck, Users } from "lucide-react";
+import { Bell, Menu, LayoutDashboard, ShoppingCart, Factory, ScanLine, Truck, Calculator, LogOut, Building2, Settings as SettingsIcon, Boxes, BarChart3, ClipboardList, Receipt, UserRoundCog, ShieldCheck, Users } from "lucide-react";
 import type { Role } from "./Login";
 import { roleMetas } from "./Login";
 import { allowedFor } from "../role-access";
@@ -50,7 +50,8 @@ interface SidebarProps {
 function SidebarContent({ active = "dashboard", onNavigate, onLogout, role, badges = {}, unreadNotif = 0, userName }: SidebarProps) {
   const {mode}=useSession();
   const allowed = allowedFor[role];
-  const visible = navItems.filter((n) => allowed.includes(n.id) && (n.id!=='inquiry-rejections'||mode==='real') && !(role === "accounting" && n.id === "sales"));
+  const roleItems = role === "sales" && mode === "real" ? [...navItems, { id: "notifications", label: "Notifications", icon: Bell }] : navItems;
+  const visible = roleItems.filter((n) => allowed.includes(n.id) && (n.id!=='inquiry-rejections'||mode==='real') && !(role === "accounting" && n.id === "sales"));
   const meta = roleMetas[role];
   const sb = { ...roleSidebar[role], user: userName ?? roleSidebar[role].user };
   const initials = sb.user.split(" ").map(s => s[0]).slice(0, 2).join("");

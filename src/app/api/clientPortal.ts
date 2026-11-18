@@ -39,6 +39,7 @@ export interface ClientInquiryInput {
   products: ClientInquiryProductInput[];
 }
 export interface ClientInquiryCreated { id: string; reference: string; stageCode: "inquiry"; submittedAt: string; itemCount: number }
+export interface InquirySketchInput { lineNumber: number; file: File }
 export interface Page<T> { items: T[]; total: number; page: number; pageSize: number }
 
 function withQuery(path: string, values: Record<string, string | number | undefined>) {
@@ -51,7 +52,14 @@ export const clientPortalApi = {
   profile: (signal?: AbortSignal) => api<ClientProfile>("/api/client/profile", { signal }),
   dashboard: (signal?: AbortSignal) => api<ClientDashboard>("/api/client/dashboard", { signal }),
   orders: (params: { page?: number; pageSize?: number; q?: string; status?: string; stage?: string; sort?: string } = {}, signal?: AbortSignal) => api<Page<ClientOrder>>(withQuery("/api/client/orders", params), { signal }),
-  createInquiry: (input: ClientInquiryInput, signal?: AbortSignal) => api<ClientInquiryCreated>("/api/client/orders", { method: "POST", body: input, signal }),
+  createInquiry: (input: ClientInquiryInput, signal?: AbortSignal, idempotencyKey?: string) => api<ClientInquiryCreated>("/api/client/orders", { method: "POST", body: input, signal, idempotencyKey }),
+  createInquiryWithSketches: (input: ClientInquiryInput, sketches: InquirySketchInput[], idempotencyKey: string, signal?: AbortSignal) => {
+    const body = new FormData();
+    body.append('inquiry', JSON.stringify({ payload: input, sketchLines: sketches.map(sketch => sketch.lineNumber) }));
+    for (const sketch of sketches) body.append(`sketch:${sketch.lineNumber}`, sketch.file, sketch.file.name);
+    return api<ClientInquiryCreated>('/api/documents/client/inquiries', { method: 'POST', body, idempotencyKey, signal, timeoutMs: 120000 });
+  },
+  inquirySubmission: (key: string, signal?: AbortSignal) => api<ClientInquiryCreated | null>(`/api/documents/client/inquiry-submissions/${encodeURIComponent(key)}`, { signal }),
   order: (id: string, signal?: AbortSignal) => api<ClientOrderDetail>(`/api/client/orders/${encodeURIComponent(id)}`, { signal }),
   quotations: (id: string, signal?: AbortSignal) => api<ClientQuotation[]>(`/api/client/orders/${encodeURIComponent(id)}/quotations`, { signal }),
   decideQuotation: (orderId: string, quotationId: string, input: ClientQuotationDecision, signal?: AbortSignal) => api<{ quotationId: string; orderId: string; decision: ClientQuotationDecision["decision"] }>(`/api/client/orders/${encodeURIComponent(orderId)}/quotations/${encodeURIComponent(quotationId)}/decision`, { method: "POST", body: input, signal }),

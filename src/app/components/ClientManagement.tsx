@@ -4,7 +4,7 @@ import {AdminFeedback} from "./admin/AdminFeedback";
 import {AdminDialog} from "./admin/AdminDialog";
 import {RegistrationRequests} from "./admin/RegistrationRequests";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Building2, Eye, Pencil, Power, Search, SlidersHorizontal, X } from "lucide-react";
+import { Building2, Eye, Pencil, Power, Search, SlidersHorizontal } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -283,21 +283,20 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
             </div>
           </div>
           {tab==='requests'?<RegistrationRequests />:<>
-          {real&&<div className="px-5 py-3"><AdminFeedback loading={remote.loading} error={remote.error} retry={remote.refresh} /></div>}
-            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-              <div><h2 className="font-syne text-lg font-bold text-slate-900">Client directory</h2><p className="mt-1 font-dm text-xs text-slate-500">{real&&!remote.data?"Records unavailable":total} client account{filteredClients.length === 1 ? "" : "s"}</p></div>
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-5">
+              <div><h2 className="font-syne text-lg font-bold text-slate-900">Client directory</h2><p className="font-dm text-xs text-slate-500">{real&&!remote.data?"Records unavailable":total} client account{filteredClients.length === 1 ? "" : "s"}</p></div>
             </div>
+          {real&&(remote.loading||remote.error)&&<div className="px-4 py-3 sm:px-5"><AdminFeedback loading={remote.loading} error={remote.error} retry={remote.refresh} /></div>}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1080px]">
                 <thead className="bg-slate-50/80"><tr>
-                  {["Client / Company", "Client ID", "Contact Person", "Email Address", "Contact Number", "Account Status", "Registered", "Actions"].map((heading) => <th key={heading} className="px-4 py-3 text-left font-dm text-[11px] font-bold uppercase tracking-wider text-slate-500">{heading}</th>)}
-                  {["Client / Company", "Client ID", "Contact Person", "Email Address", "Contact Number", "Account Status", "Registered", "Actions"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 text-left font-dm text-[10px] font-bold uppercase tracking-wider text-slate-500">{heading}</th>)}
+                  {["Client ID", "Client / Company", "Contact Person", "Email Address", "Contact Number", "Account Status", "Registered", "Actions"].map((heading) => <th key={heading} className="px-4 py-3 text-left font-dm text-[11px] font-bold uppercase tracking-wider text-slate-500">{heading}</th>)}
                 </tr></thead>
                 <tbody>
                   {visibleRows.map((client) => (
                     <tr key={client.id} className="border-t border-slate-100 hover:bg-slate-50/70">
-                      <td className="px-4 py-3.5 font-dm text-sm font-semibold text-slate-800">{client.name}</td>
                       <td className="px-4 py-3.5 font-dm text-xs text-slate-600">{client.id}</td>
+                      <td className="px-4 py-3.5 font-dm text-sm font-semibold text-slate-800">{client.name}</td>
                       <td className="px-4 py-3.5 font-dm text-xs text-slate-600">{client.contactPerson || "—"}</td>
                       <td className="px-4 py-3.5 font-dm text-xs text-slate-600">{client.email}</td>
                       <td className="px-4 py-3.5 font-dm text-xs text-slate-600">{client.phone || "—"}</td>
@@ -326,16 +325,12 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
         </section>
       </section>
 
-      {selected && <AdminDialog title="Client details" busy={saving} onClose={()=>setSelected(null)}>
-          <div className="flex items-start justify-between"><div><p className="font-dm text-xs font-bold uppercase tracking-widest text-red-700">Client account</p><h2 className="mt-1 font-syne text-xl font-bold text-slate-900">{selected.name}</h2></div><button type="button" disabled={saving} onClick={() => setSelected(null)} aria-label="Close details" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div>
-          <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+      {selected && <AdminDialog title="Client details" busy={saving} onClose={()=>setSelected(null)} headerActions={<Tooltip><TooltipTrigger asChild><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => beginEdit(selected)} aria-label="Edit client details" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 hover:bg-blue-50 hover:text-blue-700"><Pencil size={15} aria-hidden="true" /></button></TooltipTrigger><TooltipContent side="top">Edit client details</TooltipContent></Tooltip>}>
+          <p className="-mt-1 font-dm text-base font-medium leading-6 text-slate-700">{selected.name}</p>
+          <dl className="mt-1 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             {[["Client ID", selected.id], ["Contact person", selected.contactPerson || "—"], ["Email address", selected.email], ["Username", selected.username], ["Contact number", selected.phone || "—"], ["Account status", real&&!selected.accountId?"No portal account":selected.active ? "Active" : "Deactivated"], ["Registration date", selected.joined]].map(([label, value]) => <div key={label}><dt className="font-dm text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-1 font-dm text-sm text-slate-800">{value}</dd></div>)}
           </dl>
-          {real && <section aria-label="Transactions & Orders" className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <h3 className="font-dm text-xs font-bold uppercase tracking-wide text-slate-500">Transactions &amp; Orders</h3>
-            <p className="mt-2 font-dm text-sm leading-6 text-slate-600">Client-scoped quotations, purchase orders, Job Orders, and invoices are not available from the authenticated Admin Client API. No records are inferred from Demo data or unrelated company-wide results.</p>
-          </section>}
-          <div className="mt-6 flex justify-end gap-2"><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => beginEdit(selected)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-700">Edit details</button><button type="button" disabled={saving||(real&&!selected.accountId)} onClick={() => void toggleClient(selected)} className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white">{selected.active ? "Deactivate" : "Activate"} account</button>{!real&&<button type="button" disabled={saving} onClick={() => { setResetting(selected); setNewPassword(""); }} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 font-dm text-sm font-semibold text-amber-800">Reset password</button>}</div>
+          {!real&&<div className="mt-6 flex justify-end gap-2"><button type="button" disabled={saving} onClick={() => { setResetting(selected); setNewPassword(""); }} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 font-dm text-sm font-semibold text-amber-800">Reset password</button></div>}
       </AdminDialog>}
 
       {resetting && !real && <AdminDialog title="Set a new client password" busy={saving} onClose={()=>setResetting(null)}><form onSubmit={resetClientPassword}>
@@ -345,8 +340,8 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
       </form></AdminDialog>}
 
       {editing && <AdminDialog title="Edit client details" busy={saving} onClose={()=>setEditing(null)}><form onSubmit={saveClientDetails} aria-describedby={formError?"client-form-error":undefined}>
-          <div className="flex items-start justify-between"><div><p className="font-dm text-xs font-bold uppercase tracking-widest text-red-700">Client profile</p><h2 className="mt-1 font-syne text-xl font-bold text-slate-900">Edit client details</h2></div><button type="button" disabled={saving} onClick={() => setEditing(null)} aria-label="Close editor" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <div className="border-b border-slate-200 pb-4"><p className="font-dm text-xs font-bold uppercase tracking-widest text-red-700">Client profile</p></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {([
               ["Company name", "name"],
               ["Contact person", "contactPerson"],
@@ -357,7 +352,7 @@ function ClientManagementPage({initialTab}:{initialTab:"directory"|"requests"}) 
           </div>
           {formError&&<div id="client-form-error" role="alert" className="mt-3 text-sm text-red-700">{formError}{blocked&&<button type="button" className="mt-2 block rounded border px-3 py-2" onClick={async()=>{try{beginEdit(accountFromRow(await api<DirectoryRow>(`/api/admin/clients/${editing.id}`),'client') as ClientAccount);}catch(cause){setFormError((cause as Error).message);}}}>Reload current client</button>}</div>}
           <p className="mt-4 font-dm text-xs text-slate-500">Commercial terms and transaction history are not editable here.</p>
-          <div className="mt-6 flex justify-end gap-2"><button type="button" disabled={saving} onClick={() => setEditing(null)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-dm text-sm font-semibold text-slate-600">Cancel</button><button disabled={saving||blocked} type="submit" className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white">{saving?"Saving...":"Save changes"}</button></div>
+          <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 py-3"><button disabled={saving||blocked} type="submit" className="rounded-lg bg-red-700 px-4 py-2.5 font-dm text-sm font-bold text-white">{saving?"Saving...":"Save changes"}</button></div>
         </form></AdminDialog>}
     </main>
   );

@@ -9,7 +9,8 @@ const MIME_EXTENSIONS = Object.freeze({
 
 export const DOCUMENT_LIMITS = Object.freeze({
   po: 10 * 1024 * 1024,
-  paymentProof: 10 * 1024 * 1024
+  paymentProof: 10 * 1024 * 1024,
+  sketch: 10 * 1024 * 1024
 });
 
 export function extensionForMime(mimeType) {
@@ -20,10 +21,13 @@ export function validateDocumentBuffer({ buffer, filename, mimeType, kind }) {
   const limit = DOCUMENT_LIMITS[kind];
   const extension = typeof filename === 'string' ? filename.toLowerCase().split('.').pop() : '';
   const expected = extensionForMime(mimeType);
+  if (kind === 'sketch' && (typeof filename !== 'string' || filename.length > 255 || !filename.trim() || /[\x00-\x1f\x7f/\\]/.test(filename) || filename.startsWith('.'))) {
+    return { success: false, code: 'INVALID_DOCUMENT', message: 'A valid document filename is required.' };
+  }
   if (!limit || !Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > limit) {
     return { success: false, code: 'INVALID_DOCUMENT', message: 'The document is empty or exceeds the allowed size.' };
   }
-  if (!expected || extension !== expected) return { success: false, code: 'INVALID_DOCUMENT', message: 'Only PDF, JPG, and PNG documents are supported.' };
+  if (!expected || (extension !== expected && !(kind === 'sketch' && mimeType === 'image/jpeg' && extension === 'jpeg'))) return { success: false, code: 'INVALID_DOCUMENT', message: 'Only PDF, JPG, and PNG documents are supported.' };
   const signature = buffer.subarray(0, 8);
   const validSignature = mimeType === 'application/pdf'
     ? signature.toString('ascii', 0, 5) === '%PDF-'
@@ -57,8 +61,8 @@ export function createGcsDocumentStorage({ bucketName = process.env.GCS_BUCKET, 
       const [metadata] = await file.getMetadata();
       return { generation: metadata.generation ?? null, sha256: null };
     },
-    async get({ objectKey }) { const [buffer] = await bucket.file(objectKey).download(); const [metadata] = await bucket.file(objectKey).getMetadata(); return { buffer, mimeType: metadata.contentType ?? 'application/octet-stream', generation: metadata.generation ?? null }; },
-    async delete({ objectKey }) { await bucket.file(objectKey).delete({ ignoreNotFound: true }); }
+    async get({ objectKey, bucketName: recordedBucket = bucketName, generation }) { const file = storage.bucket(recordedBucket).file(objectKey, generation ? { generation } : undefined); const [buffer] = await file.download(); const [metadata] = await file.getMetadata(); return { buffer, mimeType: metadata.contentType ?? 'application/octet-stream', generation: metadata.generation ?? null }; },
+    async delete({ objectKey, bucketName: recordedBucket = bucketName, generation }) { await storage.bucket(recordedBucket).file(objectKey).delete({ ignoreNotFound: true, ...(generation ? { ifGenerationMatch: generation } : {}) }); }
   };
 }
 

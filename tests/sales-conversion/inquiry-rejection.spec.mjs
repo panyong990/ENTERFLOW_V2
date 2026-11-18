@@ -41,7 +41,10 @@ test('inquiry rejection requires reason, cancels without writes, then saves revi
   await page.getByRole('button',{name:'Reject inquiry',exact:true}).click();await page.getByLabel('Rejection reason').fill('Synthetic rejection');await confirm.click();
   await expect(page.getByRole('button',{name:'Reject inquiry',exact:true})).toHaveCount(0);
   expect(state.requests).toEqual([{reason:'Synthetic rejection',revision:'a'.repeat(64)}]);
-  await page.getByLabel('Record status',{exact:true}).selectOption('archived');await expect(page.getByText('Archived and downstream order records')).toBeVisible();
+  await page.getByRole('button',{name:'All Order Records & Stages',exact:true}).click();
+  await page.getByLabel('Order status',{exact:true}).selectOption('archived');
+  await expect(page.getByRole('button',{name:'View SYN-REJECT',exact:true})).toBeVisible();
+  await expect(page.getByText('Rejected inquiry',{exact:true})).toBeVisible();
 });
 test('submission stays locked while the synthetic rejection is pending',async({page})=>{
   const state=await setup(page,{failure:'hold'});await page.getByRole('button',{name:'Reject inquiry',exact:true}).click();await page.getByLabel('Rejection reason').fill('Synthetic rejection');

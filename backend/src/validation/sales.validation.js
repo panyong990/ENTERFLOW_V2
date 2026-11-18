@@ -151,8 +151,9 @@ export function validateQuotationRevisionRequest(body) {
 
 export function validateQuotationPreparation(body) {
   try {
-    const input = ownData(body, ['status', 'reference', 'issuedOn', 'validUntil', 'paymentTermCode', 'timeOfDelivery', 'placeOfDelivery', 'note', 'noteHighlighted', 'downpaymentPercent', 'vatType', 'vatRate', 'includeLabor', 'applyMarkup', 'applyVat', 'discountPercent', 'costing']);
+    const input = ownData(body, ['status', 'reference', 'baseQuotationId', 'issuedOn', 'validUntil', 'paymentTermCode', 'timeOfDelivery', 'placeOfDelivery', 'note', 'noteHighlighted', 'downpaymentPercent', 'vatType', 'vatRate', 'includeLabor', 'applyMarkup', 'applyVat', 'discountPercent', 'costing']);
     if (!input || !Array.isArray(input.costing) || input.costing.length === 0) return fail({ body: 'Quotation costing inputs are required.' });
+    if (input.baseQuotationId !== undefined && input.baseQuotationId !== null && !validateSalesOrderId(input.baseQuotationId).success) return fail({ baseQuotationId: 'Reload the latest quotation before saving.' });
     const text = (value, field, max, required = true) => {
       if (value === undefined && !required) return null;
       if (typeof value !== 'string' || !value.trim() || value.length > max || !value.isWellFormed()) throw [field, `A valid ${field} is required.`];
@@ -200,7 +201,7 @@ export function validateQuotationPreparation(body) {
     });
     const ids = costing.map(row => row.orderItemId);
     if (new Set(ids).size !== ids.length) return fail({ costing: 'Each order item may appear only once.' });
-    return { success: true, data: { status, reference, issuedOn, validUntil, paymentTermCode: input.paymentTermCode, timeOfDelivery, placeOfDelivery, note, noteHighlighted, downpaymentPercent, vatType, vatRate, includeLabor, applyMarkup, applyVat, discountPercent, costing } };
+    return { success: true, data: { status, reference, baseQuotationId: input.baseQuotationId, issuedOn, validUntil, paymentTermCode: input.paymentTermCode, timeOfDelivery, placeOfDelivery, note, noteHighlighted, downpaymentPercent, vatType, vatRate, includeLabor, applyMarkup, applyVat, discountPercent, costing } };
   } catch (error) {
     if (Array.isArray(error) && error.length === 2) return fail({ [error[0]]: error[1] });
     return fail({ body: 'Invalid quotation preparation request.' });

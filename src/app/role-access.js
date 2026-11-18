@@ -30,3 +30,15 @@ export function isAllowedWorkspaceRoute(role, route) {
   if (route === "logistics-active-jobs") return role === "logistics";
   return allowedFor[role]?.includes(route) ?? false;
 }
+
+// Metadata comparison only: workspace routes need not be database modules.
+export function hasMatchingDatabaseModules(role, moduleCodes) {
+  const routes = allowedFor[role];
+  if (!routes) return false;
+  // Rejection history is a narrow orders:read view, not a separate module grant.
+  const expected = routes.filter(code =>
+    !((role === "owner" || role === "operations") && code === "inquiry-rejections"));
+  // Preserve the existing database-only Logistics subroute exception.
+  const actual = moduleCodes.filter(code => code !== "logistics-active-jobs");
+  return expected.sort().join("|") === actual.sort().join("|");
+}

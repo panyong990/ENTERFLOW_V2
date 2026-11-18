@@ -10,7 +10,7 @@ export function createDocumentWorkflowsService({ db, storage } = {}) {
   const documents = storageForEnvironment({ storage });
 
   async function uploadObject({ connection, scope, parentId, userId, file, kind, purpose }) {
-    const validation = validateDocumentBuffer(file ?? {}, kind);
+    const validation = validateDocumentBuffer({ ...(file ?? {}), kind });
     if (!validation.success) return validation;
     if (!storageBucket() && process.env.NODE_ENV !== 'test' && !storage) return fail('STORAGE_NOT_CONFIGURED');
     const [created] = await connection.execute(`INSERT INTO files (original_filename,mime_type,size_bytes,bucket,object_path,state,uploaded_by) VALUES (?,?,?,?,?,'pending',?)`, [validation.data.filename, validation.data.mimeType, validation.data.sizeBytes, storageBucket() || 'mock', 'pending', userId]);

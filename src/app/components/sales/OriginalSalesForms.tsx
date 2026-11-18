@@ -9,6 +9,7 @@ import { QuotationBuilder } from "./QuotationBuilder";
 import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
 import { FILTER_TYPES as FILTER_TYPES_CATALOG, DIMENSION_LABELS as DIMENSION_LABELS_CATALOG, GROUP_TEMPLATES, groupForType } from "../../store/filterTemplates";
 import { pendingIntegration } from "./drafts";
+import { EngineerSketches } from '../EngineerSketches';
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 interface OtherMat { id: string; name: string }
 interface MatPlan {
@@ -1259,8 +1260,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /* ─── Management: New Inquiry Modal ─── */
 
-function OperationsProductSketch({ product }: { inquiryId: string; productId: string; product: ProductLine }) {
-  return <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm">Sketch preview unavailable from the Sales API. {product.sketchFileName || "No file metadata returned."}</p>;
+function OperationsProductSketch({ inquiryId, productId }: { inquiryId: string; productId: string; product: ProductLine }) {
+  return <EngineerSketches key={`${inquiryId}:${productId}`} orderId={inquiryId} itemId={productId} scope="sales" />;
 }
 
 function DraftTab({ active, children }: { active: boolean; children: React.ReactNode }) {

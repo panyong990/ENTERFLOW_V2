@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-11-18T06:04:34.953Z",
+  "method": "START TRANSACTION READ ONLY; SELECT only; ROLLBACK",
+  "serverVersion": "8.4.13",
+  "materialCount": "0",
+  "templateCount": "0",
+  "bomLineCount": "0",
+  "unitCount": "8",
+  "categoryCount": "8",
+  "orderCount": "1",
+  "itemCount": "1",
+  "quotationCount": "0",
+  "stockRequestCount": "0",
+  "quantityColumn": {
+    "columnType": "decimal(15,4)",
+    "nullable": "NO",
+    "defaultValue": "0.0000"
+  }
+}

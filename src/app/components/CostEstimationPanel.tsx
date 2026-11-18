@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Pencil, Plus, Sparkles, Trash2, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,7 @@ import {
   type RawMaterial,
 } from "../store/materials";
 import { resolveProductBOM, type Inquiry, type ProductLine } from "../store/orders";
+import { assessMaterialStock } from "../store/inventoryModel.js";
 
 /* Categories shown in the chip list — O-Ring and Gasket are now distinct (Section B5). Packaging stays excluded. */
 const STANDARD_PART_CATEGORIES: PartCategory[] = [
@@ -46,11 +47,12 @@ interface Props {
   inquiry: Inquiry;
   qty: number;
   serverCosting?: boolean;
+  onDraftChange?: (productIndex: number) => void;
   /* Returns the final BOM + cost config + computed prices when user clicks "Apply to Quotation" */
   onApply: (data: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex: number }) => void;
 }
 
-export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = false }: Props) {
+export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = false, onDraftChange }: Props) {
   const { rawMaterials, templates, findBOMTemplate } = useMaterials();
   const [activeProductIndex, setActiveProductIndex] = useState(0);
   const product = inquiry.products[activeProductIndex] ?? inquiry.products[0];
@@ -59,6 +61,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
 
   /* Resolve a usable BOM before showing availability; empty category placeholders have no consumption quantities. */
   const initial = useMemo(() => {
+    if (serverCosting) return [];
     const savedProductBom = resolveProductBOM(inquiry, activeProductIndex);
     if (savedProductBom && savedProductBom.length > 0) return savedProductBom;
     const tpl = findBOMTemplate(filterType, size);
@@ -70,7 +73,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
     }, rawMaterials).map((x) => x.line);
     if (auto.length > 0) return auto;
     return [];
-  }, [activeProductIndex, filterType, size, inquiry, findBOMTemplate, product, rawMaterials]);
+  }, [activeProductIndex, filterType, size, inquiry, findBOMTemplate, product, rawMaterials, serverCosting]);
 
   const [bom, setBom] = useState<BOMLine[]>(initial);
   const [cfg, setCfg] = useState<CostConfig>(
@@ -86,6 +89,15 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
   );
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState(0);
+  const costingDrafts = useRef<Record<number, CostConfig>>({});
+  const changeCfg = (next: CostConfig) => {
+    setCfg(next);
+    if (serverCosting) onDraftChange?.(activeProductIndex);
+  };
+  const selectProduct = (index: number) => {
+    if (serverCosting) costingDrafts.current[activeProductIndex] = cfg;
+    setActiveProductIndex(index);
+  };
   /* Section I — tplName/showSaveTpl state removed */
 
   const matchingTemplate = findBOMTemplate(filterType, size);
@@ -95,7 +107,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
 
   useEffect(() => {
     setBom(initial);
-    setCfg(inquiry.productsCostConfig?.[activeProductIndex] ?? inquiry.costConfig ?? {
+    setCfg((serverCosting ? costingDrafts.current[activeProductIndex] : undefined) ?? inquiry.productsCostConfig?.[activeProductIndex] ?? inquiry.costConfig ?? {
       laborCost: 380,
       markupPct: 30,
       vatType: "Exclusive",
@@ -140,7 +152,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
     const tpl = templates.find((t) => t.id === templateId);
     if (!tpl) return;
     setBom(tpl.bom);
-    setCfg(tpl.costConfig);
+    changeCfg(tpl.costConfig);
     toast.success(`Loaded template: ${tpl.name}`);
   };
 
@@ -167,7 +179,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
           {inquiry.products.map((p, idx) => (
             <button
               key={p.id}
-              onClick={() => setActiveProductIndex(idx)}
+              onClick={() => selectProduct(idx)}
               className="font-dm px-3 py-1.5 rounded-md"
               style={{ fontSize: 12, fontWeight: 700, backgroundColor: idx === activeProductIndex ? "#1A2B4A" : "white", color: idx === activeProductIndex ? "white" : "#475569", border: "1px solid #CBD5E1" }}
             >
@@ -210,7 +222,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
           <div className="flex flex-col">
             {bom.length === 0 && (
               <div className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>
-                No filter parts yet. Add parts using the chips below — staff enters quantities manually.
+                {serverCosting ? "Approved material requirements are resolved by the server. Use Inquiry Details for the authenticated stock check; catalog suggestions are not an approved BOM." : "No filter parts yet. Add parts using the chips below — staff enters quantities manually."}
               </div>
             )}
             {bom.map((line, idx) => {
@@ -315,19 +327,21 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
             ) : (
               <div className="flex flex-col gap-2">
                 {materialAvailability.map(({ material, requiredQuantity }) => {
-                  const shortage = Math.max(0, requiredQuantity - material.qtyInStock);
-                  const insufficient = shortage > 0;
+                  const assessment = assessMaterialStock(requiredQuantity, material.qtyInStock);
+                  const shortage = assessment.shortage;
+                  const insufficient = assessment.status === "insufficient";
+                  const unavailable = assessment.status === "unavailable";
                   const formatQty = (value: number) => value.toLocaleString("en-PH", { maximumFractionDigits: 3 });
                   return (
                     <div key={material.id} className="rounded-md border border-slate-200 px-3 py-2">
                       <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 font-dm" style={{ fontSize: 11 }}>
                         <strong style={{ color: "#0F172A" }}>{material.name}</strong>
                         <span style={{ color: insufficient ? "#B45309" : "#15803D", fontWeight: 800 }}>
-                          {insufficient ? "⚠ INSUFFICIENT STOCK" : "✓ ON STOCK"}
+                          {unavailable ? "Not recorded" : insufficient ? "⚠ INSUFFICIENT STOCK" : "✓ ON STOCK"}
                         </span>
                       </div>
                       <div className="font-mono-jb mt-1" style={{ fontSize: 10, color: "#475569" }}>
-                        Required: {formatQty(requiredQuantity)} {material.unit} · Current Stock: {formatQty(material.qtyInStock)} {material.unit}
+                        Required: {formatQty(requiredQuantity)} {material.unit} · Current Stock: {unavailable ? "Not recorded" : `${formatQty(material.qtyInStock)} ${material.unit}`}
                       </div>
                       {insufficient && (
                         <div className="mt-2 font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#B45309" }}>
@@ -362,13 +376,13 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Labor Cost / Unit</label>
                 <div className="flex items-center gap-1">
                   <span className="font-mono-jb" style={{ fontSize: 12, color: "#64748B" }}>₱</span>
-                  <input aria-label="Labor cost per unit" type="number" value={cfg.laborCost} onChange={(e) => setCfg({ ...cfg, laborCost: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input aria-label="Labor cost per unit" type="number" value={cfg.laborCost} onChange={(e) => changeCfg({ ...cfg, laborCost: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                 </div>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Markup</label>
                 <div className="flex items-center gap-1">
-                  <input aria-label="Markup percentage" type="number" value={cfg.markupPct} onChange={(e) => setCfg({ ...cfg, markupPct: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input aria-label="Markup percentage" type="number" value={cfg.markupPct} onChange={(e) => changeCfg({ ...cfg, markupPct: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                   <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>%</span>
                 </div>
               </div>
@@ -376,6 +390,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Discount (%)</label>
                 <div className="flex items-center gap-1">
                   <input
+                    aria-label="Discount percentage"
                     type="number"
                     min={0}
                     max={100}
@@ -383,7 +398,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                     value={cfg.discountPct ?? 0}
                     onChange={(e) => {
                       const value = Number(e.target.value);
-                      setCfg({ ...cfg, discountPct: Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0 });
+                      changeCfg({ ...cfg, discountPct: Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0 });
                     }}
                     className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white"
                     style={{ fontSize: 13 }}
@@ -393,7 +408,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
               </div>
               <div className="flex flex-col gap-1">
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>VAT Type</label>
-                <select value={cfg.vatType} onChange={(e) => setCfg({ ...cfg, vatType: e.target.value as any })} className="font-dm px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                <select aria-label="VAT Type" value={cfg.vatType} onChange={(e) => changeCfg({ ...cfg, vatType: e.target.value as any })} className="font-dm px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
                   <option value="Exclusive">Exclusive</option>
                   <option value="Inclusive">Inclusive</option>
                   <option value="Zero-Rated">Zero-Rated</option>
@@ -402,7 +417,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
               <div className="flex flex-col gap-1">
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>VAT Rate</label>
                 <div className="flex items-center gap-1">
-                  <input type="number" value={cfg.vatRate} onChange={(e) => setCfg({ ...cfg, vatRate: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input type="number" value={cfg.vatRate} onChange={(e) => changeCfg({ ...cfg, vatRate: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                   <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>%</span>
                 </div>
               </div>
@@ -410,9 +425,9 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
 
             {/* Toggles */}
             <div className="rounded-lg p-3 flex flex-col gap-2" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-              <ToggleRow label="Include labor cost"  on={cfg.includeLabor} onChange={(v) => setCfg({ ...cfg, includeLabor: v })} />
-              <ToggleRow label="Apply markup"        on={cfg.applyMarkup}  onChange={(v) => setCfg({ ...cfg, applyMarkup: v })} />
-              <ToggleRow label="Apply VAT"           on={cfg.applyVAT}     onChange={(v) => setCfg({ ...cfg, applyVAT: v })} />
+              <ToggleRow label="Include labor cost"  on={cfg.includeLabor} onChange={(v) => changeCfg({ ...cfg, includeLabor: v })} />
+              <ToggleRow label="Apply markup"        on={cfg.applyMarkup}  onChange={(v) => changeCfg({ ...cfg, applyMarkup: v })} />
+              <ToggleRow label="Apply VAT"           on={cfg.applyVAT}     onChange={(v) => changeCfg({ ...cfg, applyVAT: v })} />
             </div>
 
             {/* Summary */}

@@ -118,27 +118,40 @@ test('Sales stock availability validates the order identifier before opening a d
   assert.equal(h.calls.length, 0);
 });
 
-function quotationDatabase({ missingPrice = false } = {}) {
+function quotationDatabase({ missingPrice = false, existingQuotes = [], failSql } = {}) {
   const calls = [];
+  const savedQuotes = existingQuotes.map(row => ({ ...row }));
   let insertedId = 100;
+  let snapshot;
   const connection = {
-    async beginTransaction() { calls.push({ sql: 'BEGIN' }); },
+    async beginTransaction() { calls.push({ sql: 'BEGIN' }); snapshot = savedQuotes.map(row => ({ ...row })); },
     async commit() { calls.push({ sql: 'COMMIT' }); },
-    async rollback() { calls.push({ sql: 'ROLLBACK' }); },
+    async rollback() { calls.push({ sql: 'ROLLBACK' }); savedQuotes.splice(0, savedQuotes.length, ...snapshot); },
     async execute(sql, params) {
       calls.push({ sql, params });
+      assert.equal((sql.match(/\?/g) ?? []).length, params?.length ?? 0, 'Every SQL placeholder must have one bound value');
+      if (failSql?.test(sql)) throw new Error('Synthetic write failure');
       if (sql.includes('FROM orders o WHERE o.id=? FOR UPDATE')) return [[{ id: '91', clientId: '7', reference: 'ORD-91', stageCode: 'inquiry', archivedAt: null, paymentTermCode: 'NET15' }]];
       if (sql.includes('FROM order_items')) return [[{ orderItemId: '11', quantity: 2, specificationId: '22', filterTypeCode: 'OILSEP', filterName: 'Oil separator', height: 300 }]];
       if (sql.includes('FROM bom_templates')) return [[{ templateId: '51', materialId: '61', quantityPerFilter: 2, wastePercent: 0, materialName: 'Media', unitCode: 'pcs', unitPrice: missingPrice ? null : 10 }]];
-      if (sql.includes('FROM quotations WHERE order_id')) return [[]];
+      if (sql.includes('FROM quotations WHERE order_id')) return [[...savedQuotes].sort((a, b) => b.revisionNumber - a.revisionNumber)];
       if (sql.includes('FROM quotation_references')) return [[]];
+      if (sql.startsWith('INSERT INTO quotations')) {
+        const id = String(insertedId++);
+        savedQuotes.push({ id, reference: params[1], revisionNumber: params[2], status: params[3] });
+        return [{ insertId: id }];
+      }
+      if (sql.startsWith('UPDATE quotations')) {
+        for (const row of savedQuotes) if (row.status === 'sent' && (!sql.includes('id<>?') || row.id !== params[1])) row.status = 'superseded';
+        return [{ affectedRows: 1 }];
+      }
       if (sql.startsWith('INSERT')) return [{ insertId: insertedId++ }];
       if (sql.startsWith('UPDATE')) return [{ affectedRows: 1 }];
       throw new Error(`Unexpected SQL in quotation test: ${sql}`);
     },
     release() {}
   };
-  return { db: { async getConnection() { return connection; } }, calls };
+  return { db: { async getConnection() { return connection; } }, calls, savedQuotes };
 }
 
 const quotationBody = {
@@ -159,6 +172,113 @@ test('Sales quotation preparation calculates server-side costing, persists a sen
   assert.equal(result.data.downpaymentAmount, '11.00');
   assert.equal(h.calls.some(call => /\b(UPDATE|INSERT|DELETE)\b/i.test(call.sql) && /materials|finished_goods|quantity_on_hand|stock_responses/i.test(call.sql)), false);
   assert.equal(h.calls.some(call => call.sql === 'COMMIT'), true);
+});
+
+test('Sales quotation history returns order-scoped material snapshots with exact decimal strings',async()=>{
+  const calls=[];const connection={release(){},async execute(sql,params){calls.push({sql,params});
+    if(sql.startsWith('SELECT id FROM orders'))return [[{id:'91'}]];
+    if(sql.includes('FROM quotations q'))return [[{id:'31',reference:'Q-1',totalAmount:'100.00',downpaymentPercent:'20',downpaymentAmount:'20.00',sentAt:null}]];
+    if(sql.includes('FROM quotation_costing qc'))return [[{id:'61',quotationId:'31',orderItemId:'11',includeLabor:1,applyMarkup:1,applyVat:1}]];
+    if(sql.includes('FROM quotation_bom_lines b')){assert.deepEqual(params,['91']);return [[{costingId:'61',lineNumber:1,materialId:'9007199254740993',materialName:'Saved business material',unit:'kg',unitPrice:'10819.0000',quantityPerFilter:'0.5000',wastePercent:'0.0000'},{costingId:'62',lineNumber:1,materialName:'Different costing'}]];}
+    return [[]];
+  }};
+  const result=await createSalesOrdersService({db:{getConnection:async()=>connection}}).quotations('91');
+  assert.equal(result.success,true);assert.equal(result.data[0].costing[0].bomLines.length,1);
+  assert.equal(result.data[0].costing[0].bomLines[0].materialId,'9007199254740993');
+  assert.equal(result.data[0].costing[0].bomLines[0].unitPrice,'10819.0000');
+  assert.ok(calls.every(call=>call.sql.startsWith('SELECT')));
+});
+
+for (const [label, overrides, total] of [
+  ['exclusive VAT after discount', { vatType: 'Exclusive', applyVat: true, vatRate: 12, discountPercent: 10 }, '55.44'],
+  ['inclusive VAT', { vatType: 'Inclusive', applyVat: true, vatRate: 12, discountPercent: 10 }, '49.50'],
+  ['zero-rated VAT', { vatType: 'Zero-Rated', applyVat: true, vatRate: 12, discountPercent: 10 }, '49.50'],
+  ['disabled VAT', { applyVat: false, vatRate: 12, discountPercent: 10 }, '49.50'],
+  ['disabled labor', { includeLabor: false, vatType: 'Exclusive', applyVat: true, vatRate: 12, discountPercent: 10 }, '44.35'],
+  ['disabled markup', { applyMarkup: false, vatType: 'Exclusive', applyVat: true, vatRate: 12, discountPercent: 10 }, '50.40'],
+  ['full discount', { discountPercent: 100 }, '0.00'],
+]) test(`Sales server calculation preserves ${label}`, async () => {
+  const h = quotationDatabase();
+  const result = await createSalesOrdersService(h).createQuotation('91', { ...quotationBody, ...overrides }, { userId: '8', roleCode: 'sales', accountType: 'employee' });
+  assert.equal(result.success, true);
+  assert.equal(result.data.totalAmount, total);
+});
+
+test('draft edits append revisions and sending preserves history', async () => {
+  const existingQuotes = [{ id: '31', reference: 'Q-1', revisionNumber: 5, status: 'draft' }];
+  const draft = quotationDatabase({ existingQuotes });
+  const actor = { userId: '8', roleCode: 'sales', accountType: 'employee' };
+  const updated = await createSalesOrdersService(draft).createQuotation('91', { ...quotationBody, status: 'draft' }, actor);
+  assert.equal(updated.success, true);
+  assert.equal(updated.data.revisionNumber, 6);
+  assert.deepEqual(draft.savedQuotes.map(row => [row.revisionNumber, row.status]), [[5, 'draft'], [6, 'draft']]);
+  assert.equal(draft.calls.some(call => call.sql.startsWith('UPDATE orders') || call.sql.startsWith('UPDATE order_requests')), false);
+  const sent = quotationDatabase({ existingQuotes });
+  const result = await createSalesOrdersService(sent).createQuotation('91', quotationBody, actor);
+  assert.equal(result.success, true);
+  assert.equal(result.data.revisionNumber, 6);
+  assert.equal(result.data.reference, 'Q-1');
+  assert.equal(sent.savedQuotes.find(row => row.id === result.data.id).status, 'sent');
+});
+
+for (const withDraft of [false, true]) test(`sending keeps the new revision sent and supersedes earlier sent rows${withDraft ? ' after a draft' : ''}`, async () => {
+  const h = quotationDatabase({ existingQuotes: [
+    { id: '31', reference: 'Q-1', revisionNumber: 1, status: 'sent' },
+    ...(withDraft ? [{ id: '32', reference: 'Q-1', revisionNumber: 2, status: 'draft' }] : [])
+  ] });
+  const result = await createSalesOrdersService(h).createQuotation('91', quotationBody, { userId: '8', roleCode: 'sales', accountType: 'employee' });
+  assert.equal(result.success, true);
+  assert.equal(h.savedQuotes.filter(row => row.status === 'sent').length, 1);
+  assert.equal(h.savedQuotes.find(row => row.id === result.data.id).status, 'sent');
+  assert.equal(h.savedQuotes.find(row => row.id === '31').status, 'superseded');
+  if (withDraft) assert.equal(h.savedQuotes.find(row => row.id === '32').status, 'draft');
+});
+
+test('failed quotation child write rolls back the revision and leaves prior sent quotation intact', async () => {
+  const h = quotationDatabase({ existingQuotes: [{ id: '31', reference: 'Q-1', revisionNumber: 1, status: 'sent' }], failSql: /^INSERT INTO quotation_costing/ });
+  const result = await createSalesOrdersService(h).createQuotation('91', quotationBody, { userId: '8', roleCode: 'sales', accountType: 'employee' });
+  assert.equal(result.code, 'SERVICE_UNAVAILABLE');
+  assert.deepEqual(h.savedQuotes.map(row => [row.id, row.status]), [['31', 'sent']]);
+  assert.equal(h.calls.some(call => call.sql === 'COMMIT'), false);
+  assert.equal(h.calls.some(call => call.sql === 'ROLLBACK'), true);
+});
+
+test('stale quotation bases cannot save or send and malformed bases never open a connection', async () => {
+  const actor = { userId: '8', roleCode: 'sales', accountType: 'employee' };
+  for (const status of ['draft', 'sent']) for (const baseQuotationId of [null, '30']) {
+    const h = quotationDatabase({ existingQuotes: [{ id: '31', reference: 'Q-1', revisionNumber: 5, status: 'draft' }] });
+    const result = await createSalesOrdersService(h).createQuotation('91', { ...quotationBody, status, baseQuotationId }, actor);
+    assert.equal(result.code, 'QUOTATION_STALE');
+    assert.equal(h.calls.some(call => /^(INSERT|UPDATE|DELETE)/.test(call.sql)), false);
+    assert.equal(h.calls.some(call => call.sql === 'ROLLBACK'), true);
+  }
+  for (const baseQuotationId of ['0', 'bad', {}, 9007199254740992]) {
+    const h = quotationDatabase();
+    assert.equal((await createSalesOrdersService(h).createQuotation('91', { ...quotationBody, baseQuotationId }, actor)).code, 'VALIDATION_ERROR');
+    assert.equal(h.calls.length, 0);
+  }
+});
+
+test('repeat saves and send advance immutable revisions using the current base', async () => {
+  const h = quotationDatabase();
+  const actor = { userId: '8', roleCode: 'sales', accountType: 'employee' };
+  let baseQuotationId = null;
+  for (const [index, status] of ['draft', 'draft', 'sent'].entries()) {
+    const result = await createSalesOrdersService(h).createQuotation('91', { ...quotationBody, status, baseQuotationId }, actor);
+    assert.equal(result.success, true);
+    assert.equal(result.data.revisionNumber, index + 1);
+    baseQuotationId = result.data.id;
+  }
+  assert.deepEqual(h.savedQuotes.map(row => row.status), ['draft', 'draft', 'sent']);
+});
+
+test('quotation preparation rejects caller-owned identities and totals before database access', async () => {
+  for (const extra of [{ clientId: '999' }, { totalAmount: '1.00' }, { revisionNumber: 100 }, { costing: [{ orderItemId: '11', laborCost: 5, markupPercent: 10, unitPrice: 1 }] }]) {
+    const h = quotationDatabase();
+    const result = await createSalesOrdersService(h).createQuotation('91', { ...quotationBody, ...extra }, { userId: '8', roleCode: 'sales', accountType: 'employee' });
+    assert.equal(result.code, 'VALIDATION_ERROR');
+    assert.equal(h.calls.length, 0);
+  }
 });
 
 test('Sales quotation preparation fails closed when material pricing is missing and leaves the transaction uncommitted', async () => {

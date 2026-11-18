@@ -3,6 +3,7 @@ import {api} from "../api/client";
 import {AdminFeedback} from "./admin/AdminFeedback";
 import { ShieldCheck } from "lucide-react";
 import { allowedFor } from "./Sidebar";
+import { hasMatchingDatabaseModules } from "../role-access";
 import { roleMetas, type Role } from "./Login";
 import { useSession } from "../store/session";
 import { Unauthorized } from "./Unauthorized";
@@ -33,7 +34,7 @@ export function RolesPermissions() {
   const real=mode==='real';const [metadata,setMetadata]=useState<RoleMetadata|null>(null);const [error,setError]=useState('');const [loading,setLoading]=useState(real);const [version,setVersion]=useState(0);
   useEffect(()=>{if(!real)return;let live=true;setLoading(true);setError('');api<RoleMetadata>('/api/admin/roles').then(result=>{if(live)setMetadata(result);}).catch(cause=>{if(live)setError(cause.message);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[real,version]);
   const mismatches=[...(metadata?.mismatches??[])];
-  if(real&&metadata)for(const row of metadata.roles){const expected=allowedFor[row.code as Exclude<Role,'client'>];if(!expected){mismatches.push(`Unknown frontend role: ${row.code}`);continue;}const actual=row.modules.map(item=>item.code).filter(code=>code!=='logistics-active-jobs');if([...expected].sort().join('|')!==actual.sort().join('|'))mismatches.push(`Frontend/database module mapping differs for ${row.label}.`);if(roleMetas[row.code as Role]?.label!==row.label)mismatches.push(`Role label differs for ${row.code}.`);}
+  if(real&&metadata)for(const row of metadata.roles){const expected=allowedFor[row.code as Exclude<Role,'client'>];if(!expected){mismatches.push(`Unknown frontend role: ${row.code}`);continue;}if(!hasMatchingDatabaseModules(row.code as Exclude<Role,'client'>,row.modules.map(item=>item.code)))mismatches.push(`Frontend/database module mapping differs for ${row.label}.`);if(roleMetas[row.code as Role]?.label!==row.label)mismatches.push(`Role label differs for ${row.code}.`);}
   if (role !== "admin") return <Unauthorized />;
 
   return (
@@ -50,7 +51,6 @@ export function RolesPermissions() {
       <section className="mx-auto max-w-[1600px] px-5 py-6 sm:px-8 sm:py-8">
         {real&&<AdminFeedback loading={loading} error={error} retry={()=>setVersion(v=>v+1)} />}
         {real&&mismatches.length>0&&<div role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p className="font-semibold">Configuration differences detected; no records were changed.</p>{mismatches.map((message,index)=><p key={index}>{message}</p>)}</div>}
-        {real&&<button onClick={()=>setVersion(v=>v+1)} disabled={loading} className="mb-3 rounded border bg-white px-3 py-2 text-xs">Refresh metadata</button>}
         <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
             <h2 className="font-syne text-lg font-bold text-slate-900">Role access matrix</h2>

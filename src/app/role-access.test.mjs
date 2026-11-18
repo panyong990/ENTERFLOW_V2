@@ -1,7 +1,39 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { allowedFor, isAllowedWorkspaceRoute, landingFor } from "./role-access.js";
+import { allowedFor, hasMatchingDatabaseModules, isAllowedWorkspaceRoute, landingFor } from "./role-access.js";
+
+test("Owner and Operations rejection history is a frontend route, not an expected database module", () => {
+  for (const role of ["owner", "operations"]) {
+    const databaseModules = allowedFor[role].filter(code => code !== "inquiry-rejections").reverse();
+    const routesBefore = [...allowedFor[role]];
+    const modulesBefore = [...databaseModules];
+    assert.equal(hasMatchingDatabaseModules(role, databaseModules), true);
+    assert.equal(isAllowedWorkspaceRoute(role, "inquiry-rejections"), true);
+    assert.deepEqual(allowedFor[role], routesBefore);
+    assert.deepEqual(databaseModules, modulesBefore);
+    for (const missing of databaseModules) {
+      assert.equal(hasMatchingDatabaseModules(role, databaseModules.filter(code => code !== missing)), false, `${role}: missing ${missing}`);
+    }
+    assert.equal(hasMatchingDatabaseModules(role, [...databaseModules, "unexpected-module"]), false);
+    assert.equal(hasMatchingDatabaseModules(role, [...databaseModules, "inquiry-rejections"]), false, "unexpected database registration remains detectable");
+  }
+});
+
+test("other roles retain exact module comparisons and the existing Logistics subroute exception", () => {
+  for (const role of Object.keys(allowedFor).filter(role => !["owner", "operations"].includes(role))) {
+    const databaseModules = [...allowedFor[role]].reverse();
+    assert.equal(hasMatchingDatabaseModules(role, databaseModules), true, role);
+    for (const missing of databaseModules) {
+      assert.equal(hasMatchingDatabaseModules(role, databaseModules.filter(code => code !== missing)), false, `${role}: missing ${missing}`);
+    }
+    assert.equal(hasMatchingDatabaseModules(role, [...databaseModules, "inquiry-rejections"]), false, role);
+    assert.equal(isAllowedWorkspaceRoute(role, "inquiry-rejections"), false, role);
+  }
+  assert.equal(hasMatchingDatabaseModules("logistics", [...allowedFor.logistics, "logistics-active-jobs"]), true);
+  assert.equal(hasMatchingDatabaseModules("logistics", ["logistics-active-jobs"]), false);
+  assert.equal(hasMatchingDatabaseModules("unknown", []), false);
+});
 
 test("Sales Manager lands on the existing dashboard and keeps its configured navigation", () => {
   assert.equal(landingFor.sales, "dashboard");

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { clientPortalApi, type ClientProfile, type ClientNotification, type ClientInquiryInput, type ClientInquiryCreated, type ClientQuotationDecision } from '../../api/clientPortal';
+import { clientPortalApi, type ClientProfile, type ClientNotification, type ClientInquiryInput, type ClientInquiryCreated, type ClientQuotationDecision, type InquirySketchInput } from '../../api/clientPortal';
 import type { Inquiry } from './model';
 import { project, type OrderBundle, type Surface } from './adapters';
 
@@ -71,8 +71,10 @@ export function ClientDataProvider({ children }: { children: ReactNode }) {
 export function useOrders(surface: Surface = 'orders') {
   const { profile, bundles, refresh } = useClientData();
   const rows = useMemo(() => profile ? bundles.flatMap(bundle => project(bundle, profile, surface)) : [], [profile, bundles, surface]);
-  const addInquiry = async (input: ClientInquiryInput): Promise<ClientInquiryCreated> => {
-    const created = await clientPortalApi.createInquiry(input);
+  const addInquiry = async (input: ClientInquiryInput, sketches: InquirySketchInput[] = [], key?: string): Promise<ClientInquiryCreated> => {
+    const created = sketches.length
+      ? await clientPortalApi.createInquiryWithSketches(input, sketches, key!)
+      : await clientPortalApi.createInquiry(input, undefined, key);
     refresh();
     window.dispatchEvent(new Event('enterflow:client-inquiry-submitted'));
     return created;
@@ -100,7 +102,7 @@ export function useOrders(surface: Surface = 'orders') {
   };
   return useMemo(() => ({ inquiries: rows, completedJOs: rows.filter(row => !!row.joNumber), byClient: (_name: string) => rows,
     decideQuotation, submitPurchaseOrder, requestQuotationRevision,
-    addInquiry, addInquiryWithProductSketches: blocked, uploadPO: blocked, requestCancellation: blocked, updateInquiry: blocked, submitPayment,
+    addInquiry, addInquiryWithProductSketches: addInquiry, uploadPO: blocked, requestCancellation: blocked, updateInquiry: blocked, submitPayment,
     generatePONumber: () => 'Assigned by backend on submission', savePendingSignedDeliveryReceipt: blocked, submitPendingSignedDeliveryReceipt: blocked, discardPendingSignedDeliveryReceipt: blocked,
   }), [rows, addInquiry, decideQuotation, submitPurchaseOrder, requestQuotationRevision, submitPayment]);
 }

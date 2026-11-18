@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createRealReadOnlyProvider } from "./realMode.js";
 import { getInventory } from "../api/inventory";
+import { mergeInventoryCatalog } from "./inventoryModel.js";
+import materialIdentities from "../../../config/material-catalog-ids.json";
 
 /* ─────────── Types ─────────── */
 
@@ -39,6 +41,9 @@ export interface AuditEntry {
 }
 
 export interface RawMaterial {
+  databaseId?: string;
+  catalogCode?: string;
+  source?: "catalog_reference" | "database";
   id: string;
   name: string;
   category: PartCategory;
@@ -86,6 +91,7 @@ export interface FinishedGood {
 }
 
 export function getFinishedGoodStockStatus(item: FinishedGood): RawMaterialStockStatus {
+  if (!Number.isFinite(item.qtyInStock)) return { key: "unavailable", label: "Not recorded", bg: "#F1F5F9", fg: "#64748B" };
   if (item.qtyInStock <= 0) {
     return { key: "out-of-stock", label: "🔴 Out of Stock", bg: "#FEE2E2", fg: "#991B1B" };
   }
@@ -489,6 +495,9 @@ function deriveLegacy(rm: RawMaterial[]): Material[] {
 /* ─────────── Context ─────────── */
 
 interface Ctx {
+  inventoryLoading: boolean;
+  inventoryError: string;
+  refreshInventory: () => void;
   rawMaterials: RawMaterial[];
   finishedGoods: FinishedGood[];
   templates: BOMTemplate[];
@@ -517,7 +526,11 @@ const MaterialsContext = createContext<Ctx | null>(null);
 
 export function MaterialsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
   const realMode = mode === "real";
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? seedMaterials.map(material => ({ ...material, qtyInStock: Number.NaN, history: [] })) : loadPersistedRawMaterials());
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? seedMaterials.map(material => ({ ...material, catalogCode:material.id, source:"catalog_reference" as const, qtyInStock: Number.NaN, history: [] })) : loadPersistedRawMaterials());
+  const [inventoryLoading, setInventoryLoading] = useState(realMode);
+  const [inventoryError, setInventoryError] = useState("");
+  const [inventoryVersion, setInventoryVersion] = useState(0);
+  const refreshInventory = () => setInventoryVersion(value => value + 1);
   const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(() => realMode ? [] : seedFinishedGoods);
   const rawMaterialsRef = useRef(rawMaterials);
   const generatedJOsDeducted = useRef(new Set<string>());
@@ -529,19 +542,15 @@ export function MaterialsProvider({ children, mode = "demo" }: { children: React
   useEffect(() => {
     if (!realMode) return undefined;
     const controller = new AbortController();
+    setInventoryLoading(true); setInventoryError("");
     void getInventory(controller.signal).then((result: any) => {
-      const persisted = new Map((result.materials ?? []).map((item: any) => [String(item.id), item]));
-      const mappedCatalog = seedMaterials.map(catalogItem => {
-        const item = persisted.get(catalogItem.id);
-        return item ? { ...catalogItem, ...item, category: item.category as PartCategory, unit: item.unit as Unit, unitPrice: Number(item.unitPrice), qtyInStock: Number(item.qtyInStock), threshold: Number(item.threshold), history: [] } : { ...catalogItem, qtyInStock: Number.NaN, history: [] };
-      });
-      const catalogIds = new Set(seedMaterials.map(item => item.id));
-      const additionalPersisted = [...persisted.values()].filter((item: any) => !catalogIds.has(String(item.id))).map((item: any) => ({ ...item, id: String(item.id), category: item.category as PartCategory, unit: item.unit as Unit, unitPrice: Number(item.unitPrice), qtyInStock: Number(item.qtyInStock), threshold: Number(item.threshold), history: [] }));
-      setRawMaterials([...mappedCatalog, ...additionalPersisted]);
-      setFinishedGoods((result.finishedGoods ?? []).map((item: any) => ({ ...item, enterFilPN: item.enterFilPN ?? '', itemName: item.itemCode, client: '—', qtyInStock: Number(item.qtyInStock), bufferMin: Number(item.bufferMin), lastUpdated: item.lastUpdated, updatedBy: 'Backend', specs: {}, history: [] })));
-    }).catch(() => {}).finally(() => {});
+      if (controller.signal.aborted) return;
+      const normalized = mergeInventoryCatalog(seedMaterials, result, materialIdentities.ids);
+      setRawMaterials(normalized.materials as RawMaterial[]);
+      setFinishedGoods(normalized.finishedGoods as FinishedGood[]);
+    }).catch(cause => { if (!controller.signal.aborted) { setInventoryError(cause instanceof Error ? cause.message : "Inventory is unavailable."); setRawMaterials(seedMaterials.map(material=>({...material,catalogCode:material.id,source:"catalog_reference" as const,qtyInStock:Number.NaN,history:[]}))); setFinishedGoods([]); } }).finally(() => { if (!controller.signal.aborted) setInventoryLoading(false); });
     return () => controller.abort();
-  }, [realMode]);
+  }, [realMode, inventoryVersion]);
 
   const commitRawMaterials = (update: (current: RawMaterial[]) => RawMaterial[]) => {
     const next = update(rawMaterialsRef.current);
@@ -788,9 +797,9 @@ export function MaterialsProvider({ children, mode = "demo" }: { children: React
   const materials = deriveLegacy(rawMaterials);
   const get: Ctx["get"] = (k) => materials.find((m) => m.key === k)!;
 
-  const contextValue: Ctx = { rawMaterials, finishedGoods, templates, materials, get, updateStock, updateMaterial, updateFinishedGood, addMaterial, saveBOMTemplate, findBOMTemplate, validateGeneratedJOs, deductForGeneratedJOs, restoreFromJO };
+  const contextValue: Ctx = { inventoryLoading, inventoryError, refreshInventory, rawMaterials, finishedGoods, templates, materials, get, updateStock, updateMaterial, updateFinishedGood, addMaterial, saveBOMTemplate, findBOMTemplate, validateGeneratedJOs, deductForGeneratedJOs, restoreFromJO };
   const providerValue = realMode
-    ? createRealReadOnlyProvider(contextValue, ["get", "findBOMTemplate", "validateGeneratedJOs"], "materials")
+    ? createRealReadOnlyProvider(contextValue, ["get", "findBOMTemplate", "validateGeneratedJOs", "refreshInventory"], "materials")
     : contextValue;
 
   return (

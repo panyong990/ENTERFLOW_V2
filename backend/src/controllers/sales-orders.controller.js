@@ -20,6 +20,7 @@ const errors = {
   INVALID_STATE: [409, 'This inquiry is not eligible for quotation preparation.'],
   MATERIAL_COSTING_INCOMPLETE: [422, 'Quotation costing is incomplete.'],
   QUOTATION_DRAFT_EXISTS: [409, 'A quotation draft already exists for this inquiry.'],
+  QUOTATION_STALE: [409, 'A newer quotation revision exists. Reopen this inquiry before saving or sending. Your edits have not been saved.'],
   QUOTATION_CONFLICT: [409, 'The quotation could not be saved because its reference or revision conflicts.'],
   STOCK_AVAILABILITY_UNAVAILABLE: [503, 'Stock availability could not be confirmed.'],
   SERVICE_UNAVAILABLE: [503, 'Sales order service is temporarily unavailable.']

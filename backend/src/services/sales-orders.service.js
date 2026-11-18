@@ -195,6 +195,11 @@ export function createSalesOrdersService({ db }) {
         qc.discount_percent discountPercent, qc.vat_type vatType, qc.vat_rate vatRate,
         qc.include_labor includeLabor, qc.apply_markup applyMarkup, qc.apply_vat applyVat,
         qc.calculated_unit_price calculatedUnitPrice FROM quotation_costing qc WHERE qc.order_id=? ORDER BY qc.quotation_id, qc.order_item_id`, [id]);
+      const [bomSnapshots] = await connection.execute(`SELECT CAST(b.costing_id AS CHAR) costingId, b.line_number lineNumber,
+        CAST(b.material_id AS CHAR) materialId, b.material_name_snapshot materialName, b.unit_snapshot unit,
+        b.unit_price_snapshot unitPrice, b.quantity_per_filter quantityPerFilter, b.waste_percent wastePercent
+        FROM quotation_bom_lines b JOIN quotation_costing qc ON qc.id=b.costing_id WHERE qc.order_id=?
+        ORDER BY b.costing_id,b.line_number`, [id]);
       const [discounts] = await connection.execute(`SELECT CAST(qd.quotation_id AS CHAR) quotationId, qd.line_number lineNumber,
         qd.label, qd.percent FROM quotation_discounts qd JOIN quotations q ON q.id=qd.quotation_id AND q.order_id=?
         ORDER BY qd.quotation_id, qd.line_number`, [id]);
@@ -217,6 +222,7 @@ export function createSalesOrdersService({ db }) {
           lines: lines.filter(line => line.quotationId === quote.id),
           costing: costing.filter(item => item.quotationId === quote.id).map(item => ({
             ...item,
+            bomLines: bomSnapshots.filter(line => line.costingId === item.id),
             includeLabor: Boolean(Number(item.includeLabor)),
             applyMarkup: Boolean(Number(item.applyMarkup)),
             applyVat: Boolean(Number(item.applyVat))
@@ -630,7 +636,8 @@ export function createSalesOrdersService({ db }) {
         preparedItems.push({ item, cost, selectedBom, rawMaterialUnitCost, calculatedUnitPrice, total: quoteRound(calculatedUnitPrice * Number(item.quantity), 2) });
       }
       const [existing] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, revision_number revisionNumber, status FROM quotations WHERE order_id=? ORDER BY revision_number DESC, id DESC FOR UPDATE`, [id]);
-      if (input.status === 'draft' && existing[0]?.status === 'draft') return { success: false, code: 'QUOTATION_DRAFT_EXISTS' };
+      if (input.baseQuotationId !== undefined && input.baseQuotationId !== (existing[0]?.id ?? null)) return { success: false, code: 'QUOTATION_STALE' };
+      // Keep each save as an immutable revision, including repeat draft saves.
       const revisionNumber = Number(existing[0]?.revisionNumber ?? 0) + 1;
       const reference = input.reference || existing[0]?.reference || `QT-${id}`;
       const [referenceRows] = await connection.execute('SELECT order_id orderId FROM quotation_references WHERE reference=? FOR UPDATE', [reference]);
@@ -641,7 +648,7 @@ export function createSalesOrdersService({ db }) {
       const [quoteResult] = await connection.execute(`INSERT INTO quotations
         (order_id, reference, revision_number, status, issued_on, valid_until, payment_term_code, time_of_delivery, place_of_delivery,
          note, note_highlighted, total_amount, downpayment_percent, downpayment_amount, stock_checked_at, prepared_by, sent_by, sent_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(3),?,?,?,?)`,
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(3),?,?,?)`,
       [id, reference, revisionNumber, input.status, input.issuedOn, input.validUntil, input.paymentTermCode, input.timeOfDelivery, input.placeOfDelivery,
         input.note, input.noteHighlighted, totalAmount, input.downpaymentPercent, downpaymentAmount, actor.userId, input.status === 'sent' ? actor.userId : null, input.status === 'sent' ? new Date() : null]);
       const quotationId = String(quoteResult.insertId);
@@ -659,7 +666,7 @@ export function createSalesOrdersService({ db }) {
       }
       if (input.discountPercent > 0) await connection.execute('INSERT INTO quotation_discounts (quotation_id, line_number, label, percent) VALUES (?,?,?,?)', [quotationId, 1, 'Quotation discount', input.discountPercent]);
       if (input.status === 'sent') {
-        if (existing[0]?.status === 'sent') await connection.execute(`UPDATE quotations SET status='superseded' WHERE order_id=? AND status='sent'`, [id]);
+        await connection.execute(`UPDATE quotations SET status='superseded' WHERE order_id=? AND status='sent' AND id<>?`, [id, quotationId]);
         await connection.execute(`UPDATE order_requests SET status='completed', response=?, decided_by=?, decided_at=CURRENT_TIMESTAMP(3)
           WHERE order_id=? AND kind='quotation_revision' AND status='pending'`, [JSON.stringify({ quotationId, revisionNumber, reference }), actor.userId, id]);
         await connection.execute(`UPDATE orders SET stage_code='quotation', updated_at=GREATEST(UTC_TIMESTAMP(3),updated_at + INTERVAL 1000 MICROSECOND) WHERE id=?`, [id]);

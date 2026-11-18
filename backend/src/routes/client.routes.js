@@ -12,10 +12,12 @@ import { createClientNotificationsController } from '../controllers/client-notif
 import { createClientInquiryService } from '../services/client-inquiry.service.js';
 import { createOriginMiddleware } from '../middleware/origin.middleware.js';
 import express from 'express';
+import { createEngineerSketchService } from '../services/engineer-sketch.service.js';
 
 export function createClientRouter({ service = createClientPortalService({ db: pool }), validateSessionService = validateSession,
   updateSessionActivityService = updateSessionActivity, permissionChecker = hasPermission,
-  notificationsService = createSalesNotificationsService({ db: pool }), inquiryService = createClientInquiryService({ db: pool }) } = {}) {
+  notificationsService = createSalesNotificationsService({ db: pool }), inquiryService = createClientInquiryService({ db: pool }),
+  sketchService = createEngineerSketchService({ db: pool }), appOrigin = process.env.APP_ORIGIN } = {}) {
   const router = Router();
   const controller = createClientPortalController({ service });
   const inquiryController = createClientPortalController({ service: inquiryService });
@@ -26,7 +28,12 @@ export function createClientRouter({ service = createClientPortalService({ db: p
   router.use(createClientAccountMiddleware());
   router.get('/profile', permission('clients', 'read'), controller.profile);
   router.get('/dashboard', permission('dashboard', 'read'), controller.dashboard);
-  router.post('/orders', permission('inquiries', 'create'), express.json({ limit: '256kb' }), inquiryController.createInquiry);
+  router.post('/orders', permission('inquiries', 'create'), createOriginMiddleware({ appOrigin }), express.json({ limit: '256kb' }), async (req, res, next) => {
+    // Optional header adds durable retries without changing legacy JSON bodies/results.
+    if (req.get('Idempotency-Key') === undefined) return inquiryController.createInquiry(req, res);
+    const controller = createClientPortalController({ service: { createInquiry: (clientId, userId, input) => sketchService.submit({ clientId, userId, input, submissionKey: req.get('Idempotency-Key'), context: { requestId: req.requestId } }) } });
+    return controller.createInquiry(req, res, next);
+  });
   router.get('/orders', permission('orders', 'read'), permission('inquiries', 'read'), controller.listOrders);
   router.get('/orders/:id/quotations', permission('orders', 'read'), permission('quotations', 'read'), controller.quotations);
   router.post('/orders/:id/quotations/:quotationId/decision', permission('orders', 'read'), permission('quotations', 'update'), createOriginMiddleware(), express.json({ limit: '16kb' }), controller.decideQuotation);

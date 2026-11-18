@@ -10,7 +10,7 @@ const workspace = await readFile(new URL('./RealRoleWorkspace.tsx', import.meta.
 
 test('Real Inventory keeps the complete interface while excluding Demo data and writes', async () => {
   assert.match(inventory, /const realMode = mode === "real"/);
-  assert.match(inventory, /Inventory quantities and Stock Requests are loaded from authenticated APIs/);
+  assert.match(inventory, /Stock quantities and Stock Requests require authenticated records/);
   assert.match(inventory, /realMode \? "—"/);
   assert.match(inventory, /const readOnly = isOperationsReadOnly \|\| realMode/);
   assert.match(inventory, /INCOMING STOCK REQUESTS/);
@@ -21,10 +21,12 @@ test('Real Inventory keeps the complete interface while excluding Demo data and 
   assert.doesNotMatch(workspaceSource, /inventoryHasItsOwnDataState/);
 });
 
-test('Real MaterialsProvider preserves the existing catalog and overlays persisted quantities by material ID', () => {
+test('Real MaterialsProvider preserves catalog references and uses an explicit database identity map', () => {
   const catalogEntries = (materials.match(/MAT\(/g) ?? []).length - 1;
   assert.ok(catalogEntries >= 1);
   assert.match(materials, /export const materialCatalog/);
+  assert.match(materials, /mergeInventoryCatalog/);
+  assert.match(materials, /inventoryError/);
   assert.match(inventory, /Not recorded/);
 });
 

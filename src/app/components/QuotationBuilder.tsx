@@ -53,7 +53,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
     no: i + 1,
     qty: p.qty,
     unit: "pcs",
-    description: p.type.toUpperCase(),
+    description: serverPreparation ? (p.filterName || p.type) : p.type.toUpperCase(),
     subDescription: [p.od1 && `OD ${p.od1}mm`, p.id1 && `ID ${p.id1}mm`, p.height && `H ${p.height}mm`].filter(Boolean).join(" × "),
     unitPrice: productsManufacturingUnitCosts?.[i] ?? inquiry.productsUnitPrice?.[i] ?? manufacturingUnitCost,
   }));
@@ -82,13 +82,13 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
     (inquiry.quotationDoc?.termsOfPayment as any) ?? inquiry.paymentTerms
   );
   const [timeOfDelivery, setTimeOfDelivery] = useState(() =>
-    DELIVERY_TIMEFRAMES.find((timeframe) => timeframe === inquiry.quotationDoc?.timeOfDelivery) ?? ""
+    inquiry.quotationDoc?.timeOfDelivery ?? ""
   );
-  const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? clientAddress(inquiry.clientName));
+  const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? (serverPreparation ? "" : clientAddress(inquiry.clientName)));
   const [validUntil, setValidUntil] = useState(inquiry.quotationDoc?.validUntil ?? defaultValidUntil);
   const [downpaymentPercent, setDownpaymentPercent] = useState(() => {
     const existing = inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent;
-    return serverPreparation ? (existing === 20 || existing === 50 ? existing : 20) : existing ?? 30;
+    return serverPreparation ? existing ?? 20 : existing ?? 30;
   });
 
   const [showPreview, setShowPreview] = useState(false);
@@ -319,6 +319,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
             </label>
           </div>
           <input
+            aria-label="Quotation note"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="e.g. REPEAT ORDER · NEW ORDER · RUSH ORDER · PARTIAL DELIVERY"
@@ -407,14 +408,15 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
             <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 800, color: "#0F172A", letterSpacing: 0.5, textTransform: "uppercase", borderBottom: "1.5px solid #0F172A", paddingBottom: 4 }}>Terms and Conditions</div>
             <div className="flex flex-col gap-2.5">
               <Field label="Terms of Payment">
-                <select disabled={!!serverPreparation} value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value as any)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
+                <select aria-label="Terms of Payment" value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value as any)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
                   <option value="15-Day Terms">15 Days</option>
                   <option value="30-Day Terms">30 Days</option>
                 </select>
               </Field>
               <Field label="Time of Delivery">
-                <select value={timeOfDelivery} onChange={(e) => setTimeOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
+                <select aria-label="Time of Delivery" value={timeOfDelivery} onChange={(e) => setTimeOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
                   <option value="">Select a delivery timeframe</option>
+                  {timeOfDelivery && !DELIVERY_TIMEFRAMES.includes(timeOfDelivery as any) && <option value={timeOfDelivery}>{timeOfDelivery}</option>}
                   {DELIVERY_TIMEFRAMES.map((timeframe) => <option key={timeframe} value={timeframe}>{timeframe}</option>)}
                 </select>
               </Field>
@@ -422,7 +424,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
                 <input aria-label="Place of Delivery" value={placeOfDelivery} onChange={(e) => setPlaceOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
               </Field>
               <Field label="Validity">
-                <input value={validUntil} onChange={(e) => setValidUntil(e.target.value)} placeholder="e.g. 30 days · May 26, 2026" className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
+                <input aria-label="Validity" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} placeholder="e.g. 30 days · May 26, 2026" className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
               </Field>
 
             </div>

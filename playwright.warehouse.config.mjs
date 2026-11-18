@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'./tests/warehouse-integration',timeout:30000,workers:1,reporter:'list',outputDir:'.vite/warehouse-integration-results',use:{baseURL:'http://127.0.0.1:5191',browserName:'chromium',headless:true,viewport:{width:1600,height:1000},screenshot:'only-on-failure'},webServer:{command:'npm run dev -- --host 127.0.0.1 --port 5191',url:'http://127.0.0.1:5191',reuseExistingServer:false}});

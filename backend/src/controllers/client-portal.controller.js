@@ -1,4 +1,8 @@
 const errors = {
+  INVALID_SUBMISSION_KEY: [400, 'A valid Idempotency-Key is required.'],
+  SUBMISSION_CONFLICT: [409, 'This submission key was already used for a different inquiry.'],
+  SUBMISSION_FAILED: [503, 'The inquiry could not be submitted. Retry with the same submission key.'],
+  SUBMISSION_UNCONFIRMED: [503, 'The submission could not be confirmed. Check its status or retry with the same submission key.'],
   VALIDATION_ERROR: [400, 'Invalid request.'],
   NOT_FOUND: [404, 'Resource was not found.'],
   FORBIDDEN: [403, 'Client account access is required.'],

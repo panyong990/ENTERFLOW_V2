@@ -3,15 +3,15 @@ export class ApiError extends Error {
 }
 let realRequestsEnabled = false;
 export function enableRealRequests(enabled: boolean) { realRequestsEnabled = enabled; }
-export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; public?: boolean } = {}): Promise<T> {
+export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; public?: boolean; idempotencyKey?: string; timeoutMs?: number } = {}): Promise<T> {
   if (!options.public && !realRequestsEnabled) throw new ApiError(403, 'Real API access is unavailable in Demo Preview.');
   if (!path.startsWith('/api/')) throw new Error('Only same-origin API paths are permitted.');
   let response: Response;
-  const timeout = AbortSignal.timeout(15000);
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 15000);
   try {
     const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
     response = await fetch(path, {method:options.method ?? 'GET',credentials:'same-origin',cache:'no-store',
-      headers:options.body===undefined || isFormData ? {Accept:'application/json'} : {Accept:'application/json','Content-Type':'application/json'},
+      headers:{ Accept:'application/json', ...(options.body!==undefined && !isFormData ? {'Content-Type':'application/json'} : {}), ...(options.idempotencyKey ? {'Idempotency-Key':options.idempotencyKey} : {}) },
       ...(options.body===undefined?{}:{body:isFormData ? options.body as FormData : JSON.stringify(options.body)}),signal: options.signal ? AbortSignal.any([timeout,options.signal]) : timeout});
   } catch { throw new ApiError(0, 'The request could not be confirmed. Refresh before retrying any change.', 'NETWORK_ERROR'); }
   let result: {success?:boolean;data:T;message?:string;code?:string;errors?:Record<string,string>};

@@ -3,7 +3,7 @@ import { generateSalesInvoice, getSalesPurchaseOrder, listSalesQuotations, mapSa
 
 export interface SalesQuotationFile { id: string; purpose?: string | null; originalFilename?: string | null; mimeType?: string | null; sizeBytes?: number | string | null; state?: string | null; uploadedAt?: string | null; quotationId?: string | null }
 export interface SalesQuotationLine { id: string; quotationId: string; orderItemId: string; lineNumber: number; description: string; subDescription?: string | null; quantity: number; unitLabel: string; unitPrice: string | number | null }
-export interface SalesQuotationCosting { id: string; quotationId: string; orderItemId: string; laborCost: string | number | null; markupPercent: string | number | null; discountPercent: string | number | null; vatType: string | null; vatRate: string | number | null; includeLabor: boolean; applyMarkup: boolean; applyVat: boolean; calculatedUnitPrice: string | number | null }
+export interface SalesQuotationCosting { bomLines?: {lineNumber:number;materialId:string;materialName:string;unit:string;unitPrice:string;quantityPerFilter:string;wastePercent:string}[]; id: string; quotationId: string; orderItemId: string; laborCost: string | number | null; markupPercent: string | number | null; discountPercent: string | number | null; vatType: string | null; vatRate: string | number | null; includeLabor: boolean; applyMarkup: boolean; applyVat: boolean; calculatedUnitPrice: string | number | null }
 export interface SalesQuotation {
   id: string;
   reference: string;

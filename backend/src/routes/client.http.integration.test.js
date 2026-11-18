@@ -8,6 +8,7 @@ const token = 'b'.repeat(64);
 async function harness(t, { accountType = 'client', roleCode = 'client', clientId = '21', userId = '9', allowed = true, service, notificationsService, inquiryService } = {}) {
   const calls = [];
   const router = createClientRouter({
+    appOrigin: 'http://localhost:5173',
     service: service ?? {
       async profile(id) { calls.push(['profile', id]); return { success: true, data: { id, companyName: 'Example' } }; },
       async listOrders(id, query) { calls.push(['list', id, query]); return { success: true, data: { items: [], total: 0, page: 1, pageSize: 25 } }; },
@@ -42,7 +43,7 @@ async function harness(t, { accountType = 'client', roleCode = 'client', clientI
     instance.once('error', reject);
   });
   t.after(() => new Promise(resolve => server.close(resolve)));
-  return { calls, request: (path, authenticated = true, extra = {}) => fetch(`http://127.0.0.1:${server.address().port}/api/client${path}`, { ...extra, headers: { ...(authenticated ? { Cookie: `enterflow_session=${token}` } : {}), ...(extra.headers ?? {}) } }) };
+  return { calls, request: (path, authenticated = true, extra = {}) => fetch(`http://127.0.0.1:${server.address().port}/api/client${path}`, { ...extra, headers: { Origin: 'http://localhost:5173', ...(authenticated ? { Cookie: `enterflow_session=${token}` } : {}), ...(extra.headers ?? {}) } }) };
 }
 
 test('client routes require an authenticated client account with a valid client identity', async t => {

@@ -56,3 +56,22 @@ test("client portal adapter encodes query parameters without accepting ownership
   const result = adapter().orders({ page: 2, pageSize: 10, q: "A&B" });
   assert.equal(result.path, "/api/client/orders?page=2&pageSize=10&q=A%26B");
 });
+
+test('sketch submission sends a manifest and line-bound multipart files with a stable retry key', () => {
+  const api = adapter();
+  const file = new File([Buffer.from('%PDF-1.7\nsynthetic')], 'filter.pdf', { type: 'application/pdf' });
+  const input = { contactPerson: 'Contact', paymentTermCode: 'NET30', products: [] };
+  const key = '11111111-1111-4111-8111-111111111111';
+  const result = api.createInquiryWithSketches(input, [{ lineNumber: 2, file }], key);
+  assert.equal(result.path, '/api/documents/client/inquiries');
+  assert.equal(result.options.idempotencyKey, key);
+  assert.equal(result.options.timeoutMs, 120000);
+  assert.deepEqual(JSON.parse(result.options.body.get('inquiry')), { payload: input, sketchLines: [2] });
+  assert.equal(result.options.body.get('sketch:2').name, 'filter.pdf');
+  assert.equal(result.options.body.get('sketch:1'), null);
+  const legacy = api.createInquiry(input, undefined, key);
+  assert.equal(legacy.path, '/api/client/orders');
+  assert.equal(legacy.options.idempotencyKey, key);
+  assert.deepEqual(legacy.options.body, input);
+  assert.equal(api.inquirySubmission(key).path, `/api/documents/client/inquiry-submissions/${key}`);
+});

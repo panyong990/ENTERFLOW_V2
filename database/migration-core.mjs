@@ -6,10 +6,48 @@ import path from 'node:path';
 export const root = fileURLToPath(new URL('.', import.meta.url));
 export const history = '_enterflow_migration_history';
 const deferredMigrationsFrom = 7;
+const approvedInventoryMigration = '008_inventory_material_master.sql';
+const approvedInventoryTables = new Set(['material_import_review']);
 export const normalize = text => text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
 export const checksum = text => createHash('sha256').update(normalize(text)).digest('hex');
 const quote = name => '`' + name.replaceAll('`', '``') + '`';
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+function tableNames(statements) {
+  const found = new Set();
+  const patterns = [
+    /\bCREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+`?([a-zA-Z_][\w]*)`?/gi,
+    /\bALTER\s+TABLE\s+`?([a-zA-Z_][\w]*)`?/gi,
+    /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+`?([a-zA-Z_][\w]*)`?/gi,
+    /\bREFERENCES\s+`?([a-zA-Z_][\w]*)`?/gi,
+    /\b(?:FROM|JOIN)\s+`?([a-zA-Z_][\w]*)`?/gi
+  ];
+  for (const statement of statements) {
+    const sql = statement.replace(/'(?:\\.|''|[^'\\])*'|"(?:\\.|""|[^"\\])*"/g, "''");
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
+      for (let match = pattern.exec(sql); match; match = pattern.exec(sql)) {
+        found.add(match[1]);
+      }
+    }
+  }
+  return found;
+}
+
+function assertApprovedInventoryMigrationIndependent(file, priorTables) {
+  const creates = new Set();
+  for (const statement of file.statements) {
+    const match = /^\s*CREATE\s+TABLE\s+`?([a-zA-Z_][\w]*)`?/i.exec(statement);
+    if (match) creates.add(match[1]);
+  }
+  assert(JSON.stringify([...creates].sort()) === JSON.stringify([...approvedInventoryTables].sort()),
+    'Approved inventory migration may create only its reviewed tables.');
+  const knownTables = new Set([...priorTables, ...creates]);
+  for (const table of tableNames(file.statements)) {
+    assert(knownTables.has(table),
+      `Approved inventory migration depends on a table outside migrations 001-006: ${table}.`);
+  }
+}
 
 // Deliberately limited to ordinary SQL; routines/DELIMITER and executable comments
 // need a separately reviewed implementation. Strings, comments and quoted names
@@ -61,13 +99,20 @@ export async function discoverFilesAt(base = root) {
       assert(/^\d{3}_[a-z0-9_]+\.sql$/.test(name), `Invalid filename: ${name}`);
       assert(!numbers.has(name.slice(0, 3)), `Duplicate migration number: ${name}`);
       numbers.add(name.slice(0, 3));
-      if (kind === 'migrations' && Number(name.slice(0, 3)) >= deferredMigrationsFrom) {
+      if (kind === 'migrations' && Number(name.slice(0, 3)) >= deferredMigrationsFrom && name !== approvedInventoryMigration) {
         deferredFiles.push(`${kind}/${name}`);
         continue;
       }
       const text = await readFile(path.join(base, kind, name), 'utf8');
       files.push({ file: `${kind}/${name}`, kind, checksum: checksum(text), statements: splitSql(text) });
     }
+  }
+  const inventoryMigration = files.find(file => file.file === `migrations/${approvedInventoryMigration}`);
+  if (inventoryMigration) {
+    const priorTables = tableNames(files
+      .filter(file => file.kind === 'migrations' && Number(path.basename(file.file).slice(0, 3)) < deferredMigrationsFrom)
+      .flatMap(file => file.statements));
+    assertApprovedInventoryMigrationIndependent(inventoryMigration, priorTables);
   }
   return { files, deferredFiles };
 }

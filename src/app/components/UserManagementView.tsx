@@ -6,6 +6,9 @@ import { useOwnerEmployeeDirectory } from "./admin/useDirectory";
 import { useSession } from "../store/session";
 import { Unauthorized } from "./Unauthorized";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { EmployeeManagement } from "./EmployeeManagement";
+import { ClientManagement } from "./ClientManagement";
+import { RolesPermissions } from "./RolesPermissions";
 
 type AccountType = Account["type"];
 type StaffRole = Exclude<AccountRole, "client">;
@@ -366,8 +369,38 @@ function EmployeeDirectory() {
 export function UserManagementView() {
   const { role } = useSession();
   if (role === "owner") return <EmployeeDirectory />;
-  if (role === "admin") return <AdminUserManagementView />;
+  if (role === "admin") return <AdminManagementHub />;
   return <Unauthorized />;
+}
+
+type AdminManagementView = "employees" | "clients" | "roles";
+
+function AdminManagementHub() {
+  const [view, setView] = useState<AdminManagementView>("employees");
+  const tabs: { id: AdminManagementView; label: string }[] = [
+    { id: "employees", label: "Employee Management" },
+    { id: "clients", label: "Client Management" },
+    { id: "roles", label: "Roles & Access" },
+  ];
+
+  return (
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#F5F7FB]">
+      <nav aria-label="Admin management sections" className="z-20 flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 bg-white px-5 py-3 sm:px-8">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            aria-current={view === tab.id ? "page" : undefined}
+            onClick={() => setView(tab.id)}
+            className={`whitespace-nowrap rounded-lg px-3 py-2 font-dm text-xs font-semibold transition-colors ${view === tab.id ? "bg-red-50 text-red-800" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+      {view === "employees" ? <EmployeeManagement /> : view === "clients" ? <ClientManagement /> : <RolesPermissions />}
+    </div>
+  );
 }
 
 function AdminUserManagementView() {

@@ -7,7 +7,8 @@ import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
-import { ProductionRealJobOrders } from "./ProductionRealJobOrders";
+import { useProductionJobOrders, type ProductionJobOrder } from "./useProductionJobOrders";
+import { formatProductionEventTime, latestProductionStageEvent, productionSpecifications, ProductionDetailStatus, ProductionEventHistory, ProductionJobOrderDocument } from "./productionJobOrderPresentation";
 import { PRODUCTION_STAGES, poNumberForDisplay, useOrders, type Stage, type Inquiry } from "../store/orders";
 import { useSession } from "../store/session";
 
@@ -41,6 +42,7 @@ interface ActivityEntry {
 }
 
 interface Job {
+  record?: ProductionJobOrder;
   id: string;
   jo: string;
   po: string;
@@ -222,16 +224,26 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
   const [stageMonitorId, setStageMonitorId] = useState<string | null>(null);
   const [completeJoJob, setCompleteJoJob] = useState<Job | null>(null);
   const [joFileJob, setJoFileJob] = useState<Job | null>(null);
+  const remote = useProductionJobOrders({ q: searchQuery, status: "all" }, joFileJob?.id ?? stageMonitorId ?? detailId, realMode);
   const { push: pushNotif } = useNotifications();
   const { completedJOs, updateInquiry } = useOrders();
   const hasActiveFilters = joStatusFilter !== "active" || stageFilter !== "all" || dateFilter !== "all";
 
   /* Include JO workflow records through Logistics so completed JOs remain viewable. */
   const productionInquiries = useMemo(
-    () => completedJOs,
-    [completedJOs]
+    () => realMode ? [] : completedJOs,
+    [realMode, completedJOs]
   );
-  const jobs = useMemo(() => productionInquiries.map(inquiryToJob), [productionInquiries]);
+  const jobs: Job[] = useMemo(() => realMode ? remote.items.map(item => {
+    const record = remote.detail?.id === item.id && !remote.detailLoading && !remote.detailError ? remote.detail : item;
+    return ({
+    id: record.id, jo: record.reference, po: record.purchaseOrderReference ?? "Unavailable",
+    client: record.clientName, product: record.filterName ?? record.filterTypeCode ?? "Unavailable",
+    qty: record.quantity, due: formatProductionDueDate(record.productionDueDate ?? undefined),
+    badge: badgeForStage(record.currentStageCursor, record.paused), stageIndex: record.currentStageCursor,
+    joCompleted: ["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"].includes(record.status),
+    paused: record.paused, specs: [`Inquiry: ${record.inquiryReference}`, ...productionSpecifications(record)], stageHistory: [], activityLog: [], record,
+  }); }) : productionInquiries.map(inquiryToJob), [realMode, remote.items, remote.detail, remote.detailLoading, remote.detailError, productionInquiries]);
 
   /* Map a production stageIndex to an inquiry Stage enum */
   const stageForIndex = (idx: number): Stage => {
@@ -262,7 +274,8 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
       if (joStatusFilter === "completed" ? !job.joCompleted : job.joCompleted) return false;
       if (!jobMatches(job, stageFilter)) return false;
       const inquiry = productionInquiries.find((item) => item.id === job.id);
-      const submittedDate = inquiry ? new Date(inquiry.submittedDate) : new Date(Number.NaN);
+      const recordedCreatedAt = realMode ? remote.items.find(record => record.id === job.id)?.createdAt : inquiry?.submittedDate;
+      const submittedDate = recordedCreatedAt ? new Date(recordedCreatedAt) : new Date(Number.NaN);
       const matchesDate = dateFilter === "all" ||
         (!Number.isNaN(submittedDate.getTime()) && submittedDate >= dateCutoff && submittedDate < tomorrow);
       if (!matchesDate) return false;
@@ -277,10 +290,8 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
       ];
       return searchableFields.some((field) => field?.toLocaleLowerCase().includes(query));
     });
-  }, [sortedJobs, stageFilter, joStatusFilter, dateFilter, searchQuery, productionInquiries]);
+  }, [sortedJobs, stageFilter, joStatusFilter, dateFilter, searchQuery, productionInquiries, realMode, remote.items]);
   const pausedJob = jobs.find((j) => j.paused);
-
-  if (realMode) return <ProductionRealJobOrders />;
 
   const advanceStage = (id: string) => {
     if (readOnly) return;
@@ -375,7 +386,9 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
       </header>
 
       {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-6 lg:px-8">
-        Real Production records are not connected to an authenticated production API. This complete monitoring interface excludes Demo job orders; stage history, quantities, and activity remain unavailable until a read API is provided.
+        Job Orders are loaded from the authenticated Production API. Stage updates are unavailable.
+        {!remote.loading && !remote.error && remote.total > remote.items.length && <span> Showing {remote.items.length} of {remote.total} matching Job Orders; filters apply to loaded records.</span>}
+        <button onClick={remote.refresh} disabled={remote.loading} className="ml-3 rounded border px-3 py-1">Refresh</button>
       </div>}
 
       <div className={`px-4 py-5 ${readOnly ? "pb-8" : "pb-28"} sm:px-6 lg:px-8 lg:py-8`}>
@@ -523,9 +536,9 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
             )}
           </div>
         </div>
-        {visible.length === 0 ? (
+        {realMode && remote.loading ? <p role="status" className="p-4 text-sm text-slate-500">Loading Job Orders…</p> : realMode && remote.error ? <div role="alert" className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">{remote.error}<button onClick={remote.refresh} className="ml-3 rounded border px-3 py-1">Retry</button></div> : visible.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
-            {realMode ? "Production records are unavailable" : "No matching job orders found"}
+            No matching job orders found
           </div>
         ) : (
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
@@ -536,7 +549,7 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
             const pct = Math.round((Math.min(job.stageIndex, STAGES.length) / STAGES.length) * 100);
             const stageNum = Math.min(job.stageIndex + 1, STAGES.length);
             const b = badgeStyle[job.badge];
-            const cardBadge = completed ? { bg: "#DCFCE7", fg: "#15803D", label: "Completed" } : b;
+            const cardBadge = job.record?.status === "cancelled" ? { bg: "#F1F5F9", fg: "#64748B", label: "Cancelled" } : completed ? { bg: "#DCFCE7", fg: "#15803D", label: "Completed" } : b;
 
             return (
               <article
@@ -573,6 +586,7 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
                       {/* View JO File */}
                       <button
                         onClick={() => setJoFileJob(job)}
+                        title={realMode ? "Preview generated from the saved Job Order. Original document and drawing retrieval are unavailable." : undefined}
                         aria-label={`View JO file for ${job.jo}`}
                         className="font-dm flex items-center gap-1 text-white/70 hover:text-white"
                         style={{ fontSize: 11, fontWeight: 600 }}
@@ -664,11 +678,13 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
                   ) : job.paused ? (
                     <div className="flex flex-nowrap items-center justify-end gap-2">
                       <span className="font-dm flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: "#D97706" }}>
-                        <Pause size={12} /> On hold — material shortage
+                        <Pause size={12} /> {realMode ? `On hold · ${job.record?.pauseReason ?? "Reason unavailable"}` : "On hold — material shortage"}
                       </span>
-                      {!readOnly && (
+                      {(!readOnly || realMode) && (
                         <button
                           onClick={() => resumeJob(job.id)}
+                          disabled={realMode}
+                          title={realMode ? "Resume Production is unavailable from the Production API." : undefined}
                           className="flex items-center gap-2 px-4 py-2.5 rounded-md text-white font-dm hover:opacity-90"
                           style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}
                         >
@@ -678,6 +694,7 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
                     </div>
                   ) : null}
                 </div>
+                {realMode && <div className="border-t border-slate-100 px-4 py-2 font-dm text-xs text-slate-500">Stage updates unavailable · <button disabled title="Stage updates are unavailable from the Production API." className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-60">Complete Stage</button></div>}
               </article>
             );
           })}
@@ -707,6 +724,7 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
                 </div>
               </div>
               <div className="p-6 flex flex-col gap-6">
+                {realMode && <ProductionDetailStatus loading={remote.detailLoading || (!remote.detailError && remote.detail?.id !== detailId)} error={remote.detailError} retry={remote.retryDetail} />}
                 <div className="grid grid-cols-4 gap-3">
                   <DetailStat icon={Calendar} label="Production Due" value={j.due} />
                   <DetailStat icon={ClipboardList} label="PO" value={j.po} />
@@ -720,11 +738,12 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
                   </div>
                 </section>
                 <section>
-                  <h4 className="font-syne mb-3" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Stage Timeline ({Math.min(j.stageIndex, STAGES.length)} of {STAGES.length})</h4>
+                  <h4 className="font-syne mb-3" style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Stage Timeline{realMode ? " · recorded history" : ` (${Math.min(j.stageIndex, STAGES.length)} of ${STAGES.length})`}</h4>
                   <ol className="flex flex-col gap-2">
                     {STAGES.map((s, i) => {
-                      const done = i < j.stageIndex;
-                      const current = i === j.stageIndex && !completed;
+                      const event = realMode ? latestProductionStageEvent(j.record ?? null, i) : undefined;
+                      const done = realMode ? event?.action === "done" : i < j.stageIndex;
+                      const current = !done && i === j.stageIndex && !completed && j.record?.status !== "cancelled";
                       return (
                         <li key={s} className="flex items-center gap-3">
                           {done ? <CheckCircle2 size={18} style={{ color: "#16A34A" }} aria-hidden />
@@ -734,6 +753,7 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
                             {i + 1}. {s}
                           </span>
                           {current && <span className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#2563EB" }}>CURRENT</span>}
+                          {realMode && !current && <span className="font-dm text-xs text-slate-500">{event?.action ?? "Not recorded"}</span>}
                         </li>
                       );
                     })}
@@ -743,8 +763,10 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
                   <h4 className="font-syne mb-2 flex items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>
                     <User size={14} aria-hidden /> Assigned Operators
                   </h4>
-                  <div className="font-dm" style={{ fontSize: 13, color: "#92400E" }}>J. Reyes (Manager) · F. Santos · M. Tan</div>
+                  <div className="font-dm" style={{ fontSize: 13, color: "#92400E" }}>{realMode ? 'Assigned operators are unavailable from the Production API.' : 'J. Reyes (Manager) · F. Santos · M. Tan'}</div>
                 </section>
+                {realMode && remote.detail?.id === detailId && !remote.detailLoading && !remote.detailError && <ProductionEventHistory detail={remote.detail} />}
+                {realMode && <section><h4 className="font-syne mb-2 text-sm font-bold text-slate-900">Uploaded Documents</h4><p className="font-dm text-sm text-slate-500">Original document and drawing retrieval are unavailable.</p><button onClick={() => setJoFileJob(j)} className="mt-2 rounded border px-3 py-2 font-dm text-sm">View JO File</button></section>}
 
                 {/* Uploaded Documents */}
                 {(j.sketch) && (
@@ -781,6 +803,10 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
         <StageMonitoringPage
           job={monitoringJob}
           readOnly={readOnly}
+          realMode={realMode}
+          detailLoading={realMode && (remote.detailLoading || (!remote.detailError && remote.detail?.id !== stageMonitorId))}
+          detailError={realMode ? remote.detailError : ""}
+          retryDetail={remote.retryDetail}
           onClose={() => setStageMonitorId(null)}
           onAdvance={() => { if (!readOnly) advanceStage(monitoringJob.id); }}
           onRequestComplete={() => { if (!readOnly) setCompleteJoJob(monitoringJob); }}
@@ -801,12 +827,13 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
       )}
 
       {/* JO File Modal */}
-      {joFileJob && (
+      {!realMode && joFileJob && (
         <JOTemplateModal
           data={getJOTemplateData(joFileJob)}
           onClose={() => setJoFileJob(null)}
         />
       )}
+      {realMode && joFileJob && <ProductionJobOrderDocument selectedId={joFileJob.id} detail={remote.detail} loading={remote.detailLoading} error={remote.detailError} retry={remote.retryDetail} onClose={() => setJoFileJob(null)} />}
 
       {!readOnly && completeJoJob && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setCompleteJoJob(null)}>
@@ -857,10 +884,14 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
 
 /* ─── Stage Monitoring Page ─── */
 function StageMonitoringPage({
-  job, readOnly, onClose, onUpdate, onAdvance, onRequestComplete,
+  job, readOnly, realMode, detailLoading, detailError, retryDetail, onClose, onUpdate, onAdvance, onRequestComplete,
 }: {
   job: Job;
   readOnly: boolean;
+  realMode: boolean;
+  detailLoading: boolean;
+  detailError: string;
+  retryDetail: () => void;
   onClose: () => void;
   onUpdate: (job: Job) => void;
   onAdvance: () => void;
@@ -917,21 +948,24 @@ function StageMonitoringPage({
           <p className="font-dm mb-5" style={{ fontSize: 13, color: "#64748B" }}>
             {readOnly ? "Read-only production stage history" : "Full stage history · Click ✏ Edit/Revert to update any completed stage"}
           </p>
+          {realMode && <><ProductionDetailStatus loading={detailLoading} error={detailError} retry={retryDetail} /><p className="mb-4 font-dm text-xs text-slate-500">Stage updates, Edit/Revert, pause/resume, and Complete JO are unavailable from the Production API.</p></>}
 
           <div className="flex flex-col gap-2.5">
             {STAGES.map((stageName, i) => {
-              const isDone = i < job.stageIndex;
-              const isCurrent = i === job.stageIndex && !allStagesCompleted;
-              const isPending = i > job.stageIndex;
+              const event = realMode ? latestProductionStageEvent(job.record ?? null, i) : undefined;
+              const isDone = realMode ? event?.action === "done" : i < job.stageIndex;
+              const isCurrent = !isDone && i === job.stageIndex && !allStagesCompleted && !joCompleted && job.record?.status !== "cancelled";
+              const isPending = !isDone && !isCurrent;
               const history = job.stageHistory[i];
-              const showCompleteJoButton = i === STAGES.length - 1 && allStagesCompleted && !joCompleted && !readOnly;
+              const showCompleteJoButton = i === STAGES.length - 1 && (realMode || (allStagesCompleted && !joCompleted && !readOnly));
 
               let statusLabel = isPending ? "Pending" : isCurrent ? "Current" : isDone ? "Done" : "Pending";
               let statusBg = isPending ? "#F1F5F9" : isCurrent ? "#DBEAFE" : isDone ? "#DCFCE7" : "#F1F5F9";
               let statusFg = isPending ? "#64748B" : isCurrent ? "#1D4ED8" : isDone ? "#15803D" : "#64748B";
               let statusIcon = isPending ? "⬜" : isCurrent ? "🔵" : isDone ? "✅" : "⬜";
+              if (realMode && isPending) statusLabel = "Not recorded";
 
-              if (history?.status === "reverted") {
+              if ((realMode ? event?.action : history?.status) === "reverted") {
                 statusLabel = "Reverted";
                 statusBg = "#FEF3C7";
                 statusFg = "#B45309";
@@ -980,14 +1014,16 @@ function StageMonitoringPage({
                           {history.reason && <span style={{ color: "#B45309" }}> · Reason: {history.reason}</span>}
                         </div>
                       )}
-                      {isCurrent && !readOnly && (
+                      {event && <div className="mt-1 font-dm text-xs text-slate-500">{formatProductionEventTime(event.occurredAt)} · {event.performedBy == null ? "Operator unavailable" : `User ID: ${event.performedBy}`}{event.reason ? ` · Reason: ${event.reason}` : ""}</div>}
+                      {isCurrent && (!readOnly || realMode) && (
                         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                           <span className="font-dm" style={{ fontSize: 12, color: "#2563EB", fontWeight: 600 }}>
                             ← Currently in progress
                           </span>
                           <button
                             onClick={markDone}
-                            disabled={job.paused}
+                            disabled={job.paused || readOnly}
+                            title={realMode ? "Complete Stage is unavailable from the Production API." : undefined}
                             className="flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 font-dm text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                             style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}
                           >
@@ -998,9 +1034,11 @@ function StageMonitoringPage({
                     </div>
 
                     {/* Edit/Revert Button (only on done stages) */}
-                    {isDone && !readOnly && (
+                    {(realMode || (isDone && !readOnly)) && (
                       <button
                         onClick={() => setRevertStageIdx(i)}
+                        disabled={readOnly}
+                        title={realMode ? "Edit/Revert is unavailable from the Production API." : undefined}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 font-dm shrink-0"
                         style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}
                       >
@@ -1017,6 +1055,8 @@ function StageMonitoringPage({
                   <div className="mt-3 flex justify-end lg:absolute lg:left-full lg:top-1/2 lg:ml-3 lg:mt-0 lg:w-max lg:-translate-y-1/2">
                     <button
                       onClick={onRequestComplete}
+                      disabled={readOnly}
+                      title={realMode ? "Complete JO is unavailable from the Production API." : undefined}
                       className="flex shrink-0 items-center justify-center gap-2 rounded-md px-4 py-2.5 font-dm text-white hover:opacity-90"
                       style={{ backgroundColor: "#16A34A", fontSize: 12, fontWeight: 700 }}
                     >
@@ -1027,6 +1067,8 @@ function StageMonitoringPage({
               ) : stageCard;
             })}
           </div>
+          {realMode && <div className="my-5 flex gap-3 font-dm text-sm"><button disabled className="rounded border px-3 py-2" title="Pause is unavailable from the Production API.">Pause Production</button><button disabled className="rounded border px-3 py-2" title="Resume is unavailable from the Production API.">Resume Production</button></div>}
+          {realMode && job.record && !detailLoading && !detailError && <ProductionEventHistory detail={job.record} />}
 
           {/* Activity Log */}
           {job.activityLog.length > 0 && (
@@ -1055,7 +1097,7 @@ function StageMonitoringPage({
       </div>
 
       {/* Revert/Edit Stage Modal */}
-      {revertStageIdx !== null && (
+      {!readOnly && revertStageIdx !== null && (
         <RevertStageModal
           stageName={STAGES[revertStageIdx]}
           onClose={() => setRevertStageIdx(null)}

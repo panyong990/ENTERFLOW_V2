@@ -1,15 +1,142 @@
-import { useEffect, useState } from 'react';
-import { createStockRequest, listStockRequests } from '../../api/stockRequests';
-import {useMaterials} from '../../store/materials';
-import type { SalesOrderRow } from '../useSalesOrders';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { createStockRequest, listStockRequests } from "../../api/stockRequests.js";
+import { StockRequestsModal, type StockRequestPresentation } from "../StockRequestsModal";
+import { useMaterials } from "../../store/materials";
+import { stockRequestReady } from "./stockRequestInput.mjs";
+import type { SalesOrderRow } from "../useSalesOrders";
+import { mapStockRequestRecord, type ApiRequest } from "../stockRequestPresentation";
 
-type RequestRow = { id: string; reference: string; orderId: string; orderReference?: string | null; clientReference?: string | null; status: string; createdAt: string; lines: { materialId: string; materialName: string; requiredQuantity: string | number; stockAtRequest: string | number | null; shortageAtRequest: string | number | null; latestResponse?: {currentQuantity:string|number;shortageQuantity:string|number;respondedAt:string}|null }[] };
 export function RealSalesStockRequests({ onClose, rows }: { onClose: () => void; rows: SalesOrderRow[] }) {
-  const {rawMaterials,inventoryLoading,inventoryError}=useMaterials();
-  const recordedMaterials=rawMaterials.filter(material=>material.source==='database' && material.databaseId);
-  const [requests, setRequests] = useState<RequestRow[]>([]); const [orderId, setOrderId] = useState(rows[0]?.id ?? ''); const [materialId, setMaterialId] = useState(''); const [quantity, setQuantity] = useState(''); const [loading, setLoading] = useState(true); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState('');
-  const load = () => { setLoading(true); setError(''); void listStockRequests().then(result => setRequests(result as RequestRow[])).catch(cause => setError(cause instanceof Error ? cause.message : 'Unable to load Stock Requests.')).finally(() => setLoading(false)); };
-  useEffect(load, []);
-  const submit = async () => { if (!orderId || !materialId.trim() || !/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(quantity) || Number(quantity) <= 0 || Number(quantity) > 1000000000) { setError('Select an order and enter a positive quantity with up to four decimal places.'); return; } setSubmitting(true); setError(''); try { await createStockRequest({ orderId, lines: [{ materialId: materialId.trim(), quantity: Number(quantity) }] }); setMaterialId(''); setQuantity(''); load(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Stock Request submission failed.'); } finally { setSubmitting(false); } };
-  return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 p-4" onClick={onClose}><section className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-slate-200 px-6 py-4"><div><h2 className="font-syne text-lg font-extrabold text-slate-900">Stock Requests</h2><p className="text-xs text-slate-500">Authenticated Sales-to-Warehouse requests · no reservation or automatic deduction</p></div><button type="button" onClick={onClose} className="rounded px-3 py-1 text-sm text-slate-500 hover:bg-slate-100">Close</button></header><div className="flex-1 space-y-4 overflow-auto p-6"><div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><h3 className="text-sm font-semibold text-slate-900">New Stock Request</h3>{inventoryLoading ? <p role="status">Loading materials…</p> : inventoryError ? <p role="alert">{inventoryError}</p> : recordedMaterials.length===0 ? <p className="mt-2 text-xs text-slate-500">No authenticated materials are available. Catalog references cannot be requested until registered and mapped.</p> : null}<div className="mt-3 grid gap-3 md:grid-cols-4"><select aria-label="Order" value={orderId} onChange={event => setOrderId(event.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2"><option value="">Select order</option>{rows.map(row => <option key={row.id} value={row.id}>{row.reference} · {row.companyName}</option>)}</select><select aria-label="Material ID" value={materialId} onChange={event=>setMaterialId(event.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">Select recorded material</option>{recordedMaterials.map(material=><option key={material.databaseId} value={material.databaseId}>{material.name} ({material.unit})</option>)}</select><input aria-label="Quantity" value={quantity} onChange={event => setQuantity(event.target.value)} placeholder="Quantity" type="number" min="0.0001" max="1000000000" step="0.0001" className="rounded border border-slate-300 px-3 py-2 text-sm" /></div><button type="button" onClick={() => void submit()} disabled={submitting} className="mt-3 rounded bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{submitting ? 'Submitting…' : 'Submit to Warehouse'}</button></div>{error && <div><p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p><button type="button" disabled={loading} onClick={load} className="mt-2 rounded border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">Retry Stock Requests</button></div>}{loading ? <p role="status" className="text-sm text-slate-500">Loading Stock Requests…</p> : requests.length === 0 ? <p className="rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No Stock Requests have been submitted.</p> : <div className="space-y-3">{requests.map(request => <article key={request.id} className="rounded-lg border border-slate-200 p-4"><div className="flex justify-between gap-3"><div><h3 className="font-semibold text-slate-900">{request.reference}</h3><p className="text-xs text-slate-500">Order {request.orderReference ?? request.orderId} · Quotation {request.clientReference ?? '—'} · {new Date(request.createdAt).toLocaleString()}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{request.status}</span></div><div className="mt-3 space-y-1 text-sm text-slate-700">{request.lines.map(line => <div key={line.materialId}>{line.materialName} · requested {line.requiredQuantity} · stock at request {line.stockAtRequest == null ? 'Not recorded' : line.stockAtRequest} · shortage at request {line.shortageAtRequest == null ? 'Not recorded' : line.shortageAtRequest}{line.latestResponse && <span> · Latest recorded: {line.latestResponse.currentQuantity} · Shortage: {line.latestResponse.shortageQuantity}</span>}</div>)}</div></article>)}</div>}</div></section></div>;
+  const { rawMaterials, inventoryLoading, inventoryError, refreshInventory } = useMaterials();
+  const recordedMaterials = rawMaterials.filter((material) => material.source === "database" && material.databaseId);
+  const [requests, setRequests] = useState<ApiRequest[]>([]);
+  const [orderId, setOrderId] = useState(rows[0]?.id ?? "");
+  const [materialId, setMaterialId] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [uncertain, setUncertain] = useState(false);
+  const [showNewRequest, setShowNewRequest] = useState(false);
+  const lock = useRef(false);
+
+  const materialUnits = useMemo(() => new Map(
+    rawMaterials.flatMap((material) => material.databaseId ? [[material.databaseId, material.unit] as const] : [])
+  ), [rawMaterials]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await listStockRequests();
+      const next = result as ApiRequest[];
+      next.forEach((request) => mapStockRequestRecord(request, materialUnits));
+      setRequests(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load Stock Requests.");
+    } finally {
+      setLoading(false);
+    }
+  }, [materialUnits]);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!orderId && rows[0]) setOrderId(rows[0].id);
+  }, [orderId, rows]);
+
+  const ready = stockRequestReady({
+    orders: rows,
+    materials: recordedMaterials,
+    orderId,
+    materialId,
+    quantity,
+    loading: inventoryLoading,
+    error: inventoryError,
+    submitting,
+  });
+
+  const submit = async () => {
+    if (!ready || lock.current || uncertain) return;
+    lock.current = true;
+    setSubmitting(true);
+    setSubmitError("");
+    setSuccess("");
+    try {
+      await createStockRequest({ orderId, lines: [{ materialId, quantity: Number(quantity) }] });
+      setSuccess("Stock Request submitted to Warehouse. Inventory was not reserved or deducted.");
+      setMaterialId("");
+      setQuantity("");
+      await load();
+    } catch (cause) {
+      const failure = cause as { status?: number; message?: string };
+      const unknown = !failure.status || failure.status >= 500;
+      setUncertain(unknown);
+      setSubmitError(unknown
+        ? "Submission could not be confirmed. Refresh the list and check with Warehouse before submitting again."
+        : failure.message ?? "Stock Request submission failed.");
+    } finally {
+      lock.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const presentedRequests = useMemo(
+    () => requests.map((request) => mapStockRequestRecord(request, materialUnits)),
+    [requests, materialUnits],
+  );
+  const newRequest = (
+    <div className="space-y-4">
+      <div className="flex justify-end gap-3">
+        <button type="button" onClick={() => void load()} disabled={loading || submitting} className="rounded border px-3 py-2 text-xs font-semibold disabled:opacity-50">Refresh</button>
+        <button type="button" onClick={() => setShowNewRequest((value) => !value)} disabled={submitting} className="flex items-center gap-2 rounded-md bg-[#C8102E] px-3 py-2 font-dm text-xs font-bold text-white disabled:opacity-50">
+          <Plus size={14} /> NEW STOCK REQUEST
+        </button>
+      </div>
+      {success && <p role="status" className="text-sm text-green-800">{success}</p>}
+      {showNewRequest && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">New Stock Request</h3>
+          {inventoryLoading && <p role="status" className="mt-2 text-xs text-slate-600">Loading materials…</p>}
+          {inventoryError && <div role="alert" className="mt-2 text-xs text-red-800"><p>Material data is unavailable. {inventoryError}</p><button type="button" onClick={refreshInventory} className="mt-2 rounded border px-3 py-1.5">Retry materials</button></div>}
+          {!inventoryLoading && !inventoryError && recordedMaterials.length === 0 && <p className="mt-2 text-xs text-slate-500">No authenticated materials are available. Catalog references cannot be requested until registered and mapped.</p>}
+          {!inventoryLoading && !inventoryError && recordedMaterials.length > 0 && rows.length > 0 && (
+            <>
+              <fieldset disabled={submitting || uncertain} className="mt-3 grid gap-3 md:grid-cols-4">
+                <select aria-label="Order" value={orderId} onChange={(event) => setOrderId(event.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2">
+                  <option value="">Select order</option>
+                  {rows.map((row) => <option key={row.id} value={row.id}>{row.reference} · {row.companyName}</option>)}
+                </select>
+                <select aria-label="Material ID" value={materialId} onChange={(event) => setMaterialId(event.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Select recorded material</option>
+                  {recordedMaterials.map((material) => <option key={material.databaseId} value={material.databaseId}>{material.itemCode ? `${material.itemCode} · ` : ""}{material.name} ({material.unit})</option>)}
+                </select>
+                <input aria-label="Quantity" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Quantity" type="number" min="0.0001" max="1000000000" step="0.0001" className="rounded border border-slate-300 px-3 py-2 text-sm" />
+              </fieldset>
+              <button type="button" onClick={() => void submit()} disabled={!ready || uncertain} className="mt-3 rounded bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{submitting ? "Submitting…" : "Submit to Warehouse"}</button>
+            </>
+          )}
+          {!inventoryLoading && !inventoryError && recordedMaterials.length > 0 && rows.length === 0 && <p className="mt-2 text-sm text-slate-500">Load an order before creating a Stock Request.</p>}
+          {submitError && <p role="alert" className="mt-3 text-sm text-red-800">{submitError}</p>}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <StockRequestsModal
+      mode="sales"
+      onClose={onClose}
+      adapter={{
+        requests: presentedRequests as StockRequestPresentation[],
+        loading,
+        error,
+        saving: submitting,
+        retry: load,
+        newRequest,
+      }}
+    />
+  );
 }

@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useProductionJobOrders } from "./useProductionJobOrders";
+import { formatProductionEventTime, latestProductionStageEvent, productionSpecifications, ProductionDetailStatus, ProductionEventHistory, ProductionJobOrderDocument } from "./productionJobOrderPresentation";
 import {
   AlertTriangle, CheckCircle2, ChevronDown, Circle, ClipboardList,
   Clock3, Eye, Factory, FileText, Filter, PackageCheck, Search, X,
@@ -9,6 +11,7 @@ import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
 
 const ACTIVE_STAGES = new Set(["jo", "in_production", "quality_inspection"]);
 const COMPLETED_STAGES = new Set(["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"]);
+type MonitoringInquiry = Pick<Inquiry, "id" | "code" | "joNumber" | "clientName" | "currentStage" | "paused" | "productionDueDate" | "dueDate" | "deliveryMethod" | "poNumber" | "poFileName" | "products" | "joCompletedAt" | "joSpecs" | "joSketch" | "urgent" | "stageHistory"> & { stage: string };
 type JobStatusFilter = "all" | "inProgress" | "completed" | "overdue";
 type DueDateFilter = "all" | "overdue" | "today" | "upcoming";
 
@@ -51,11 +54,11 @@ function formatDate(value?: string): string {
     : value || "—";
 }
 
-function isCompleted(inquiry: Inquiry): boolean {
+function isCompleted(inquiry: MonitoringInquiry): boolean {
   return Boolean(inquiry.joCompletedAt) || COMPLETED_STAGES.has(inquiry.stage);
 }
 
-function getStageIndex(inquiry: Inquiry): number {
+function getStageIndex(inquiry: MonitoringInquiry): number {
   if (inquiry.currentStage !== undefined) {
     return Math.max(0, Math.min(inquiry.currentStage, PRODUCTION_STAGES.length));
   }
@@ -65,19 +68,19 @@ function getStageIndex(inquiry: Inquiry): number {
   return 0;
 }
 
-function getOverdue(inquiry: Inquiry, today: Date): boolean {
+function getOverdue(inquiry: MonitoringInquiry, today: Date, productionDue = false): boolean {
   if (!ACTIVE_STAGES.has(inquiry.stage)) return false;
-  const dueDate = parseDate(inquiry.dueDate);
+  const dueDate = parseDate(productionDue ? inquiry.productionDueDate : inquiry.dueDate);
   return Boolean(dueDate && dayStart(dueDate).getTime() < today.getTime());
 }
 
-function getStatus(inquiry: Inquiry, overdue: boolean): { label: string; bg: string; fg: string } {
+function getStatus(inquiry: MonitoringInquiry, overdue: boolean): { label: string; bg: string; fg: string } {
   if (isCompleted(inquiry)) return { label: "Completed", bg: "#DCFCE7", fg: "#15803D" };
   if (overdue) return { label: "Overdue", bg: "#FEE2E2", fg: "#C8102E" };
   if (inquiry.paused) return { label: "On Hold", bg: "#FEF3C7", fg: "#B45309" };
-  const colors = stageColor[inquiry.stage];
+  const colors = stageColor[inquiry.stage as keyof typeof stageColor] ?? { bg: "#F1F5F9", fg: "#64748B" };
   return {
-    label: inquiry.stage === "jo" ? "Active" : stageLabel[inquiry.stage],
+    label: inquiry.stage === "jo" ? "Active" : stageLabel[inquiry.stage as keyof typeof stageLabel] ?? inquiry.stage,
     bg: colors.bg,
     fg: colors.fg,
   };
@@ -87,7 +90,7 @@ function productName(product: Inquiry["products"][number]): string {
   return product.filterName || product.type || product.oem || "Product";
 }
 
-function jobOrderDocument(inquiry: Inquiry): JOTemplateData {
+function jobOrderDocument(inquiry: MonitoringInquiry): JOTemplateData {
   const product = inquiry.products[0];
   const specs = inquiry.joSpecs ?? product;
   const dimension = (value?: string) => value?.trim() || "—";
@@ -147,12 +150,24 @@ export function OperationsProductionFloor() {
   const [draftFilters, setDraftFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const remote = useProductionJobOrders({ q: search, status: "all" }, documentId ?? selectedId, realMode);
+  const selectedDetail = remote.detail?.id === selectedId && !remote.detailLoading && !remote.detailError ? remote.detail : null;
+  // Only the fields consumed by this read-only monitoring view are projected.
+  // Missing delivery dates and financial fields are intentionally absent.
+  const records = useMemo<MonitoringInquiry[]>(() => realMode ? remote.items.map(item => {
+    const record = selectedDetail?.id === item.id ? selectedDetail : item;
+    return ({
+    id: record.id, code: record.inquiryReference, joNumber: record.reference, clientName: record.clientName,
+    stage: record.status, currentStage: record.currentStageCursor, paused: record.paused,
+    productionDueDate: record.productionDueDate ?? undefined, poNumber: record.purchaseOrderReference ?? undefined,
+    products: [{ id: record.orderItemId, type: record.filterTypeCode ?? '', filterName: record.filterName ?? '', qty: record.quantity, oem: record.oemPartNumber == null ? undefined : String(record.oemPartNumber) }],
+  }); }) : completedJOs, [realMode, remote.items, selectedDetail, completedJOs]);
 
   const jobs = useMemo(() => {
     const today = dayStart(new Date());
-    return completedJOs.map((inquiry) => {
+    return records.map((inquiry) => {
       const completed = isCompleted(inquiry);
-      const overdue = getOverdue(inquiry, today);
+      const overdue = getOverdue(inquiry, today, realMode);
       return {
         inquiry,
         stageIndex: getStageIndex(inquiry),
@@ -162,7 +177,7 @@ export function OperationsProductionFloor() {
         quantity: inquiry.products.reduce((sum, product) => sum + product.qty, 0),
       };
     });
-  }, [completedJOs]);
+  }, [records, realMode]);
 
   const visibleJobs = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -182,7 +197,7 @@ export function OperationsProductionFloor() {
       if (filters.status === "completed" && !job.completed) return false;
       if (filters.status === "overdue" && !job.overdue) return false;
 
-      const dueDate = parseDate(inquiry.dueDate);
+      const dueDate = parseDate(realMode ? inquiry.productionDueDate : inquiry.dueDate);
       if (filters.dueDate !== "all") {
         if (filters.dueDate === "overdue" && !job.overdue) return false;
         if (!dueDate && filters.dueDate !== "overdue") return false;
@@ -202,7 +217,7 @@ export function OperationsProductionFloor() {
       ];
       return searchable.some((value) => value?.toLocaleLowerCase().includes(query));
     });
-  }, [filters, jobs, search]);
+  }, [filters, jobs, search, realMode]);
 
   const selectedJob = jobs.find((job) => job.inquiry.id === selectedId);
   const documentJob = jobs.find((job) => job.inquiry.id === documentId);
@@ -237,7 +252,9 @@ export function OperationsProductionFloor() {
       </header>
 
       {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950 sm:px-7 lg:px-9">
-        Real Production records are not connected to an authenticated production API. Filters, job-order layout, stage tracking, and detail panels remain available, while Demo records and unverified operational counts are excluded.
+        Job Orders are loaded from the authenticated Production API. Company-wide KPI definitions remain unavailable.
+        {!remote.loading && !remote.error && remote.total > remote.items.length && <span> Showing {remote.items.length} of {remote.total} matching Job Orders; filters apply to loaded records.</span>}
+        <button onClick={remote.refresh} disabled={remote.loading} className="ml-3 rounded border px-3 py-1">Refresh</button>
       </div>}
 
       <div className="px-5 py-6 sm:px-7 lg:px-9">
@@ -320,7 +337,7 @@ export function OperationsProductionFloor() {
                     </span>
                   </label>
                   <label className="font-dm mb-3 block text-xs font-semibold text-slate-600">
-                    Due Date
+                    {realMode ? "Production Due Date" : "Due Date"}
                     <span className="relative mt-1 block">
                       <select
                         value={draftFilters.dueDate}
@@ -345,11 +362,11 @@ export function OperationsProductionFloor() {
           </div>
         </div>
 
-        {visibleJobs.length === 0 ? (
+        {realMode && remote.loading ? <p role="status" className="p-4 text-sm text-slate-500">Loading Job Orders…</p> : realMode && remote.error ? <div role="alert" className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">{remote.error}<button onClick={remote.refresh} className="ml-3 rounded border px-3 py-1">Retry</button></div> : visibleJobs.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center">
             <ClipboardList size={28} className="mx-auto mb-3 text-slate-300" />
-            <p className="font-dm text-sm font-semibold text-slate-700">{realMode ? "Production records are unavailable" : "No matching job orders"}</p>
-            <p className="font-dm mt-1 text-xs text-slate-500">{realMode ? "No live job orders were loaded; this is not a verified empty database result." : "Try changing your search or filters."}</p>
+            <p className="font-dm text-sm font-semibold text-slate-700">No matching job orders</p>
+            <p className="font-dm mt-1 text-xs text-slate-500">Try changing your search or filters.</p>
           </div>
         ) : (
           <section aria-label="Job orders" className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -381,8 +398,8 @@ export function OperationsProductionFloor() {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <CardFact label="Quantity" value={`${job.quantity.toLocaleString()} pcs`} />
                       <CardFact label="Current Stage" value={currentStage} />
-                      <CardFact label="Client Requested Delivery" value={formatDate(inquiry.dueDate)} alert={job.overdue} />
-                      <CardFact label="Production Due" value={formatDate(inquiry.productionDueDate)} />
+                      <CardFact label="Client Requested Delivery" value={formatDate(inquiry.dueDate)} alert={!realMode && job.overdue} />
+                      <CardFact label="Production Due" value={formatDate(inquiry.productionDueDate)} alert={realMode && job.overdue} />
                       <CardFact label="Final Delivery Method" value={inquiry.deliveryMethod ?? "—"} />
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-3">
@@ -428,19 +445,22 @@ export function OperationsProductionFloor() {
               <button type="button" aria-label="Close job order details" onClick={() => setSelectedId(null)} className="rounded-md p-2 text-white/80 hover:bg-white/10 hover:text-white"><X size={18} /></button>
             </div>
             <div className="flex-1 space-y-6 overflow-y-auto p-5 sm:p-6">
+              {realMode && <ProductionDetailStatus loading={remote.detailLoading || (!remote.detailError && !selectedDetail)} error={remote.detailError} retry={remote.retryDetail} />}
               <section>
                 <h2 className="font-syne mb-3 text-sm font-bold text-slate-900">Job Order Details</h2>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <DetailFact label="Job Order" value={selectedJob.inquiry.joNumber ?? selectedJob.inquiry.code} />
                   <DetailFact label="Client" value={selectedJob.inquiry.clientName} />
-                  <DetailFact label="Client Requested Delivery" value={formatDate(selectedJob.inquiry.dueDate)} alert={selectedJob.overdue} />
-                  <DetailFact label="Production Due" value={formatDate(selectedJob.inquiry.productionDueDate)} />
+                  <DetailFact label="Client Requested Delivery" value={formatDate(selectedJob.inquiry.dueDate)} alert={!realMode && selectedJob.overdue} />
+                  <DetailFact label="Production Due" value={formatDate(selectedJob.inquiry.productionDueDate)} alert={realMode && selectedJob.overdue} />
                   <DetailFact label="Final Delivery Method" value={selectedJob.inquiry.deliveryMethod ?? "—"} />
                   <DetailFact label="Current Status" value={selectedJob.status.label} alert={selectedJob.overdue} />
                   <DetailFact label="Current Production Stage" value={selectedJob.stageIndex < PRODUCTION_STAGES.length ? PRODUCTION_STAGES[selectedJob.stageIndex] : "Production Complete"} />
                   <DetailFact label="Purchase Order" value={poNumberForDisplay(selectedJob.inquiry) ?? "—"} />
                 </div>
               </section>
+
+              {realMode && selectedDetail && <section><h2 className="font-syne mb-3 text-sm font-bold text-slate-900">Specifications</h2><div className="space-y-1 rounded-lg bg-slate-50 p-4 font-dm text-sm text-slate-700">{productionSpecifications(selectedDetail).map(line => <p key={line}>{line}</p>)}</div></section>}
 
               <section>
                 <h2 className="font-syne mb-3 text-sm font-bold text-slate-900">Ordered Products</h2>
@@ -463,15 +483,16 @@ export function OperationsProductionFloor() {
 
               <section>
                 <h2 className="font-syne mb-1 text-sm font-bold text-slate-900">Production Stage Tracker</h2>
-                <p className="font-dm mb-3 text-xs text-slate-500">Nine recorded production stages. Completion dates and notes are shown only when stored on the job order.</p>
+                <p className="font-dm mb-3 text-xs text-slate-500">Nine production stages. Completion dates, operators, and notes are shown only when stored on the job order.</p>
                 <ol className="space-y-2">
                   {PRODUCTION_STAGES.map((stage, index) => {
                     const history = selectedJob.inquiry.stageHistory?.filter((entry) => entry.stage === index) ?? [];
                     const latestEntry = history[history.length - 1];
-                    const done = latestEntry
+                    const event = realMode ? latestProductionStageEvent(selectedDetail, index) : undefined;
+                    const done = realMode ? event?.action === "done" : latestEntry
                       ? latestEntry.status === "done"
                       : index < selectedJob.stageIndex || (selectedJob.completed && selectedJob.stageIndex >= PRODUCTION_STAGES.length);
-                    const current = !done && index === selectedJob.stageIndex;
+                    const current = !done && !selectedJob.completed && selectedJob.inquiry.stage !== "cancelled" && index === selectedJob.stageIndex;
                     return (
                       <li key={stage} className="flex gap-3 rounded-lg border border-slate-200 px-3 py-3">
                         <span className="mt-0.5 shrink-0" aria-hidden>
@@ -481,15 +502,16 @@ export function OperationsProductionFloor() {
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className={`font-dm text-sm ${current ? "font-bold text-slate-900" : "font-medium text-slate-700"}`}>{index + 1}. {stage}</p>
                             <span className="font-dm text-[11px] font-semibold uppercase" style={{ color: done ? "#15803D" : current ? "#1D4ED8" : "#94A3B8" }}>
-                              {done ? "Complete" : current ? "Current" : latestEntry?.status === "reverted" ? "Reverted" : "Pending"}
+                              {done ? "Complete" : current ? "Current" : (realMode ? event?.action : latestEntry?.status) === "reverted" ? "Reverted" : realMode ? "Not recorded" : "Pending"}
                             </span>
                           </div>
-                          {latestEntry?.status === "done" && (
+                          {!realMode && latestEntry?.status === "done" && (
                             <p className="font-dm mt-1 text-xs text-slate-500">
                               Completed {formatDate(latestEntry.completedAt)}{latestEntry.completedBy ? ` · ${latestEntry.completedBy}` : ""}
                             </p>
                           )}
                           {latestEntry?.reason && <p className="font-dm mt-1 text-xs text-slate-600">Note: {latestEntry.reason}</p>}
+                          {event && <p className="font-dm mt-1 text-xs text-slate-500">{event.action} · {formatProductionEventTime(event.occurredAt)} · {event.performedBy == null ? "Operator unavailable" : `User ID: ${event.performedBy}`}{event.reason ? ` · ${event.reason}` : ""}</p>}
                         </div>
                       </li>
                     );
@@ -497,11 +519,13 @@ export function OperationsProductionFloor() {
                 </ol>
               </section>
 
+              {realMode && selectedDetail && <ProductionEventHistory detail={selectedDetail} />}
+
               <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="font-syne text-sm font-bold text-slate-900">Job Order Document</h2>
-                    <p className="font-dm mt-1 text-xs text-slate-500">View the existing Job Order document generated from this record.</p>
+                    <p className="font-dm mt-1 text-xs text-slate-500">{realMode ? "Preview generated from the saved Job Order. Original document and drawing retrieval are unavailable." : "View the existing Job Order document generated from this record."}</p>
                   </div>
                   <button type="button" onClick={() => setDocumentId(selectedJob.inquiry.id)} className="font-dm inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white hover:opacity-90" style={{ backgroundColor: "#1A2B4A" }}>
                     <FileText size={15} /> View JO File
@@ -513,9 +537,10 @@ export function OperationsProductionFloor() {
         </div>
       )}
 
-      {documentJob && (
+      {!realMode && documentJob && (
         <JOTemplateModal data={jobOrderDocument(documentJob.inquiry)} onClose={() => setDocumentId(null)} />
       )}
+      {realMode && documentId && <ProductionJobOrderDocument selectedId={documentId} detail={remote.detail} loading={remote.detailLoading} error={remote.detailError} retry={remote.retryDetail} onClose={() => setDocumentId(null)} />}
     </main>
   );
 }

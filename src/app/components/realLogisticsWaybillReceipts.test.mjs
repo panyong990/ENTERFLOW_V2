@@ -11,11 +11,14 @@ test("logistics and delivery receipts expose complete Real Mode structures witho
   for (const source of [logistics, receipts]) {
     assert.match(source, /useSession/);
     assert.match(source, /mode === "real"/);
-    assert.match(source, /Real .*records are unavailable/);
   }
+  assert.match(receipts, /Real .*records are unavailable/);
+  assert.match(logistics, /useRealLogisticsShipments\(realMode, openId\)/);
+  assert.match(logistics, /remote.rows.map\(toLogisticsRecord\)/);
+  assert.doesNotMatch(logistics, /<RealLogisticsShipments\b/);
   assert.match(receipts, /realMode \? "—"/);
   assert.match(logistics, /realMode \? "—"/);
-  assert.match(logistics, /No authenticated .*API is connected/);
+  assert.match(logistics, /no approved Logistics mutation API is connected/);
 });
 
 test("waybill scanner, history, and monitoring retain their UI while excluding Demo records in Real Mode", () => {

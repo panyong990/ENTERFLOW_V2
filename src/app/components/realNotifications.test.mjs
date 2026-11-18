@@ -24,8 +24,11 @@ test("General notification mutations do not report fake success in Real Mode", (
 });
 
 test("Sales keeps its separate remote notification implementation", () => {
-  const source = read("sales/SalesNotificationsCenter.tsx");
-  assert.match(source, /useSalesNotificationStore/);
-  assert.match(source, /pendingIntegration/);
-  assert.match(source, /Refresh notifications/);
+  const provider = read("../store/notifications.tsx");
+  const screen = read("NotificationsCenter.tsx");
+  assert.match(provider, /session\.role === 'sales'/);
+  assert.match(provider, /\/api\/sales\/notifications\?status=all&sort=created-desc&page=\$\{page\}&pageSize=100/);
+  assert.match(provider, /if \(records\.length >= result\.total\)/);
+  assert.match(provider, /createRealReadOnlyProvider/);
+  assert.match(screen, /Notifications are loaded from the Sales API/);
 });

@@ -1,0 +1,27 @@
+import { useEffect, useState } from 'react';
+import { ApiError } from '../api/client';
+import { getWarehouseShipment, listWarehouseShipments, type WarehouseShipment } from '../api/warehouseShipments';
+
+function message(cause: unknown) { return cause instanceof ApiError ? cause.message : 'Warehouse shipments are unavailable.'; }
+function date(value: string | null | undefined) { return value ? new Date(value).toLocaleString() : 'Unavailable'; }
+function Field({ label, value }: { label: string; value: unknown }) { return <div><div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-sm text-slate-800">{value == null || value === '' ? 'Unavailable' : String(value)}</div></div>; }
+
+export function RealWarehouseShipments({ onClose }: { onClose: () => void }) {
+  const [rows, setRows] = useState<WarehouseShipment[]>([]);
+  const [selected, setSelected] = useState<WarehouseShipment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true); setError('');
+    listWarehouseShipments(100, controller.signal).then(setRows).catch(cause => { if (!controller.signal.aborted) setError(message(cause)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [version]);
+  const open = async (id: string) => {
+    setDetailLoading(true); setError('');
+    try { setSelected(await getWarehouseShipment(id)); } catch (cause) { setError(message(cause)); } finally { setDetailLoading(false); }
+  };
+  return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 p-4" onClick={onClose}><section className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-slate-200 px-6 py-4"><div><h2 className="text-lg font-extrabold text-slate-900">Warehouse Shipments</h2><p className="text-xs text-slate-500">Read-only shipment and handoff records</p></div><div className="flex gap-2"><button type="button" onClick={() => setVersion(value => value + 1)} disabled={loading} className="rounded border border-slate-200 px-3 py-2 text-xs font-semibold">Refresh</button><button type="button" onClick={onClose} className="rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">Close</button></div></header><div className="flex-1 space-y-3 overflow-auto p-6">{loading && <p role="status" className="text-sm text-slate-500">Loading shipments…</p>}{error && !loading && <div><p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p><button type="button" onClick={() => setVersion(value => value + 1)} className="mt-3 rounded border border-slate-300 px-3 py-2 text-sm font-semibold">Retry</button></div>}{!loading && !error && rows.length === 0 && <p className="rounded border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">No shipment records were returned.</p>}{!loading && !error && rows.map(row => <button type="button" key={row.id} onClick={() => void open(row.id)} className="w-full rounded-lg border border-slate-200 p-4 text-left hover:border-blue-300"><div className="flex flex-wrap justify-between gap-2"><span className="font-semibold text-slate-900">Shipment {row.id}</span><span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold capitalize text-blue-800">{row.status}</span></div><div className="mt-2 grid gap-3 text-sm sm:grid-cols-4"><Field label="Client" value={row.companyName} /><Field label="Order" value={row.orderReference} /><Field label="Job Order" value={row.jobOrderReference} /><Field label="Tracking" value={row.trackingReference} /></div></button>)}{selected && <aside className="rounded-lg border border-blue-200 bg-blue-50 p-4"><div className="flex justify-between gap-3"><h3 className="font-semibold text-blue-950">Shipment {selected.id} detail</h3><button type="button" onClick={() => setSelected(null)} className="rounded border border-blue-200 bg-white px-2 py-1 text-xs font-semibold">Close detail</button></div>{detailLoading && <p role="status" className="mt-3 text-sm">Loading shipment detail…</p>}{!detailLoading && <><div className="mt-3 grid gap-3 sm:grid-cols-3"><Field label="Status" value={selected.status} /><Field label="Delivery method" value={selected.deliveryMethodLabel} /><Field label="Tracking" value={selected.trackingReference} /><Field label="Recipient" value={selected.recipientName} /><Field label="Delivery address" value={selected.deliveryAddress} /><Field label="Driver" value={selected.driverName} /><Field label="Vehicle" value={selected.vehiclePlate} /><Field label="Dispatched" value={date(selected.dispatchedAt)} /><Field label="Delivered" value={date(selected.deliveredAt)} /></div><div className="mt-4 text-sm"><strong>Waybills:</strong> {selected.waybills?.length ? selected.waybills.map(item => `${item.reference ?? item.id} (${date(item.printedAt)})`).join(', ') : 'None returned'}<br /><strong>Delivery receipts:</strong> {selected.deliveryReceipts?.length ? selected.deliveryReceipts.map(item => item.reference ?? item.id).join(', ') : 'None returned'}</div></>}</aside>}</div></section></div>;
+}

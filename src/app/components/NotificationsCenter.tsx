@@ -27,7 +27,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
   const role = roleProp ?? session.role;
   const notificationClient = role === "client" ? clientName ?? session.name : undefined;
   const navigate = onNavigate ?? session.navigate;
-  const { unreadFor, isReadFor, markRead, markAllRead, remove, removeAllRead, push: pushNotif } = useNotifications();
+  const { unreadFor, isReadFor, markRead, markAllRead, remove, removeAllRead, push: pushNotif, loading, error, available, refresh } = useNotifications();
   const { inquiries, completedJOs, updateInquiry } = useOrders();
   const allInqs = [...inquiries, ...completedJOs];
   const items = unreadFor(role, notificationClient);
@@ -83,7 +83,8 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
         )}
       </header>
 
-      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real notifications are unavailable. The complete notification center, filters, detail presentation, and navigation remain visible, but Demo notifications are excluded until an authenticated general notification API is connected.</div>}
+      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">{available ? 'Notifications are loaded from the Sales API. Mark-read, dismissal and reply operations are unavailable.' : 'Real notifications are unavailable for this role.'}</div>}
+      {realMode && available && <div className="px-8 pt-4 text-sm text-slate-600">{loading ? <p role="status">Loading notifications…</p> : error ? <p role="alert">{error}</p> : null}<button disabled={loading} onClick={refresh} className="rounded border bg-white px-3 py-2 text-xs font-semibold">{error ? 'Retry notifications' : 'Refresh notifications'}</button></div>}
 
       <div className="px-8 py-8 flex flex-col gap-5">
         {/* Stats + actions */}
@@ -102,14 +103,14 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
           </div>
           <div className="bg-white rounded-xl border border-slate-200/70 p-4 flex flex-col gap-2 justify-center">
             <button
-              onClick={() => { if (realMode) unavailable("Mark all as read"); else { markAllRead(role, notificationClient); toast.success("All marked as read"); } }}
+              disabled={realMode} title={realMode ? "Mark all as read is unavailable" : undefined} onClick={() => { if (realMode) unavailable("Mark all as read"); else { markAllRead(role, notificationClient); toast.success("All marked as read"); } }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-slate-50 border border-slate-200"
               style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}
             >
               <CheckCheck size={12} /> Mark all read
             </button>
             <button
-              onClick={() => { if (realMode) unavailable("Clear read notifications"); else { removeAllRead(role, notificationClient); toast.success("Read notifications cleared"); } }}
+              disabled={realMode} title={realMode ? "Clearing notifications is unavailable" : undefined} onClick={() => { if (realMode) unavailable("Clear read notifications"); else { removeAllRead(role, notificationClient); toast.success("Read notifications cleared"); } }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-red-50 border border-red-200"
               style={{ fontSize: 11, fontWeight: 600, color: "#C8102E" }}
             >
@@ -182,7 +183,7 @@ export function NotificationsCenter({ role: roleProp, clientName, onNavigate }: 
           {visible.length === 0 ? (
             <div className="px-6 py-12 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
               <Bell size={32} style={{ color: "#CBD5E1", margin: "0 auto 8px" }} />
-              {realMode ? "Real notifications are unavailable." : "No notifications match your filters."}
+              {realMode ? loading ? 'Loading notifications…' : error ? 'Notifications could not be loaded.' : !available ? 'Real notifications are unavailable.' : 'No notifications match your filters.' : 'No notifications match your filters.'}
             </div>
           ) : (
             visible.map((n) => {

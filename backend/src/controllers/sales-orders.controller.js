@@ -55,7 +55,7 @@ export function createSalesOrdersController({ service, logger = console }) {
       if (result?.success === true) return response.status(200).json({ success: true, data: result.data });
       const [status, message] = errors[result?.code] ?? errors.SERVICE_UNAVAILABLE;
       if (status === 503) logServiceFailure({ logger, operation: `sales.orders.${operation}`, requestId: request.requestId, stage: 'service_result', error: result });
-      return response.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message, ...(result?.code === 'VALIDATION_ERROR' ? { errors: result.errors } : {}) });
+      return response.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message, ...(result?.errors && ['VALIDATION_ERROR', 'MATERIAL_COSTING_INCOMPLETE'].includes(result.code) ? { errors: result.errors } : {}) });
     } catch (error) {
       logServiceFailure({ logger, operation: `sales.orders.${operation}`, requestId: request.requestId, stage, error });
       return response.status(503).json({ success: false, code: 'SERVICE_UNAVAILABLE', message: errors.SERVICE_UNAVAILABLE[1] });

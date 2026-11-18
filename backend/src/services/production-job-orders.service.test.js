@@ -14,6 +14,13 @@ function database({ rows = [row], audit = [{ actorId: '8', newValue: JSON.string
     if (sql.includes("subject_type='job_order'")) return [audit];
     if (sql.includes('FROM quotations WHERE id=?')) return [[{ id: '31', reference: 'Q-1', revisionNumber: 2, status: 'sent', totalAmount: '100.00', downpaymentPercent: 20, downpaymentAmount: '20.00' }]];
     if (sql.includes('FROM purchase_orders WHERE id=?')) return [[{ id: '401', reference: 'PO-1', clientReference: 'CLIENT-PO', uploadedAt: null, receivedAt: null, clearedAt: null }]];
+    if (sql.includes('FROM production_stages')) return [[
+      { position: 0, label: 'Molding' },
+      { position: 8, label: 'Quality / Product Inspection' }
+    ]];
+    if (sql.includes('FROM production_events pe')) return [[
+      { id: '601', stagePosition: 0, action: 'done', reason: null, performedBy: '8', occurredAt: '2026-11-18T00:01:00.000000Z', stageLabel: 'Molding' }
+    ]];
     throw new Error(`Unexpected SQL: ${sql}`);
   }, release() {} };
   return { db: { async getConnection() { return connection; } }, calls };
@@ -36,6 +43,9 @@ test('Production Job Order detail resolves audit-backed quotation and PO traceab
   assert.equal(result.data.trace.acceptedQuotationReference, 'Q-1');
   assert.equal(result.data.purchaseOrder.reference, 'PO-1');
   assert.equal(result.data.poDocumentAvailable, false);
+  assert.equal(result.data.stages[0].label, 'Molding');
+  assert.equal(result.data.productionEvents[0].action, 'done');
+  assert.equal(result.data.productionEvents[0].stageLabel, 'Molding');
   assert.doesNotMatch(JSON.stringify(result), /objectPath|bucket|password|fileBytes/);
 });
 

@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { useSalesWorkspaceData, type SalesDashboardData } from "./sales/useSalesWorkspaceData";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle, Boxes, Calculator, CheckCircle2, ChevronDown,
@@ -281,8 +282,9 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
   const [draftYear, setDraftYear] = useState(Number(localMonth().slice(0, 4)));
   const { rawMaterials } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
-  const { mode } = useSession();
+  const { mode, role } = useSession();
   const realMode = mode === "real";
+  const owner = useSalesWorkspaceData<SalesDashboardData>('/api/owner/dashboard', realMode && role === 'owner');
 
   const allOrders = useMemo(() => {
     const unique = new Map<string, Inquiry>();
@@ -734,7 +736,12 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
                   icon={companyHealth.label === "On track" ? CheckCircle2 : AlertTriangle}
                   color={companyHealth.color}
                 />
-                <MetricCard
+                {realMode ? <>
+                  <MetricCard label="Pending Inquiries" value="—" liveValue={owner.data?.pendingInquiries} detail="Current Owner overview · not period filtered" icon={ShoppingCart} color={palette.red} />
+                  <MetricCard label="Quotations Sent" value="—" liveValue={owner.data?.quotationsSent} detail="Current Owner overview · not period filtered" icon={Factory} color={palette.navy} />
+                  <MetricCard label="POs Received" value="—" liveValue={owner.data?.purchaseOrdersReceived} detail="Current Owner overview · not period filtered" icon={Truck} color={palette.blue} />
+                  <MetricCard label="Verified Revenue" value="—" liveValue={owner.data ? `₱${owner.data.verifiedRevenue}` : undefined} detail="Verified payments · not period filtered" icon={Calculator} color={palette.green} />
+                </> : <><MetricCard
                   label="Active Orders"
                   value={currentActiveOrders.length}
                   detail="Current non-terminal orders"
@@ -750,7 +757,9 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
                   icon={Calculator}
                   color={currentOverdueReceivables ? palette.amber : palette.blue}
                 />
+                </>}
               </div>
+              {realMode && role === 'owner' && <div className="mt-3 text-sm text-slate-600">{owner.loading ? <p role="status">Loading Owner overview…</p> : owner.error ? <p role="alert">{owner.error}</p> : null}<button onClick={owner.refresh} disabled={owner.loading} className="rounded border bg-white px-3 py-2 text-xs font-semibold">{owner.error ? 'Retry Owner overview' : 'Refresh Owner overview'}</button></div>}
             </section>
 
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
@@ -961,10 +970,12 @@ export function AnalyticsFullView({ initialView = "all" }: Props) {
           <>
             <SectionHeading
               title="Executive Reports"
-              description={`Download store-backed CSV reports for ${periodDisplay(reportMonth)}.`}
+              description={realMode ? 'Report definitions and exports are unavailable.' : `Download store-backed CSV reports for ${periodDisplay(reportMonth)}.`}
               action={(
                 <button
                   type="button"
+                  disabled={realMode}
+                  title={realMode ? 'Report printing and exports require an approved Reporting contract.' : undefined}
                   onClick={() => window.print()}
                   className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 font-dm text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
@@ -1005,13 +1016,14 @@ function SectionHeading({
 }
 
 function MetricCard({
-  label, value, detail, icon: Icon, color,
+  label, value, detail, icon: Icon, color, liveValue,
 }: {
   label: string;
   value: string | number;
   detail: string;
   icon: LucideIcon;
   color: string;
+  liveValue?: string | number;
 }) {
   const { mode } = useSession();
   const displayedValue = mode === "real" ? "—" : value;
@@ -1024,7 +1036,7 @@ function MetricCard({
         </span>
       </div>
       <div className="font-syne mt-2 truncate" title={String(displayedValue)} style={{ fontSize: typeof displayedValue === "string" && displayedValue.length > 12 ? 20 : 28, fontWeight: 700, color: palette.text, lineHeight: 1.15 }}>
-        {displayedValue}
+        {mode === "real" && liveValue != null ? liveValue : displayedValue}
       </div>
       <div className="font-dm mt-1 truncate" style={{ fontSize: 11, color: palette.muted }}>{detail}</div>
     </article>

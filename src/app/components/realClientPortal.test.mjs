@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("./RealClientPortal.tsx", import.meta.url), "utf8");
 const data = await readFile(new URL("./client/data.tsx", import.meta.url), "utf8");
-const portal = await readFile(new URL("./client/ClientPortal.tsx", import.meta.url), "utf8");
+const portal = await readFile(new URL("./ClientPortal.tsx", import.meta.url), "utf8");
 const app = await readFile(new URL("../App.tsx", import.meta.url), "utf8");
 
 test("authenticated Client routing selects the scoped original portal without changing employee routing", () => {
@@ -25,10 +25,12 @@ test("Client business data has no Demo persistence and all unsupported commands 
 
 test("Real Client Orders keeps the target layout and separates unavailable, empty, and filtered states", () => {
   for (const marker of ["My Orders", "Create Order", "View Transaction History", "Search My Orders", "Filter My Orders by status", "Sort My Orders by submission date"]) assert.match(portal, new RegExp(marker));
-  assert.match(portal, /aria-label="Refresh My Orders"[\s\S]*onClick=\{refresh\}[\s\S]*disabled=\{loading\}/);
+  assert.match(portal, /aria-label="Refresh My Orders"/);
+  assert.match(portal, /onClick=\{refresh\}/);
+  assert.match(portal, /disabled=\{loading\}/);
   assert.match(portal, /Loading authenticated orders/);
   assert.match(portal, /Unable to load authenticated orders/);
-  assert.match(portal, /No orders are available for this account/);
+  assert.match(portal, /No active orders yet/);
   assert.match(portal, /No orders match your search or status filter/);
   assert.doesNotMatch(portal, /Refresh records/);
   assert.doesNotMatch(portal, /Real Client records\. Drafts are unsaved/);
@@ -46,7 +48,8 @@ test("Client inquiry form validates API limits and keeps sketch retries within u
 
 test("Real Client Portal keeps populated sections while making unsupported writes explicit", () => {
   for (const marker of ["Order Status Tracker", "Delivery &amp; Tracking", "My Invoices", "Company Settings", "Transaction History"]) assert.match(portal, new RegExp(marker));
-  for (const marker of ["Upload the actual PO document", "Your request will be recorded for Sales review", "Payment methods and bank instructions are unavailable", "Profile details are read-only in Real Mode", "Password change unavailable", "SIGNED DR SUBMISSION UNAVAILABLE"]) assert.match(portal, new RegExp(marker));
+  for (const marker of ["Client PO reference", "Drop your PO here or click to browse", "Sales will review the uploaded PO document", "Payment methods and bank instructions are unavailable", "Profile details are read-only in Real Mode", "Change password", "Signed Delivery Receipt submission is unavailable."]) assert.match(portal, new RegExp(marker));
+  assert.match(portal, /changeClientPassword\(currentPwd, newPwd\)/);
   assert.match(portal, /Submit Inquiry/);
   assert.doesNotMatch(portal, /Order creation and reorder submission are unavailable/);
 });
@@ -54,10 +57,14 @@ test("Real Client Portal keeps populated sections while making unsupported write
 test("Real Client Portal keeps unavailable notification mutations disabled and preserves Demo routing", async () => {
   const notifications = await readFile(new URL("./client/NotificationsCenter.tsx", import.meta.url), "utf8");
   const demo = await readFile(new URL("./ClientPortal.tsx", import.meta.url), "utf8");
+  const demoProvider = await readFile(new URL("./client/demoData.tsx", import.meta.url), "utf8");
   assert.match(notifications, /title="Mark all as read is unavailable in Real Mode"/);
   assert.match(notifications, /title="Clearing notifications is unavailable in Real Mode"/);
   assert.match(notifications, /disabled[\s\S]*Hide notification from your history/);
-  assert.match(demo, /from "\.\.\/store\/orders"/);
+  assert.match(demo, /from "\.\/client\/workspace"/);
+  assert.match(demo, /DemoClientDataProvider = import\.meta\.env\.DEV \? lazy/);
+  assert.match(demoProvider, /DemoWorkspaceProvider/);
+  assert.match(demoProvider, /from '\.\.\/\.\.\/store\/orders'/);
   assert.doesNotMatch(demo, /RealModePending/);
 });
 

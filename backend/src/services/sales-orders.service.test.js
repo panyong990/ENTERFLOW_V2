@@ -241,6 +241,9 @@ test('Sales quotation preparation calculates server-side costing, persists a sen
   assert.equal(result.data.laborCost, '10.00');
   assert.equal(result.data.markupAmount, '5.00');
   assert.equal(result.data.downpaymentAmount, '11.00');
+  const bomQuery = h.calls.find(call => call.sql.includes('FROM bom_templates'))?.sql ?? '';
+  assert.match(bomQuery, /m\.approved_costing_price unitPrice/);
+  assert.doesNotMatch(bomQuery, /m\.unit_price unitPrice/);
   assert.equal(h.calls.some(call => /\b(UPDATE|INSERT|DELETE)\b/i.test(call.sql) && /materials|finished_goods|quantity_on_hand|stock_responses/i.test(call.sql)), false);
   assert.equal(h.calls.some(call => call.sql === 'COMMIT'), true);
 });
@@ -357,6 +360,7 @@ test('Sales quotation preparation fails closed when material pricing is missing 
   const result = await createSalesOrdersService(h).createQuotation('91', quotationBody, { userId: '8', roleCode: 'sales', accountType: 'employee' });
   assert.equal(result.success, false);
   assert.equal(result.code, 'MATERIAL_COSTING_INCOMPLETE');
+  assert.deepEqual(result.errors, { '11': 'An approved BOM mapping and material price are required.' });
   assert.equal(h.calls.some(call => call.sql === 'COMMIT'), false);
   assert.equal(h.calls.some(call => call.sql === 'ROLLBACK'), true);
 });

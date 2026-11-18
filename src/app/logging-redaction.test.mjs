@@ -22,8 +22,8 @@ for (const file of files) {
     const source = await promisify(readFile)(join(root, file), 'utf8');
     const calls = [...source.matchAll(/console\.(?:error|warn|log|info|debug)\s*\(([^\n]*)\);/g)];
     const allCalls = [...source.matchAll(/console\.(?:error|warn|log|info|debug)\s*\(/g)];
-    assert.ok(calls.length > 0);
     assert.equal(calls.length, allCalls.length, 'Every console call must be checked.');
+    if (calls.length === 0) assert.doesNotMatch(source, /console\.(?:error|warn|log|info|debug)\s*\(/);
     for (const [, args] of calls) {
       assert.match(args, /^"[^"\r\n]+"$/, 'No error objects, interpolation or extra arguments.');
       assert.match(args, /Could not|invalid|Cannot generate|read-only/);

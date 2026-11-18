@@ -24,7 +24,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
   const session = useSession();
   const role = roleProp ?? session.role;
   const navigate = onNavigate ?? session.navigate;
-  const { unreadFor, isReadFor, markRead, markAllRead } = useNotifications();
+  const { unreadFor, isReadFor, markRead, markAllRead, loading, error, available, refresh } = useNotifications();
   const { inquiries, completedJOs } = useOrders();
   const notificationClient = role === "client" ? clientName ?? session.name : undefined;
   const items = unreadFor(role, notificationClient);
@@ -88,7 +88,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
 
   const handleClick = (notification: (typeof items)[number]) => {
     const isReceipt = isOfficialReceiptNotification(notification);
-    markRead(notification.id, role, notificationClient);
+    if (session.mode !== 'real') markRead(notification.id, role, notificationClient);
     if (isReceipt) {
       const receipt = findReceiptForNotification(notification, [...inquiries, ...completedJOs], notificationClient);
       if (receipt) setReceiptToView(receipt);
@@ -113,7 +113,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
   return (
     <div ref={ref} className="relative">
       <button
-        aria-label={`Notifications (${unreadCount} unread)`}
+        aria-label={session.mode === 'real' && (!available || loading || error) ? 'Notifications (unavailable)' : `Notifications (${unreadCount} unread)`}
         onClick={() => setOpen((v) => !v)}
         className="relative w-10 h-10 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50"
       >
@@ -148,7 +148,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
             </div>
             {unreadCount > 0 && (
               <button
-                onClick={() => markAllRead(role, notificationClient)}
+                disabled={session.mode === 'real'} title={session.mode === 'real' ? 'Mark all as read is unavailable' : undefined} onClick={() => markAllRead(role, notificationClient)}
                 className="font-dm flex items-center gap-1 hover:underline"
                 style={{ fontSize: 11, color: "#1A2B4A", fontWeight: 600 }}
               >
@@ -195,7 +195,7 @@ export function NotificationBell({ role: roleProp, clientName, onNavigate }: Pro
 
           {/* List */}
           <div className="min-h-0 flex-1 overflow-auto">
-            {items.length === 0 ? (
+            {session.mode === 'real' && (loading || error || !available) ? <div className="px-5 py-8 text-center font-dm text-xs text-slate-500">{loading ? 'Loading notifications…' : error || 'Notifications are unavailable for this role.'}{available && !loading && <button onClick={refresh} className="ml-2 rounded border px-2 py-1">Retry</button>}</div> : items.length === 0 ? (
               <div className="px-5 py-8 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>
                 No notifications for your role yet.
               </div>

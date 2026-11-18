@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { autofillBOMForType, useMaterials, type BOMLine, type PartCategory } from "../store/materials";
@@ -9,6 +9,26 @@ import { useSession } from "../store/session";
 import { useStockRequests, type StockRequest, type StockRequestMaterial, type StockRequestStatus } from "../store/stockRequests";
 
 type Mode = "sales" | "warehouse";
+
+export type StockRequestPresentation = StockRequest & {
+  reference?: string;
+  quotationReference?: string;
+  historyUnavailable?: boolean;
+  lineIds?: Record<string, string>;
+};
+
+// Data and commands can come from an authenticated adapter while this modal
+// remains the single presentation for request lists, reports, and actions.
+export interface StockRequestsAdapter {
+  requests: StockRequestPresentation[];
+  loading?: boolean;
+  error?: string;
+  saving?: boolean;
+  writesUnavailable?: boolean;
+  retry?: () => void;
+  newRequest?: ReactNode;
+  respond?: (request: StockRequestPresentation, quantities: Record<string, string>, updateInventory: boolean) => Promise<void>;
+}
 
 const statusLabel: Record<StockRequestStatus, string> = {
   pending: "PENDING WAREHOUSE RESPONSE",
@@ -26,7 +46,7 @@ const statusFilters: { id: StockRequestStatus | "all"; label: string }[] = [
 ];
 
 const dateTime = (value?: string) => value ? new Date(value).toLocaleString() : "—";
-const quantity = (value: number) => value.toLocaleString("en-PH", { maximumFractionDigits: 3 });
+const quantity = (value: number) => Number.isFinite(value) ? value.toLocaleString("en-PH", { maximumFractionDigits: 4 }) : "Not recorded";
 
 function inferSize(product?: ProductLine): "Large" | "Medium" | "Small" | undefined {
   if (!product?.height) return undefined;
@@ -100,16 +120,30 @@ export function buildStockRequestMaterials(
   return requirements.size > 0 ? [...requirements.values()] : undefined;
 }
 
-export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: Mode; onClose: () => void; initialRequestId?: string }) {
+export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }: { mode: Mode; onClose: () => void; initialRequestId?: string; adapter?: StockRequestsAdapter }) {
   const { inquiries } = useOrders();
   const { rawMaterials, findBOMTemplate } = useMaterials();
-  const { requests, createRequest, respondToRequest } = useStockRequests();
+  const { requests: demoRequests, createRequest, respondToRequest } = useStockRequests();
   const { push } = useNotifications();
   const session = useSession();
+  const apiMode = !!adapter || session.mode === "real";
+  const requests: StockRequestPresentation[] = adapter?.requests ?? (apiMode ? [] : demoRequests);
+  const busy = !!adapter?.saving;
+  const writesUnavailable = busy || !!adapter?.loading || !!adapter?.writesUnavailable;
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [inquiryId, setInquiryId] = useState("");
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(initialRequestId ?? null);
   const [statusFilter, setStatusFilter] = useState<StockRequestStatus | "all">("all");
+  const [observedQuantities, setObservedQuantities] = useState<Record<string, string>>({});
+  const [confirmingInventory, setConfirmingInventory] = useState(false);
+  const [commandError, setCommandError] = useState("");
+  const commandLock = useRef(false);
+
+  useEffect(() => {
+    setObservedQuantities({});
+    setConfirmingInventory(false);
+    setCommandError("");
+  }, [selectedRequestId, requests]);
 
   const selectedRequest = requests.find((request) => request.requestId === selectedRequestId);
   const selectedInquiry = inquiries.find((inquiry) => inquiry.id === selectedRequest?.inquiryId);
@@ -140,6 +174,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
   }, [initialRequestId]);
 
   const createForInquiry = () => {
+    if (apiMode) return;
     const inquiry = inquiries.find((item) => item.id === inquiryId);
     if (!inquiry) {
       toast.error("Select an existing inquiry or order");
@@ -199,6 +234,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
   };
 
   const sendStockResponse = (request: StockRequest) => {
+    if (apiMode) return;
     const responseMaterials = request.requestedMaterials.map((required) => {
       const material = rawMaterials.find((item) => item.id === required.materialId);
       const currentQuantity = material?.qtyInStock ?? 0;
@@ -230,7 +266,25 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
   const latestResponse = selectedRequest?.latestResponse;
   const hasRemainingShortage = !!latestResponse?.materials.some((material) => material.status === "shortage");
 
+  const validObservations = () => !!selectedRequest?.requestedMaterials.length && selectedRequest.requestedMaterials.every((material) =>
+    /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(observedQuantities[material.materialId] ?? "") && Number(observedQuantities[material.materialId]) <= 1000000000);
+  const observationError = "Enter an observed non-negative quantity for every material line. Blank means not recorded.";
+  const submitObservedResponse = async (updateInventory: boolean) => {
+    if (!selectedRequest || !adapter?.respond || writesUnavailable || commandLock.current || (updateInventory && !confirmingInventory)) return;
+    if (!validObservations()) { setCommandError(observationError); return; }
+    commandLock.current = true;
+    setCommandError("");
+    try {
+      await adapter.respond(selectedRequest, observedQuantities, updateInventory);
+      setConfirmingInventory(false);
+      toast.success(updateInventory ? "Recorded inventory quantities saved" : "Stock levels sent to Sales");
+    } catch (cause) {
+      setCommandError(cause instanceof Error ? cause.message : "Stock Request update failed.");
+    } finally { commandLock.current = false; }
+  };
+
   const close = () => {
+    if (busy || commandLock.current) return;
     setSelectedRequestId(null);
     setShowNewRequest(false);
     onClose();
@@ -244,13 +298,15 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
             <h2 className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>STOCK REQUESTS</h2>
             <p className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>{mode === "sales" ? "Sales ↔ Warehouse · shortage and replenishment requests" : "Shortage requests · update Inventory before sending new stock levels"}</p>
           </div>
-          <button onClick={close} aria-label="Close stock requests" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={17} /></button>
+          <button onClick={close} disabled={busy} aria-label="Close stock requests" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={17} /></button>
         </header>
 
         <div className="p-5 flex flex-col gap-4 min-h-0 flex-1 overflow-hidden">
+          {adapter?.loading && <p role="status" className="font-dm text-sm text-slate-500">Loading Stock Requests…</p>}
+          {(adapter?.error || commandError) && <div><p role="alert" className="font-dm text-sm text-red-800">{adapter?.error || commandError}</p>{adapter?.retry && <button type="button" disabled={busy || adapter.loading} onClick={adapter.retry} className="mt-2 rounded border border-slate-300 px-3 py-1 font-dm text-xs">Retry Stock Requests</button>}</div>}
           {!selectedRequest ? (
             <>
-              {mode === "sales" && (
+              {mode === "sales" && !apiMode && (
                 <div className="flex justify-end">
                   <button onClick={() => setShowNewRequest((value) => !value)} className="flex items-center gap-2 px-3 py-2 rounded-md text-white font-dm" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>
                     <Plus size={14} /> NEW STOCK REQUEST
@@ -258,7 +314,8 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
                 </div>
               )}
 
-              {mode === "sales" && showNewRequest && (
+              {mode === "sales" && apiMode && adapter?.newRequest}
+              {mode === "sales" && !apiMode && showNewRequest && (
                 <div className="rounded-lg border border-slate-200 p-4 flex flex-col gap-3">
                   <label className="font-dm flex flex-col gap-1.5" style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>
                     SELECT EXISTING INQUIRY / ORDER
@@ -318,7 +375,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-                {visibleRequests.length === 0 ? (
+                {adapter?.loading || adapter?.error ? null : visibleRequests.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>No stock requests in this view.</div>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -335,8 +392,9 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
                       return (
                         <div key={request.requestId} className="rounded-lg border border-slate-200 p-3 flex items-center gap-3 flex-wrap">
                           <div className="flex-1 min-w-56">
-                            <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>{request.requestId}</div>
+                            <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>{request.reference ?? request.requestId}</div>
                             <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{request.inquiryReference} · {request.clientName}</div>
+                            {apiMode && <div className="font-dm mt-0.5 text-xs text-slate-500">Order {request.inquiryReference} · Quotation {request.quotationReference ?? "Not recorded"} · Requested by {request.requestedBy}</div>}
                             <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 800, color: request.status === "update_requested" ? "#B45309" : request.status === "pending" ? "#1D4ED8" : "#15803D" }}>{statusLabel[request.status]}</div>
                           </div>
                           <div className="font-dm" style={{ fontSize: 10, color: "#64748B" }}>
@@ -353,15 +411,16 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
             </>
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <button onClick={() => setSelectedRequestId(null)} className="mb-3 inline-flex items-center gap-1 font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#1A2B4A" }}>
+              <button disabled={busy} onClick={() => setSelectedRequestId(null)} className="mb-3 inline-flex items-center gap-1 font-dm" style={{ fontSize: 11, fontWeight: 800, color: "#1A2B4A" }}>
                 <ArrowLeft size={14} /> BACK TO REQUESTS
               </button>
               <section className="rounded-lg border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3" style={{ backgroundColor: "#F8FAFC" }}>
-                  <div className="font-syne" style={{ fontSize: 15, fontWeight: 800, color: "#1A2B4A" }}>{selectedRequest.requestId}</div>
+                  <div className="font-syne" style={{ fontSize: 15, fontWeight: 800, color: "#1A2B4A" }}>{selectedRequest.reference ?? selectedRequest.requestId}</div>
                   <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>
-                    {selectedRequest.inquiryReference} · {selectedInquiry?.clientName ?? selectedRequest.clientName} · Requested by {selectedRequest.requestedBy} · {dateTime(selectedRequest.createdAt)}
+                    {selectedRequest.inquiryReference} · {(!apiMode && selectedInquiry?.clientName) || selectedRequest.clientName} · Requested by {selectedRequest.requestedBy} · {dateTime(selectedRequest.createdAt)}
                   </div>
+                  {apiMode && <div className="font-dm mt-1 text-xs text-slate-500">Order {selectedRequest.inquiryReference} · Quotation {selectedRequest.quotationReference ?? "Not recorded"}</div>}
                   <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 800, color: selectedRequest.status === "update_requested" ? "#B45309" : selectedRequest.status === "pending" ? "#1D4ED8" : "#15803D" }}>{statusLabel[selectedRequest.status]}</div>
                 </div>
 
@@ -371,7 +430,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
                   </div>
                   <table className="w-full text-left">
                     <thead>
-                      <tr>{["Material", "Required", "Current Stock", "Status", "Shortage"].map((heading) => (
+                      <tr>{["Material", "Required", ...(apiMode ? ["Stock at Request", "Shortage at Request"] : []), "Current Stock", "Status", "Shortage", ...(mode === "warehouse" && adapter?.respond ? ["Observed Quantity"] : [])].map((heading) => (
                         <th key={heading} className="px-3 py-2 font-dm" style={{ backgroundColor: "#F1F5F9", fontSize: 10, fontWeight: 800, color: "#64748B" }}>{heading}</th>
                       ))}</tr>
                     </thead>
@@ -382,9 +441,14 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
                           <tr key={material.materialId} style={{ borderTop: "1px solid #E2E8F0" }}>
                             <td className="px-3 py-2 font-dm" style={{ fontSize: 11, color: "#0F172A" }}>{material.materialName}</td>
                             <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 11 }}>{quantity(material.requiredQuantity)} {material.unit}</td>
+                            {apiMode && <>
+                              <td className="px-3 py-2 font-mono-jb text-xs">{material.stockAtRequest == null ? "Not recorded" : `${quantity(material.stockAtRequest)} ${material.unit}`}</td>
+                              <td className="px-3 py-2 font-mono-jb text-xs">{material.shortageAtRequest == null ? "Not recorded" : `${quantity(material.shortageAtRequest)} ${material.unit}`}</td>
+                            </>}
                             <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 11 }}>
-                              {response ? `${quantity(response.currentQuantity)} ${response.unit}` : "stockAtRequest" in material && material.stockAtRequest !== undefined ? `${quantity(material.stockAtRequest)} ${material.unit}` : "—"}
+                              {response ? `${quantity(response.currentQuantity)} ${response.unit}` : !apiMode && "stockAtRequest" in material && material.stockAtRequest !== undefined ? `${quantity(material.stockAtRequest)} ${material.unit}` : "Not recorded"}
                             </td>
+                            {mode === "warehouse" && adapter?.respond && <td className="px-3 py-2"><input aria-label={`Current quantity for ${material.materialName}`} type="number" min="0" max="1000000000" step="0.0001" disabled={writesUnavailable || confirmingInventory} value={observedQuantities[material.materialId] ?? ""} onChange={(event) => { setCommandError(""); setObservedQuantities((current) => ({ ...current, [material.materialId]: event.target.value })); }} className="w-32 rounded border border-slate-300 px-2 py-1 font-dm text-xs" /></td>}
                             <td className="px-3 py-2 font-dm" style={{ fontSize: 11, fontWeight: 800, color: response ? response.status === "sufficient" ? "#15803D" : "#B45309" : "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? "#B45309" : "#64748B" }}>
                               {response ? response.status === "sufficient" ? "SUFFICIENT" : "SHORTAGE" : "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? "SHORTAGE" : "—"}
                             </td>
@@ -411,11 +475,22 @@ export function StockRequestsModal({ mode, onClose, initialRequestId }: { mode: 
                       </div>
                     </details>
                   )}
+                  {selectedRequest.historyUnavailable && <p className="font-dm mt-3 text-xs text-slate-500">Previous response history and responder names are not supplied by the Stock Requests service. Only the latest recorded response is shown.</p>}
                 </div>
 
                 {mode === "warehouse" && (
                   <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-end gap-2 flex-wrap">
-                    {mode === "warehouse" && (selectedRequest.status === "pending" || selectedRequest.status === "update_requested" || (selectedRequest.status === "responded" && hasRemainingShortage)) && (
+                    {adapter?.respond && <>
+                      <p className="w-full font-dm text-xs text-slate-500">Enter actual observed quantities. Sending stock levels records a response. Recording received stock replaces quantities on hand after confirmation.</p>
+                      <button type="button" disabled={writesUnavailable || confirmingInventory} onClick={() => void submitObservedResponse(false)} className="px-4 py-2 rounded-md text-white font-dm disabled:opacity-50" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>SEND UPDATED STOCK LEVELS</button>
+                      <button type="button" disabled={writesUnavailable || confirmingInventory} onClick={() => { if (!validObservations()) { setCommandError(observationError); return; } setCommandError(""); setConfirmingInventory(true); }} className="rounded-md border border-slate-300 px-4 py-2 font-dm text-xs font-bold disabled:opacity-50">Record received stock</button>
+                      {confirmingInventory && <div role="alertdialog" aria-label="Confirm manual inventory quantities" className="w-full rounded-lg border border-blue-200 bg-blue-50 p-3 font-dm text-xs">
+                        <p>Confirm these observed quantities. This replaces the quantity on hand; it does not add requested quantities or reserve stock.</p>
+                        {selectedRequest.requestedMaterials.map((material) => <p key={material.materialId} className="mt-1">{material.materialName}: {observedQuantities[material.materialId]} {material.unit}</p>)}
+                        <div className="mt-3 flex justify-end gap-3"><button type="button" disabled={busy} onClick={() => setConfirmingInventory(false)}>Cancel inventory update</button><button type="button" disabled={writesUnavailable} onClick={() => void submitObservedResponse(true)} className="rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50">Confirm recorded quantities</button></div>
+                      </div>}
+                    </>}
+                    {!apiMode && (selectedRequest.status === "pending" || selectedRequest.status === "update_requested" || (selectedRequest.status === "responded" && hasRemainingShortage)) && (
                       <button onClick={() => sendStockResponse(selectedRequest)} className="px-4 py-2 rounded-md text-white font-dm" style={{ backgroundColor: "#1A2B4A", fontSize: 11, fontWeight: 800 }}>
                         SEND UPDATED STOCK LEVELS
                       </button>

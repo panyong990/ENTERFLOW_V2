@@ -16,12 +16,12 @@ test("Real Mode routes to the existing complete Settings screen", () => {
 test("Real Settings excludes Demo values and blocks false persistence", () => {
   assert.match(store, /realUnavailableSettings/);
   assert.match(store, /mode === "real" \? realUnavailableSettings : defaults/);
-  assert.match(settings, /no authenticated profile, company-settings, password/);
+  assert.match(settings, /Real Mode settings limitation[\s\S]*company-settings and notification-preference persistence APIs are unavailable/);
   assert.match(settings, /Settings save is unavailable/);
-  assert.match(settings, /disabled=\{unavailable\}/);
+  assert.match(settings, /disabled=\{realMode\}/);
   assert.match(settings, /readOnly=\{realMode\}/);
-  assert.match(settings, /if \(realMode\)/);
-  assert.match(settings, /toast\.success\("Settings saved"/);
+  const saveHandler = settings.slice(settings.indexOf("const handleSave"), settings.indexOf("return ("));
+  assert.match(saveHandler, /if \(realMode\)[\s\S]*return;[\s\S]*save\(\);[\s\S]*toast\.success\("Settings saved"/);
 });
 
 test("Demo Settings still uses the original store-backed save path", () => {

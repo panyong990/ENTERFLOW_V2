@@ -54,14 +54,15 @@ test('rejection history renders stored reason as escaped text and has no operati
  const loading=renderToStaticMarkup(React.createElement(InquiryRejectionArchive));assert.match(loading,/Read-only rejection history/);assert.match(loading,/Loading rejection history/);
 });
 test('Real rejection UI retains eligibility, revision, cancellation, submission-lock and failure boundaries',async()=>{
- const source=await promisify(readFile)(join(root,'src/app/components/sales/SalesPipeline.tsx'),'utf8');
- for(const text of ["row.stageCode === 'inquiry'",'!row.archivedAt','!!detail.revision','rejectionLock.current','rejectSalesInquiry(row.id,value,detail!.revision!)',"setAction(null);setReason('');setRejectionError('');",'STALE_RECORD','INQUIRY_ALREADY_REJECTED','NETWORK_ERROR','clientRecipientAvailable'])assert.ok(source.includes(text),text);
- assert.ok(!source.includes('!row.pendingCancellation'));
+ const screen=await promisify(readFile)(join(root,'src/app/components/sales/LiveSalesActions.tsx'),'utf8');
+ const adapter=await promisify(readFile)(join(root,'src/app/components/sales/useOriginalSalesAdapter.ts'),'utf8');
+ for(const text of ['row.stageCode === "inquiry" && !row.archivedAt','!detail?.revision || adapter.busy','Reject &amp; Notify Client'])assert.ok(screen.includes(text),text);
+ for(const text of ['detail.stageCode !== "inquiry"','detail.archivedAt','!detail.revision','locks.current.has(inquiry.id)','rejectSalesInquiry(inquiry.id, reason.trim(), detail.revision)','uncertain.current.add(inquiry.id)','clientRecipientAvailable'])assert.ok(adapter.includes(text),text);
 });
 test('Demo notifications are emitted only after a successful store result and target Client/Sales',async()=>{
  const source=await promisify(readFile)(join(root,'src/app/components/SalesOrders.tsx'),'utf8');
  const handler=source.slice(source.indexOf('onReject={async (reason)'),source.indexOf('onAcceptCancel='));
- assert.match(handler,/await rejectInquiry/);assert.match(handler,/if \(!\(await rejectInquiry/);assert.match(handler,/recipients: \["sales", "client"\]/);assert.ok(!handler.includes('"owner"'));assert.ok(!handler.includes('"operations"'));
+ assert.match(handler,/await demo!\.orders\.rejectInquiry/);assert.match(handler,/if \(!\(await demo!\.orders\.rejectInquiry/);assert.match(handler,/recipients: \["sales", "client"\]/);assert.ok(!handler.includes('"owner"'));assert.ok(!handler.includes('"operations"'));
  const panel=source.slice(source.indexOf('{/* Reject inquiry — only on New Inquiry stage.'));
  assert.match(panel,/!inquiry.pendingCancellation && inquiry.stage === "inquiry"/);
 });

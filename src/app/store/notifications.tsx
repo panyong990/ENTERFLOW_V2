@@ -2,6 +2,9 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { toast } from "sonner";
 import type { Role } from "../components/Login";
 import { createRealReadOnlyProvider } from "./realMode.js";
+import { api } from "../api/client";
+import { useSession } from "./session";
+import type { SalesNotificationResult } from "../components/sales/useSalesWorkspaceData";
 
 export type Department = "sales" | "production" | "warehouse" | "logistics" | "payments" | "system";
 
@@ -66,6 +69,10 @@ const seed: Notification[] = import.meta.env.DEV ? [
 ] : [];
 
 interface Ctx {
+  loading?: boolean;
+  error?: string;
+  available?: boolean;
+  refresh?: () => void;
   notifications: Notification[];
   unreadFor: (role: Role, clientName?: string) => Notification[];
   push: (n: Omit<Notification, "id" | "time" | "read">) => void;
@@ -144,8 +151,33 @@ function addScopeValue(values: string[] | undefined, key: string): string[] {
 
 export function NotificationsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
   const realMode = mode === "real";
+  const session = useSession();
+  const available = !realMode || session.role === 'sales';
+  const [loading, setLoading] = useState(realMode && available);
+  const [error, setError] = useState('');
+  const [version, setVersion] = useState(0);
   const [list, setList] = useState<Notification[]>(() => realMode ? [] : loadPersistedNotifications());
   const nextNotificationId = useRef(0);
+
+  useEffect(() => {
+    if (!realMode || !available) return;
+    const controller = new AbortController();
+    setLoading(true); setError(''); setList([]);
+    const load = async () => {
+      const records: Notification[] = [];
+      for (let page = 1; !controller.signal.aborted; page++) {
+        const result = await api<SalesNotificationResult>(`/api/sales/notifications?status=all&sort=created-desc&page=${page}&pageSize=100`, { signal: controller.signal });
+        records.push(...result.items.map(item => ({ id: item.id, dept: item.category as Department, title: item.title, body: item.message,
+          time: item.createdAt, inquiryId: item.orderId ?? undefined, link: item.orderId ? 'sales' : undefined,
+          recipients: ['sales'] as Role[], read: item.isRead })));
+        if (records.length >= result.total) { if (!controller.signal.aborted) setList(records); return; }
+        if (!result.items.length || result.page !== page) throw new Error('Notification records are incomplete. Refresh to retry.');
+      }
+    };
+    void load().catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Notifications are unavailable.'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [realMode, available, version]);
 
   useEffect(() => {
     persistNotifications(mode, list);
@@ -244,9 +276,9 @@ export function NotificationsProvider({ children, mode = "demo" }: { children: R
     )));
   };
 
-  const contextValue: Ctx = { notifications: list, unreadFor, push, isReadFor, markRead, markAllRead, remove, removeAllRead };
+  const contextValue: Ctx = { notifications: list, unreadFor, push, isReadFor, markRead, markAllRead, remove, removeAllRead, loading, error, available, refresh: () => setVersion(value => value + 1) };
   const providerValue = realMode
-    ? createRealReadOnlyProvider({ ...contextValue, isReadFor }, ["unreadFor", "isReadFor"], "notifications")
+    ? createRealReadOnlyProvider({ ...contextValue, isReadFor }, ["unreadFor", "isReadFor", "refresh"], "notifications")
     : { ...contextValue, isReadFor };
 
   return (

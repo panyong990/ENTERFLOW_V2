@@ -1,4 +1,4 @@
-import { ClientPortal } from './client/ClientPortal';
+import { ClientPortal } from './ClientPortal';
 import { ClientDataProvider, useClientData } from './client/data';
 
 function AuthenticatedPortal({ displayName, onLogout }: { displayName: string; onLogout?: () => void }) {

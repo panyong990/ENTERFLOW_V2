@@ -13,7 +13,7 @@ async function harness(t, { role = 'production', accountType = 'employee', allow
   const server = await new Promise((resolve, reject) => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); instance.once('error', reject); });
   t.after(() => new Promise(resolve => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}/api/production`;
-  return { calls, request: (path, authenticated = true) => fetch(`${base}${path}`, { headers: authenticated ? { Cookie: `enterflow_session=${token}` } : {} }) };
+  return { calls, request: (path, authenticated = true, options = {}) => fetch(`${base}${path}`, { ...options, headers: { ...(options.headers ?? {}), ...(authenticated ? { Cookie: `enterflow_session=${token}` } : {}) } }) };
 }
 
 test('Production Job Order routes require authenticated employee Production access', async t => {
@@ -30,4 +30,15 @@ test('Authorized Production users can list and retrieve the same persisted Job O
   assert.equal((await h.request('/job-orders?q=JO-1&status=jo')).status, 200);
   assert.equal((await h.request('/job-orders/501')).status, 200);
   assert.deepEqual(h.calls.map(call => call[0]), ['list', 'detail']);
+});
+
+test('Production status mutation paths remain absent until a state machine is approved', async t => {
+  const h = await harness(t);
+  const response = await h.request('/job-orders/501/status', true, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'in_production' })
+  });
+  assert.equal(response.status, 404);
+  assert.equal(h.calls.length, 0);
 });

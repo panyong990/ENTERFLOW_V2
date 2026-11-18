@@ -42,13 +42,23 @@ export interface AuditEntry {
 
 export interface RawMaterial {
   databaseId?: string;
+  itemCode?: string | null;
   catalogCode?: string;
   source?: "catalog_reference" | "database";
   id: string;
   name: string;
-  category: PartCategory;
-  unit: Unit;
+  category: PartCategory | null;
+  unit: string;
   unitPrice: number;       // ₱ per unit
+  referenceUnitPrice?: number;
+  approvedCostingPrice?: number;
+  referencePriceText?: string | null;
+  referencePriceSource?: string | null;
+  referencePricePage?: number | null;
+  referencePriceRow?: number | null;
+  referencePriceStatus?: "unreviewed" | "needs_review" | "reviewed";
+  quantityStatus?: "unknown" | "provisional_sample" | "verified";
+  thresholdStatus?: "unknown" | "provisional_sample" | "verified";
   qtyInStock: number;      // fractional
   threshold: number;
   supplier?: string;
@@ -371,10 +381,10 @@ function isRawMaterial(value: unknown): value is RawMaterial {
   const material = value as Record<string, unknown>;
   return typeof material.id === "string"
     && typeof material.name === "string"
-    && typeof material.category === "string"
-    && Object.prototype.hasOwnProperty.call(partCategoryMeta, material.category)
+    && (material.category === null || (typeof material.category === "string" && Object.prototype.hasOwnProperty.call(partCategoryMeta, material.category)))
     && typeof material.unit === "string"
-    && rawMaterialUnits.includes(material.unit)
+    && material.unit.trim().length > 0
+    && material.unit.length <= 32
     && typeof material.unitPrice === "number"
     && Number.isFinite(material.unitPrice)
     && typeof material.qtyInStock === "number"

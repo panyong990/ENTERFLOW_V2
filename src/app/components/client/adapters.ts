@@ -59,7 +59,10 @@ export function project(bundle: OrderBundle, profile: ClientProfile, surface: Su
     pendingCancellation: order.pendingCancellation ?? undefined,
     cancellationHistory: order.cancellationHistory ?? [],
     poNumber: purchaseOrder?.clientReference ?? purchaseOrder?.reference, poUploadedAt: purchaseOrder?.uploadedAt, poFileName: purchaseOrder?.files?.[0]?.originalFilename ?? undefined, poFileId: purchaseOrder?.files?.[0]?.id ?? undefined,
-    // No file or review status is inferred from a received/cleared timestamp.
+    // Review state comes from the explicit API status, never from timestamps.
+    poUploaded: Boolean(purchaseOrder?.files?.length),
+    poStatus: purchaseOrder?.status === 'validated' ? 'Approved' : purchaseOrder?.status === 'rejected' ? 'Rejected' : purchaseOrder?.status === 'received' || purchaseOrder?.status === 'pending' ? 'Pending Sales Review' : undefined,
+    poRejectionReason: purchaseOrder?.decisionReason ?? undefined,
     payments: [],
   } as unknown as ClientView;
   const invoices = bundle.invoices.map(invoice => ({ ...base, id: invoice.id, sourceInvoice: invoice,
@@ -67,6 +70,7 @@ export function project(bundle: OrderBundle, profile: ClientProfile, surface: Su
     invoiceSentAt: invoice.sentAt, invoiceDueDate: invoice.dueOn ?? undefined, paymentCycleStartedAt: invoice.paymentCycleStartedAt ?? undefined,
     // Required DP is authoritative; do not recompute it from a different quotation revision.
     downpaymentAmount: draftMoney(invoice.requiredDownpayment), quotationDoc: undefined,
+    paymentTerms: invoice.paymentTermLabel,
     payments: bundle.payments.filter(p => p.invoiceId === invoice.id).map(p => ({ id: p.id, inquiryId: order.id, invoiceNo: invoice.reference, paymentType: p.paymentType, submittedAmount: draftMoney(p.submittedAmount), verifiedAmount: p.verifiedAmount == null ? undefined : draftMoney(p.verifiedAmount), method: p.method ?? undefined, referenceNumber: p.referenceNumber ?? undefined, rejectionReason: p.rejectionReason ?? undefined, proofFileId: p.proofFileId ?? undefined, proofFilename: p.proofFilename ?? undefined, paymentDate: p.paidOn, verificationStatus: p.verificationStatus, submittedAt: p.submittedAt })),
   } as ClientView));
   if (surface === 'invoices') return invoices;

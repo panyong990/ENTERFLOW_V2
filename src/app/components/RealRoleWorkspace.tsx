@@ -16,11 +16,15 @@ import { Clients } from "./Clients";
 import { NotificationsCenter } from "./NotificationsCenter";
 import { AnalyticsFullView } from "./AnalyticsFullView";
 import { Settings } from "./Settings";
-import { RealSalesWorkspace } from "./sales/RealSalesWorkspace";
+import { AdminDashboard } from "./AdminDashboard";
+import { EmployeeManagement } from "./EmployeeManagement";
+import { ClientManagement } from "./ClientManagement";
+import { RolesPermissions } from "./RolesPermissions";
 
-function DemoReferenceScreen({ role, route, onNavigate }: { role: EmployeeRole; route: string; onNavigate: (id: string) => void }) {
+function OriginalRoleScreen({ role, route, onNavigate, targetInquiryId }: { role: EmployeeRole; route: string; onNavigate: (id: string, inquiryId?: string) => void; targetInquiryId?: string }) {
+  if (route === "dashboard" && role === "admin") return <AdminDashboard />;
   if (route === "dashboard") return <Dashboard variant={role} onNavigate={onNavigate} />;
-  if (route === "sales") return <SalesOrders />;
+  if (route === "sales") return <SalesOrders targetInquiryId={targetInquiryId} />;
   if (route === "production" && role === "operations") return <OperationsProductionFloor />;
   if (route === "production") return <ProductionFloor />;
   if (route === "inventory" || route === "inventory-finished") return <Inventory key={route} initialTab={route === "inventory-finished" ? "finished" : "raw"} />;
@@ -33,6 +37,10 @@ function DemoReferenceScreen({ role, route, onNavigate }: { role: EmployeeRole; 
   if (route === "delivery-receipts") return <DeliveryReceipts />;
   if (route === "accounting") return <Accounting />;
   if (route === "users") return <UserManagementView />;
+  if (route === "clients" && role === "admin") return <ClientManagement />;
+  if (route === "client-requests" && role === "admin") return <ClientManagement initialTab="requests" />;
+  if (route === "employee-management" && role === "admin") return <EmployeeManagement />;
+  if (route === "roles" && role === "admin") return <RolesPermissions />;
   if (route === "clients") return <Clients />;
   if (route === "notifications") return <NotificationsCenter />;
   if (route === "analytics") return <AnalyticsFullView />;
@@ -40,13 +48,11 @@ function DemoReferenceScreen({ role, route, onNavigate }: { role: EmployeeRole; 
   return <main className="flex-1 p-8" role="status">This role has no workspace for this route.</main>;
 }
 
-export function RealRoleWorkspace({ role, route, onNavigate }: { role: EmployeeRole; route: string; onNavigate: (id: string) => void }) {
+export function RealRoleWorkspace({ role, route, onNavigate, targetInquiryId }: { role: EmployeeRole; route: string; onNavigate: (id: string, inquiryId?: string) => void; targetInquiryId?: string }) {
   if (route==='inquiry-rejections' && (role==='owner'||role==='operations')) return <InquiryRejectionArchive />;
-  if (role === "sales") return <RealSalesWorkspace route={route} onNavigate={onNavigate} />;
-  if (route === "sales") return <main className="flex-1 overflow-auto bg-[#F4F6F9] p-8" aria-labelledby="sales-unavailable-title"><section className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-8 shadow-sm"><h1 id="sales-unavailable-title" className="font-syne text-2xl font-bold text-slate-900">Sales &amp; Orders</h1><p className="mt-2 text-sm text-slate-600">Authenticated Sales records are unavailable for this role’s current workspace. Demo records are not shown.</p></section></main>;
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
     <div className="min-h-0 flex-1 overflow-hidden" aria-label="Existing role workspace">
-      <DemoReferenceScreen role={role} route={route} onNavigate={onNavigate} />
+      <OriginalRoleScreen role={role} route={route} onNavigate={onNavigate} targetInquiryId={targetInquiryId} />
     </div>
   </div>;
 }

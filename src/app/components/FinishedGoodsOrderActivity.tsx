@@ -41,7 +41,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
   className?: string;
   onItemClick?: (item: FinishedGood) => void;
 }) {
-  const { finishedGoods } = useMaterials();
+  const { finishedGoods, inventoryLoading, inventoryError, refreshInventory } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
   const [query, setQuery] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -303,8 +303,8 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
                       </span>
                     </td>
                     <td className="px-4 py-3" style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>{item.itemCode}</td>
-                    <td className="px-4 py-3" style={{ fontSize: 12, color: "#475569" }}>{item.enterFilPN}</td>
-                    <td className="px-4 py-3" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{item.itemName}</td>
+                    <td className="px-4 py-3" style={{ fontSize: 12, color: "#475569" }}>{item.enterFilPN || "Not recorded"}</td>
+                    <td className="px-4 py-3" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{item.itemName || "Not provided"}</td>
                     <td className="px-4 py-3" style={{ fontSize: 12, color: "#475569" }}>{item.client}</td>
                     <td className="px-4 py-3" style={{ fontSize: 12, fontWeight: 700, color: stockStatus.fg }}>{Number.isFinite(item.qtyInStock) ? `${item.qtyInStock} pcs` : "Not recorded"}</td>
                     <td className="px-4 py-3"><span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ backgroundColor: stockStatus.bg, color: stockStatus.fg }}>{stockStatus.label}</span></td>
@@ -316,7 +316,20 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
                 <tr>
                   <td colSpan={8} className="px-6 py-10 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
                     <Boxes size={28} style={{ color: "#CBD5E1", margin: "0 auto 8px" }} />
-                    No finished goods match the selected search and filters.
+                    <p role={inventoryError && !inventoryLoading ? "alert" : "status"}>
+                      {inventoryLoading
+                        ? "Loading authenticated finished-good inventory…"
+                        : inventoryError
+                          ? "Finished-good inventory is unavailable."
+                          : finishedGoods.length === 0
+                            ? "No finished-good inventory records are available."
+                            : "No finished goods match the selected search and filters."}
+                    </p>
+                    {inventoryError && !inventoryLoading && (
+                      <button type="button" onClick={refreshInventory} className="mt-3 rounded border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50">
+                        Retry inventory
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}

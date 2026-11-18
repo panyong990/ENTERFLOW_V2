@@ -31,7 +31,7 @@ export function Settings() {
       <Toaster position="bottom-right" richColors />
 
       {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">
-        <strong>Real Mode settings limitation:</strong> no authenticated profile, company-settings, password, or notification-preference persistence API is connected. Demo values are excluded. Organization fields are read-only; notification toggles below are local to this session and are not saved.
+        <strong>Real Mode settings limitation:</strong> company-settings and notification-preference persistence APIs are unavailable. Demo values are excluded. Organization fields are read-only; notification toggles below are local to this session and are not saved.
       </div>}
 
       <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-center justify-between">

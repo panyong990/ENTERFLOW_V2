@@ -245,6 +245,27 @@ test('quotation stale response is a safe conflict and write permissions and orig
   assert.equal(badOrigin.calls.length, 0);
 });
 
+test('quotation costing returns the approved BOM/material errors needed for correction', async t => {
+  const errors = { '11': 'An approved BOM mapping and material price are required.' };
+  const h = await harness(t, {
+    ordersService: {
+      async createQuotation() { return { success: false, code: 'MATERIAL_COSTING_INCOMPLETE', errors }; }
+    }
+  });
+  const response = await h.request('/orders/91/quotations', true, {
+    method: 'POST',
+    headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' },
+    body: '{}'
+  });
+  assert.equal(response.status, 422);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    code: 'MATERIAL_COSTING_INCOMPLETE',
+    message: 'Quotation costing is incomplete.',
+    errors
+  });
+});
+
 test('Sales notifications require authentication, employee Sales role, and notifications:read without mutation', async t => {
   const unauthenticated = await harness(t);
   assert.equal((await unauthenticated.request('/notifications', false)).status, 401);

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
 import type { RealIdentity } from "../api/client";
 import { isAllowedWorkspaceRoute, landingFor, type EmployeeRole } from "../role-access";
 import { SessionProvider } from "../store/session";
@@ -36,12 +35,13 @@ export function RealWorkspaceUnavailable({ title, detail, onLogout }: { title: s
 export function RealEmployeeShell({ identity, onLogout }: { identity: RealIdentity & { roleCode: EmployeeRole }; onLogout: () => void }) {
   const role = identity.roleCode;
   const [active, setActive] = useState(landingFor[role]);
-  const navigate = (route: string) => {
-    if (isAllowedWorkspaceRoute(role, route)) setActive(route);
+  const [targetInquiryId, setTargetInquiryId] = useState<string | undefined>();
+  const navigate = (route: string, inquiryId?: string) => {
+    if (isAllowedWorkspaceRoute(role, route)) { setTargetInquiryId(inquiryId); setActive(route); }
   };
   const screen = !isAllowedWorkspaceRoute(role, active)
     ? <Unauthorized />
-    : <RealRoleWorkspace role={role} route={active} onNavigate={navigate} />;
+    : <RealRoleWorkspace role={role} route={active} onNavigate={navigate} targetInquiryId={targetInquiryId} />;
 
   return (
     <SessionProvider mode="real" role={role} name={identity.displayName} userId={identity.userId} navigate={navigate}>
@@ -53,9 +53,6 @@ export function RealEmployeeShell({ identity, onLogout }: { identity: RealIdenti
       <div className="flex h-full min-h-0 bg-[#F5F7FB]">
         {role === "sales" ? <SalesSidebar active={active} onNavigate={navigate} onLogout={onLogout} userName={identity.displayName} /> : <Sidebar role={role} active={active} onNavigate={navigate} onLogout={onLogout} userName={identity.displayName} />}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-between border-b bg-white px-4 py-2 text-xs text-slate-600">
-            <span className="inline-flex items-center gap-2"><ShieldCheck size={14} aria-hidden /> Real Authenticated Access · {identity.displayName}</span>
-          </div>
           {screen}
         </div>
       </div>

@@ -94,7 +94,33 @@ export function createProductionJobOrdersService({ db }) {
         const [pos] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, client_reference clientReference, DATE_FORMAT(uploaded_at, '%Y-%m-%dT%H:%i:%s.%fZ') uploadedAt, DATE_FORMAT(received_at, '%Y-%m-%dT%H:%i:%s.%fZ') receivedAt, DATE_FORMAT(cleared_at, '%Y-%m-%dT%H:%i:%s.%fZ') clearedAt FROM purchase_orders WHERE id=? AND order_id=?`, [row.purchaseOrderId, row.orderId]);
         purchaseOrder = pos[0] ?? null;
       }
-      return { success: true, data: { ...project(row, trace), quotation, purchaseOrder, poDocumentAvailable: false, productionStarted: row.status !== 'jo' } };
+      const [stageRows] = await connection.execute(`SELECT position, label FROM production_stages ORDER BY position`);
+      const [events] = await connection.execute(`SELECT CAST(pe.id AS CHAR) id, pe.stage_position stagePosition,
+        pe.action, pe.reason, CAST(pe.performed_by AS CHAR) performedBy,
+        DATE_FORMAT(pe.occurred_at, '%Y-%m-%dT%H:%i:%s.%fZ') occurredAt,
+        pst.label stageLabel
+        FROM production_events pe LEFT JOIN production_stages pst ON pst.position=pe.stage_position
+        WHERE pe.job_order_id=? ORDER BY pe.occurred_at DESC, pe.id DESC`, [id]);
+      return {
+        success: true,
+        data: {
+          ...project(row, trace),
+          quotation,
+          purchaseOrder,
+          poDocumentAvailable: false,
+          productionStarted: row.status !== 'jo',
+          stages: stageRows.map(stage => ({ position: Number(stage.position), label: stage.label })),
+          productionEvents: events.map(event => ({
+            id: event.id,
+            stagePosition: event.stagePosition == null ? null : Number(event.stagePosition),
+            stageLabel: event.stageLabel ?? null,
+            action: event.action,
+            reason: event.reason ?? null,
+            performedBy: event.performedBy,
+            occurredAt: event.occurredAt
+          }))
+        }
+      };
     });
   }
 

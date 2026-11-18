@@ -2,34 +2,24 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const read = (path) => fs.readFileSync(new URL(`./${path}`, import.meta.url), "utf8");
+const read = path => fs.readFileSync(new URL(`./${path}`, import.meta.url), "utf8");
 
-test("Real Sales pipeline exposes all order-state views without Demo fallback", () => {
-  const source = read("sales/SalesPipeline.tsx");
-  for (const label of ["New Inquiry", "Quotation Sent", "Ready for Job Order", "Cancellation Requested"]) {
-    assert.match(source, new RegExp(label.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
+test("Real Sales uses the original pipeline and archive sections with authenticated data", () => {
+  const screen = read("SalesOrders.tsx");
+  const adapter = read("sales/useOriginalSalesAdapter.ts");
+  for (const label of ["NEW INQUIRY", "QUOTATION SENT", "READY FOR JOB ORDER", "Active Pipeline", "Cancellation Requests", "Cancelled", "Completed"]) {
+    assert.ok(screen.includes(label), label);
   }
-  assert.match(source, /useSalesOrders/);
-  assert.match(source, /remote\.error/);
-  assert.match(source, /remote\.refresh/);
-  assert.match(source, /fulfillmentCompletedAt/);
-  assert.doesNotMatch(source, /authenticated Sales API returned no inquiries or orders/);
-  assert.doesNotMatch(source, /Refresh records/);
-  assert.doesNotMatch(source, /aria-label="Record status"/);
-  assert.doesNotMatch(source, /aria-label="Order sort"/);
-  assert.doesNotMatch(source, /Page \{page\}/);
-  assert.match(source, /aria-label="Cancellation history pages"/);
-  assert.match(source, /cancellationQuery\(filters, cancellationFilter, cancellationPage\)/);
-  assert.match(source, /remote.data\?\.total/);
-  assert.match(source, /All Order Records & Stages/);
-  assert.match(source, /No inquiries/);
-  for (const label of ["Active Pipeline", "Cancellation Requests", "All Order Records & Stages", "All Requests", "Pending Review", "Approved \/ Cancelled", "Declined"]) assert.match(source, new RegExp(label));
-  assert.match(source, /workspaceSection/);
-  assert.match(source, /min-h-\[420px\]/);
-  assert.doesNotMatch(source, /New inquiries appear automatically/);
+  assert.match(screen, /useOriginalSalesAdapter/);
+  assert.match(screen, /live\.error/);
+  assert.match(screen, /live\.refresh/);
+  assert.match(adapter, /fulfillmentCompletedAt/);
+  assert.match(adapter, /listSalesOrders/);
+  assert.match(screen, /Client inquiries are loaded from authenticated Sales records/);
+  assert.doesNotMatch(screen, /authenticated Sales API returned no inquiries or orders/);
 });
 
-test("Sales API mapping normalizes live identifiers and preserves live order data", () => {
+test("Sales API mapping preserves identifiers and server-owned record data", () => {
   const source = read("../api/salesOrders.js");
   assert.match(source, /export function mapSalesOrder/);
   assert.match(source, /id: String\(row\.id\)/);
@@ -38,36 +28,46 @@ test("Sales API mapping normalizes live identifiers and preserves live order dat
   assert.match(source, /export function rejectSalesInquiry/);
 });
 
-test("Real Sales record browser keeps loading, error, detail, document, delivery, and pagination states", () => {
-  const source = read("sales/SalesRecordBrowser.tsx");
-  for (const marker of ["Loading Sales orders", "role=\"alert\"", "Order details", "QuotationHistory", "PurchaseOrderSection", "JobOrderSection", "DeliverySection", "PaymentSection", "Previous", "Next"]) {
-    assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
+test("Authenticated Sales detail flow retains loading, error, document, delivery, and retry states", () => {
+  const actions = read("sales/LiveSalesActions.tsx");
+  const details = read("sales/SalesDocumentSections.tsx");
+  for (const marker of ["Loading current order details", "remote.error", "remote.retry", "OrderDetail", "PurchaseOrderSection"]) {
+    assert.ok(actions.includes(marker), marker);
   }
-  assert.match(source, /remote\.loading \|\| remote\.error \|\| !remote\.data \? "—"/);
+  for (const marker of ["Loading order details", "role=\"alert\"", "QuotationHistory", "PurchaseOrderSection", "JobOrderSection", "DeliverySection", "PaymentSection", "Retry"]) {
+    assert.ok(details.includes(marker), marker);
+  }
 });
 
-test("Real Sales records use human-readable status labels without a visible refresh control", () => {
-  const source = read("sales/SalesRecordBrowser.tsx");
-  assert.match(source, /<option value="all">All Statuses<\/option>/);
-  assert.doesNotMatch(source, /RefreshCw|> Refresh<|>Refresh<|aria-label="Refresh/);
+test("Real Sales records have human-readable status filters and an explicit refresh control", () => {
+  const source = read("SalesOrders.tsx");
+  assert.match(source, /label: "All Statuses"/);
+  assert.match(source, /aria-label="Refresh Sales records"/);
+  assert.match(source, /onClick=\{live\.refresh\}/);
+  assert.match(source, /disabled=\{live\.loading\}/);
 });
 
-test("Real Sales dashboard has no visible refresh control while retaining automatic data hooks", () => {
-  const source = read("sales/SalesDashboard.tsx");
-  assert.match(source, /useSalesWorkspaceData/);
-  assert.doesNotMatch(source, /RefreshCw|refreshSalesDashboard|Refresh Sales dashboard|>Refresh<|> Refresh</);
+test("Real Sales dashboard uses the established summary adapter without Demo dashboard refresh controls", () => {
+  const dashboard = read("Dashboard.tsx");
+  assert.match(dashboard, /useSalesWorkspaceData/);
+  assert.match(dashboard, /\/api\/sales\/dashboard/);
+  assert.doesNotMatch(dashboard, /Refresh Sales dashboard|refreshSalesDashboard/);
 });
 
-test("Sales section controls are scoped to their selected workspace", () => {
-  const source = read("sales/SalesPipeline.tsx");
-  assert.match(source, /workspaceSection === "pipeline" && <>[\s\S]*aria-label="Search inquiries"[\s\S]*Filter Sales & Orders by status/);
-  assert.match(source, /aria-label="Cancellation request filters"/);
-  assert.doesNotMatch(source, /aria-label="Order stage"/);
+test("Sales search and status filters are scoped to the active pipeline", () => {
+  const source = read("SalesOrders.tsx");
+  const screenStart = source.indexOf('export function OriginalSalesOrders');
+  const header = source.slice(screenStart, source.indexOf('liveMessage &&', screenStart));
+  assert.match(header, /workspaceSection === "pipeline" && <>[\s\S]*placeholder="Search inquiries\.\.\."[\s\S]*Filter Sales & Orders by status/);
+  assert.match(source, /aria-label="Sales & Orders sections"/);
+  assert.match(source, /SalesWorkspaceRecords/);
 });
 
 test("Sales stock requests remain explicit integration-pending instead of fabricating success", () => {
-  const source = read("sales/StockRequestsModal.tsx");
-  assert.match(source, /Stock request submission/);
-  assert.match(source, /Warehouse stock response/);
-  assert.match(source, /unavailable.*Sales API|Sales API.*unavailable/);
+  const source = read("sales/RealSalesStockRequests.tsx");
+  assert.match(source, /createStockRequest/);
+  assert.match(source, /stockRequestReady/);
+  assert.match(source, /No authenticated materials are available/);
+  assert.match(source, /Inventory was not reserved or deducted/);
+  assert.match(source, /Submission could not be confirmed/);
 });

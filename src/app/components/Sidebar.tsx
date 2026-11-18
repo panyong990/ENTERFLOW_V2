@@ -171,7 +171,6 @@ function SidebarContent({ active = "dashboard", onNavigate, onLogout, role, badg
 
 export function Sidebar(props:SidebarProps) {
  const [open,setOpen]=useState(false);
- if(props.role!=='admin')return <SidebarContent {...props} />;
  return <><div className="hidden md:flex"><SidebarContent {...props} /></div><div className="md:hidden shrink-0 w-12 bg-[#1A2B4A] pt-3 text-white">
- <Sheet open={open} onOpenChange={setOpen}><SheetTrigger className="w-12 h-10" aria-label="Open navigation"><Menu size={20} className="mx-auto" /></SheetTrigger><SheetContent side="left" className="w-[240px] p-0 gap-0 border-0 [&>button]:text-white"><SheetTitle className="sr-only">Admin navigation</SheetTitle><SidebarContent {...props} onNavigate={id=>{props.onNavigate?.(id);setOpen(false);}} /></SheetContent></Sheet></div></>;
+ <Sheet open={open} onOpenChange={setOpen}><SheetTrigger className="w-12 h-10" aria-label="Open navigation"><Menu size={20} className="mx-auto" /></SheetTrigger><SheetContent side="left" className="w-[240px] p-0 gap-0 border-0 [&>button]:text-white"><SheetTitle className="sr-only">{roleSidebar[props.role].title} navigation</SheetTitle><SidebarContent {...props} onNavigate={id=>{props.onNavigate?.(id);setOpen(false);}} /></SheetContent></Sheet></div></>;
 }

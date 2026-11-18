@@ -29,3 +29,22 @@ test('Warehouse Stock Request adapter validates array data', async () => {
   assert.deepEqual(service.normalizeStockRequests([]), []);
   assert.throws(() => service.normalizeStockRequests({ items: [] }), /invalid response/);
 });
+
+test('Sales submission and Warehouse processing use the approved POST and PATCH contracts', async () => {
+  const service = adapter();
+  const createSignal = new AbortController().signal;
+  const request = { orderId: '9007199254740993', lines: [{ materialId: '18446744073709551615', quantity: 1.25 }] };
+  await service.createStockRequest(request, createSignal);
+  assert.deepEqual(service.captured(), {
+    path: '/api/stock-requests',
+    options: { method: 'POST', body: request, signal: createSignal },
+  });
+
+  const processSignal = new AbortController().signal;
+  const response = { status: 'updated', lines: [{ lineId: '601', currentQuantity: 0, shortageQuantity: 1.25 }], inventoryUpdates: [{ materialId: '18446744073709551615', quantityOnHand: 0 }] };
+  await service.processStockRequest('18446744073709551615', response, processSignal);
+  assert.deepEqual(service.captured(), {
+    path: '/api/stock-requests/18446744073709551615',
+    options: { method: 'PATCH', body: response, signal: processSignal },
+  });
+});

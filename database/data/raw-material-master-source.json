@@ -1,0 +1,1597 @@
+{
+  "source": {
+    "document": "RAW MATERIALS COMPUTATION & LIST - LIST OF RAW MATS.pdf",
+    "sha256": "4a751bb2d895a7f0c6d4f4bb4c8207da28dec7efead3e4ba6162f6ca697ee033",
+    "referencePriceSemantics": "Source-listed reference prices only; not approved costing prices.",
+    "descriptionGlyphNote": "The visible diameter glyph was visually verified in rendered PDF rows and preserved in the extracted descriptions."
+  },
+  "rawMaterials": [
+    {
+      "itemCode": "F-ACWF-037",
+      "description": "ACTIVATED CARBON AMETEK C1-20 , 20\" L",
+      "unit": "pc",
+      "referencePrice": "855",
+      "referencePriceText": "855",
+      "sourcePage": 1,
+      "sourceRow": 1
+    },
+    {
+      "itemCode": "F-ACWF-038",
+      "description": "ACTIVATED CARBON WATER CHECK WCB - 05 , 20\"L",
+      "unit": "pc",
+      "referencePrice": "855",
+      "referencePriceText": "855",
+      "sourcePage": 1,
+      "sourceRow": 2
+    },
+    {
+      "itemCode": "F-ACG-039",
+      "description": "ACTIVATED CARBON GRANULE 4 X 8 , 25kg/sack",
+      "unit": "sack",
+      "referencePrice": "2200.00",
+      "referencePriceText": "2,200.00",
+      "sourcePage": 1,
+      "sourceRow": 3
+    },
+    {
+      "itemCode": "F-LNCON.FG-042",
+      "description": "FIBERGLASS 50mmT X 2mW X 20mL",
+      "unit": "roll",
+      "referencePrice": "10500.00",
+      "referencePriceText": "10,500.00",
+      "sourcePage": 1,
+      "sourceRow": 4
+    },
+    {
+      "itemCode": "F-FMI.FM-043",
+      "description": "FILTER120 1/4\"T X 82\"W X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "1600.00",
+      "referencePriceText": "1,600.00",
+      "sourcePage": 1,
+      "sourceRow": 5
+    },
+    {
+      "itemCode": "F-FMI.FM-044",
+      "description": "FILTER200 1/2\" T X 82\" W X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "2640.00",
+      "referencePriceText": "2,640.00",
+      "sourcePage": 1,
+      "sourceRow": 6
+    },
+    {
+      "itemCode": "F-FMI.FM-045",
+      "description": "FILTER250 3/4\" T X 82\" W X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "3000.00",
+      "referencePriceText": "3,000.00",
+      "sourcePage": 1,
+      "sourceRow": 7
+    },
+    {
+      "itemCode": "F-FMI.FM-047",
+      "description": "FILTER290 W/ ONE RESIN 1\" T X 96\"W X 30mtrs L",
+      "unit": "roll",
+      "referencePrice": "5940.00",
+      "referencePriceText": "5,940.00",
+      "sourcePage": 1,
+      "sourceRow": 8
+    },
+    {
+      "itemCode": "F-FMI.FM-048",
+      "description": "FILTER350 1\"T X 82\"W X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "3800.00",
+      "referencePriceText": "3,800.00",
+      "sourcePage": 1,
+      "sourceRow": 9
+    },
+    {
+      "itemCode": "F-FMI.FM-049",
+      "description": "RFS570 2\" T X 82\" W X 10mtrs L",
+      "unit": "roll",
+      "referencePrice": "1800.00",
+      "referencePriceText": "1,800.00",
+      "sourcePage": 1,
+      "sourceRow": 10
+    },
+    {
+      "itemCode": "F-FMI.FM-050",
+      "description": "RFS160 82\" W X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "1500.00",
+      "referencePriceText": "1,500.00",
+      "sourcePage": 1,
+      "sourceRow": 11
+    },
+    {
+      "itemCode": "F-FMI.FM-051",
+      "description": "RFS170 10mm X 82mm X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "1700.00",
+      "referencePriceText": "1,700.00",
+      "sourcePage": 1,
+      "sourceRow": 12
+    },
+    {
+      "itemCode": "F-FMI.FM-052",
+      "description": "NP90 80\"W X 50mtrs L",
+      "unit": "roll",
+      "referencePrice": "4000.00",
+      "referencePriceText": "4,000.00",
+      "sourcePage": 1,
+      "sourceRow": 13
+    },
+    {
+      "itemCode": "F-FMI.FM-053",
+      "description": "NP200 NORESIN 80\"W X 50mtrs L",
+      "unit": "roll",
+      "referencePrice": "6150.00",
+      "referencePriceText": "6,150.00",
+      "sourcePage": 1,
+      "sourceRow": 14
+    },
+    {
+      "itemCode": "F-FMI.FM-055",
+      "description": "NP200 W/RESIN 80\" X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "2600.00",
+      "referencePriceText": "2,600.00",
+      "sourcePage": 1,
+      "sourceRow": 15
+    },
+    {
+      "itemCode": "F-SNNX.FM-057",
+      "description": "SUNNEX PBM240-15mm 1/2\"T X 2m W X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "1960.00",
+      "referencePriceText": "1,960.00",
+      "sourcePage": 1,
+      "sourceRow": 16
+    },
+    {
+      "itemCode": "F-NNWOV.FM-058",
+      "description": "NONWOVEN FR-1 3120 M.GREEN 80\" X 50mtrs L",
+      "unit": "roll",
+      "referencePrice": "4657.50",
+      "referencePriceText": "4,657.50",
+      "sourcePage": 1,
+      "sourceRow": 17
+    },
+    {
+      "itemCode": "F-NNWOV.FM-059",
+      "description": "NONWOVEN FR-1 3320 80\" X 20mtrs L",
+      "unit": "roll",
+      "referencePrice": "4726.00",
+      "referencePriceText": "4,726.00",
+      "sourcePage": 1,
+      "sourceRow": 18
+    },
+    {
+      "itemCode": "F-PECOF.CCF-061",
+      "description": "NP COCOFIBERMAT 19mmT X 2mW X 10mtrs L",
+      "unit": "roll",
+      "referencePrice": "900",
+      "referencePriceText": "900",
+      "sourcePage": 1,
+      "sourceRow": 19
+    },
+    {
+      "itemCode": "RM-EMJ.EPOX-062",
+      "description": "EPOXY HARDENER/RESIN",
+      "unit": "sets",
+      "referencePrice": "2142.80",
+      "referencePriceText": "2,142.80",
+      "sourcePage": 1,
+      "sourceRow": 20
+    },
+    {
+      "itemCode": "RM-EMJ.EPOX-063",
+      "description": "EPOXY PUTTY & FILLER HARDENER/RESIN",
+      "unit": "sets",
+      "referencePrice": "2142.80",
+      "referencePriceText": "2,142.80",
+      "sourcePage": 1,
+      "sourceRow": 21
+    },
+    {
+      "itemCode": "RM-PSBSI-144",
+      "description": "1CML2009 PIONEER EPOXY LV",
+      "unit": "pc/gal",
+      "referencePrice": "3050.00",
+      "referencePriceText": "3,050.00",
+      "sourcePage": 1,
+      "sourceRow": 22
+    },
+    {
+      "itemCode": "RM-PSBSI-146",
+      "description": "STRUCTURAL EPOXY",
+      "unit": "pc/gal",
+      "referencePrice": "2367.00",
+      "referencePriceText": "2,367.00",
+      "sourcePage": 1,
+      "sourceRow": 23
+    },
+    {
+      "itemCode": "RM-NNPAO.ADHSV-064-1",
+      "description": "HOTMELT ADHESIVE HM-595T , 25kg/sack",
+      "unit": "kg",
+      "referencePrice": "278",
+      "referencePriceText": "278",
+      "sourcePage": 1,
+      "sourceRow": 24
+    },
+    {
+      "itemCode": "RM-HNKL.ADHSV-064-2",
+      "description": "HOTMELT ADHESIVE SUPRA, 25kgs/bag",
+      "unit": "bag",
+      "referencePrice": "5125.00",
+      "referencePriceText": "5,125.00",
+      "sourcePage": 1,
+      "sourceRow": 25
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-065",
+      "description": "NAPPCO DIECUT CARDBOARD 1\" X 23\" X 23\"",
+      "unit": "pc",
+      "referencePrice": "41.66",
+      "referencePriceText": "41.66",
+      "sourcePage": 1,
+      "sourceRow": 26
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-066-1",
+      "description": "NAPPCO DIECUT CARDBOARD 2\" X 23\" X 23\"",
+      "unit": "pc",
+      "referencePrice": "41.66",
+      "referencePriceText": "41.66",
+      "sourcePage": 1,
+      "sourceRow": 27
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-066-2",
+      "description": "NAPPCO DIECUT CARDBOARD 44mm T X 23 1/4\" X 23 1/4\"",
+      "unit": "pc",
+      "referencePrice": "41.66",
+      "referencePriceText": "41.66",
+      "sourcePage": 1,
+      "sourceRow": 28
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-066-3",
+      "description": "NAPPCO DIECUT CARDBOARD 43mm T X 11 3/8\" X 23 3/8\"",
+      "unit": "pc",
+      "referencePrice": "41.66",
+      "referencePriceText": "41.66",
+      "sourcePage": 1,
+      "sourceRow": 29
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-066-4",
+      "description": "NAPPCO DIECUT CARDBOARD 50mm T X 592 X 592",
+      "unit": "pc",
+      "referencePrice": "41.66",
+      "referencePriceText": "41.66",
+      "sourcePage": 1,
+      "sourceRow": 30
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-067",
+      "description": "NAPPCO DIECUT CARDBOARD 2\" X 23\" X 17 1/2\"",
+      "unit": "pc",
+      "referencePrice": "31.66",
+      "referencePriceText": "31.66",
+      "sourcePage": 1,
+      "sourceRow": 31
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-068",
+      "description": "NAPPCO DIECUT CARDBOARD 2 X 23 X 15 1/2\"",
+      "unit": "pc",
+      "referencePrice": "31.66",
+      "referencePriceText": "31.66",
+      "sourcePage": 1,
+      "sourceRow": 32
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-069",
+      "description": "NAPPCO DIECUT CARDBOARD 2\" X 26\" X 29\"",
+      "unit": "pc",
+      "referencePrice": "31.66",
+      "referencePriceText": "31.66",
+      "sourcePage": 1,
+      "sourceRow": 33
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-070",
+      "description": "NAPPCO DIECUT CARDBOARD 2\" X 24 1/2\" X 24 1/2\"",
+      "unit": "pc",
+      "referencePrice": "41.66",
+      "referencePriceText": "41.66",
+      "sourcePage": 1,
+      "sourceRow": 34
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-071",
+      "description": "NAPPCO DIECUT CARDBOARD 2\" X 20\" X 20\"",
+      "unit": "pc",
+      "referencePrice": "31.66",
+      "referencePriceText": "31.66",
+      "sourcePage": 1,
+      "sourceRow": 35
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-072",
+      "description": "NAPPCO DIECUT CARDBOARD 2\" X 19 1/2\" X 19 1/2\"",
+      "unit": "pc",
+      "referencePrice": "31.66",
+      "referencePriceText": "31.66",
+      "sourcePage": 1,
+      "sourceRow": 36
+    },
+    {
+      "itemCode": "RM-NAPPCO.DCCB-073",
+      "description": "NAPPCO DIECUT CARDBOARD 2\" X 19 1/2\" X 24 1/2\"",
+      "unit": "pc",
+      "referencePrice": "41.66",
+      "referencePriceText": "41.66",
+      "sourcePage": 1,
+      "sourceRow": 37
+    },
+    {
+      "itemCode": "RM-NAPPCO.CB-140",
+      "description": "NAPPCO CARDBOARD 23 35\" X 30\"",
+      "unit": "pc",
+      "referencePrice": "14.8",
+      "referencePriceText": "14.8",
+      "sourcePage": 1,
+      "sourceRow": 38
+    },
+    {
+      "itemCode": "RM-GSPACK.CBP-143",
+      "description": "CORRUGATED BOX PLAIN 4ft X 8ft",
+      "unit": "pc",
+      "referencePrice": "84.8",
+      "referencePriceText": "84.8",
+      "sourcePage": 1,
+      "sourceRow": 39
+    },
+    {
+      "itemCode": "RM-GSPACK.CBP-145",
+      "description": "CORRUGATED BOX PLAIN 12 3/4W X 24 3/4L X 24 3/4H",
+      "unit": "pc",
+      "referencePrice": "69",
+      "referencePriceText": "69",
+      "sourcePage": 1,
+      "sourceRow": 40
+    },
+    {
+      "itemCode": "RM-GSPACK.CBP-148",
+      "description": "CORRUGATED BOX PLAIN 14 3/4W X 14 3/4L X 14\" H SMALL",
+      "unit": "pc",
+      "referencePrice": "38",
+      "referencePriceText": "38",
+      "sourcePage": 1,
+      "sourceRow": 41
+    },
+    {
+      "itemCode": "RM-GSPACK.CBP-149",
+      "description": "CORRUGATED BOX PLAIN 14 3/4W X 14 3/4L X 20\" H BIG",
+      "unit": "pc",
+      "referencePrice": "35",
+      "referencePriceText": "35",
+      "sourcePage": 1,
+      "sourceRow": 42
+    },
+    {
+      "itemCode": "RM-FLSHPCK.CBOX-075",
+      "description": "CORRUGATED BOX 6 1/2\" X 6 1/2\" X 19\"",
+      "unit": "pc",
+      "referencePrice": "35",
+      "referencePriceText": "35",
+      "sourcePage": 1,
+      "sourceRow": 43
+    },
+    {
+      "itemCode": "RM-FLSHPCK.CBOX-076",
+      "description": "CORRUGATED BOX 5\" X 5\" X 32 1/2\"",
+      "unit": "pc",
+      "referencePrice": "18",
+      "referencePriceText": "18",
+      "sourcePage": 1,
+      "sourceRow": 44
+    },
+    {
+      "itemCode": "RM-MLTIFLX.FB-077-1",
+      "description": "FOAM BLUE 3mm X 110cm X 7ft",
+      "unit": "sheet",
+      "referencePrice": "60.6",
+      "referencePriceText": "60.6",
+      "sourcePage": 1,
+      "sourceRow": 45
+    },
+    {
+      "itemCode": "RM-MLTIFLX.FB-077-2",
+      "description": "FOAM YELLOW 3mm X 110cm X 7ft",
+      "unit": "sheet",
+      "referencePrice": "60.6",
+      "referencePriceText": "60.6",
+      "sourcePage": 1,
+      "sourceRow": 46
+    },
+    {
+      "itemCode": "RM-MLTIFLX.FB-077-3",
+      "description": "FOAM PINK 3mm X 110cm X 7ft",
+      "unit": "sheet",
+      "referencePrice": "60.6",
+      "referencePriceText": "60.6",
+      "sourcePage": 1,
+      "sourceRow": 47
+    },
+    {
+      "itemCode": "RM-CHNA.SRNETBLK-078",
+      "description": "CHINA SARANET (BLACK) 1.6W X 3.5m L",
+      "unit": "roll",
+      "referencePrice": "25882.50",
+      "referencePriceText": "25,882.50",
+      "sourcePage": 1,
+      "sourceRow": 48
+    },
+    {
+      "itemCode": "RM-CHNA.ALMFOIL-079",
+      "description": "CHINA ALUMINUM FOIL - 125 X 0.04",
+      "unit": "roll",
+      "referencePrice": "12492.45",
+      "referencePriceText": "12,492.45",
+      "sourcePage": 1,
+      "sourceRow": 49
+    },
+    {
+      "itemCode": "RM-FC-080",
+      "description": "FILTERCLOTH NEEDLEFELT FSQHAF550G",
+      "unit": "roll",
+      "referencePrice": "13976.55",
+      "referencePriceText": "13,976.55",
+      "sourcePage": 1,
+      "sourceRow": 50
+    },
+    {
+      "itemCode": "RM-FC-081",
+      "description": "FILTERCLOTH NEEDLEFELT AFFSQH550G",
+      "unit": "roll",
+      "referencePrice": "20583.40",
+      "referencePriceText": "20,583.40",
+      "sourcePage": 1,
+      "sourceRow": 51
+    },
+    {
+      "itemCode": "RM-FC-082",
+      "description": "FILTERCLOTH NEEDLEFELT DYPP500G",
+      "unit": "roll",
+      "referencePrice": "17051.09",
+      "referencePriceText": "17,051.09",
+      "sourcePage": 1,
+      "sourceRow": 52
+    },
+    {
+      "itemCode": "RM-FC-083",
+      "description": "FILTERCLOTH NEEDLEFELT PP100MICRON",
+      "unit": "roll",
+      "referencePrice": "15988.50",
+      "referencePriceText": "15,988.50",
+      "sourcePage": 1,
+      "sourceRow": 53
+    },
+    {
+      "itemCode": "RM-FC-084",
+      "description": "FILTERCLOTH NEEDLEFELT PP50MICRON",
+      "unit": "roll",
+      "referencePrice": "15988.50",
+      "referencePriceText": "15,988.50",
+      "sourcePage": 1,
+      "sourceRow": 54
+    },
+    {
+      "itemCode": "RM-FC-085",
+      "description": "FILTERCLOTH NEEDLEFELT PP25MICRON",
+      "unit": "roll",
+      "referencePrice": "15988.50",
+      "referencePriceText": "15,988.50",
+      "sourcePage": 1,
+      "sourceRow": 55
+    },
+    {
+      "itemCode": "RM-FC-086",
+      "description": "FILTERCLOTH NEEDLEFELT PP10MICRON",
+      "unit": "roll",
+      "referencePrice": "17907.12",
+      "referencePriceText": "17,907.12",
+      "sourcePage": 1,
+      "sourceRow": 56
+    },
+    {
+      "itemCode": "RM-FC-087",
+      "description": "FILTERCLOTH NEEDLEFELT PEDYS550 2.2mW",
+      "unit": "roll",
+      "referencePrice": "15345.64",
+      "referencePriceText": "15,345.64",
+      "sourcePage": 1,
+      "sourceRow": 57
+    },
+    {
+      "itemCode": "RM-FC-088",
+      "description": "FILTERCLOTH NEEDLEFELT FMPE500",
+      "unit": "roll",
+      "referencePrice": "23562.00",
+      "referencePriceText": "23,562.00",
+      "sourcePage": 1,
+      "sourceRow": 58
+    },
+    {
+      "itemCode": "RM-FC-089",
+      "description": "FILTERCLOTH NEEDLEFELT DYSPE350G",
+      "unit": "roll",
+      "referencePrice": "10232.64",
+      "referencePriceText": "10,232.64",
+      "sourcePage": 1,
+      "sourceRow": 59
+    },
+    {
+      "itemCode": "RM-FC-090",
+      "description": "FILTERCLOTH NEEDLEFELT FS NOMEX 550G",
+      "unit": "roll",
+      "referencePrice": "82620.00",
+      "referencePriceText": "82,620.00",
+      "sourcePage": 1,
+      "sourceRow": 60
+    },
+    {
+      "itemCode": "RM-FC-091",
+      "description": "FILTERCLOTH WOVENFILTER PP521",
+      "unit": "roll",
+      "referencePrice": "14586.00",
+      "referencePriceText": "14,586.00",
+      "sourcePage": 1,
+      "sourceRow": 61
+    },
+    {
+      "itemCode": "RM-FC-092",
+      "description": "FILTERCLOTH WOVENFILTER PP840-1 (NEW)",
+      "unit": "roll",
+      "referencePrice": "15422.40",
+      "referencePriceText": "15,422.40",
+      "sourcePage": 1,
+      "sourceRow": 62
+    },
+    {
+      "itemCode": "RM-FC-094",
+      "description": "FILTERCLOTH WOVENFILTER PP729",
+      "unit": "roll",
+      "referencePrice": "42840.00",
+      "referencePriceText": "42,840.00",
+      "sourcePage": 1,
+      "sourceRow": 63
+    },
+    {
+      "itemCode": "RM-FC-150",
+      "description": "FILTERCLOTH WOVENFILTER PP4218",
+      "unit": "roll",
+      "referencePrice": "12157.69",
+      "referencePriceText": "12,157.69",
+      "sourcePage": 1,
+      "sourceRow": 64
+    },
+    {
+      "itemCode": "RM-FM-095",
+      "description": "FILTER MEDIA PP5MICRON",
+      "unit": "roll",
+      "referencePrice": "17907.12",
+      "referencePriceText": "17,907.12",
+      "sourcePage": 1,
+      "sourceRow": 65
+    },
+    {
+      "itemCode": "RM-FM-096-1",
+      "description": "FILTER MEDIA C-F8, 860mm HT, 38kgs/roll",
+      "unit": "roll",
+      "referencePrice": "25285.80",
+      "referencePriceText": "25,285.80",
+      "sourcePage": 1,
+      "sourceRow": 66
+    },
+    {
+      "itemCode": "RM-FM-096-2",
+      "description": "FILTER MEDIA C-F9",
+      "unit": "roll",
+      "referencePrice": "25285.80",
+      "referencePriceText": "25,285.80",
+      "sourcePage": 1,
+      "sourceRow": 67
+    },
+    {
+      "itemCode": "RM-FM-097-1",
+      "description": "FILTER MEDIA C-H10",
+      "unit": "roll",
+      "referencePrice": "25285.80",
+      "referencePriceText": "25,285.80",
+      "sourcePage": 1,
+      "sourceRow": 68
+    },
+    {
+      "itemCode": "RM-FM-097-2",
+      "description": "FILTER MEDIA C-H14",
+      "unit": "roll",
+      "referencePrice": "25285.80",
+      "referencePriceText": "25,285.80",
+      "sourcePage": 1,
+      "sourceRow": 69
+    },
+    {
+      "itemCode": "RM-FM-098-1",
+      "description": "FILTER MEDIA ZS20, 610mm HT, 35kgs/roll",
+      "unit": "roll",
+      "referencePrice": "17952.00",
+      "referencePriceText": "17,952.00",
+      "sourcePage": 1,
+      "sourceRow": 70
+    },
+    {
+      "itemCode": "RM-FM-098-2",
+      "description": "FILTER MEDIA ZS20, 1000mm HT, 50kgs/roll",
+      "unit": "roll",
+      "referencePrice": "17952.00",
+      "referencePriceText": "17,952.00",
+      "sourcePage": 1,
+      "sourceRow": 71
+    },
+    {
+      "itemCode": "RM-FM-099-1",
+      "description": "FILTER MEDIA ZSUI, 610mm HT, 35kgs/roll",
+      "unit": "roll",
+      "referencePrice": "15147.00",
+      "referencePriceText": "15,147.00",
+      "sourcePage": 1,
+      "sourceRow": 72
+    },
+    {
+      "itemCode": "RM-FM-099-2",
+      "description": "FILTER MEDIA ZSUI, 1000mm HT, 50kgs/roll",
+      "unit": "roll",
+      "referencePrice": "15147.00",
+      "referencePriceText": "15,147.00",
+      "sourcePage": 1,
+      "sourceRow": 73
+    },
+    {
+      "itemCode": "RM-FM-100-1",
+      "description": "FILTER MEDIA ZSH3, 610mm HT, 35kgs/roll",
+      "unit": "roll",
+      "referencePrice": "15708.00",
+      "referencePriceText": "15,708.00",
+      "sourcePage": 1,
+      "sourceRow": 74
+    },
+    {
+      "itemCode": "RM-FM-100-2",
+      "description": "FILTER MEDIA ZSH3, 1000mm HT, 50kgs/roll",
+      "unit": "roll",
+      "referencePrice": "15708.00",
+      "referencePriceText": "15,708.00",
+      "sourcePage": 1,
+      "sourceRow": 75
+    },
+    {
+      "itemCode": "RM-FM-101-1",
+      "description": "FILTER MEDIA ZSH5, 610mm HT, 35kgs/roll",
+      "unit": "roll",
+      "referencePrice": "20196.00",
+      "referencePriceText": "20,196.00",
+      "sourcePage": 2,
+      "sourceRow": 1
+    },
+    {
+      "itemCode": "RM-FM-101-2",
+      "description": "FILTER MEDIA ZSH5, 1000mm HT, 50kgs/roll",
+      "unit": "roll",
+      "referencePrice": "20196.00",
+      "referencePriceText": "20,196.00",
+      "sourcePage": 2,
+      "sourceRow": 2
+    },
+    {
+      "itemCode": "RM-FM-102-1",
+      "description": "FILTER MEDIA ZS10, 610mm HT, 35kgs/roll",
+      "unit": "roll",
+      "referencePrice": "17952.00",
+      "referencePriceText": "17,952.00",
+      "sourcePage": 2,
+      "sourceRow": 3
+    },
+    {
+      "itemCode": "RM-FM-102-2",
+      "description": "FILTER MEDIA ZS10, 1000mm HT, 50kgs/roll",
+      "unit": "roll",
+      "referencePrice": "17952.00",
+      "referencePriceText": "17,952.00",
+      "sourcePage": 2,
+      "sourceRow": 4
+    },
+    {
+      "itemCode": "RM-FM-103",
+      "description": "FILTER MEDIA JZCY-H13, 28kgs/roll",
+      "unit": "roll",
+      "referencePrice": "15147.00",
+      "referencePriceText": "15,147.00",
+      "sourcePage": 2,
+      "sourceRow": 5
+    },
+    {
+      "itemCode": "RM-FP-104",
+      "description": "FILTER PAPER PK-135250",
+      "unit": "roll",
+      "referencePrice": "6336.00",
+      "referencePriceText": "6,336.00",
+      "sourcePage": 2,
+      "sourceRow": 6
+    },
+    {
+      "itemCode": "RM-FP-105",
+      "description": "FILTER PAPER PK-135350",
+      "unit": "roll",
+      "referencePrice": "4633.20",
+      "referencePriceText": "4,633.20",
+      "sourcePage": 2,
+      "sourceRow": 7
+    },
+    {
+      "itemCode": "RM-FP-106",
+      "description": "FILTER PAPER PK-110350",
+      "unit": "roll",
+      "referencePrice": "4344.12",
+      "referencePriceText": "4,344.12",
+      "sourcePage": 2,
+      "sourceRow": 8
+    },
+    {
+      "itemCode": "RM-FP-107",
+      "description": "FILTER PAPER PK-110250",
+      "unit": "roll",
+      "referencePrice": "5049.00",
+      "referencePriceText": "5,049.00",
+      "sourcePage": 2,
+      "sourceRow": 9
+    },
+    {
+      "itemCode": "RM-FP-108-1",
+      "description": "FILTER PAPER PK-120300HX, 610mm HT, 42kgs/roll",
+      "unit": "roll",
+      "referencePrice": "10818.50",
+      "referencePriceText": "10,818.50",
+      "sourcePage": 2,
+      "sourceRow": 10
+    },
+    {
+      "itemCode": "RM-FP-108-2",
+      "description": "FILTER PAPER PK-120300HX, 710mm HT, 55kgs/roll",
+      "unit": "roll",
+      "referencePrice": "10818.50",
+      "referencePriceText": "10,818.50",
+      "sourcePage": 2,
+      "sourceRow": 11
+    },
+    {
+      "itemCode": "RM-FP-108-3",
+      "description": "FILTER PAPER PK-120300HX, 1000mm HT, 95kgs/roll",
+      "unit": "roll",
+      "referencePrice": "15883.50",
+      "referencePriceText": "15,883.50",
+      "sourcePage": 2,
+      "sourceRow": 12
+    },
+    {
+      "itemCode": "RM-FP-147-1",
+      "description": "FILTER PAPER PH-120500HX",
+      "unit": "roll",
+      "referencePrice": "13559.60",
+      "referencePriceText": "13,559.60",
+      "sourcePage": 2,
+      "sourceRow": 13
+    },
+    {
+      "itemCode": "RM-FP-147-2",
+      "description": "FILTER PAPER PK115450",
+      "unit": "roll",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 14
+    },
+    {
+      "itemCode": "RM-SPFP-109-1",
+      "description": "SPUNBAND FILTER PAPER PET240, 710mm HT, 68kgs/roll",
+      "unit": "roll",
+      "referencePrice": "37138.20",
+      "referencePriceText": "37,138.20",
+      "sourcePage": 2,
+      "sourceRow": 15
+    },
+    {
+      "itemCode": "RM-SPFP-109-2",
+      "description": "SPUNBAND FILTER PAPER PET240, 1000mm HT, 95kgs/roll",
+      "unit": "roll",
+      "referencePrice": "62177.50",
+      "referencePriceText": "62,177.50",
+      "sourcePage": 2,
+      "sourceRow": 16
+    },
+    {
+      "itemCode": "RM-PFM-110",
+      "description": "POCKET FILTER MEDIA F6 GREEN",
+      "unit": "roll",
+      "referencePrice": "4998.00",
+      "referencePriceText": "4,998.00",
+      "sourcePage": 2,
+      "sourceRow": 17
+    },
+    {
+      "itemCode": "RM-PFM-111",
+      "description": "POCKET FILTER MEDIA F8 YELLOW 720mm W",
+      "unit": "roll",
+      "referencePrice": "6426.00",
+      "referencePriceText": "6,426.00",
+      "sourcePage": 2,
+      "sourceRow": 18
+    },
+    {
+      "itemCode": "RM-PFM-112",
+      "description": "POCKET FILTER MEDIA F7 PINK",
+      "unit": "roll",
+      "referencePrice": "5712.00",
+      "referencePriceText": "5,712.00",
+      "sourcePage": 2,
+      "sourceRow": 19
+    },
+    {
+      "itemCode": "RM-SPRNGPLTESS-113",
+      "description": "SPRING PLATE STAINLESS 25mmW",
+      "unit": "roll",
+      "referencePrice": "19125.00",
+      "referencePriceText": "19,125.00",
+      "sourcePage": 2,
+      "sourceRow": 20
+    },
+    {
+      "itemCode": "RM-TNMX-114",
+      "description": "THREAD NOMEX",
+      "unit": "kg",
+      "referencePrice": "1561.88",
+      "referencePriceText": "1,561.88",
+      "sourcePage": 2,
+      "sourceRow": 21
+    },
+    {
+      "itemCode": "RM-PERPO.GI-116",
+      "description": "PERFORATED G.I 0.8mm X 4 X 8 X 3mm HOLES",
+      "unit": "sheet",
+      "referencePrice": "2375.00",
+      "referencePriceText": "2,375.00",
+      "sourcePage": 2,
+      "sourceRow": 22
+    },
+    {
+      "itemCode": "RM-PERPO.GI-117",
+      "description": "PERFORATED G.I 1mm X 4 X 8 X 5mm HOLES",
+      "unit": "sheet",
+      "referencePrice": "2620.00",
+      "referencePriceText": "2,620.00",
+      "sourcePage": 2,
+      "sourceRow": 23
+    },
+    {
+      "itemCode": "RM-PERPO.GI-118",
+      "description": "PERFORATED G.I 1mm X 4 X 8 X 3mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "2620.00",
+      "referencePriceText": "2,620.00",
+      "sourcePage": 2,
+      "sourceRow": 24
+    },
+    {
+      "itemCode": "RM-PERPO.GI-119",
+      "description": "PERFORATED G.I 1.2mm X 4 X 8 X 3mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "2980.00",
+      "referencePriceText": "2,980.00",
+      "sourcePage": 2,
+      "sourceRow": 25
+    },
+    {
+      "itemCode": "RM-PERPO.EG-120",
+      "description": "PERFORATED E.G 2mm X 4 X 8 X 3mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "2761.00",
+      "referencePriceText": "2,761.00",
+      "sourcePage": 2,
+      "sourceRow": 26
+    },
+    {
+      "itemCode": "RM-PERPO.BI-121",
+      "description": "PERFORATED B.I 2mm X 4 X 8 X 7.9mm HOLES",
+      "unit": "sheet",
+      "referencePrice": "2660.00",
+      "referencePriceText": "2,660.00",
+      "sourcePage": 2,
+      "sourceRow": 27
+    },
+    {
+      "itemCode": "RM-PERPO.BI-122",
+      "description": "PERFORATED B.I 3mm X 4 X 8 X 7.9mm HOLES",
+      "unit": "sheet",
+      "referencePrice": "4100.00",
+      "referencePriceText": "4,100.00",
+      "sourcePage": 2,
+      "sourceRow": 28
+    },
+    {
+      "itemCode": "RM-PERPO.SS304-123",
+      "description": "PERFORATED (S/S304) 1mm X 4 X 8 X 4mm HOLES",
+      "unit": "sheet",
+      "referencePrice": "6400.00",
+      "referencePriceText": "6,400.00",
+      "sourcePage": 2,
+      "sourceRow": 29
+    },
+    {
+      "itemCode": "RM-PLATE.SS304-124",
+      "description": "PLATE (S/S304) 0.8mm X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "2540.00",
+      "referencePriceText": "2,540.00",
+      "sourcePage": 2,
+      "sourceRow": 30
+    },
+    {
+      "itemCode": "RM-PLATE.SS304-125",
+      "description": "PLATE (S/S304) 1mm X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "4900.00",
+      "referencePriceText": "4,900.00",
+      "sourcePage": 2,
+      "sourceRow": 31
+    },
+    {
+      "itemCode": "RM-PLATE.GI-126",
+      "description": "PLATE G.I 0.6 X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "700",
+      "referencePriceText": "700",
+      "sourcePage": 2,
+      "sourceRow": 32
+    },
+    {
+      "itemCode": "RM-PLATE.GI-127",
+      "description": "PLATE G.I 1mm X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "1120.00",
+      "referencePriceText": "1,120.00",
+      "sourcePage": 2,
+      "sourceRow": 33
+    },
+    {
+      "itemCode": "RM-PLATE.EG-128",
+      "description": "PLATE E.G 0.5 X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "630",
+      "referencePriceText": "630",
+      "sourcePage": 2,
+      "sourceRow": 34
+    },
+    {
+      "itemCode": "RM-PLATE.EG-129",
+      "description": "PLATE E.G 1mm X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "810",
+      "referencePriceText": "810",
+      "sourcePage": 2,
+      "sourceRow": 35
+    },
+    {
+      "itemCode": "RM-PLATE.EG-130",
+      "description": "PLATE E.G 1.5 X 4 X 4",
+      "unit": "sheet",
+      "referencePrice": "798",
+      "referencePriceText": "798",
+      "sourcePage": 2,
+      "sourceRow": 36
+    },
+    {
+      "itemCode": "RM-PLATE.ALUM-131",
+      "description": "PLATE ALUMINUM 0.6 X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "860",
+      "referencePriceText": "860",
+      "sourcePage": 2,
+      "sourceRow": 37
+    },
+    {
+      "itemCode": "RM-PLATE.ALUM-132",
+      "description": "PLATE ALUMINUM 0.8 X 4 X 8",
+      "unit": "sheet",
+      "referencePrice": "1150.00",
+      "referencePriceText": "1,150.00",
+      "sourcePage": 2,
+      "sourceRow": 38
+    },
+    {
+      "itemCode": "RM-PLATE.ALUM-141",
+      "description": "PLATE ALUMINUM 1 1/4\" T X 8 1/2 X 8 1/2",
+      "unit": "sheet",
+      "referencePrice": "1400.00",
+      "referencePriceText": "1,400.00",
+      "sourcePage": 2,
+      "sourceRow": 39
+    },
+    {
+      "itemCode": "RM-EXPNDEDMTL.BI-133",
+      "description": "EXPANDED METAL B.I #2413 4X8",
+      "unit": "roll",
+      "referencePrice": "500",
+      "referencePriceText": "500",
+      "sourcePage": 2,
+      "sourceRow": 40
+    },
+    {
+      "itemCode": "RM-EXPNDEDMTL.BI-134",
+      "description": "EXPANDED METAL B.I #1819 4X8",
+      "unit": "roll",
+      "referencePrice": "900",
+      "referencePriceText": "900",
+      "sourcePage": 2,
+      "sourceRow": 41
+    },
+    {
+      "itemCode": "RM-EXPNDED.ALUM-135",
+      "description": "EXPANDED WIRE ALUMINUM (4ftW)",
+      "unit": "roll",
+      "referencePrice": "2400.00",
+      "referencePriceText": "2,400.00",
+      "sourcePage": 2,
+      "sourceRow": 42
+    },
+    {
+      "itemCode": "RM-CHCKENWIRE-136",
+      "description": "CHICKENWIRE G.I (4ftW)",
+      "unit": "roll",
+      "referencePrice": "1200.00",
+      "referencePriceText": "1,200.00",
+      "sourcePage": 2,
+      "sourceRow": 43
+    }
+  ],
+  "excludedOfficeSupplies": [
+    {
+      "itemCode": "OFF-SI-137",
+      "description": "SALES INVOICE",
+      "unit": "booklet",
+      "referencePrice": "260",
+      "referencePriceText": "260",
+      "sourcePage": 2,
+      "sourceRow": 44
+    },
+    {
+      "itemCode": "OFF-DR-138",
+      "description": "DELIVERY RECEIPT",
+      "unit": "booklet",
+      "referencePrice": "190",
+      "referencePriceText": "190",
+      "sourcePage": 2,
+      "sourceRow": 45
+    },
+    {
+      "itemCode": "OFF-CR-139",
+      "description": "COLLECTION RECEIPT",
+      "unit": "booklet",
+      "referencePrice": "190",
+      "referencePriceText": "190",
+      "sourcePage": 2,
+      "sourceRow": 46
+    }
+  ],
+  "uncodedReview": [
+    {
+      "itemCode": null,
+      "description": "FILTER MEDIA CH13",
+      "unit": "roll",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 47,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER MAT WITH NET BACKING",
+      "unit": "ROLL",
+      "referencePrice": "17500.00",
+      "referencePriceText": "17,500.00",
+      "sourcePage": 2,
+      "sourceRow": 48,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 0.6mm X 4 X 8 X 3mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "1350.00",
+      "referencePriceText": "1,350.00",
+      "sourcePage": 2,
+      "sourceRow": 49,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 0.6mm X 4 X 8 X 4mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "1515.00",
+      "referencePriceText": "1,515.00",
+      "sourcePage": 2,
+      "sourceRow": 50,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 0.8mm X 4 X 8 X 5mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 51,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 1mm X 4 X 8 X 5mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "2620.00",
+      "referencePriceText": "2,620.00",
+      "sourcePage": 2,
+      "sourceRow": 52,
+      "reviewReasons": [
+        "missing_item_code",
+        "possible_duplicate_of_RM-PERPO.GI-117; verify diameter description"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 0.6mm X 4 X 8 X 6mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "1400.00",
+      "referencePriceText": "1,400.00",
+      "sourcePage": 2,
+      "sourceRow": 53,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 1mm X 4 X 8 X 8mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 54,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 0.8mm X 4 X 8 X 6mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 55,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 1mm X 4 X 8 X 2mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 56,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 0.8mm X 4 X 8 X 4mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "1540.00",
+      "referencePriceText": "1,540.00",
+      "sourcePage": 2,
+      "sourceRow": 57,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 1.5mm X 4 X 8 X 3mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "2630.00",
+      "referencePriceText": "2,630.00",
+      "sourcePage": 2,
+      "sourceRow": 58,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED G.I 1mm X 4 X 8 X 4mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 59,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED S/S 1.5mm X 4 X 8 X 8mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": "3300.00",
+      "referencePriceText": "3,300.00",
+      "sourcePage": 2,
+      "sourceRow": 60,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED S/S 0.8mm X 4 X 8 X 6mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 61,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED S/S 0.8mm X 4 X 8 X 4mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 62,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED S/S 1mm X 4 X 8 X 2mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 63,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "PERFORATED S/S 304 0.8mm X 4 X 8 X 2mm ø HOLES",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 64,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "GI PLATE - 0.5mm T",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 65,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "GI PLATE - 1mm T",
+      "unit": "sheet",
+      "referencePrice": "1120.00",
+      "referencePriceText": "1,120.00",
+      "sourcePage": 2,
+      "sourceRow": 66,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "GI PLATE - 0.8mm T",
+      "unit": "sheet",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 67,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "GI PLATE - 0.6mm T",
+      "unit": "sheet",
+      "referencePrice": "700",
+      "referencePriceText": "700",
+      "sourcePage": 2,
+      "sourceRow": 68,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "G.I. ROD - 4.2mm ø",
+      "unit": "BUNDLE",
+      "referencePrice": null,
+      "referencePriceText": null,
+      "sourcePage": 2,
+      "sourceRow": 69,
+      "reviewReasons": [
+        "missing_item_code",
+        "missing_reference_price"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "ALUMINUM PLATE - 0.8mm T",
+      "unit": "sheet",
+      "referencePrice": "1537.00",
+      "referencePriceText": "1,537.00",
+      "sourcePage": 2,
+      "sourceRow": 70,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "ALUMINUM PLATE - 0.6mm T",
+      "unit": "sheet",
+      "referencePrice": "1132.00",
+      "referencePriceText": "1,132.00",
+      "sourcePage": 2,
+      "sourceRow": 71,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "ALUMINUM PLATE - 2mm T",
+      "unit": "sheet",
+      "referencePrice": "3650.00",
+      "referencePriceText": "3,650.00",
+      "sourcePage": 2,
+      "sourceRow": 72,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "S/S PLATE - 0.8mm T",
+      "unit": "sheet",
+      "referencePrice": "3650.00",
+      "referencePriceText": "3,650.00",
+      "sourcePage": 3,
+      "sourceRow": 1,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "S/S PLATE - 0.5mm T",
+      "unit": "sheet",
+      "referencePrice": "2090.00",
+      "referencePriceText": "2,090.00",
+      "sourcePage": 3,
+      "sourceRow": 2,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "E.G. ALUMINUM PLATE, 0.8mmT",
+      "unit": "pc",
+      "referencePrice": "720",
+      "referencePriceText": "720",
+      "sourcePage": 3,
+      "sourceRow": 3,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "EXPANDED (CHINA) - 610 x 1220 ; 50 PCS/BOX",
+      "unit": "pc",
+      "referencePrice": "265.5",
+      "referencePriceText": "265.5",
+      "sourcePage": 3,
+      "sourceRow": 4,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "CELLULOSE FIBER - H13, PLEATED, 1220 x 610 x 45, 6PC/BOX",
+      "unit": "BOX",
+      "referencePrice": "13806.00",
+      "referencePriceText": "13,806.00",
+      "sourcePage": 3,
+      "sourceRow": 5,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "CELLULOSE FIBER - F8 PLEATED, 1220 x 610 x 45, 6PC/BOX",
+      "unit": "BOX",
+      "referencePrice": "12744.00",
+      "referencePriceText": "12,744.00",
+      "sourcePage": 3,
+      "sourceRow": 6,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF3173CB2 (BLUE) - 460mm HT, 53KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "139.18",
+      "referencePriceText": "139.18",
+      "sourcePage": 3,
+      "sourceRow": 7,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF3173CB2 (BLUE) - 510mm HT, 61KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "139.18",
+      "referencePriceText": "139.18",
+      "sourcePage": 3,
+      "sourceRow": 8,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF72515CCY1 (YELLOW) - 460mm HT, 36KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "139.18",
+      "referencePriceText": "139.18",
+      "sourcePage": 3,
+      "sourceRow": 9,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF72515CCY1 (YELLOW) - 720mm HT, 57KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "139.18",
+      "referencePriceText": "139.18",
+      "sourcePage": 3,
+      "sourceRow": 10,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF3134CW1 (WHITE) - 460mm HT, 63KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "121.02",
+      "referencePriceText": "121.02",
+      "sourcePage": 3,
+      "sourceRow": 11,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF3134CW1 (WHITE) - 720mm HT, 103KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "121.02",
+      "referencePriceText": "121.02",
+      "sourcePage": 3,
+      "sourceRow": 12,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF3134CW1 (WHITE) - 510mm HT, 70KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "121.02",
+      "referencePriceText": "121.02",
+      "sourcePage": 3,
+      "sourceRow": 13,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    },
+    {
+      "itemCode": null,
+      "description": "FILTER PAPER RF3134CW1 (WHITE) - 330mm HT, 45KG/ROLL",
+      "unit": "KG",
+      "referencePrice": "121.02",
+      "referencePriceText": "121.02",
+      "sourcePage": 3,
+      "sourceRow": 14,
+      "reviewReasons": [
+        "missing_item_code"
+      ]
+    }
+  ]
+}

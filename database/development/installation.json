@@ -2641,5 +2641,6 @@
       "Name": "unless-stopped",
       "MaximumRetryCount": 0
     }
-  }
+  },
+  "unexpected_error": "'DB_HOST'"
 }

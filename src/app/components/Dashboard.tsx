@@ -1,4 +1,8 @@
 import { useMemo, useState } from "react";
+import { useProductionJobOrders } from "./useProductionJobOrders";
+import { useSalesOrders } from "./useSalesOrders";
+import { useSalesWorkspaceData, type SalesDashboardData } from "./sales/useSalesWorkspaceData";
+import { useRealLogisticsShipments, shipmentStatus } from "./RealLogisticsShipments";
 import { ShoppingCart, Factory, AlertTriangle, DollarSign, Search, Sparkles, Inbox, ArrowRight, CheckCircle2, Truck, Boxes, Clock3, ArrowUpRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -684,9 +688,13 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
   const isAcc = role === "accounting";
   const { mode } = useSession();
   const realMode = mode === "real";
+  const production = useProductionJobOrders({ q: '', status: 'all' }, null, realMode && (role === 'operations' || role === 'production'));
+  const summary = useSalesWorkspaceData<SalesDashboardData>(role === 'owner' ? '/api/owner/dashboard' : '/api/sales/dashboard', realMode && (role === 'sales' || role === 'owner'));
+  const pending = useSalesOrders(realMode && role === 'sales', { q: '', status: 'open', stage: 'inquiry', sort: 'submitted-desc', page: 1, pageSize: 4 });
+  const shipments = useRealLogisticsShipments(realMode && role === 'logistics');
   const { inquiries, completedJOs } = useOrders();
   const { rawMaterials, finishedGoods } = useMaterials();
-  const pendingInquiries = inquiries.filter(i => i.stage === "inquiry");
+  const pendingInquiries = realMode ? (pending.data?.items ?? []).map(row => ({ id: row.id, code: row.reference, clientName: row.companyName, urgent: row.urgent, submittedDate: row.submittedAt, products: [] as {type:string}[] })) : inquiries.filter(i => i.stage === "inquiry");
   const meta = dashboardTitle[role] ?? { title: "Dashboard", subtitle: "Real-time overview" };
 
   /* DERIVED KPIs — single source of truth across the entire system */
@@ -714,6 +722,11 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
   const activeProductionJobs = completedJOs.filter(
     (job) => job.stage === "jo" || job.stage === "in_production" || job.stage === "quality_inspection"
   );
+  const overviewJobs = realMode ? production.items.filter(job => ['jo', 'in_production', 'quality_inspection'].includes(job.status)).map(job => ({
+    id: job.id, joNumber: job.reference, code: job.inquiryReference, clientName: job.clientName,
+    stage: job.status, currentStage: job.currentStageCursor, paused: job.paused,
+    products: [{ filterName: job.filterName, type: job.filterTypeCode }],
+  })) : activeProductionJobs;
   const inProgressProductionJobs = activeProductionJobs.filter(
     (job) => job.stage === "in_production" || job.stage === "quality_inspection"
   );
@@ -762,6 +775,14 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
       counts[method] = (counts[method] ?? 0) + 1;
       return counts;
     }, {});
+  const deliveryOverviewRows = realMode ? shipments.rows.filter(row => row.status !== 'delivered').map(row => ({
+    id: row.id, jo: row.jobOrderReference, client: row.companyName, item: 'Unavailable', quantity: '—',
+    method: row.deliveryMethodLabel ?? '—', label: shipmentStatus(row).label,
+  })) : logisticsActiveDeliveries.map(inquiry => ({
+    id: inquiry.id, jo: inquiry.joNumber ?? `JO-${inquiry.code}`, client: inquiry.clientName,
+    item: inquiry.products[0]?.filterName ?? inquiry.products[0]?.type ?? '—',
+    quantity: inquiry.products.reduce((total, product) => total + product.qty, 0), method: inquiry.deliveryMethod ?? '—', label: stageLabel[inquiry.stage],
+  }));
 
   const formatPeso = (n: number) => n >= 1000000 ? `₱${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `₱${(n / 1000).toFixed(0)}K` : `₱${n.toFixed(0)}`;
 
@@ -793,7 +814,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
       </header>
 
       <div className={role === "production" ? "px-4 sm:px-8 py-5 sm:py-8" : "px-8 py-8"} style={role === "production" ? undefined : { paddingLeft: 32, paddingRight: 32 }}>
-        {realMode && <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">The original role dashboard is shown with isolated real-mode stores. Operational read APIs are not connected, so metrics are not verified database counts.</div>}
+        {realMode && <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">Supported records are loaded from the role's authenticated APIs. Dashboard metrics without an approved aggregate remain unavailable.</div>}
+        {realMode && (role === 'sales' || role === 'owner') && <div className="mb-4 text-sm text-slate-600">{summary.loading ? <p role="status">Loading dashboard…</p> : summary.error ? <p role="alert">{summary.error}</p> : null}<button onClick={summary.refresh} disabled={summary.loading} className="rounded border bg-white px-3 py-2 text-xs font-semibold">{summary.error ? 'Retry dashboard' : 'Refresh dashboard'}</button></div>}
         {import.meta.env.DEV && isAcc && !realMode && (
           <div
             className="rounded-xl p-4 mb-6 flex items-start gap-3"
@@ -822,26 +844,26 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         <div className={role === "production" ? "grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6" : role === "operations" ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-8" : "grid grid-cols-4 gap-6 mb-8"}>
           {role === "owner" && (
             <>
-              <KPICard label="Active Orders"     value={String(activeOrdersCount)} delta="live count"  trend="up"   icon={ShoppingCart}    accent="#C8102E" />
-              <KPICard label="Jobs In Progress"  value={String(jobsInProgress)}    delta="on the floor" trend="up"  icon={Factory}         accent="#1A2B4A" />
-              <KPICard label="Low Stock Alerts"  value={realMode ? "—" : "3"}      delta="see Inventory" trend="down" icon={AlertTriangle} accent="#D97706" />
-              <KPICard label="Revenue"           value={formatPeso(revenueTotal)}  delta={`${paidInquiries.length} paid orders`} trend="up" icon={DollarSign}  accent="#16A34A" />
+              <KPICard label={realMode ? 'Pending Inquiries' : 'Active Orders'} value={String(activeOrdersCount)} liveValue={summary.data ? String(summary.data.pendingInquiries) : undefined} delta="Owner overview" trend="up" icon={ShoppingCart} accent="#C8102E" />
+              <KPICard label={realMode ? 'Quotations Sent' : 'Jobs In Progress'} value={String(jobsInProgress)} liveValue={summary.data ? String(summary.data.quotationsSent) : undefined} delta="Owner overview" trend="up" icon={Factory} accent="#1A2B4A" />
+              <KPICard label={realMode ? 'POs Received' : 'Low Stock Alerts'} value="3" liveValue={summary.data ? String(summary.data.purchaseOrdersReceived) : undefined} delta="Owner overview" trend="down" icon={AlertTriangle} accent="#D97706" />
+              <KPICard label={realMode ? 'Verified Revenue' : 'Revenue'} value={formatPeso(revenueTotal)} liveValue={summary.data ? `₱${summary.data.verifiedRevenue}` : undefined} delta={realMode ? 'all-time verified payments' : `${paidInquiries.length} paid orders`} trend="up" icon={DollarSign} accent="#16A34A" />
             </>
           )}
           {role === "operations" && (
             <>
               <KPICard label="Active Orders" value={String(operationsActiveOrders.length)} delta="open operational pipeline" showTrend={false} icon={ShoppingCart} accent="#C8102E" />
-              <KPICard label="Active Production Jobs" value={String(operationsProductionJobs.length)} delta="Job order, production, or inspection" showTrend={false} icon={Factory} accent="#1A2B4A" />
+              <KPICard label={realMode ? "Production Job Orders" : "Active Production Jobs"} liveValue={realMode && !production.loading && !production.error ? String(production.total) : undefined} value={String(operationsProductionJobs.length)} delta="Authenticated Production API" showTrend={false} icon={Factory} accent="#1A2B4A" />
               <KPICard label="Inventory Alerts" value={String(inventoryAlertCount)} delta="Low-stock and out-of-stock items" showTrend={false} icon={AlertTriangle} accent="#D97706" />
               <KPICard label="Active Deliveries" value={String(operationsDeliveries.length)} delta="Ready with waybill or dispatched" showTrend={false} icon={Truck} accent="#16A34A" />
             </>
           )}
           {role === "sales" && (
             <>
-              <KPICard label="Pending Inquiries" value={String(pendingInquiries.length)} delta="awaiting review" trend="up" icon={Inbox}  accent="#C8102E" />
-              <KPICard label="Quotations Sent"   value={String(quotationsSent)}    delta="awaiting PO"   trend="up"  icon={ShoppingCart}    accent="#1A2B4A" />
-              <KPICard label="POs Received"      value={String(posReceived)}       delta="ready for JO"  trend="up"  icon={Factory}         accent="#C9A84C" />
-              <KPICard label="Monthly Revenue"   value={formatPeso(revenueTotal)}  delta="paid orders"   trend="up"  icon={DollarSign}      accent="#16A34A" />
+              <KPICard label="Pending Inquiries" value={String(pendingInquiries.length)} liveValue={summary.data ? String(summary.data.pendingInquiries) : undefined} delta="awaiting review" trend="up" icon={Inbox} accent="#C8102E" />
+              <KPICard label="Quotations Sent" value={String(quotationsSent)} liveValue={summary.data ? String(summary.data.quotationsSent) : undefined} delta="awaiting PO" trend="up" icon={ShoppingCart} accent="#1A2B4A" />
+              <KPICard label="POs Received" value={String(posReceived)} liveValue={summary.data ? String(summary.data.purchaseOrdersReceived) : undefined} delta={realMode ? 'PO records received; Job Order prerequisites still apply' : 'ready for JO'} trend="up" icon={Factory} accent="#C9A84C" />
+              <KPICard label={realMode ? 'Verified Revenue' : 'Monthly Revenue'} value={formatPeso(revenueTotal)} liveValue={summary.data ? `₱${summary.data.verifiedRevenue}` : undefined} delta={realMode ? 'all-time verified payments' : 'paid orders'} trend="up" icon={DollarSign} accent="#16A34A" />
             </>
           )}
           {role === "accounting" && (
@@ -870,6 +892,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
           )}
         </div>
 
+        {realMode && (role === 'operations' || role === 'production') && <div className="mb-4 text-sm text-slate-600">{production.loading ? <p role="status">Loading Production records…</p> : production.error ? <p role="alert">{production.error}</p> : null}<button onClick={production.refresh} disabled={production.loading} className="rounded border bg-white px-3 py-2 text-xs font-semibold">{production.error ? 'Retry Production records' : 'Refresh Production records'}</button></div>}
         {role === "operations" && (
           <div className="mb-8">
             <OperationsBottlenecks
@@ -896,7 +919,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
               }
             >
               <div className="flex flex-col">
-                {activeProductionJobs.map((job) => {
+                {overviewJobs.map((job) => {
                   const stageIndex = job.currentStage ?? (
                     job.stage === "quality_inspection" ? 8 : job.stage === "in_production" ? 1 : 0
                   );
@@ -919,9 +942,9 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                     </div>
                   );
                 })}
-                {activeProductionJobs.length === 0 && (
+                {overviewJobs.length === 0 && (!realMode || (!production.loading && !production.error)) && (
                   <p className="font-dm py-5 text-center" style={{ fontSize: 13, color: "#64748B" }}>
-                    No active job orders.
+                    No active job orders returned.
                   </p>
                 )}
               </div>
@@ -945,17 +968,17 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             {realMode && <p className="absolute inset-x-0 top-1/2 text-center text-xs text-slate-500">Real orders API is not connected.</p>}
           </Card>
 
-          <Card title="Revenue Trend · 6 months" className="relative col-span-4">
+          <Card title={realMode ? 'Verified Revenue · Server Months' : 'Revenue Trend · 6 months'} className="relative col-span-4">
             <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={realMode ? [] : revenueTrend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <LineChart data={realMode ? (summary.data?.monthlyVerifiedRevenue ?? []).filter(record => Number.isFinite(Number(record.amount))).map(record => ({ m: record.month, v: Number(record.amount), exactAmount: record.amount })) : revenueTrend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                 <XAxis dataKey="m" tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "#64748B", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif", fontSize: 12 }} formatter={(v: number) => [`₱${v}K`, "Revenue"]} />
+                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontFamily: "Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif", fontSize: 12 }} formatter={(v: number, _name: string, entry: {payload?: {exactAmount?: string}}) => [realMode ? `₱${entry.payload?.exactAmount ?? v}` : `₱${v}K`, "Revenue"]} />
                 <Line type="monotone" dataKey="v" stroke="#1A2B4A" strokeWidth={2.5} dot={{ r: 4, fill: "#C8102E", strokeWidth: 0 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
-            {realMode && <p className="absolute inset-x-0 top-1/2 text-center text-xs text-slate-500">Real revenue API is not connected.</p>}
+            {realMode && !summary.loading && !summary.error && summary.data?.monthlyVerifiedRevenue.length === 0 && <p className="absolute inset-x-0 top-1/2 text-center text-xs text-slate-500">No verified monthly payments returned.</p>}
           </Card>
 
           <Card title="Production Stages" className="relative col-span-3">
@@ -992,11 +1015,12 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                   <Inbox size={18} color="white" />
                 </div>
                 <div>
-                  <div className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#991B1B", lineHeight: 1 }}>{realMode ? "—" : pendingInquiries.length}</div>
+                  <div className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#991B1B", lineHeight: 1 }}>{realMode ? summary.data?.pendingInquiries ?? '—' : pendingInquiries.length}</div>
                   <div className="font-dm" style={{ fontSize: 12, color: "#991B1B", fontWeight: 600 }}>unreviewed inquiries</div>
                 </div>
               </div>
               <div className="flex flex-col gap-2">
+                {realMode && role === 'sales' && (pending.loading ? <p role="status">Loading pending inquiries…</p> : pending.error ? <p role="alert">{pending.error}<button onClick={pending.refresh} className="ml-2 rounded border px-2 py-1">Retry inquiries</button></p> : null)}
                 {pendingInquiries.slice(0, 4).map(inq => (
                   <button
                     key={inq.id}
@@ -1009,9 +1033,9 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                     <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>{inq.submittedDate}</span>
                   </button>
                 ))}
-                {pendingInquiries.length === 0 && (
+                {pendingInquiries.length === 0 && (!realMode || (!pending.loading && !pending.error)) && (
                   <div className="font-dm text-center py-4" style={{ fontSize: 12, color: "#94A3B8" }}>
-                    {realMode ? "Inquiry API is not connected; live records cannot be verified." : "No unreviewed inquiries 🎉"}
+                    {realMode ? role === 'owner' ? 'Only aggregate inquiry counts are available for Owner.' : 'No pending inquiries returned.' : "No unreviewed inquiries 🎉"}
                   </div>
                 )}
               </div>
@@ -1137,6 +1161,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
         {role === "logistics" && (
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-8">
             <Card title="Active Deliveries" className="xl:col-span-7">
+              {realMode && <div className="mb-3 font-dm text-xs text-slate-500">{shipments.loading ? <p role="status">Loading shipment handoffs…</p> : shipments.error ? <p role="alert">{shipments.error}</p> : <p>Returned shipment records; item/quantity data are not supplied.</p>}<button onClick={shipments.refresh} disabled={shipments.loading} className="mt-2 rounded border px-2 py-1">{shipments.error ? 'Retry shipments' : 'Refresh shipments'}</button></div>}
               <table className="w-full">
                 <thead style={{ backgroundColor: "#F4F6F9" }}>
                   <tr>
@@ -1146,18 +1171,18 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                   </tr>
                 </thead>
                 <tbody>
-                  {logisticsActiveDeliveries.map((inquiry) => (
-                    <tr key={inquiry.id} className="border-t border-slate-200/70">
-                      <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 12, color: "#1A2B4A", fontWeight: 600 }}>{inquiry.joNumber ?? `JO-${inquiry.code}`}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{inquiry.clientName}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inquiry.products[0]?.filterName ?? inquiry.products[0]?.type ?? "—"}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inquiry.products.reduce((total, product) => total + product.qty, 0)}</td>
-                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{inquiry.deliveryMethod ?? "—"}</td>
-                      <td className="px-3 py-2"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 600, backgroundColor: inquiry.stage === "dispatched" ? "#DBEAFE" : "#E2E8F0", color: inquiry.stage === "dispatched" ? "#1D4ED8" : "#475569" }}>{stageLabel[inquiry.stage]}</span></td>
+                  {deliveryOverviewRows.map(row => (
+                    <tr key={row.id} className="border-t border-slate-200/70">
+                      <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 12, color: "#1A2B4A", fontWeight: 600 }}>{row.jo}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{row.client}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{row.item}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{row.quantity}</td>
+                      <td className="px-3 py-2 font-dm" style={{ fontSize: 12, color: "#475569" }}>{row.method}</td>
+                      <td className="px-3 py-2"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 600, backgroundColor: "#E2E8F0", color: "#475569" }}>{row.label}</span></td>
                     </tr>
                   ))}
-                  {logisticsActiveDeliveries.length === 0 && (
-                    <tr><td colSpan={6} className="px-3 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No active deliveries.</td></tr>
+                  {deliveryOverviewRows.length === 0 && (!realMode || (!shipments.loading && !shipments.error)) && (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{realMode ? 'Open Logistics for authenticated shipment handoff records.' : 'No active deliveries.'}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1174,7 +1199,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                   </div>
                 ))}
                 {Object.keys(logisticsDeliveryMethods).length === 0 && (
-                  <p className="font-dm py-4 text-center" style={{ fontSize: 12, color: "#94A3B8" }}>No delivery method data yet.</p>
+                  <p className="font-dm py-4 text-center" style={{ fontSize: 12, color: "#94A3B8" }}>{realMode ? 'Delivery-method aggregates are unavailable from the supported APIs.' : 'No delivery method data yet.'}</p>
                 )}
               </div>
             </Card>
@@ -1264,6 +1289,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{j.due}</td>
                     </tr>
                   ))}
+                  {realMode && <tr><td colSpan={5} className="px-4 py-6 text-center font-dm text-xs text-slate-500">{role === 'operations' || role === 'production' ? 'Open Production Floor for authenticated Job Order records.' : 'Job Order monitoring is unavailable from this role’s supported APIs.'}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -1289,6 +1315,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
                   </div>
                 );
               })}
+              {realMode && <p className="font-dm text-xs text-slate-500">Alert summaries are unavailable from the supported APIs.</p>}
             </div>
           </div>}
         </div>

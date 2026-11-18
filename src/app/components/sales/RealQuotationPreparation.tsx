@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { createSalesQuotation } from "../../api/salesOrders.js";
+import { ApiError } from "../../api/client";
 import { useSalesStockAvailability, type SalesOrderDetail, type SalesStockAssessment } from "../useSalesOrders";
 import { CostEstimationPanel } from "../CostEstimationPanel";
 import { QuotationBuilder } from "../QuotationBuilder";
@@ -19,6 +20,16 @@ type Props = { orderId: string; detail: SalesOrderDetail; onClose: () => void; o
 function availabilityTone(status: SalesStockAssessment["status"]) { return status === "available" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : status === "insufficient" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-slate-200 bg-slate-50 text-slate-700"; }
 function availabilityLabel(status: SalesStockAssessment["status"]) { return status === "available" ? "Available" : status === "insufficient" ? "Insufficient stock" : "Unavailable"; }
 function SectionTitle({ title, detail }: { title: string; detail?: string }) { return <div className="flex items-baseline justify-between gap-3"><h3 className="font-dm text-xs font-bold uppercase tracking-wide text-[#1A2B4A]">{title}</h3><span className="font-dm text-xs text-slate-400">{detail}</span></div>; }
+function quotationFailureMessage(cause: unknown, detail: SalesOrderDetail): string {
+  if (cause instanceof ApiError && cause.code === "MATERIAL_COSTING_INCOMPLETE") {
+    const products = detail.items
+      .filter(item => cause.errors?.[item.id])
+      .map(item => item.filterName || "an inquiry product");
+    const affected = products.length ? ` for ${Array.from(new Set(products)).join(", ")}` : "";
+    return `Approved BOM/material data are incomplete${affected}. Verify approved material requirements, quantities, waste, and active prices before saving.`;
+  }
+  return cause instanceof Error ? cause.message : "Quotation could not be saved.";
+}
 
 export function RealQuotationPreparation({ orderId, detail, onClose, onSaved }: Props) {
   const [history, setHistory] = useState<SalesQuotation[] | null>(null);
@@ -80,7 +91,7 @@ function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }
       onSaved(status, result as QuotationResult);
     } catch (cause) {
       if (uncertainWrite(cause)) setUncertain(true);
-      setError(cause instanceof Error ? cause.message : "Quotation could not be saved.");
+      setError(quotationFailureMessage(cause, detail));
     }
     finally { lock.current = false; setSaving(false); }
   };

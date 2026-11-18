@@ -30,7 +30,23 @@ test("Employee Directory supports real filtering, pagination, contact fields, an
 test("Employee Directory remains separate from Admin Employee Management and preserves role access", () => {
   const source = read("UserManagementView.tsx");
   assert.match(source, /if \(role === "owner"\) return <EmployeeDirectory \/>/);
-  assert.match(source, /if \(role === "admin"\) return <AdminUserManagementView \/>/);
-  assert.match(source, /function AdminUserManagementView/);
+  assert.match(source, /if \(role === "admin"\) return <AdminManagementHub \/>/);
+  assert.match(source, /function AdminManagementHub/);
+  assert.match(source, /<EmployeeManagement \/>/);
+  assert.match(source, /<ClientManagement \/>/);
+  assert.match(source, /<RolesPermissions \/>/);
   assert.match(read("../role-access.js"), /owner: \[.*users/);
+});
+
+test("Owner dashboard uses the Owner API instead of the Sales-only dashboard route", () => {
+  const source = read("AnalyticsFullView.tsx");
+  assert.match(source, /'\/api\/owner\/dashboard', realMode && role === 'owner'/);
+  assert.doesNotMatch(source, /\/api\/sales\//);
+});
+
+test("Owner dashboard KPI cards use established server aggregates instead of local Demo stores", () => {
+  const source = read("AnalyticsFullView.tsx");
+  for (const field of ['pendingInquiries', 'quotationsSent', 'purchaseOrdersReceived', 'verifiedRevenue']) assert.ok(source.includes(`owner.data?.${field}`) || source.includes(`owner.data.${field}`));
+  assert.match(source, /not period filtered/);
+  assert.match(source, /onClick=\{owner\.refresh\}/);
 });

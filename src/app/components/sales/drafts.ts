@@ -17,6 +17,7 @@ export function inquiryDraft(order: SalesOrderDetail): Inquiry {
     paymentTerms: order.paymentTermLabel as Inquiry["paymentTerms"],
     stage: order.stageCode as Inquiry["stage"], submittedDate: order.submittedAt,
     urgent: order.urgent, dueDate: order.requestedDeliveryDate || undefined,
+    deliveryMethod: order.deliveryMethodLabel as Inquiry["deliveryMethod"] || undefined,
     products: order.items.map(item => ({ ...item, id: String(item.id), type: item.filterTypeCode || "Unspecified filter type", filterName: item.filterName || undefined, qty: item.quantity, oem: item.oemPartNumber || undefined })) as Inquiry["products"],
   };
 }

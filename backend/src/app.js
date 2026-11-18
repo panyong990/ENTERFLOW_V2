@@ -16,6 +16,9 @@ import productionRoutes from './routes/production.routes.js';
 import stockRequestsRoutes from './routes/stock-requests.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
 import documentRoutes from './routes/document.routes.js';
+import accountingRoutes from './routes/accounting.routes.js';
+import warehouseRoutes from './routes/warehouse.routes.js';
+import logisticsRoutes from './routes/logistics.routes.js';
 
 // Resolve Express's own responder even when dependencies are not hoisted.
 const finalhandler = createRequire(import.meta.resolve('express'))('finalhandler');
@@ -40,6 +43,9 @@ export function createApp({
   app.use('/api/stock-requests', stockRequestsRoutes);
   app.use('/api/inventory', inventoryRoutes);
   app.use('/api/documents', documentRoutes);
+  app.use('/api/accounting', accountingRoutes);
+  app.use('/api/warehouse', warehouseRoutes);
+  app.use('/api/logistics', logisticsRoutes);
   app.use('/api/workspace/sales', salesWorkspaceRoutes);
   app.use('/api/sales', clientDirectoryRoutes);
   app.use('/api/client', clientPortalRoutes);

@@ -1,1 +1,1 @@
-export { SalesPipeline as RealSalesOrders } from "./sales/SalesPipeline";
+export { SalesOrders as RealSalesOrders } from "./SalesOrders";

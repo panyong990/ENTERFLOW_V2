@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('./RealQuotationPreparation.tsx', import.meta.url), 'utf8');
-const pipeline = readFileSync(new URL('./SalesPipeline.tsx', import.meta.url), 'utf8');
+const pipeline = readFileSync(new URL('../SalesOrders.tsx', import.meta.url), 'utf8');
+const liveActions = readFileSync(new URL('./LiveSalesActions.tsx', import.meta.url), 'utf8');
 const builder = readFileSync(new URL('../QuotationBuilder.tsx', import.meta.url), 'utf8');
 const costing = readFileSync(new URL('../CostEstimationPanel.tsx', import.meta.url), 'utf8');
 const specifications = readFileSync(new URL('./OriginalSalesForms.tsx', import.meta.url), 'utf8');
@@ -21,7 +22,8 @@ test('uncertain quotation writes preserve edits and require history reconciliati
 });
 
 test('Real quotation preparation is connected to the Sales inquiry detail and authenticated quotation adapter', () => {
-  assert.match(pipeline, /<RealQuotationPreparation orderId=\{row\.id\}/);
+  assert.match(liveActions, /<RealQuotationPreparation orderId=\{inquiry\.id\} detail=\{detail\}/);
+  assert.match(pipeline, /onLiveAction=\{action => setLiveAction\(\{ inquiry: c as LiveInquiry, action \}\)\}/);
   assert.match(source, /createSalesQuotation/);
   assert.match(source, /useSalesStockAvailability/);
   assert.match(builder, /Save draft/);
@@ -30,7 +32,7 @@ test('Real quotation preparation is connected to the Sales inquiry detail and au
 
 test('Client inquiry, Sales quotation, and quotation revisions retain authoritative record references', () => {
   assert.match(drafts, /id: order\.id, code: order\.reference, clientName: order\.companyName/);
-  assert.match(pipeline, /<RealQuotationPreparation orderId=\{row\.id\} detail=\{detail\}/);
+  assert.match(liveActions, /<RealQuotationPreparation orderId=\{inquiry\.id\} detail=\{detail\}/);
   assert.match(source, /createSalesQuotation\(orderId/);
   assert.match(source, /detail\.reference/);
   assert.match(source, /baseQuotationId: restored\.latest\?\.id/);
@@ -67,4 +69,11 @@ test('Real quotation preparation validates approved inputs before calling the qu
   assert.match(source, /Select the required 20% or 50% downpayment/);
   assert.match(costing, /cfg.vatRate > 100/);
   assert.match(source, /lock.current/);
+});
+
+test('Real quotation explains missing approved BOM/material data without substituting catalog references', () => {
+  assert.match(source, /cause\.code === "MATERIAL_COSTING_INCOMPLETE"/);
+  assert.match(source, /cause\.errors\?\.\[item\.id\]/);
+  assert.match(source, /Approved BOM\/material data are incomplete/);
+  assert.match(source, /active prices before saving/);
 });

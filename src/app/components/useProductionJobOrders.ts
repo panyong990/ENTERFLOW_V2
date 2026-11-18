@@ -7,11 +7,13 @@ export interface ProductionJobOrder {
   quantity: number; productionDueDate: string | null; createdAt: string | null; status: string; currentStageCursor: number;
   currentStageLabel: string | null; paused: boolean; pauseReason: string | null; acceptedQuotationId: string | null;
   purchaseOrderId: string | null; purchaseOrderReference: string | null; poDocumentAvailable: boolean;
+  stages?: { position: number; label: string }[];
+  productionEvents?: { id: string; stagePosition: number | null; stageLabel: string | null; action: string; reason: string | null; performedBy: string | null; occurredAt: string | null }[];
   trace?: { acceptedQuotationReference: string | null; purchaseOrderReference: string | null; poDocumentAvailable: boolean; createdBy?: string | null; createdAt?: string | null };
   [key: string]: unknown;
 }
 
-export function useProductionJobOrders(filters: { q: string; status: string }, selectedId: string | null) {
+export function useProductionJobOrders(filters: { q: string; status: string }, selectedId: string | null, enabled = true) {
   const [items, setItems] = useState<ProductionJobOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -19,12 +21,15 @@ export function useProductionJobOrders(filters: { q: string; status: string }, s
   const [detail, setDetail] = useState<ProductionJobOrder | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [detailVersion, setDetailVersion] = useState(0);
   const [version, setVersion] = useState(0);
   const sequence = useRef(0);
   const refresh = useCallback(() => setVersion(value => value + 1), []);
+  const retryDetail = useCallback(() => setDetailVersion(value => value + 1), []);
   const filterKey = JSON.stringify(filters);
 
   useEffect(() => {
+    if (!enabled) { setItems([]); setTotal(0); setLoading(false); setError(""); return undefined; }
     const controller = new AbortController(); const token = ++sequence.current;
     setLoading(true); setError("");
     listProductionJobOrders({ ...filters, page: 1, pageSize: 100 }, controller.signal)
@@ -34,9 +39,10 @@ export function useProductionJobOrders(filters: { q: string; status: string }, s
     return () => { ++sequence.current; controller.abort(); };
   // filterKey intentionally tracks both query fields.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, version]);
+  }, [enabled, filterKey, version]);
 
   useEffect(() => {
+    if (!enabled) { setDetail(null); setDetailLoading(false); setDetailError(""); return undefined; }
     if (!selectedId) { setDetail(null); setDetailLoading(false); setDetailError(""); return undefined; }
     const controller = new AbortController(); setDetailLoading(true); setDetailError("");
     getProductionJobOrder(selectedId, controller.signal)
@@ -44,7 +50,7 @@ export function useProductionJobOrders(filters: { q: string; status: string }, s
       .catch(cause => { if (!controller.signal.aborted) setDetailError(cause instanceof Error ? cause.message : "Unable to load Job Order details."); })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [selectedId]);
+  }, [enabled, selectedId, detailVersion]);
 
-  return { items, total, loading, error, detail, detailLoading, detailError, refresh };
+  return { items, total, loading, error, detail, detailLoading, detailError, refresh, retryDetail };
 }

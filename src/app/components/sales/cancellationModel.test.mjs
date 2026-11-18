@@ -15,7 +15,9 @@ test('uncertain writes require state reconciliation while validation and eligibi
   for (const error of [null, { status: 400 }, { status: 403 }, { status: 409, code: 'CANCELLATION_NOT_ELIGIBLE' }]) assert.equal(uncertainWrite(error), false);
 });
 
-test('Sales history wires server pagination, failed-detail feedback, synchronous locking and explicit state recheck', () => {
-  const source = readFileSync(new URL('./SalesPipeline.tsx', import.meta.url), 'utf8');
-  for (const marker of ['cancellationQuery(filters, cancellationFilter, cancellationPage)', 'setCancellationPage(1)', 'Cancellation history pages', 'details.errors', 'Check latest cancellation state', 'decisionLock.current || uncertain', 'getSalesOrder(orderId)']) assert.ok(source.includes(marker), marker);
+test('Sales history refreshes authenticated records and guards cancellation decisions', () => {
+  const source = readFileSync(new URL('../SalesOrders.tsx', import.meta.url), 'utf8');
+  const adapter = readFileSync(new URL('./useOriginalSalesAdapter.ts', import.meta.url), 'utf8');
+  for (const marker of ['aria-label="Refresh Sales records"', 'pendingCancellationRecords', 'live.cancel(inquiry, "approved")', 'live.cancel(inquiry, "declined")']) assert.ok(source.includes(marker), marker);
+  for (const marker of ['getSalesOrder(inquiry.id)', 'reviewSalesCancellation', 'locks.current.has(inquiry.id)', 'uncertain.current.has(inquiry.id)', 'uncertain.current.add(inquiry.id)']) assert.ok(adapter.includes(marker), marker);
 });

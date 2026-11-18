@@ -17,28 +17,33 @@ test('unsafe directives and unsupported constructs fail before execution', () =>
     assert.throws(() => splitSql(sql), undefined, sql);
   }
 });
-test('discovery defers version 7 onward before reading their SQL and preserves active ordering', async () => {
+test('discovery permits only the approved inventory migration and defers other version 7+ files', async () => {
   const base = await mkdtemp(path.join(tmpdir(), 'enterflow-migration-discovery-'));
   try {
     await mkdir(path.join(base, 'migrations'));
     await mkdir(path.join(base, 'seeds'));
-    await writeFile(path.join(base, 'migrations', '001_initial.sql'), 'CREATE TABLE first_table (id INT);');
-    await writeFile(path.join(base, 'migrations', '006_latest_active.sql'), 'CREATE TABLE active_table (id INT);');
+    await writeFile(path.join(base, 'migrations', '001_initial.sql'), 'CREATE TABLE materials (id INT); CREATE TABLE users (id INT);');
+    await writeFile(path.join(base, 'migrations', '006_latest_active.sql'), 'CREATE TABLE units (id INT);');
     await mkdir(path.join(base, 'migrations', '007_deferred_fixture.sql'));
-    await mkdir(path.join(base, 'migrations', '008_future_fixture.sql'));
+    await mkdir(path.join(base, 'migrations', '009_future_fixture.sql'));
+    await writeFile(path.join(base, 'migrations', '008_inventory_material_master.sql'), [
+      'ALTER TABLE materials ADD COLUMN item_code VARCHAR(80) NULL;',
+      'CREATE TABLE material_import_review (id INT, material_id INT, FOREIGN KEY (material_id) REFERENCES materials(id));',
+    ].join('\n'));
     await writeFile(path.join(base, 'seeds', '001_reference_data.sql'), 'INSERT INTO reference_data VALUES (1);');
 
     const { files: activeFiles, deferredFiles } = await discoverFilesAt(base);
     assert.deepEqual(activeFiles.map(file => file.file), [
       'migrations/001_initial.sql',
       'migrations/006_latest_active.sql',
+      'migrations/008_inventory_material_master.sql',
       'seeds/001_reference_data.sql',
     ]);
     const activeFilesFromWrapper = await filesAt(base);
     assert.deepEqual(activeFilesFromWrapper.map(file => file.file), activeFiles.map(file => file.file));
     assert.deepEqual(deferredFiles, [
       'migrations/007_deferred_fixture.sql',
-      'migrations/008_future_fixture.sql',
+      'migrations/009_future_fixture.sql',
     ]);
     const calls = [];
     const db = {
@@ -62,17 +67,33 @@ test('discovery defers version 7 onward before reading their SQL and preserves a
     await run(db, 'migrate', base, message => messages.push(message));
     assert.ok(calls.includes('SELECT GET_LOCK(?,0) AS acquired'));
     assert.ok(calls.includes('SELECT RELEASE_LOCK(?)'));
-    assert.ok(calls.includes('CREATE TABLE first_table (id INT)'));
-    assert.ok(calls.includes('CREATE TABLE active_table (id INT)'));
+    assert.ok(calls.includes('CREATE TABLE materials (id INT)'));
+    assert.ok(calls.includes('CREATE TABLE units (id INT)'));
+    assert.ok(calls.includes('ALTER TABLE materials ADD COLUMN item_code VARCHAR(80) NULL'));
     assert.ok(!calls.some(sql => sql.includes('deferred fixture') || sql.includes('future fixture')));
     assert.ok(messages.includes('DEFERRED migrations/007_deferred_fixture.sql'));
-    assert.ok(messages.includes('DEFERRED migrations/008_future_fixture.sql'));
+    assert.ok(messages.includes('DEFERRED migrations/009_future_fixture.sql'));
 
     calls.length = 0;
     for (const command of ['baseline', 'seed']) {
       await assert.rejects(run(db, command, base, () => {}), /deferred migrations exist/);
     }
     assert.equal(calls.length, 0);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test('approved inventory migration rejects dependencies not established through migration 006', async () => {
+  const base = await createFixture({
+    'migrations/001_core.sql': 'CREATE TABLE materials (id INT);',
+    'migrations/008_inventory_material_master.sql': [
+      'ALTER TABLE materials ADD COLUMN item_code VARCHAR(80) NULL;',
+      'CREATE TABLE material_import_review (id INT, FOREIGN KEY (material_id) REFERENCES migration_007_only(id));',
+    ].join('\n'),
+  });
+  try {
+    await assert.rejects(discoverFilesAt(base), /depends on a table outside migrations 001-006: migration_007_only/);
   } finally {
     await rm(base, { recursive: true, force: true });
   }

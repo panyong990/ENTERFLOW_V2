@@ -1,15 +1,17 @@
 import { Fragment, useEffect, useState } from "react";
 import { ArrowRight, FileText, X, Calculator, ChevronDown, ChevronUp, Info, Upload, Paperclip, Trash2, Factory, CheckCircle2, Maximize2, RotateCcw, AlertTriangle, Eye } from "lucide-react";
 import { toast } from "sonner";
-import { unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, poReviewStatus, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type FinalizeJOData, type JOSpecs, type QuotationDoc } from "../../store/orders";
+import { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, poReviewStatus, type Inquiry, type ProductLine, type Quotation, type QuotationLine, type FinalizeJOData, type JOSpecs, type QuotationDoc } from "../../store/orders";
 import { calculateProductionDeadline, DELIVERY_TRANSIT_ESTIMATE_NOTICE, formatDeliveryTransitEstimate, getDeliveryTransitEstimate } from "../../store/productionDeadline";
 import { useMaterials, type Material, type BOMLine, type CostConfig } from "../../store/materials";
-import { CostEstimationPanel } from "./CostEstimationPanel";
-import { QuotationBuilder } from "./QuotationBuilder";
-import { quotationVatLabel, QuotationPreviewModal } from "./QuotationPreviewModal";
+import { useSession } from "../../store/session";
+import { CostEstimationPanel } from "../CostEstimationPanel";
+import { QuotationBuilder } from "../QuotationBuilder";
+import { quotationVatLabel, QuotationPreviewModal } from "../QuotationPreviewModal";
 import { FILTER_TYPES as FILTER_TYPES_CATALOG, DIMENSION_LABELS as DIMENSION_LABELS_CATALOG, GROUP_TEMPLATES, groupForType } from "../../store/filterTemplates";
-import { pendingIntegration } from "./drafts";
-import { EngineerSketches } from '../EngineerSketches';
+import { loadProductSketchAttachment, type ProductSketchAttachment } from "../../store/attachments";
+import { EngineerSketches } from "../EngineerSketches";
+import { ModalShell } from "./QuotationModalShell";
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 interface OtherMat { id: string; name: string }
 interface MatPlan {
@@ -28,7 +30,7 @@ const blankPlan = (qty: number): MatPlan => ({
 });
 
 export function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: Inquiry; onClose: () => void; onSubmit: (q: Quotation, bomData?: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex?: number }, quotationDoc?: QuotationDoc) => void }) {
-  const isNewClient = (_name: string) => false;
+  const { isNewClient } = useOrders();
   const [leadDays, setLeadDays] = useState(inquiry.quotation?.leadTimeDays ?? 14);
   /* Section H — default to inquiry tab for ALL clients, not just new ones */
   const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">("inquiry");
@@ -81,7 +83,6 @@ export function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: 
 
   return (
     <ModalShell title={`Review & Send Quotation · ${inquiry.code}`} subtitle={`${inquiry.clientName} · ${inquiry.contactPerson} · ${inquiry.paymentTerms}`} onClose={onClose} size="lg">
-      <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Unsaved draft · Backend integration pending. Sending will not create a quotation or notify the client.</p>
       <div className="flex gap-1 border-b border-slate-200 mb-5 -mt-2">
         {[
           { id: "inquiry" as const, label: "1 · Inquiry Details" },
@@ -115,7 +116,7 @@ export function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: 
         <InquiryDetailsTab inquiry={inquiry} isNew={isNewClient(inquiry.clientName)} onStart={() => setActiveTab("cost")} />
       )}
 
-      <DraftTab active={activeTab === "cost"}>
+      {activeTab === "cost" && (
         <CostEstimationPanel
           inquiry={inquiry}
           qty={inquiry.products.reduce((s, p) => s + p.qty, 0)}
@@ -133,11 +134,10 @@ export function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: 
             setActiveTab("quote");
           }}
         />
-      </DraftTab>
+      )}
 
-      <DraftTab active={activeTab === "quote"}>
+      {activeTab === "quote" && (
         <QuotationBuilder
-          key={JSON.stringify(perProductBomData)}
           inquiry={inquiry}
           productBoms={inquiry.products.map((_, index) =>
             perProductBomData[index]?.bom ?? resolveProductBOM(inquiry, index) ?? null
@@ -166,7 +166,7 @@ export function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: 
             void total;
           }}
         />
-      </DraftTab>
+      )}
     </ModalShell>
   );
 }
@@ -221,7 +221,6 @@ export function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquir
       </div>
 
       {/* Product specs table */}
-      <details className="rounded-lg border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">All returned product specifications</summary>{inquiry.products.map(product => <div key={product.id} className="mt-3 border-t pt-3"><b className="text-sm">{product.filterName || product.type}</b><div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">{Object.entries(product).filter(([, value]) => value != null && value !== "").map(([key, value]) => <span key={key}>{key}: {String(value)}</span>)}</div></div>)}</details>
       <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
         <div className="px-5 py-3 border-b border-slate-200" style={{ backgroundColor: "#F8FAFC" }}>
           <div className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Product Specifications · {inquiry.products.length} item{inquiry.products.length === 1 ? "" : "s"}</div>
@@ -316,7 +315,7 @@ export function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquir
   );
 }
 
-function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+export function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</div>
@@ -503,7 +502,7 @@ function ProductCostBlock({ index, product, line, onChange }: { index: number; p
 /* ---- Quotation Detail (read-only management view) ---- */
 function QuotationDetailModal({ inquiry, onClose }: { inquiry: Inquiry; onClose: () => void }) {
   const q = inquiry.quotation!;
-  const total = quotationTotal(inquiry);
+  const total = live ? 0 : quotationTotal(inquiry);
   return (
     <ModalShell title={`Internal Cost Breakdown · ${inquiry.code}`} subtitle={`${inquiry.clientName} · Sent ${q.sentDate} · ${q.leadTimeDays} day lead time`} onClose={onClose} size="lg">
       <div className="rounded-lg border border-slate-200 overflow-hidden">
@@ -580,7 +579,7 @@ export function POViewerModal({ inquiry, onClose }: { inquiry: Inquiry; onClose:
       ) : (
         <div className="rounded-lg border border-amber-200 p-5" style={{ backgroundColor: "#FFFBEB" }}>
           <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#92400E", textTransform: "uppercase" }}>Original upload unavailable</div>
-          <p className="font-dm mt-2" style={{ fontSize: 13, color: "#78350F" }}>The Sales API returns document metadata. Original file content is unavailable through this API; preview and download integration is pending.</p>
+          <p className="font-dm mt-2" style={{ fontSize: 13, color: "#78350F" }}>This earlier record contains the PO reference but not the uploaded document data. New client uploads are stored on the order and open here.</p>
         </div>
       )}
     </ModalShell>
@@ -590,12 +589,22 @@ export function POViewerModal({ inquiry, onClose }: { inquiry: Inquiry; onClose:
 /* ---- Generate JO confirmation w/ final specs + physical document uploads ---- */
 interface UploadedDoc { id: string; name: string; size: number; ts: string; label?: string }
 
-export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
+export function GenerateJOModal(props: { inquiry: Inquiry; onClose: () => void; onConfirm: (data: FinalizeJOData | FinalizeJOData[]) => void; real?: { footer: React.ReactNode } }) {
+  const session = useSession();
+  if (session.mode === "real") return <GenerateJOForm {...props} generateJONumber={() => "Assigned by server"} />;
+  return <DemoGenerateJOModal {...props} />;
+}
+function DemoGenerateJOModal(props: { inquiry: Inquiry; onClose: () => void; onConfirm: (data: FinalizeJOData | FinalizeJOData[]) => void }) {
+  const { generateJONumber } = useOrders();
+  return <GenerateJOForm {...props} generateJONumber={generateJONumber} />;
+}
+function GenerateJOForm({ inquiry, onClose, onConfirm, generateJONumber, real }: {
+  generateJONumber: () => string;
+  real?: { footer: React.ReactNode };
   inquiry: Inquiry;
   onClose: () => void;
   onConfirm: (data: FinalizeJOData | FinalizeJOData[]) => void;
 }) {
-  const generateJONumber = () => "UNSAVED-JO-DRAFT";
   const [otherDocs, setOtherDocs] = useState<UploadedDoc[]>([]);
   const [otherLabel, setOtherLabel] = useState("");
   const [checks, setChecks] = useState({ verified: false, matches: false, terms: false, dpConfirmed: false });
@@ -656,6 +665,7 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   const [paymentTerms, setPaymentTerms] = useState<"15-Day Terms" | "30-Day Terms">(inquiry.paymentTerms);
   /* Delivery method (Enter-Fil's final say) */
   const [deliveryMethod, setDeliveryMethod] = useState<NonNullable<Inquiry["deliveryMethod"]>>(() => {
+    if (real) return inquiry.deliveryMethod ?? "" as NonNullable<Inquiry["deliveryMethod"]>;
     const quotationMethod = inquiry.quotationDoc?.shipping?.label;
     return ["Lalamove", "AP Cargo", "Fast Cargo", "Company Vehicle", "Client Pick-up"].includes(quotationMethod ?? "")
       ? quotationMethod as NonNullable<Inquiry["deliveryMethod"]>
@@ -698,7 +708,12 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
     }));
 
   const handleConfirm = () => {
-    pendingIntegration("Job Order generation");
+    if (!productionDeadline) {
+      const message = "Cannot calculate the production deadline. Confirm the quotation delivery timeframe and selected delivery method, and verify the transit-time configuration.";
+      toast.error(message);
+      return;
+    }
+    onConfirm(buildFinalizePayload());
   };
 
   const paymentVerificationDates = (inquiry.payments ?? [])
@@ -717,7 +732,9 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
   const summary = inquiry.products.map((p) => `${p.type}${p.od1 ? ` ${p.od1}×${p.id1}×${p.height}mm` : ""} · Qty ${p.qty}`).join(" · ");
 
   return (
-    <ModalShell title="Generate Job Order" subtitle={`${inquiry.code} · ${inquiry.clientName}`} onClose={onClose} size="lg"><p className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm">Unsaved JO configuration · Backend integration pending. Draft checkboxes and selected files do not verify payment or upload documents.</p>
+    <ModalShell title="Generate Job Order" subtitle={`${inquiry.code} · ${inquiry.clientName}`} onClose={onClose} size="lg">
+      {real && <p role="status" className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm">Final specification editing, attachments, negotiated terms, delivery overrides and manual JO numbering are unavailable from the Sales API. Recorded specifications are shown below. Production due date can be submitted after server prerequisites are verified.</p>}
+      <fieldset disabled={Boolean(real)}>
 
       {/* ─── PO Document Preview ─── */}
       {poFile && (
@@ -760,7 +777,7 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
                         <span style={{ color: "#C8102E", fontSize: 12, fontWeight: 800 }}>▲</span>
                       </div>
                       <div>
-                        <div className="font-syne" style={{ fontSize: 9, fontWeight: 800, color: "#0F172A", letterSpacing: 0.5 }}>PO REFERENCE SUMMARY — ORIGINAL FILE UNAVAILABLE</div>
+                        <div className="font-syne" style={{ fontSize: 9, fontWeight: 800, color: "#0F172A", letterSpacing: 0.5 }}>PURCHASE ORDER</div>
                         <div className="font-mono-jb" style={{ fontSize: 8, color: "#64748B" }}>{poFile}</div>
                       </div>
                     </div>
@@ -1081,7 +1098,7 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           <Factory size={18} style={{ color: "#C8102E" }} />
           <span className="font-syne" style={{ fontSize: 16, fontWeight: 700 }}>Generate Job Order</span>
         </div>
-        <div className="font-dm text-white/70 mb-3" style={{ fontSize: 12 }}>Unsaved JO configuration for:</div>
+        <div className="font-dm text-white/70 mb-3" style={{ fontSize: 12 }}>JO will be created for:</div>
         <div className="grid grid-cols-2 gap-y-2 gap-x-6 font-dm" style={{ fontSize: 13 }}>
           <Detail label="Client" value={inquiry.clientName} />
           <Detail label="PO" value={poNumberForDisplay(inquiry) ?? inquiry.code} mono />
@@ -1090,10 +1107,12 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
           <Detail label="Payment" value={inquiry.paymentTerms} />
         </div>
         <div className="mt-4 pt-3 border-t border-white/10 font-dm text-white/70" style={{ fontSize: 12 }}>
-          Backend integration pending. This configuration is unsaved; no Job Order, inventory deduction, or notification will be created.
+          The JO will appear on the Production Floor immediately and will be visible to the client in their portal under the Status tab.
         </div>
       </div>
 
+      </fieldset>
+      {real ? real.footer : <>
       <div className="flex justify-end gap-3 pt-4 mt-5 border-t border-slate-200">
         <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>
           Cancel
@@ -1108,6 +1127,7 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
         </button>
       </div>
 
+      </>}
       {/* Fullscreen PO Preview */}
       {poFullscreen && poFile && (
         <div
@@ -1132,7 +1152,7 @@ export function GenerateJOModal({ inquiry, onClose, onConfirm }: {
                   <span style={{ color: "#C8102E", fontSize: 20, fontWeight: 800 }}>▲</span>
                 </div>
                 <div>
-                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>PO REFERENCE SUMMARY — ORIGINAL FILE UNAVAILABLE</div>
+                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>PURCHASE ORDER</div>
                   <div className="font-mono-jb" style={{ fontSize: 12, color: "#64748B" }}>{poFile}</div>
                 </div>
               </div>
@@ -1226,30 +1246,7 @@ function Detail({ label, value, span2, mono }: { label: string; value: string; s
 }
 
 /* ---- shared bits ---- */
-function ModalShell({ title, subtitle, onClose, children, size = "md" }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; size?: "md" | "lg" }) {
-  const max = size === "lg" ? "max-w-5xl" : "max-w-lg";
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
-      <div className={`bg-white rounded-xl w-full ${max} max-h-[90vh] flex flex-col`} style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-slate-200 flex items-start justify-between">
-          <div>
-            <h3 className="font-syne" style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>{title}</h3>
-            {subtitle && <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>{subtitle}</p>}
-          </div>
-          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
-        </div>
-        <div className="p-6 overflow-auto">{children}</div>
-      </div>
-      <style>{`
-        .form-input { font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; padding: 10px 12px; border: 1px solid #E2E8F0; border-radius: 6px; outline: none; width: 100%; background: white; }
-        .form-input:focus { border-color: #94A3B8; }
-        .form-input-sm { font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; padding: 8px 10px; border: 1px solid #E2E8F0; border-radius: 6px; outline: none; width: 100%; background: white; }
-      `}</style>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</label>
@@ -1259,13 +1256,92 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /* ─── Management: New Inquiry Modal ─── */
-
-function OperationsProductSketch({ inquiryId, productId }: { inquiryId: string; productId: string; product: ProductLine }) {
-  return <EngineerSketches key={`${inquiryId}:${productId}`} orderId={inquiryId} itemId={productId} scope="sales" />;
+function openProductSketch(sketch: ProductSketchAttachment) {
+  try {
+    const [metadata, encodedData] = sketch.dataUrl.split(",", 2);
+    const mimeType = /^data:([^;]+)/i.exec(metadata)?.[1] ?? "application/octet-stream";
+    const binary = atob(encodedData);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch (cause) {
+    console.error("[EnterFlow] Could not open the client-uploaded product sketch.");
+    toast.error("Could not open the attachment", {
+      description: cause instanceof Error ? cause.message : "The saved file is invalid.",
+    });
+  }
 }
 
-function DraftTab({ active, children }: { active: boolean; children: React.ReactNode }) {
-  const [visited, setVisited] = useState(active);
-  useEffect(() => { if (active) setVisited(true); }, [active]);
-  return <div hidden={!active}>{(active || visited) && children}</div>;
+function OperationsProductSketch(props: { inquiryId: string; productId: string; product: ProductLine }) {
+  const session = useSession();
+  if (session.mode === "real") return session.role === "sales" ? <EngineerSketches orderId={props.inquiryId} itemId={props.productId} scope="sales" /> : <p>Engineer sketches unavailable for this role.</p>;
+  return <DemoProductSketch {...props} />;
+}
+
+function DemoProductSketch({ inquiryId, productId, product }: { inquiryId: string; productId: string; product: ProductLine }) {
+  const [sketch, setSketch] = useState<ProductSketchAttachment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    void loadProductSketchAttachment(inquiryId, productId)
+      .then((attachment) => {
+        if (!active) return;
+        setSketch(attachment);
+        setLoading(false);
+      })
+      .catch((cause: unknown) => {
+        console.error("[EnterFlow] Could not load product sketch for inquiry.");
+        if (!active) return;
+        setError(cause instanceof Error ? cause.message : "Unknown attachment error");
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [inquiryId, productId]);
+
+  const isImage = sketch?.dataUrl.startsWith("data:image/") ?? false;
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>Engineer Sketch / Drawing</div>
+      {loading ? (
+        <div className="mt-2 font-dm" style={{ fontSize: 12, color: "#64748B" }}>Loading sketch…</div>
+      ) : error ? (
+        <div role="alert" className="mt-2 font-dm" style={{ fontSize: 12, color: "#B91C1C" }}>Sketch could not be loaded: {error}</div>
+      ) : sketch ? (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {isImage ? (
+            <img
+              src={sketch.dataUrl}
+              alt={`${product.type} client sketch`}
+              className="mx-auto max-h-56 w-full rounded-md object-contain"
+            />
+          ) : (
+            <div className="flex items-center gap-3 rounded-md border border-dashed border-slate-300 bg-white px-3 py-4">
+              <div style={{ width: 42, height: 52, backgroundColor: "#F8FAFC", border: "1.5px solid #CBD5E1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📄</div>
+              <div className="font-mono-jb break-all" style={{ fontSize: 11, color: "#0F172A" }}>{sketch.fileName}</div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => openProductSketch(sketch)}
+            className="mt-3 rounded-md px-3 py-2 font-dm"
+            style={{ backgroundColor: "#C8102E", color: "#FFFFFF", fontSize: 11, fontWeight: 700 }}
+          >
+            View Attachment
+          </button>
+        </div>
+      ) : product.sketchFileName ? (
+        <div role="alert" className="mt-2 font-dm" style={{ fontSize: 12, color: "#B91C1C" }}>
+          Sketch file unavailable: {product.sketchFileName}
+        </div>
+      ) : (
+        <div className="mt-2 font-dm" style={{ fontSize: 12, color: "#64748B" }}>No sketch attached</div>
+      )}
+    </div>
+  );
 }

@@ -644,7 +644,7 @@ export function createSalesOrdersService({ db }) {
         const size = inquirySize(item.height);
         const [bomRows] = await connection.execute(`SELECT CAST(bt.id AS CHAR) templateId, CAST(btl.material_id AS CHAR) materialId,
           btl.quantity_per_filter quantityPerFilter, btl.waste_percent wastePercent,
-          m.name materialName, m.unit_code unitCode, m.unit_price unitPrice
+          m.name materialName, COALESCE(m.source_unit,m.unit_code) unitCode, m.approved_costing_price unitPrice
           FROM bom_templates bt JOIN bom_template_lines btl ON btl.template_id=bt.id
           LEFT JOIN materials m ON m.id=btl.material_id AND m.active=TRUE
           WHERE bt.filter_type_code=? AND (bt.size_label=? OR bt.size_label IS NULL)

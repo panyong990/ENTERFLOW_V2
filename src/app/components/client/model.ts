@@ -498,6 +498,7 @@ export function resolveProductBOM(inquiry: Inquiry, productIndex: number): BOMLi
 
 export function poNumberForDisplay(inquiry: Pick<Inquiry, "poNumber" | "poFileName">): string | undefined {
   const storedPONumber = inquiry.poNumber?.trim();
+  if ('source' in inquiry) return storedPONumber || undefined;
   if (storedPONumber && /^PO-\d{4}-\d+$/i.test(storedPONumber)) return storedPONumber;
 
   const filenameReference = inquiry.poFileName?.replace(/\.[^.]+$/, "");
@@ -611,6 +612,8 @@ export const paymentState = (inq: Inquiry): PaymentStateSummary => {
 
 export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: PaymentType | null; maxAmount: number } {
   const state = paymentState(inq);
+  if (!Number.isFinite(state.invoiceTotal) || !Number.isFinite(state.requiredDownpaymentAmount)
+    || !Number.isFinite(state.remainingInvoiceBalance)) return { paymentType: null, maxAmount: 0 };
   const paymentType = state.currentPaymentType;
   if (!paymentType || inq.stage === "paid") return { paymentType: null, maxAmount: 0 };
 
@@ -621,8 +624,10 @@ export function paymentSubmissionAllowance(inq: Inquiry): { paymentType: Payment
 
   if (
     paymentType === "BALANCE_PAYMENT"
-    && (!hasValidSignedDeliveryReceipt(inq)
-      || inq.paymentCycleStartedAt !== inq.signedDeliveryReceiptReceivedAt)
+    && ('source' in inq
+      ? !inq.paymentCycleStartedAt
+      : !hasValidSignedDeliveryReceipt(inq)
+        || inq.paymentCycleStartedAt !== inq.signedDeliveryReceiptReceivedAt)
   ) return { paymentType: null, maxAmount: 0 };
 
   const pendingAmountCents = records

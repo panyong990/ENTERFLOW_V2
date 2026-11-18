@@ -10,6 +10,8 @@ import { StockRequestsModal } from "./StockRequestsModal";
 import { useSession } from "../store/session";
 import { useOrders } from "../store/orders";
 import { RealWarehouseStockRequests } from "./RealWarehouseStockRequests";
+import { RealWarehouseShipments } from "./RealWarehouseShipments";
+import { createInventoryMaterial as createInventoryMaterialRequest, updateInventoryMaterial as updateInventoryMaterialRequest } from "../api/inventory";
 
 const STOCK_REASONS = [
   "Restocked from supplier",
@@ -22,6 +24,8 @@ const STOCK_REASONS = [
 
 const UNITS: Unit[] = ["roll", "plate", "sheet", "kg", "gal", "pcs", "set", "m"];
 type EditableMaterialFields = Pick<RawMaterial, "name" | "category" | "unit" | "unitPrice" | "qtyInStock" | "threshold" | "supplier">;
+type RealMaterialUpdate = Partial<Pick<RawMaterial, "name" | "category" | "unit">> & { quantityOnHand?: string | null; threshold?: string | null; supplier?: string | null };
+type RealMaterialCreate = { itemCode: string | null; name: string; category: PartCategory | null; unit: string; threshold: string | null; supplier: string | null };
 
 /* ─────────── Component ─────────── */
 
@@ -34,13 +38,14 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
   const { push: pushNotif } = useNotifications();
 
   const isOperationsReadOnly = role === "operations";
-  const readOnly = isOperationsReadOnly || realMode;
+  const canMaintainRealMaterials = realMode && (role === "warehouse" || role === "admin");
+  const readOnly = isOperationsReadOnly || (realMode && !canMaintainRealMaterials);
   const [tab, setTab] = useState<"raw" | "finished">(initialTab);
   const [editing, setEditing] = useState<RawMaterial | null>(null);
   const [historyFor, setHistoryFor] = useState<RawMaterial | null>(null);
   const [selectedItem, setSelectedItem] = useState<{ kind: "raw"; item: RawMaterial } | { kind: "finished"; item: FinishedGood } | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [collapsedCats, setCollapsedCats] = useState<Set<PartCategory>>(new Set());
+  const [collapsedCats, setCollapsedCats] = useState<Set<PartCategory | "uncategorized">>(new Set());
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<PartCategory | "">("");
@@ -52,6 +57,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
   const filterRef = useRef<HTMLDivElement>(null);
 
   const [showStockRequests, setShowStockRequests] = useState(false);
+  const [showShipments, setShowShipments] = useState(false);
   const warehouseStockRequestCount = stockRequests.filter((request) => request.status === "pending" || request.status === "update_requested").length;
   const inventorySummary = useMemo(() => {
     const statuses = [
@@ -68,17 +74,27 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
 
   /* group by category */
   const grouped = useMemo(() => {
-    const out: Record<PartCategory, RawMaterial[]> = {} as any;
-    (Object.keys(partCategoryMeta) as PartCategory[]).forEach((c) => (out[c] = []));
-    rawMaterials.forEach((m) => out[m.category].push(m));
-    return out;
+    const categories = Object.fromEntries(
+      (Object.keys(partCategoryMeta) as PartCategory[]).map((category) => [category, [] as RawMaterial[]])
+    ) as Record<PartCategory, RawMaterial[]>;
+    const unclassified: RawMaterial[] = [];
+    rawMaterials.forEach((material) => {
+      if (material.category) categories[material.category].push(material);
+      else unclassified.push(material);
+    });
+    return { categories, unclassified };
   }, [rawMaterials]);
 
   const filterRow = (m: RawMaterial) =>
     query === "" ||
     m.name.toLowerCase().includes(query.toLowerCase()) ||
+    (m.itemCode ?? m.catalogCode ?? "").toLowerCase().includes(query.toLowerCase()) ||
     (m.supplier ?? "").toLowerCase().includes(query.toLowerCase());
-
+  const hasVisibleRawMaterials = rawMaterials.some((item) =>
+    filterRow(item) &&
+    (!readOnly || !categoryFilter || item.category === categoryFilter) &&
+    (!readOnly || !statusFilter || getRawMaterialStockStatus(item).key === statusFilter)
+  );
   const toggleFilters = () => {
     setDraftCategoryFilter(categoryFilter);
     setDraftStatusFilter(statusFilter);
@@ -100,7 +116,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
 
   const activeFilterCount = Number(Boolean(categoryFilter)) + Number(Boolean(statusFilter));
 
-  const toggleCat = (c: PartCategory) => {
+  const toggleCat = (c: PartCategory | "uncategorized") => {
     setCollapsedCats((prev) => {
       const next = new Set(prev);
       if (next.has(c)) next.delete(c); else next.add(c);
@@ -182,6 +198,20 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
     setEditing(null);
   };
 
+  const saveRealMaterial = async (id: string, updates: RealMaterialUpdate) => {
+    await updateInventoryMaterialRequest(id, updates);
+    refreshInventory();
+    toast.success("Material details updated.");
+    setEditing(null);
+  };
+
+  const createRealMaterial = async (input: RealMaterialCreate) => {
+    await createInventoryMaterialRequest(input);
+    refreshInventory();
+    toast.success("Material record created.");
+    setShowAdd(false);
+  };
+
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <Toaster position="bottom-right" richColors />
@@ -193,30 +223,34 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
           className="fixed z-40 min-w-36 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setEditing(contextMenu.material);
-              setContextMenu(null);
-            }}
-            className="font-dm flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
-            style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
-          >
-            <Pencil size={13} /> Update
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setHistoryFor(contextMenu.material);
-              setContextMenu(null);
-            }}
-            className="font-dm flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
-            style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}
-          >
-            <History size={13} /> History
-          </button>
+          {(!realMode || contextMenu.material.source === "database") ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setEditing(contextMenu.material);
+                setContextMenu(null);
+              }}
+              className="font-dm flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+              style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}
+            >
+              <Pencil size={13} /> Update
+            </button>
+          ) : (
+            <span role="menuitem" aria-disabled="true" className="font-dm block px-3 py-2 text-xs text-slate-500">Catalog reference · not editable</span>
+          )}
+          {!realMode && <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setHistoryFor(contextMenu.material);
+                setContextMenu(null);
+              }}
+              className="font-dm flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+              style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}
+            >
+              <History size={13} /> History
+            </button>}
         </div>
       )}
 
@@ -230,7 +264,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {((realMode && role === "warehouse") || !readOnly) && (
+          {((realMode && role === "warehouse") || (!realMode && !readOnly)) && (
             <button
               onClick={() => setShowStockRequests(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-dm"
@@ -240,10 +274,8 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
               {!realMode && <span className="px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 10, fontWeight: 800 }}>{warehouseStockRequestCount}</span>}
             </button>
           )}
-          {(!readOnly || (realMode && role === "warehouse")) && tab === "raw" && (
+          {(canMaintainRealMaterials || (!realMode && !readOnly)) && tab === "raw" && (
             <button
-              disabled={realMode}
-              title={realMode ? "Material registration requires an approved catalog import." : undefined}
               onClick={() => setShowAdd(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white font-dm hover:opacity-90"
               style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}
@@ -251,16 +283,10 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
               <Plus size={15} strokeWidth={2.5} /> Add Raw Material
             </button>
           )}
+          {realMode && role === "warehouse" && <button type="button" onClick={() => setShowShipments(true)} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 font-dm text-xs font-bold text-[#1A2B4A] hover:bg-slate-50">SHIPMENTS</button>}
           <NotificationBell />
         </div>
       </header>
-
-      {realMode && <div role="status" className="border-b border-blue-200 bg-blue-50 px-8 py-3 text-sm text-blue-950">
-        Business catalog reference values are preserved from integrated MAIN. Stock quantities and Stock Requests require authenticated records; unrecorded stock is never treated as zero.
-      </div>}
-      {realMode && inventoryLoading && <p role="status" className="px-8 py-3 text-sm">Loading authenticated inventory…</p>}
-      {realMode && inventoryError && <div className="px-8 py-3"><p role="alert" className="text-sm text-red-800">{inventoryError}</p><button type="button" onClick={refreshInventory} className="mt-2 rounded border px-3 py-1 text-sm">Retry inventory</button></div>}
-      {realMode && !inventoryLoading && !inventoryError && <p role="status" className="px-8 py-3 text-sm text-slate-600">{rawMaterials.filter(item=>item.source==='database').length} authenticated material records · {rawMaterials.filter(item=>item.source==='catalog_reference').length} catalog references without a verified database mapping. Quantities marked Not recorded are unavailable.</p>}
 
       {/* Tabs */}
       <nav className="bg-white border-b border-slate-200/70 px-8 flex gap-1">
@@ -300,6 +326,13 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
 
         {tab === "raw" && (
           <>
+            {realMode && inventoryError && (
+              <p role="alert" className="font-dm text-sm text-red-800">
+                Authenticated inventory could not be loaded. {inventoryError}
+                <button type="button" onClick={refreshInventory} className="ml-2 underline">Retry</button>
+              </p>
+            )}
+            {realMode && inventoryLoading && <p role="status" className="font-dm text-sm text-slate-500">Loading inventory…</p>}
             <div className="flex items-center gap-2">
               <div className="relative max-w-md flex-1">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
@@ -356,16 +389,17 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
             </div>
 
             {/* Category accordions */}
-            {(Object.keys(partCategoryMeta) as PartCategory[]).map((cat) => {
-              const meta = partCategoryMeta[cat];
-              const items = grouped[cat].filter((item) =>
+            {[...(Object.keys(partCategoryMeta) as PartCategory[]), "uncategorized" as const].map((cat) => {
+              const sectionCategory: PartCategory | null = cat === "uncategorized" ? null : cat;
+              const meta = sectionCategory ? partCategoryMeta[sectionCategory] : { label: "Uncategorized", icon: "📦" };
+              const items = (sectionCategory ? grouped.categories[sectionCategory] : grouped.unclassified).filter((item) =>
                 filterRow(item) &&
                 (!readOnly || !statusFilter || getRawMaterialStockStatus(item).key === statusFilter)
               );
               const lowCount = items.filter((m) => ["low-stock", "out-of-stock"].includes(getRawMaterialStockStatus(m).key)).length;
               const collapsed = collapsedCats.has(cat);
               if (items.length === 0 && (query !== "" || (readOnly && (categoryFilter || statusFilter)))) return null;
-              if (readOnly && categoryFilter && categoryFilter !== cat) return null;
+              if (readOnly && categoryFilter && categoryFilter !== sectionCategory) return null;
               return (
                 <section key={cat} className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
                   <button onClick={() => toggleCat(cat)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
@@ -390,8 +424,17 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                       <tbody>
                         {items.map((m) => {
                           const s = getRawMaterialStockStatus(m);
-                          const quantity = Number.isFinite(m.qtyInStock) ? `${m.qtyInStock.toFixed(2)} ${m.unit}` : "Not recorded";
-                          const price = Number.isFinite(m.unitPrice) ? `₱${m.unitPrice.toLocaleString("en-PH")}` : "Not recorded";
+                          const quantity = Number.isFinite(m.qtyInStock)
+                            ? `${m.qtyInStock.toFixed(2)} ${m.unit}${m.quantityStatus === "provisional_sample" ? " · sample" : ""}`
+                            : "Not recorded";
+                          const priceValue = realMode ? m.approvedCostingPrice : m.unitPrice;
+                          const referencePrice = m.referencePriceText
+                            ?? (Number.isFinite(m.referenceUnitPrice) ? `₱${m.referenceUnitPrice.toLocaleString("en-PH")}` : "Not listed");
+                          const price = Number.isFinite(priceValue)
+                            ? `₱${priceValue!.toLocaleString("en-PH")}`
+                            : realMode && referencePrice !== "Not listed"
+                              ? `Reference only: ${referencePrice}`
+                              : "Not recorded";
                           return (
                             <tr
                               key={m.id}
@@ -417,13 +460,15 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                             >
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
                                 {m.name}
+                                {(m.itemCode || m.catalogCode) && <div className="font-mono-jb mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{m.itemCode ?? m.catalogCode}</div>}
+                                {realMode && <div className="font-dm mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{m.source === "database" ? "Authenticated material" : "Catalog reference"}</div>}
                                 {m.supplier && <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8", marginTop: 1 }}>{m.supplier}</div>}
                               </td>
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{m.unit}</td>
                               <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 700, color: s.fg }}>{quantity}</td>
                               <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>{price}</td>
-                              <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{m.threshold}</td>
-                              <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: s.bg, color: s.fg }}>{s.label}</span></td>
+                              <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{Number.isFinite(m.threshold) ? `${m.threshold}${m.thresholdStatus === "provisional_sample" ? " · sample" : ""}` : "Not recorded"}</td>
+                              <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: s.bg, color: s.fg }}>{m.quantityStatus === "provisional_sample" ? `Sample · ${s.label}` : s.label}</span></td>
                             </tr>
                           );
                         })}
@@ -433,6 +478,17 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                 </section>
               );
             })}
+            {!hasVisibleRawMaterials && (
+              <p role={inventoryLoading ? "status" : inventoryError ? "alert" : "status"} className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-center font-dm" style={{ fontSize: 13, color: "#64748B" }}>
+                {inventoryLoading
+                  ? "Loading inventory…"
+                  : inventoryError
+                    ? "Inventory is unavailable. Retry inventory above."
+                    : rawMaterials.length === 0
+                      ? "No raw materials are available."
+                      : "No materials match the selected search and filters."}
+              </p>
+            )}
           </>
         )}
 
@@ -443,19 +499,27 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
 
       {/* Update Material Modal */}
       {editing && (
-        <UpdateStockModal m={editing} onClose={() => setEditing(null)} onSave={saveMaterial} />
+        <UpdateStockModal
+          m={editing}
+          realMode={realMode}
+          onClose={() => setEditing(null)}
+          onSave={saveMaterial}
+          onRealSave={saveRealMaterial}
+        />
       )}
 
       {/* Add Material Modal */}
       {showAdd && (
-        <AddMaterialModal
-          onClose={() => setShowAdd(false)}
-          onAdd={(m) => {
-            addMaterial(m);
-            toast.success(`${m.name} added to inventory`);
-            setShowAdd(false);
-          }}
-        />
+        realMode
+          ? <AddMaterialModal realMode onClose={() => setShowAdd(false)} onAdd={createRealMaterial} />
+          : <AddMaterialModal
+              onClose={() => setShowAdd(false)}
+              onAdd={(m) => {
+                addMaterial(m);
+                toast.success(`${m.name} added to inventory`);
+                setShowAdd(false);
+              }}
+            />
       )}
 
       {/* History Drawer */}
@@ -463,6 +527,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
         <HistoryDrawer m={historyFor} onClose={() => setHistoryFor(null)} />
       )}
       {showStockRequests && (realMode ? <RealWarehouseStockRequests onClose={() => setShowStockRequests(false)} /> : <StockRequestsModal mode="warehouse" onClose={() => setShowStockRequests(false)} />)}
+      {showShipments && <RealWarehouseShipments onClose={() => setShowShipments(false)} />}
       {readOnly && selectedItem && (
         <InventoryDetailsDrawer
           realMode={realMode}
@@ -513,11 +578,18 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
     : selection.item.history.map((entry) => ({ ...entry, reference: undefined }));
   const details = isRaw
     ? [
-      ["Category", partCategoryMeta[selection.item.category].label],
+      ["Item code", selection.item.itemCode ?? selection.item.catalogCode ?? "Not recorded"],
+      ["Category", selection.item.category ? partCategoryMeta[selection.item.category].label : "Uncategorized"],
       ["Quantity on hand", Number.isFinite(selection.item.qtyInStock) ? `${selection.item.qtyInStock.toFixed(2)} ${selection.item.unit}` : "Not recorded"],
       ["Unit", selection.item.unit],
-      ["Unit price", Number.isFinite(selection.item.unitPrice) ? `₱${selection.item.unitPrice.toLocaleString("en-PH")}` : "Not recorded"],
-      ["Low-stock threshold", `${selection.item.threshold} ${selection.item.unit}`],
+      [realMode ? "Approved costing price" : "Unit price", Number.isFinite(realMode ? selection.item.approvedCostingPrice : selection.item.unitPrice)
+        ? `₱${(realMode ? selection.item.approvedCostingPrice : selection.item.unitPrice)!.toLocaleString("en-PH")}`
+        : "Not recorded"],
+      ...(realMode ? [["Source reference price (not approved)", selection.item.referencePriceText
+        ?? (Number.isFinite(selection.item.referenceUnitPrice) ? `₱${selection.item.referenceUnitPrice!.toLocaleString("en-PH")}` : "Not listed")]] : []),
+      ...(realMode && selection.item.referencePriceSource ? [["Reference price source", selection.item.referencePriceSource]] : []),
+      ["Low-stock threshold", Number.isFinite(selection.item.threshold) ? `${selection.item.threshold} ${selection.item.unit}` : "Not recorded"],
+      ...(realMode && selection.item.referencePriceStatus ? [["Reference price review", selection.item.referencePriceStatus]] : []),
       ...(selection.item.supplier ? [["Supplier", selection.item.supplier]] : []),
     ]
     : [
@@ -547,7 +619,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
           <div className="min-w-0 pr-3">
             <p className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.65)", letterSpacing: 0.6, textTransform: "uppercase" }}>{isRaw ? "Raw Material" : "Finished Good"}</p>
             <h2 className="font-syne mt-1 text-white" style={{ fontSize: 17, fontWeight: 700 }}>{itemName}</h2>
-            {!isRaw && <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>{selection.item.itemCode}</p>}
+            {(isRaw ? selection.item.itemCode ?? selection.item.catalogCode : selection.item.itemCode) && <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>{isRaw ? selection.item.itemCode ?? selection.item.catalogCode : selection.item.itemCode}</p>}
           </div>
           <button type="button" aria-label="Close item details" onClick={onClose} className="w-8 h-8 shrink-0 rounded-md hover:bg-white/10 flex items-center justify-center"><X size={16} style={{ color: "white" }} /></button>
         </div>
@@ -631,23 +703,66 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
 }
 
 /* ───────── Update Material Modal ───────── */
-function UpdateStockModal({ m, onClose, onSave }: {
+function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: {
   m: RawMaterial;
   onClose: () => void;
   onSave: (id: string, updates: Partial<EditableMaterialFields>, reason: string, ref?: string) => void;
+  realMode?: boolean;
+  onRealSave?: (id: string, updates: RealMaterialUpdate) => Promise<void>;
 }) {
   const [name, setName] = useState(m.name);
-  const [category, setCategory] = useState<PartCategory>(m.category);
-  const [unit, setUnit] = useState<Unit>(m.unit);
+  const [category, setCategory] = useState<PartCategory | null>(m.category);
+  const [unit, setUnit] = useState<string>(m.unit);
   const [unitPrice, setUnitPrice] = useState(m.unitPrice);
   const [qtyInStock, setQtyInStock] = useState(m.qtyInStock);
+  const [realQtyInStock, setRealQtyInStock] = useState(Number.isFinite(m.qtyInStock) ? String(m.qtyInStock) : "");
   const [threshold, setThreshold] = useState(m.threshold);
+  const [realThreshold, setRealThreshold] = useState(Number.isFinite(m.threshold) ? String(m.threshold) : "");
   const [supplier, setSupplier] = useState(m.supplier ?? "");
   const [reason, setReason] = useState(STOCK_REASONS[0]);
   const [ref, setRef] = useState("");
   const [editingDetails, setEditingDetails] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
+    if (realMode) {
+      if (!name.trim()) {
+        toast.error("Material name is required");
+        return;
+      }
+      if (realQtyInStock && (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(realQtyInStock) || Number(realQtyInStock) > 1000000000)) {
+        toast.error("Stock quantity must be a non-negative number with at most four decimals");
+        return;
+      }
+      if (realThreshold && (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(realThreshold) || Number(realThreshold) > 1000000000)) {
+        toast.error("Threshold must be blank or a non-negative number with at most four decimals");
+        return;
+      }
+      const updates: RealMaterialUpdate = {};
+      if (name.trim() !== m.name) updates.name = name.trim();
+      if (category !== m.category) updates.category = category;
+      if (unit !== m.unit) updates.unit = unit;
+      const oldQuantity = Number.isFinite(m.qtyInStock) ? String(m.qtyInStock) : "";
+      if (realQtyInStock !== oldQuantity) updates.quantityOnHand = realQtyInStock || null;
+      const oldThreshold = Number.isFinite(m.threshold) ? String(m.threshold) : "";
+      if (realThreshold !== oldThreshold) updates.threshold = realThreshold || null;
+      const normalizedSupplier = supplier.trim() || null;
+      if (normalizedSupplier !== (m.supplier ?? null)) updates.supplier = normalizedSupplier;
+      if (Object.keys(updates).length === 0) {
+        onClose();
+        return;
+      }
+      setSaving(true);
+      try {
+        await onRealSave?.(m.id, updates);
+      } catch (cause) {
+        toast.error(cause instanceof Error ? cause.message : "Material update failed.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     const values = [unitPrice, qtyInStock, threshold];
     if (!name.trim()) {
       toast.error("Material name is required");
@@ -692,7 +807,7 @@ function UpdateStockModal({ m, onClose, onSave }: {
                 <Pencil size={12} />
               </button>
             </div>
-            <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{partCategoryMeta[category].label} · {unit}</p>
+            <p className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{category ? partCategoryMeta[category].label : "Uncategorized"} · {unit}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
@@ -706,23 +821,25 @@ function UpdateStockModal({ m, onClose, onSave }: {
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Category</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value as PartCategory)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                  <select value={category ?? ""} onChange={(e) => setCategory(e.target.value ? e.target.value as PartCategory : null)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                    <option value="">Uncategorized</option>
                     {(Object.keys(partCategoryMeta) as PartCategory[]).map((c) => <option key={c} value={c}>{partCategoryMeta[c].label}</option>)}
                   </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit</label>
-                  <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                  <select value={unit} onChange={(e) => setUnit(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                    {m.unit && !UNITS.includes(m.unit as Unit) && <option value={m.unit}>{m.unit}</option>}
                     {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit Price (₱)</label>
-                  <input type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input type="number" min="0" step="0.01" value={realMode ? "" : unitPrice} disabled={realMode} onChange={(e) => setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} placeholder={realMode ? "Not available" : undefined} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Low Stock Threshold</label>
-                  <input type="number" min="0" step="0.01" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input type="number" min="0" max="1000000000" step="0.0001" value={realMode ? realThreshold : threshold} onChange={(e) => realMode ? setRealThreshold(e.target.value) : setThreshold(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                 </div>
               </div>
             </div>
@@ -731,7 +848,7 @@ function UpdateStockModal({ m, onClose, onSave }: {
             {!editingDetails && (
               <div className="col-span-2 flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Stock Quantity</label>
-                <input type="number" min="0" step="0.01" value={qtyInStock} onChange={(e) => setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 15, fontWeight: 700 }} />
+                <input type="number" min="0" max="1000000000" step="0.0001" value={realMode ? realQtyInStock : qtyInStock} disabled={saving} onChange={(e) => realMode ? setRealQtyInStock(e.target.value) : setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 15, fontWeight: 700 }} placeholder={realMode ? "Not recorded" : undefined} />
               </div>
             )}
             <div className="col-span-2 flex flex-col gap-1.5">
@@ -741,16 +858,17 @@ function UpdateStockModal({ m, onClose, onSave }: {
           </div>
           <div className="border-t border-slate-200 pt-4 flex flex-col gap-3">
             <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Stock adjustment audit</div>
+            {realMode && <p className="font-dm text-xs text-slate-500">Saving an entered stock quantity or threshold records it as verified and replaces any provisional sample value.</p>}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason</label>
-                <select value={reason} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
+                <select value={reason} disabled={realMode} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400 disabled:bg-slate-100" style={{ fontSize: 13, color: "#0F172A" }}>
                   {STOCK_REASONS.map((r) => <option key={r}>{r}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reference <span style={{ fontWeight: 400, color: "#94A3B8" }}>(PO #)</span></label>
-                <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. PO-SUPP-2026-041" className="font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                <input value={ref} disabled={realMode} onChange={(e) => setRef(e.target.value)} placeholder="e.g. PO-SUPP-2026-041" className="font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
               </div>
             </div>
             <div className="rounded-md p-2 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
@@ -759,38 +877,69 @@ function UpdateStockModal({ m, onClose, onSave }: {
           </div>
         </div>
         <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-          <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>💾 Save</button>
+          <button onClick={onClose} disabled={saving} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100 disabled:opacity-50" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+          <button onClick={() => void submit()} disabled={saving} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>{saving ? "Saving…" : "💾 Save"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-/* ───────── Add Raw Material Modal ───────── */
-function AddMaterialModal({ onClose, onAdd }: {
+type DemoMaterialCreate = { name: string; category: PartCategory; unit: Unit; unitPrice: number; qtyInStock: number; threshold: number; supplier?: string };
+type AddMaterialModalProps = {
   onClose: () => void;
-  onAdd: (m: { name: string; category: PartCategory; unit: Unit; unitPrice: number; qtyInStock: number; threshold: number; supplier?: string }) => void;
-}) {
+} & (
+  | { realMode: true; onAdd: (input: RealMaterialCreate) => Promise<void> }
+  | { realMode?: false; onAdd: (material: DemoMaterialCreate) => void }
+);
+
+function AddMaterialModal(props: AddMaterialModalProps) {
+  const { onClose } = props;
+  const realMode = props.realMode === true;
   const [name, setName] = useState("");
   const [category, setCategory] = useState<PartCategory>("filter_media");
   const [unit, setUnit] = useState<Unit>("roll");
   const [unitPrice, setUnitPrice] = useState(0);
   const [qtyInStock, setQtyInStock] = useState(0);
-  const [threshold, setThreshold] = useState(0);
+  const [threshold, setThreshold] = useState(realMode ? "" : "0");
   const [supplier, setSupplier] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const submit = () => {
+  const submit = async () => {
     if (!name.trim()) { toast.error("Name is required"); return; }
-    onAdd({ name: name.trim(), category, unit, unitPrice, qtyInStock, threshold, supplier: supplier.trim() || undefined });
+    if (props.realMode) {
+      if (threshold && (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(threshold) || Number(threshold) > 1000000000)) {
+        setError("Threshold must be blank or a non-negative number with at most four decimals.");
+        return;
+      }
+      setSaving(true);
+      setError("");
+      try {
+        await props.onAdd({
+          itemCode: null,
+          name: name.trim(),
+          category,
+          unit,
+          threshold: threshold || null,
+          supplier: supplier.trim() || null,
+        });
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Material creation failed.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    props.onAdd({ name: name.trim(), category, unit, unitPrice, qtyInStock, threshold: Number(threshold), supplier: supplier.trim() || undefined });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={() => !saving && onClose()}>
       <div className="bg-white rounded-xl w-full max-w-lg" style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#1A2B4A" }}>
           <h3 className="font-syne text-white" style={{ fontSize: 16, fontWeight: 700 }}>Add Raw Material</h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center"><X size={16} style={{ color: "white" }} /></button>
+          <button disabled={saving} onClick={onClose} className="w-8 h-8 rounded-md hover:bg-white/10 flex items-center justify-center"><X size={16} style={{ color: "white" }} /></button>
         </div>
         <div className="p-5 flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
@@ -816,25 +965,27 @@ function AddMaterialModal({ onClose, onAdd }: {
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit Price (₱)</label>
-              <input type="number" value={unitPrice} onChange={(e) => setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+              <input type="number" value={realMode ? "" : unitPrice} disabled={realMode} placeholder={realMode ? "Not available" : undefined} onChange={(e) => setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Initial Stock Qty</label>
-              <input type="number" step="0.01" value={qtyInStock} onChange={(e) => setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+              <input type="number" step="0.01" value={realMode ? "" : qtyInStock} disabled={realMode} placeholder={realMode ? "Not recorded" : undefined} onChange={(e) => setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Low Stock Threshold</label>
-              <input type="number" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+              <input type="number" min="0" step="0.0001" value={threshold} onChange={(e) => setThreshold(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Supplier <span style={{ fontWeight: 400, color: "#94A3B8" }}>(optional)</span></label>
               <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Optional" className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
             </div>
           </div>
+          {realMode && <p className="font-dm text-xs text-slate-500">Material creation does not record stock or unit-price values.</p>}
+          {error && <p role="alert" className="font-dm text-sm text-red-800">{error}</p>}
         </div>
         <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-          <button onClick={submit} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>+ Add Material</button>
+          <button onClick={onClose} disabled={saving} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100 disabled:opacity-50" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+          <button onClick={() => void submit()} disabled={saving} className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700 }}>{saving ? "Saving…" : "+ Add Material"}</button>
         </div>
       </div>
     </div>

@@ -11,12 +11,13 @@ export interface SalesNotification {
 }
 export interface SalesNotificationResult { items: SalesNotification[]; total: number; page: number; pageSize: number }
 
-export function useSalesWorkspaceData<T>(path: string) {
+export function useSalesWorkspaceData<T>(path: string, enabled = true) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState("");
   const [version, setVersion] = useState(0), sequence = useRef(0);
   const refresh = useCallback(() => setVersion(v => v + 1), []);
   useEffect(() => {
+    if (!enabled) { setData(null); setError(""); setLoading(false); return undefined; }
     const controller = new AbortController(), token = ++sequence.current;
     setData(null); setError(""); setLoading(true);
     api<T>(path, { signal: controller.signal }).then(value => {
@@ -27,6 +28,6 @@ export function useSalesWorkspaceData<T>(path: string) {
       if (token === sequence.current && !controller.signal.aborted) setLoading(false);
     });
     return () => { ++sequence.current; controller.abort(); };
-  }, [path, version]);
+  }, [enabled, path, version]);
   return { data, loading, error, refresh };
 }

@@ -23,7 +23,7 @@ export function createStockRequestsService({ db }) {
       const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId FROM orders WHERE id=? FOR UPDATE`, [input.orderId]);
       if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
       const placeholders = lines.map(() => '?').join(',');
-      const [materials] = await connection.execute(`SELECT CAST(id AS CHAR) id, name, unit_code unitCode, quantity_on_hand quantityOnHand FROM materials WHERE active=TRUE AND id IN (${placeholders}) FOR SHARE`, lines.map(line => line.materialId));
+      const [materials] = await connection.execute(`SELECT CAST(id AS CHAR) id, name, COALESCE(source_unit,unit_code) unitCode, quantity_on_hand quantityOnHand FROM materials WHERE active=TRUE AND id IN (${placeholders}) FOR SHARE`, lines.map(line => line.materialId));
       const materialMap = new Map(materials.map(row => [String(row.id), row]));
       if (materials.length !== lines.length) { await connection.rollback(); return { success: false, code: 'MATERIAL_NOT_FOUND' }; }
       if (materials.some(material => material.quantityOnHand !== null && !validObservedQuantity(material.quantityOnHand))) {
@@ -102,7 +102,7 @@ export function createStockRequestsService({ db }) {
       for (const line of input.lines) await connection.execute(`INSERT INTO stock_response_lines (stock_response_id,stock_request_line_id,stock_request_id,current_quantity,shortage_quantity,status) VALUES (?,?,?,?,?,?)`, [responseId, line.lineId, id, line.currentQuantity, line.shortageQuantity, Number(line.shortageQuantity) > 0 ? 'shortage' : 'sufficient']);
       if (input.status === 'updated') {
         if (!Array.isArray(input.inventoryUpdates) || input.inventoryUpdates.some(update => !validId(update?.materialId) || !Number.isFinite(Number(update?.quantityOnHand)) || Number(update.quantityOnHand) < 0)) { await connection.rollback(); return invalid({ inventoryUpdates: 'Manual inventory quantities must be non-negative.' }); }
-        for (const update of input.inventoryUpdates) await connection.execute(`UPDATE materials SET quantity_on_hand=?, updated_at=CURRENT_TIMESTAMP(3) WHERE id=? AND active=TRUE`, [update.quantityOnHand, update.materialId]);
+        for (const update of input.inventoryUpdates) await connection.execute(`UPDATE materials SET quantity_on_hand=?,quantity_status='verified',updated_at=CURRENT_TIMESTAMP(3) WHERE id=? AND active=TRUE`, [update.quantityOnHand, update.materialId]);
       }
       await connection.execute(`UPDATE stock_requests SET status=?, update_requested_at=CASE WHEN ?='updated' THEN CURRENT_TIMESTAMP(3) ELSE update_requested_at END WHERE id=?`, [input.status, input.status, id]);
       await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at) VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [actor.userId, `stock_request.${input.status}`, 'stock_request', id, JSON.stringify({ status: input.status, lineCount: input.lines.length, inventoryUpdated: input.status === 'updated', inventoryUpdates: input.status==='updated'?input.inventoryUpdates:[] }), context.requestId ?? null]);

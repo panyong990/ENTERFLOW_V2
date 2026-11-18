@@ -7,8 +7,9 @@ import { project, type OrderBundle, type Surface } from './adapters';
 export const unavailableMessage = 'This feature is not yet connected to the backend. Your draft has not been submitted.';
 export function unavailable(..._args: unknown[]) { toast.info(unavailableMessage); return false; }
 const blocked = (..._args: unknown[]): never => { throw new Error(unavailableMessage); };
-type State = { profile: ClientProfile | null; bundles: OrderBundle[]; notifications: ClientNotification[]; loading: boolean; error: string; refresh: () => void; markRead: (id: string) => Promise<void>; realMode: true };
+export type State = { profile: ClientProfile | null; bundles: OrderBundle[]; notifications: ClientNotification[]; loading: boolean; error: string; refresh: () => void; markRead: (id: string) => Promise<void>; realMode: true };
 const Context = createContext<State | null>(null);
+export function useOptionalClientData() { return useContext(Context); }
 export function useClientData() { const data = useContext(Context); if (!data) throw new Error('Client data provider required'); return data; }
 async function allPages<T>(read: (page: number) => Promise<{ items: T[]; total: number; page: number; pageSize: number }>, signal: AbortSignal) {
   const items: T[] = [];
@@ -69,7 +70,9 @@ export function ClientDataProvider({ children }: { children: ReactNode }) {
   return <Context.Provider value={{ profile, bundles, notifications, loading, error, refresh: () => setRevision(v => v + 1), markRead, realMode: true }}>{children}</Context.Provider>;
 }
 export function useOrders(surface: Surface = 'orders') {
-  const { profile, bundles, refresh } = useClientData();
+  return useOrderAdapter(useClientData(), surface);
+}
+export function useOrderAdapter({ profile, bundles, refresh }: State, surface: Surface = 'orders') {
   const rows = useMemo(() => profile ? bundles.flatMap(bundle => project(bundle, profile, surface)) : [], [profile, bundles, surface]);
   const addInquiry = async (input: ClientInquiryInput, sketches: InquirySketchInput[] = [], key?: string): Promise<ClientInquiryCreated> => {
     const created = sketches.length
@@ -127,7 +130,9 @@ export function canNavigateToNotification(role: string, route: string) { return 
 export function isOfficialReceiptNotification(n: { title: string; body: string }) { return /official receipt/i.test(n.title + n.body); }
 export function findReceiptForNotification(..._args: unknown[]): Inquiry['officialReceipt'] | undefined { return undefined; }
 export function useNotifications() {
-  const { notifications, markRead } = useClientData();
+  return useNotificationAdapter(useClientData());
+}
+export function useNotificationAdapter({ notifications, markRead }: State) {
   const rows = notifications.map(n => ({ ...n, dept: n.category, body: n.message, read: n.isRead, inquiryId: n.orderId ?? undefined, ts: n.createdAt, time: new Date(n.createdAt).toLocaleString() }));
   return { unreadFor: (..._args: unknown[]) => rows, isReadFor: (n: {read: boolean}, ..._args: unknown[]) => n.read,
     markRead: (id: string, ..._args: unknown[]) => markRead(id), markAllRead: unavailable, remove: unavailable, removeAllRead: unavailable, push: blocked };

@@ -27,6 +27,14 @@ import { useNotifications } from "../store/notifications";
 import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
 import {
+  matchesShipmentFilters,
+  shipmentDate,
+  shipmentStatus,
+  toLogisticsRecord,
+  useRealLogisticsShipments,
+  type LogisticsRecord,
+} from "./RealLogisticsShipments";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -93,7 +101,12 @@ function hasReachedLogistics(inquiry: Inquiry): boolean {
   );
 }
 
-function isDelivered(inquiry: Inquiry): boolean {
+function isDemoLogisticsRecord(inquiry: LogisticsRecord): inquiry is Inquiry & { shipment?: never } {
+  return !inquiry.shipment;
+}
+
+function isDelivered(inquiry: LogisticsRecord): boolean {
+  if (!isDemoLogisticsRecord(inquiry)) return inquiry.shipment.status === "delivered";
   return (
     hasValidSignedDeliveryReceipt(inquiry) ||
     inquiry.stage === "delivered" ||
@@ -102,7 +115,8 @@ function isDelivered(inquiry: Inquiry): boolean {
   );
 }
 
-function deliveryDate(inquiry: Inquiry): string {
+function deliveryDate(inquiry: LogisticsRecord): string {
+  if (!isDemoLogisticsRecord(inquiry)) return shipmentDate(inquiry.shipment, isDelivered(inquiry)) ?? "";
   return (
     inquiry.deliveredDate ??
     inquiry.dispatchedAt ??
@@ -126,11 +140,11 @@ function formatDate(value?: string, withTime = false): string {
   );
 }
 
-function orderReference(inquiry: Inquiry): string {
-  return inquiry.joNumber ?? inquiry.code;
+function orderReference(inquiry: LogisticsRecord): string {
+  return inquiry.joNumber ?? inquiry.code ?? "—";
 }
 
-function poReference(inquiry: Inquiry): string {
+function poReference(inquiry: LogisticsRecord): string {
   return (
     inquiry.poNumber ??
     inquiry.poFileName?.replace(/\.\w+$/, "") ??
@@ -142,7 +156,8 @@ function productName(product: Inquiry["products"][number]): string {
   return product.filterName || product.type || "Item";
 }
 
-function quantity(inquiry: Inquiry): number {
+function quantity(inquiry: LogisticsRecord): number | undefined {
+  if (!isDemoLogisticsRecord(inquiry)) return undefined;
   return inquiry.products.reduce((sum, product) => sum + product.qty, 0);
 }
 
@@ -155,7 +170,8 @@ function currency(amount?: number): string | undefined {
   }).format(amount);
 }
 
-function stageStatus(inquiry: Inquiry): { label: string; tone: string } {
+function stageStatus(inquiry: LogisticsRecord): { label: string; tone: string } {
+  if (inquiry.shipment) return shipmentStatus(inquiry.shipment);
   if (isDelivered(inquiry)) {
     return {
       label: "DELIVERED",
@@ -443,7 +459,7 @@ function DeliveryDetailModal({
   onSendToClient,
   onTrackingLinkChange,
 }: {
-  inquiry: Inquiry;
+  inquiry: LogisticsRecord;
   onClose: () => void;
   onStageSignedDR: (
     id: string,
@@ -464,12 +480,14 @@ function DeliveryDetailModal({
   const [pendingSignedReceiptOpen, setPendingSignedReceiptOpen] =
     useState(false);
 
-  const signedDRReceived = hasValidSignedDeliveryReceipt(inquiry);
+  const readOnly = Boolean(inquiry.shipment);
+  const unavailableReason = "Unavailable: no approved Logistics mutation API is connected.";
+  const signedDRReceived = isDemoLogisticsRecord(inquiry) && hasValidSignedDeliveryReceipt(inquiry);
   const delivered = isDelivered(inquiry);
   const status = stageStatus(inquiry);
 
   const itemNames =
-    inquiry.products.map(productName).join(", ") || "—";
+    inquiry.products.map(productName).join(", ") || (readOnly ? "Unavailable" : "—");
 
   const waybillRef =
     inquiry.waybillNumber ??
@@ -482,7 +500,7 @@ function DeliveryDetailModal({
     inquiry.paymentCycleStartedAt === inquiry.signedDeliveryReceiptReceivedAt;
 
   const stageSignedDR = async (file: File) => {
-    if (uploadingSignedDR) return;
+    if (readOnly || uploadingSignedDR) return;
 
     setUploadingSignedDR(true);
 
@@ -506,6 +524,7 @@ function DeliveryDetailModal({
 
   const confirmSignedDRSubmission = async () => {
     if (
+      readOnly ||
       !inquiry.pendingSignedDeliveryReceiptFileName ||
       uploadingSignedDR
     ) {
@@ -526,7 +545,7 @@ function DeliveryDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/60">
+    <div role="dialog" aria-modal="true" aria-label="Delivery details" className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/60">
       <div
         className="h-full w-full overflow-auto bg-[#F4F6F9]"
         onClick={(event) => event.stopPropagation()}
@@ -557,10 +576,12 @@ function DeliveryDetailModal({
               {status.label}
             </span>
 
-            {!delivered && inquiry.deliveryMethod === "Company Vehicle" && (
+            {(readOnly || (!delivered && inquiry.deliveryMethod === "Company Vehicle")) && (
               <button
+                disabled={readOnly}
+                title={readOnly ? unavailableReason : undefined}
                 onClick={() => onMarkDelivered(inquiry.id)}
-                className="hidden items-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2 font-dm text-xs font-bold text-white hover:bg-[#263d62] sm:inline-flex"
+                className="hidden items-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2 font-dm text-xs font-bold text-white hover:bg-[#263d62] disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
               >
                 <Truck size={14} />
                 MARK DELIVERED
@@ -578,6 +599,7 @@ function DeliveryDetailModal({
         </header>
 
         <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 sm:px-8 lg:grid-cols-2">
+          {readOnly && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-4 font-dm text-xs text-amber-950 lg:col-span-2">Delivery updates, tracking changes, sending to clients, and signed receipt uploads are unavailable because no approved Logistics mutation API is connected. Receipt files, items, quantities, PO and invoice data are unavailable in the shipment API.</p>}
           <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm lg:col-span-2">
             <div className="mb-5 flex items-center gap-2">
               <Truck size={17} className="text-[#1A2B4A]" />
@@ -609,7 +631,7 @@ function DeliveryDetailModal({
               <ReceiptField label="Item(s)" value={itemNames} />
               <ReceiptField
                 label="Quantity"
-                value={`${quantity(inquiry)} pcs`}
+                value={readOnly ? "Unavailable" : `${quantity(inquiry)} pcs`}
               />
               <ReceiptField
                 label="Waybill / Reference"
@@ -617,33 +639,58 @@ function DeliveryDetailModal({
               />
               <ReceiptField
                 label="Delivery Date"
-                value={formatDate(deliveryDate(inquiry))}
+                value={formatDate(inquiry.shipment ? inquiry.shipment.deliveredAt ?? undefined : deliveryDate(inquiry))}
               />
               <ReceiptField
                 label="Delivery Status"
                 value={status.label}
               />
 
-              {inquiry.invoiceNo && (
+              {(readOnly || inquiry.invoiceNo) && (
                 <ReceiptField
                   label="SI / Invoice No."
-                  value={inquiry.invoiceNo}
+                  value={inquiry.invoiceNo ?? "Unavailable"}
                 />
               )}
 
-              {inquiry.invoiceAmount !== undefined && (
+              {(readOnly || inquiry.invoiceAmount !== undefined) && (
                 <ReceiptField
                   label="Invoice Amount"
-                  value={currency(inquiry.invoiceAmount) ?? "—"}
+                  value={currency(inquiry.invoiceAmount) ?? (readOnly ? "Unavailable" : "—")}
                 />
               )}
             </div>
 
-            {!delivered &&
-              inquiry.deliveryMethod === "Company Vehicle" && (
+            {inquiry.shipment && (
+              <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+                <ReceiptField label="Order Reference" value={inquiry.shipment.orderReference} />
+                <ReceiptField label="Tracking Reference" value={inquiry.shipment.trackingReference ?? "Unavailable"} />
+                <ReceiptField label="Recipient" value={inquiry.shipment.recipientName ?? "Unavailable"} />
+                <ReceiptField label="Recipient Phone" value={inquiry.shipment.recipientPhone ?? "Unavailable"} />
+                <ReceiptField label="Recipient Email" value={inquiry.shipment.recipientEmail ?? "Unavailable"} />
+                <ReceiptField label="Delivery Address" value={inquiry.shipment.deliveryAddress ?? "Unavailable"} />
+                <ReceiptField label="Driver" value={inquiry.shipment.driverName ?? "Unavailable"} />
+                <ReceiptField label="Driver Phone" value={inquiry.shipment.driverPhone ?? "Unavailable"} />
+                <ReceiptField label="Vehicle" value={inquiry.shipment.vehiclePlate ?? "Unavailable"} />
+                <ReceiptField label="Pickup Person" value={inquiry.shipment.pickupPerson ?? "Unavailable"} />
+                <ReceiptField label="Pickup Phone" value={inquiry.shipment.pickupPhone ?? "Unavailable"} />
+                <ReceiptField label="Pickup Email" value={inquiry.shipment.pickupEmail ?? "Unavailable"} />
+                <ReceiptField label="Pickup Vehicle" value={inquiry.shipment.pickupVehiclePlate ?? "Unavailable"} />
+                <ReceiptField label="Estimated Delivery" value={formatDate(inquiry.shipment.estimatedDeliveryDate ?? undefined)} />
+                <ReceiptField label="Expected Pickup" value={formatDate(inquiry.shipment.expectedPickupDate ?? undefined)} />
+                <ReceiptField label="Dispatched" value={formatDate(inquiry.dispatchedAt, true)} />
+                <ReceiptField label="Delivered" value={formatDate(inquiry.deliveredDate, true)} />
+                <ReceiptField label="Waybill Printed" value={formatDate(inquiry.waybillPrintedAt, true)} />
+                <ReceiptField label="DR Sent to Logistics" value={formatDate(inquiry.deliveryReceiptSentToLogisticsAt, true)} />
+              </div>
+            )}
+
+            {(readOnly || (!delivered && inquiry.deliveryMethod === "Company Vehicle")) && (
                 <button
+                  disabled={readOnly}
+                  title={readOnly ? unavailableReason : undefined}
                   onClick={() => onMarkDelivered(inquiry.id)}
-                  className="mt-5 inline-flex items-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2.5 font-dm text-xs font-bold text-white hover:bg-[#263d62] sm:hidden"
+                  className="mt-5 inline-flex items-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2.5 font-dm text-xs font-bold text-white hover:bg-[#263d62] disabled:cursor-not-allowed disabled:opacity-50 sm:hidden"
                 >
                   <Truck size={14} />
                   MARK DELIVERED
@@ -659,15 +706,15 @@ function DeliveryDetailModal({
               </h2>
             </div>
 
-            {inquiry.deliveryReceiptNumber ? (
+            {readOnly || inquiry.deliveryReceiptNumber ? (
               <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="font-mono-jb text-base font-bold text-[#1A2B4A]">
-                    {inquiry.deliveryReceiptNumber}
+                    {inquiry.deliveryReceiptNumber ?? "Unavailable"}
                   </div>
 
                   <span className="rounded-full bg-blue-100 px-2.5 py-1 font-dm text-[10px] font-extrabold text-blue-800">
-                    GENERATED
+                    {readOnly && !inquiry.deliveryReceiptGeneratedAt ? "Unavailable" : "GENERATED"}
                   </span>
                 </div>
 
@@ -681,22 +728,26 @@ function DeliveryDetailModal({
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
+                    disabled={readOnly}
+                    title={readOnly ? "Receipt file unavailable in the shipment API." : undefined}
                     onClick={() => {
                       setPrintReceiptOnOpen(false);
                       setReceiptPreviewOpen(true);
                     }}
-                    className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-white px-3 py-2 font-dm text-xs font-bold text-[#1A2B4A] hover:bg-blue-50"
+                    className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-white px-3 py-2 font-dm text-xs font-bold text-[#1A2B4A] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FileText size={13} />
                     VIEW DELIVERY RECEIPT
                   </button>
 
                   <button
+                    disabled={readOnly}
+                    title={readOnly ? "Receipt file unavailable in the shipment API." : undefined}
                     onClick={() => {
                       setPrintReceiptOnOpen(true);
                       setReceiptPreviewOpen(true);
                     }}
-                    className="inline-flex items-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2 font-dm text-xs font-bold text-white hover:bg-[#263d62]"
+                    className="inline-flex items-center gap-2 rounded-md bg-[#1A2B4A] px-3 py-2 font-dm text-xs font-bold text-white hover:bg-[#263d62] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Printer size={13} />
                     PRINT DELIVERY RECEIPT
@@ -731,6 +782,7 @@ function DeliveryDetailModal({
 
             <input
               type="url"
+              disabled={readOnly}
               value={inquiry.deliveryTrackingLink ?? ""}
               onChange={(event) =>
                 onTrackingLinkChange(
@@ -744,7 +796,7 @@ function DeliveryDetailModal({
             />
 
             <div className="font-dm mt-3 text-[11px] text-slate-500">
-              Tracking updates are saved to this delivery.
+              {readOnly ? unavailableReason : "Tracking updates are saved to this delivery."}
             </div>
           </section>
 
@@ -774,8 +826,9 @@ function DeliveryDetailModal({
                 <div className="font-dm mt-1 text-xs text-slate-600">
                   This delivery has already been sent to the client.
                 </div>
+                {readOnly && <button type="button" disabled title={unavailableReason} className="mt-3 rounded-md border border-green-300 px-3 py-2 font-dm text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50">SEND DR &amp; TRACKING TO CLIENT</button>}
               </div>
-            ) : inquiry.deliveryReceiptNumber ? (
+            ) : readOnly || inquiry.deliveryReceiptNumber ? (
               <>
                 <div className="font-dm mb-3 text-xs text-slate-600">
                   Sends {inquiry.deliveryReceiptNumber}, tracking
@@ -784,8 +837,10 @@ function DeliveryDetailModal({
                 </div>
 
                 <button
+                  disabled={readOnly}
+                  title={readOnly ? unavailableReason : undefined}
                   onClick={() => onSendToClient(inquiry.id)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-green-700 px-4 py-3 font-dm text-xs font-extrabold text-white hover:bg-green-800"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-green-700 px-4 py-3 font-dm text-xs font-extrabold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Send size={14} />
                   SEND DR &amp; TRACKING TO CLIENT
@@ -807,7 +862,16 @@ function DeliveryDetailModal({
               </h2>
             </div>
 
-            {signedDRReceived ? (
+            {readOnly ? (
+              <div className="space-y-3 font-dm text-xs text-slate-600">
+                <p>Signed receipt files and receipt submission status are unavailable in the shipment API.</p>
+                <div className="flex flex-wrap gap-2">
+                  {["VIEW SIGNED DR", "UPLOAD SIGNED DELIVERY RECEIPT", "SUBMIT SIGNED DR"].map(label => (
+                    <button key={label} type="button" disabled title={unavailableReason} className="rounded-md border border-slate-300 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-50">{label}</button>
+                  ))}
+                </div>
+              </div>
+            ) : signedDRReceived ? (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
                 <div className="flex items-center gap-2 font-dm text-sm font-extrabold text-green-800">
                   <CheckCircle2 size={16} />
@@ -974,7 +1038,9 @@ function DeliveryDetailModal({
               </h2>
             </div>
 
-            {signedDRReceived &&
+            {readOnly ? (
+              <ReceiptField label="Fulfillment Completed" value={formatDate(inquiry.fulfillmentCompletedAt, true)} />
+            ) : signedDRReceived &&
             inquiry.fulfillmentCompletedAt ===
               inquiry.signedDeliveryReceiptReceivedAt ? (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -1018,7 +1084,7 @@ function DeliveryDetailModal({
         </div>
       </div>
 
-      {receiptPreviewOpen && (
+      {receiptPreviewOpen && isDemoLogisticsRecord(inquiry) && (
         <DeliveryReceiptPreview
           inquiry={inquiry}
           onClose={() => setReceiptPreviewOpen(false)}
@@ -1144,18 +1210,20 @@ export function LogisticsActiveJobs({
 }: {
   onBack: () => void;
 }) {
+  const { mode } = useSession();
+  const realMode = mode === "real";
   const [query, setQuery] = useState("");
 
   const { inquiriesByStage } = useOrders();
 
   const activeJobs = useMemo(
     () =>
-      inquiriesByStage([
+      realMode ? [] : inquiriesByStage([
         "jo",
         "in_production",
         "quality_inspection",
       ]),
-    [inquiriesByStage],
+    [realMode, inquiriesByStage],
   );
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -1399,7 +1467,9 @@ export function LogisticsActiveJobs({
                       color: "#94A3B8",
                     }}
                   >
-                    No active jobs match your search.
+                    {realMode
+                      ? "Active job records are unavailable. No approved Job Order API is connected for Logistics."
+                      : "No active jobs match your search."}
                   </td>
                 </tr>
               )}
@@ -1411,12 +1481,13 @@ export function LogisticsActiveJobs({
   );
 }
 
-export function Logistics() {
+function LogisticsPage() {
   const { mode } = useSession();
   const realMode = mode === "real";
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<LogisticsView>("active");
+  const [statusFilter, setStatusFilter] = useState("");
   const [activeDateFilter, setActiveDateFilter] =
     useState<DateFilter>("all");
   const [historyDateFilter, setHistoryDateFilter] =
@@ -1433,17 +1504,19 @@ export function Logistics() {
   const { push: pushNotif } = useNotifications();
 
   const sendInProgress = useRef(new Set<string>());
+  const remote = useRealLogisticsShipments(realMode, openId);
 
-  const deliveryInquiries = useMemo(
+  const deliveryInquiries = useMemo<LogisticsRecord[]>(
     () =>
-      inquiriesByStage([...deliveryStages])
+      (realMode ? remote.rows.map(toLogisticsRecord) : inquiriesByStage([...deliveryStages])
         .filter(hasReachedLogistics)
+      )
         .sort(
           (a, b) =>
             Date.parse(deliveryDate(b)) -
             Date.parse(deliveryDate(a)),
         ),
-    [inquiriesByStage],
+    [realMode, remote.rows, inquiriesByStage],
   );
 
   const activeInquiries = useMemo(
@@ -1489,6 +1562,10 @@ export function Logistics() {
     }
 
     return source.filter((inquiry) => {
+      if (inquiry.shipment) {
+        return (!statusFilter || inquiry.shipment.status === statusFilter) &&
+          matchesShipmentFilters(inquiry.shipment, query, dateFilter, view === "history");
+      }
       const searchableValues = [
         inquiry.joNumber ?? "",
         inquiry.poNumber ?? "",
@@ -1529,15 +1606,15 @@ export function Logistics() {
     historyDateFilter,
     activeInquiries,
     historyInquiries,
+    statusFilter,
   ]);
 
-  const selectedInquiry = deliveryInquiries.find(
+  const selectedInquiry = realMode ? (remote.detail ? toLogisticsRecord(remote.detail) : undefined) : deliveryInquiries.find(
     (inquiry) => inquiry.id === openId,
   );
 
   const handleMarkDelivered = (id: string) => {
     if (realMode) {
-      toast.info("Delivery updates are unavailable", { description: "No authenticated delivery-status API is connected; nothing was saved." });
       return;
     }
     const inquiry = deliveryInquiries.find(
@@ -1571,7 +1648,6 @@ export function Logistics() {
 
   const handleSendToClient = (id: string) => {
     if (realMode) {
-      toast.info("Sending delivery information is unavailable", { description: "No authenticated logistics notification API is connected; nothing was saved." });
       return;
     }
     const inquiry = deliveryInquiries.find(
@@ -1643,7 +1719,6 @@ export function Logistics() {
     deliveryTrackingLink: string,
   ) => {
     if (realMode) {
-      toast.info("Tracking updates are unavailable", { description: "No authenticated delivery update API is connected; nothing was saved." });
       return;
     }
     updateInquiry(id, { deliveryTrackingLink });
@@ -1655,7 +1730,6 @@ export function Logistics() {
     fileDataUrl: string,
   ): Promise<boolean> => {
     if (realMode) {
-      toast.info("Signed Delivery Receipt upload is unavailable", { description: "No authenticated document API is connected; nothing was saved." });
       return false;
     }
     try {
@@ -1690,7 +1764,6 @@ export function Logistics() {
     id: string,
   ): Promise<boolean> => {
     if (realMode) {
-      toast.info("Signed Delivery Receipt submission is unavailable", { description: "No authenticated receipt API is connected; nothing was saved." });
       return false;
     }
     try {
@@ -1781,7 +1854,7 @@ export function Logistics() {
         </div>
       </header>
 
-      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 font-dm text-xs text-amber-950 sm:px-8">Real logistics records are unavailable. Delivery overview, active/history lists, filters, shipment details, receipt presentation, and navigation remain visible, but Demo records are excluded until authenticated logistics APIs are connected.</div>}
+      {realMode && <div role="status" className="border-b border-blue-200 bg-blue-50 px-5 py-3 text-sm text-blue-950 sm:px-8">Shipment handoffs use the authenticated Logistics API. Delivery updates remain unavailable. Search, filters, and counts cover up to 100 returned shipments; aggregate totals are unavailable.</div>}
 
       <div className="flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-8">
         <div className="flex flex-wrap items-center gap-3">
@@ -1821,6 +1894,20 @@ export function Logistics() {
             </select>
           </label>
 
+          {realMode && <>
+            <label className="font-dm flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-500">
+              <span className="font-bold">STATUS</span>
+              <select aria-label="Shipment status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="bg-transparent py-2.5 font-semibold text-slate-800 outline-none">
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="in_transit">In transit</option>
+                <option value="picked_up">Picked up</option>
+                <option value="delivered">Delivered</option>
+              </select>
+            </label>
+            <button type="button" onClick={remote.refresh} disabled={remote.loading} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-dm text-xs font-semibold disabled:opacity-50">Refresh shipments</button>
+          </>}
+
           {view === "active" && (
             <button
               onClick={() => setView("history")}
@@ -1848,18 +1935,25 @@ export function Logistics() {
             </div>
 
             <span className="font-dm rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-              {visible.length}
+              {realMode && (remote.loading || remote.error) ? "—" : visible.length}
             </span>
           </div>
 
-          {visible.length === 0 ? (
+          {realMode && remote.loading ? (
+            <p role="status" className="p-6 font-dm text-sm text-slate-500">Loading Logistics shipments...</p>
+          ) : realMode && remote.error ? (
+            <div className="p-6">
+              <p role="alert" className="font-dm text-sm text-red-800">{remote.error}</p>
+              <button type="button" onClick={remote.refresh} className="mt-3 rounded-md border border-slate-300 px-3 py-2 font-dm text-xs font-bold">Retry shipments</button>
+            </div>
+          ) : visible.length === 0 ? (
             <div className="flex flex-col items-center px-6 py-14 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
                 <Truck size={20} />
               </div>
 
               <div className="font-syne mt-4 text-sm font-bold text-slate-800">
-                {query || selectedDateFilter !== "all"
+                {query || selectedDateFilter !== "all" || (realMode && statusFilter)
                   ? "No deliveries match these filters."
                   : view === "active"
                     ? "No deliveries have been handed over from Warehouse."
@@ -1934,7 +2028,7 @@ export function Logistics() {
                         </td>
 
                         <td className="font-dm px-4 py-3 text-xs text-slate-600">
-                          {quantity(inquiry)}
+                          {quantity(inquiry) ?? "Unavailable"}
                         </td>
 
                         <td className="font-dm whitespace-nowrap px-4 py-3 text-xs text-slate-600">
@@ -1970,8 +2064,22 @@ export function Logistics() {
         </section>
       </div>
 
+      {realMode && openId !== null && !selectedInquiry && (
+        <div role="dialog" aria-modal="true" aria-label="Delivery details" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-5">
+          <div className="w-full max-w-xl rounded-xl bg-white p-6">
+            <button type="button" onClick={() => setOpenId(null)} className="mb-4 inline-flex items-center gap-1 font-dm text-xs font-semibold"><ArrowLeft size={13} />Back to Logistics</button>
+            <h2 className="font-syne text-xl font-extrabold text-[#1A2B4A]">DELIVERY DETAILS</h2>
+            {remote.detailLoading ? <p role="status" className="mt-4 font-dm text-sm">Loading shipment detail...</p> : <>
+              <p role="alert" className="mt-4 font-dm text-sm text-red-800">{remote.detailError || "Shipment detail is unavailable."}</p>
+              <button type="button" onClick={remote.retryDetail} className="mt-4 rounded-md border border-slate-300 px-3 py-2 font-dm text-xs font-bold">Retry shipment detail</button>
+            </>}
+          </div>
+        </div>
+      )}
+
       {selectedInquiry && (
         <DeliveryDetailModal
+          key={`${realMode ? "real" : "demo"}:${selectedInquiry.id}`}
           inquiry={selectedInquiry}
           onClose={() => setOpenId(null)}
           onStageSignedDR={handleStageSignedDR}
@@ -1983,6 +2091,11 @@ export function Logistics() {
       )}
     </main>
   );
+}
+
+export function Logistics() {
+  const { mode, role, userId } = useSession();
+  return <LogisticsPage key={JSON.stringify([mode, role, userId])} />;
 }
 
 function OperationsDeliveryDetails({
@@ -2179,14 +2292,14 @@ export function OperationsLogistics() {
 
   const deliveryInquiries = useMemo(
     () =>
-      inquiriesByStage([...deliveryStages])
+      realMode ? [] : inquiriesByStage([...deliveryStages])
         .filter(hasReachedLogistics)
         .sort((a, b) => {
           const aDate = Date.parse(deliveryDate(a));
           const bDate = Date.parse(deliveryDate(b));
           return (Number.isFinite(bDate) ? bDate : 0) - (Number.isFinite(aDate) ? aDate : 0);
         }),
-    [inquiriesByStage],
+    [realMode, inquiriesByStage],
   );
 
   const activeInquiries = useMemo(
@@ -2333,7 +2446,7 @@ export function OperationsLogistics() {
                       view === tab ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600"
                     }`}
                   >
-                    {count}
+                    {realMode ? "—" : count}
                   </span>
                 </button>
               ))}
@@ -2426,11 +2539,11 @@ export function OperationsLogistics() {
               </p>
             </div>
             <span className="font-dm rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600">
-              {visibleInquiries.length}
+              {realMode ? "—" : visibleInquiries.length}
             </span>
           </div>
 
-          {visibleInquiries.length === 0 ? (
+          {!realMode && visibleInquiries.length === 0 ? (
             <div className="flex flex-col items-center px-6 py-14 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
                 {view === "active" ? <Truck size={20} /> : <History size={20} />}
@@ -2464,6 +2577,7 @@ export function OperationsLogistics() {
                   </tr>
                 </thead>
                 <tbody>
+                  {realMode && <tr><td colSpan={7} className="px-4 py-8 text-center font-dm text-xs text-slate-500">Delivery records are unavailable. No approved Operations Logistics read API is connected.</td></tr>}
                   {visibleInquiries.map((inquiry) => (
                     <tr
                       key={inquiry.id}

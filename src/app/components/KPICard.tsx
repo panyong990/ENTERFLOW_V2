@@ -9,9 +9,10 @@ interface Props {
   showTrend?: boolean;
   icon: LucideIcon;
   accent?: string;
+  liveValue?: string;
 }
 
-export function KPICard({ label, value, delta, trend = "up", showTrend = true, icon: Icon, accent = "#C8102E" }: Props) {
+export function KPICard({ label, value, delta, trend = "up", showTrend = true, icon: Icon, accent = "#C8102E", liveValue }: Props) {
   const { mode } = useSession();
   const TrendIcon = trend === "up" ? TrendingUp : TrendingDown;
   const trendColor = trend === "up" ? "#16A34A" : "#C8102E";
@@ -32,11 +33,11 @@ export function KPICard({ label, value, delta, trend = "up", showTrend = true, i
         </div>
       </div>
       <div className="font-syne" style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>
-        {mode === "real" ? "—" : value}
+        {liveValue ?? (mode === "real" ? "—" : value)}
       </div>
       {delta && (
         <div className="flex items-center gap-1.5 font-dm" style={{ fontSize: 12 }}>
-          {mode === "real" ? <span style={{ color: "#64748B", fontWeight: 500 }}>Live metric unavailable</span> : <>
+          {mode === "real" ? <span style={{ color: "#64748B", fontWeight: 500 }}>{liveValue == null ? 'Live metric unavailable' : delta}</span> : <>
             {showTrend && <TrendIcon size={14} style={{ color: trendColor }} />}
             <span style={{ color: showTrend ? trendColor : "#64748B", fontWeight: 500 }}>{delta}</span>
             {showTrend && <span style={{ color: "#64748B" }}>vs last week</span>}

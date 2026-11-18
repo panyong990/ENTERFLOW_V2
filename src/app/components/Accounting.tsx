@@ -5,10 +5,12 @@ import { useNotifications } from "../store/notifications";
 import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
 import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
-import { RealPaymentProofQueue } from "./RealPaymentProofQueue";
+import { accountingMoney, useRealAccounting } from "./RealAccounting";
+import type { AccountingInvoice, AccountingPayment } from "../api/accounting";
 import { Toaster, toast } from "sonner";
 
-type Status = "paid" | "pending";
+type Status = "paid" | "pending" | "unavailable";
+type LedgerPayment = Omit<PaymentRecord, "paymentType"> & { paymentType: string };
 
 interface PaymentEntry {
   id: string;
@@ -18,7 +20,7 @@ interface PaymentEntry {
   ref: string;
 }
 
-interface Invoice {
+export interface Invoice {
   id: string;
   date: string;
   inv: string;
@@ -30,14 +32,18 @@ interface Invoice {
   amount: number;
   payment: string;
   paymentType: string;
-  paymentState: ReturnType<typeof paymentState>;
-  paymentRecords: PaymentRecord[];
+  paymentState: Omit<ReturnType<typeof paymentState>, "state" | "downpaymentStatus"> & {
+    state: ReturnType<typeof paymentState>["state"] | "UNAVAILABLE";
+    downpaymentStatus: ReturnType<typeof paymentState>["downpaymentStatus"] | "UNAVAILABLE";
+  };
+  paymentRecords: LedgerPayment[];
   downpaymentPercent: number;
   status: Status;
   deliveredDate?: string;
   paymentCycleStartedAt?: string;
   dueDate?: string;
-  fulfillmentCompleted: boolean;
+  fulfillmentCompleted: boolean | null;
+  backend?: { invoice: AccountingInvoice; payments: AccountingPayment[] };
   signedDeliveryReceiptFileName?: string;
   signedDeliveryReceiptSubmittedBy?: string;
   signedDeliveryReceiptReceivedAt?: string;
@@ -167,8 +173,13 @@ function hasActivePaymentCycle(inquiry: Inquiry): boolean {
     && inquiry.paymentCycleStartedAt === inquiry.signedDeliveryReceiptReceivedAt;
 }
 
-type GranularStatus = "Paid" | "Partial" | "Overdue" | "Pending" | "Awaiting Verification" | "Rejected" | "Verified" | "Paid/Completed";
+type GranularStatus = "Paid" | "Partial" | "Overdue" | "Pending" | "Awaiting Verification" | "Rejected" | "Verified" | "Paid/Completed" | "Unavailable";
 function granularStatus(inv: Invoice, totalPaid: number, now = new Date()): GranularStatus {
+  if (inv.backend) {
+    if (inv.paymentRecords.some(payment => payment.verificationStatus === "pending")) return "Awaiting Verification";
+    if (inv.paymentRecords.some(payment => payment.verificationStatus === "rejected")) return "Rejected";
+    return "Unavailable";
+  }
   if (inv.status === "paid") return "Paid";
   if (inv.paymentRecords.some((payment) => payment.verificationStatus === "pending")) return "Awaiting Verification";
   if (inv.paymentRecords.some((payment) => payment.verificationStatus === "rejected")) return "Rejected";
@@ -189,6 +200,7 @@ function hasFullyPaidBalancePayment(inv: Invoice): boolean {
 }
 
 const granularStyle: Record<GranularStatus, { bg: string; fg: string; border: string }> = {
+  Unavailable: { bg: "#F1F5F9", fg: "#475569", border: "#CBD5E1" },
   Paid:    { bg: "#ECFDF3", fg: "#15803D", border: "#BBF7D0" },
   Partial: { bg: "#EFF6FF", fg: "#1D4ED8", border: "#BFDBFE" },
   Pending: { bg: "#FFFBEB", fg: "#B45309", border: "#FDE68A" },
@@ -216,6 +228,7 @@ function downpaymentDisplayStatus(inv: Invoice): GranularStatus {
   if (downpaymentRecords.some((payment) => payment.verificationStatus === "pending")) return "Awaiting Verification";
   if (downpaymentRecords.some((payment) => payment.verificationStatus === "verified")) return "Verified";
   if (downpaymentRecords.some((payment) => payment.verificationStatus === "rejected")) return "Rejected";
+  if (inv.backend) return "Unavailable";
   return inv.paymentState.downpaymentStatus === "COMPLETE" ? "Paid/Completed" : "Awaiting Verification";
 }
 
@@ -230,6 +243,11 @@ function KPI({ label, value, accent = "#0F172A" }: { label: string; value: strin
 }
 
 export function Accounting() {
+  const { mode } = useSession();
+  return <AccountingLedger key={mode} />;
+}
+
+function AccountingLedger() {
   const [query, setQuery] = useState("");
   const [payments, setPayments] = useState<Record<string, PaymentEntry[]>>({});
   const [newPmt, setNewPmt] = useState<Record<string, { amount: string; method: string; ref: string; datePaid: string }>>({});
@@ -244,14 +262,15 @@ export function Accounting() {
   const [receiptToIssue, setReceiptToIssue] = useState<Invoice | null>(null);
   const [proofToView, setProofToView] = useState<{ filename: string; dataUrl: string } | null>(null);
   const [receiptToView, setReceiptToView] = useState<NonNullable<Invoice["officialReceipt"]> | null>(null);
-  const [paymentToReject, setPaymentToReject] = useState<{ invoice: Invoice; payment: PaymentRecord } | null>(null);
+  const [paymentToReject, setPaymentToReject] = useState<{ invoice: Invoice; payment: LedgerPayment } | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const { byClient, inquiriesByStage, updateInquiry, markPOCleared, confirmClientPayment, verifyPayment, rejectPayment, generateOfficialReceiptNumber, issueOfficialReceipt } = useOrders();
   const { push: pushNotif } = useNotifications();
   const { name: issuingStaff, mode = "demo" } = useSession();
   const realMode = mode === "real";
+  const remote = useRealAccounting(realMode);
   const unavailableFinancialOperation = (operation: string) => {
-    toast.info(`${operation} is unavailable`, { description: "No authenticated financial API is connected; nothing was saved." });
+    toast.info(`${operation} is unavailable`, { description: "This operation has no authenticated financial API; nothing was saved." });
   };
   const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
@@ -289,12 +308,12 @@ export function Accounting() {
     ),
     [trackedInquiries]
   );
-  const rows = useMemo(() => invoiceInquiries.map(inquiryToInvoice), [invoiceInquiries]);
+  const rows = useMemo(() => realMode ? remote.rows : invoiceInquiries.map(inquiryToInvoice), [realMode, remote.rows, invoiceInquiries]);
   const fulfillmentRows = useMemo(
-    () => trackedInquiries
+    () => realMode ? [] : trackedInquiries
       .filter((inquiry) => hasValidSignedDeliveryReceipt(inquiry) && !inquiry.invoiceSentAt && !hasActivePaymentCycle(inquiry))
       .map(inquiryToInvoice),
-    [trackedInquiries]
+    [realMode, trackedInquiries]
   );
   const [openId, setOpenId] = useState<string | null>(() =>
     rows.find((row) => row.paymentRecords.some((payment) => payment.verificationStatus === "pending"))?.id ?? null
@@ -302,6 +321,7 @@ export function Accounting() {
 
   /* Hydrate seeded confirmed payments from the inquiry into the local payments map (for the running-balance ledger UI) */
   useEffect(() => {
+    if (realMode) return;
     setPayments((prev) => {
       const next = { ...prev };
       invoiceInquiries.forEach((inq) => {
@@ -311,18 +331,19 @@ export function Accounting() {
       });
       return next;
     });
-  }, [invoiceInquiries]);
+  }, [realMode, invoiceInquiries]);
 
   const matchesSearch = (r: Invoice) =>
-    query === "" || r.inv.toLowerCase().includes(query.toLowerCase()) || r.client.toLowerCase().includes(query.toLowerCase());
+    !query.trim() || [r.inv, r.po, r.client, r.backend?.invoice.orderReference].some(value => value?.toLowerCase().includes(query.trim().toLowerCase()));
   const inDateRange = (r: Invoice) => {
     if (!dateFrom && !dateTo) return true;
     const d = r.date;
+    if (!d) return false;
     if (dateFrom && d < dateFrom) return false;
     if (dateTo && d > dateTo) return false;
     return true;
   };
-  const activeInvoices = rows.filter((r) => r.status === "pending" && matchesSearch(r) && inDateRange(r));
+  const activeInvoices = rows.filter((r) => (r.status === "pending" || r.status === "unavailable") && matchesSearch(r) && inDateRange(r));
   const historyInvoices = rows.filter((r) => r.status === "paid" && matchesSearch(r) && inDateRange(r));
   const visible = view === "active" ? activeInvoices : historyInvoices;
   const isActivePaymentCycle = (r: Invoice) => Boolean(r.signedDeliveryReceiptReceivedAt && r.paymentCycleStartedAt);
@@ -330,12 +351,12 @@ export function Accounting() {
     isActivePaymentCycle(r)
     && (r.paymentState.currentPaymentType === "BALANCE_PAYMENT" || r.paymentState.currentPaymentType === null);
   const downpaymentRows = visible.filter((r) =>
-    !isActiveBalancePaymentCycle(r)
+    r.backend ? !r.paymentRecords.some(payment => payment.paymentType === "BALANCE_PAYMENT" || payment.paymentType === "FULL_PAYMENT") : !isActiveBalancePaymentCycle(r)
     && (r.paymentState.currentPaymentType === "DOWNPAYMENT"
       || r.paymentRecords.some((payment) => payment.paymentType === "DOWNPAYMENT"))
   );
   const activePaymentCycleRows = visible.filter((r) =>
-    isActiveBalancePaymentCycle(r)
+    r.backend ? r.paymentRecords.some(payment => payment.paymentType === "BALANCE_PAYMENT" || payment.paymentType === "FULL_PAYMENT") : isActiveBalancePaymentCycle(r)
   );
   const fullyPaidHistoryRows = activePaymentCycleRows.filter((r) =>
     r.paymentState.state === "FULLY_PAID"
@@ -352,6 +373,11 @@ export function Accounting() {
   });
   const activePaymentCycleRowsForFilter = (filter: typeof activeCycleFilter, sourceRows = activePaymentCycleRows) => sourceRows.filter((r) => {
     if (filter === "ALL") return true;
+    if (r.backend) {
+      if (filter === "AWAITING VERIFICATION") return r.paymentRecords.some(payment => payment.verificationStatus === "pending");
+      if (filter === "REJECTED") return r.paymentRecords.some(payment => payment.verificationStatus === "rejected");
+      return false;
+    }
     const status = granularStatus(r, r.paymentState.totalVerifiedPayments, now);
     if (filter === "PAID/COMPLETED") return status === "Paid";
     const statusMap: Record<Exclude<typeof activeCycleFilter, "ALL" | "PAID/COMPLETED">, GranularStatus> = {
@@ -373,7 +399,8 @@ export function Accounting() {
     {
       key: "active-cycle",
       label: view === "history" ? "FULLY PAID / CLEARED" : "ACTIVE PAYMENT CYCLE",
-      description: view === "history"
+      description: realMode ? "Balance and full-payment records. Delivery-cycle and settlement state are unavailable."
+        : view === "history"
         ? "Invoices with fully verified payments and zero outstanding balance."
         : "Orders with a received signed Delivery Receipt and an active balance-payment cycle.",
       rows: activePaymentCycleRowsForFilter(
@@ -386,6 +413,7 @@ export function Accounting() {
   /* Auto-overdue notification: fire once per overdue invoice on mount */
   const [overdueNotified, setOverdueNotified] = useState<Set<string>>(new Set());
   useEffect(() => {
+    if (realMode) return;
     rows.forEach((r) => {
       if (r.status !== "pending" || !r.dueDate) return;
       const due = new Date(r.dueDate);
@@ -401,7 +429,7 @@ export function Accounting() {
       setOverdueNotified(prev => new Set(prev).add(r.id));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows]);
+  }, [rows, realMode]);
 
   const [reportMonth, setReportMonth] = useState(() => {
     const d = new Date();
@@ -410,6 +438,7 @@ export function Accounting() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   const monthlyExport = () => {
+    if (realMode) { unavailableFinancialOperation("Reporting exports"); return; }
     const [yr, mo] = reportMonth.split("-");
     const monthName = new Date(Number(yr), Number(mo) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
     toast.success(`Generating report — ${monthName}`, {
@@ -549,9 +578,9 @@ export function Accounting() {
     toast.success("Account cleared", { description: `${inv.client} · ${inv.inv} fully settled · removed from active tables` });
   };
 
-  const handleVerifyClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
+  const handleVerifyClientPayment = (invoice: Invoice, payment: LedgerPayment) => {
     if (realMode) {
-      unavailableFinancialOperation("Payment verification");
+      void remote.reviewPayment(payment.id, "verify");
       return;
     }
     if (payment.verificationStatus !== "pending" || payment.submittedAmount <= 0 || !payment.receiptDataUrl) return;
@@ -585,11 +614,8 @@ export function Accounting() {
     toast.success("Payment verified", { description: `${invoice.inv} · ${typeLabel}` });
   };
 
-  const handleRejectClientPayment = (invoice: Invoice, payment: PaymentRecord) => {
-    if (realMode) {
-      unavailableFinancialOperation("Payment rejection");
-      return;
-    }
+  const handleRejectClientPayment = (invoice: Invoice, payment: LedgerPayment) => {
+    if (realMode && !remote.canReview(payment.id)) return;
     if (payment.verificationStatus !== "pending") return;
     setRejectionReason("");
     setPaymentToReject({ invoice, payment });
@@ -597,7 +623,9 @@ export function Accounting() {
 
   const confirmRejectClientPayment = () => {
     if (realMode) {
-      unavailableFinancialOperation("Payment rejection");
+      if (paymentToReject) void remote.reviewPayment(paymentToReject.payment.id, "reject", rejectionReason).then(confirmed => {
+        if (confirmed) { setPaymentToReject(null); setRejectionReason(""); }
+      });
       return;
     }
     const reason = rejectionReason.trim();
@@ -655,6 +683,7 @@ export function Accounting() {
   };
 
   const sendInvoiceReminder = (invoice: Invoice) => {
+    if (realMode) { unavailableFinancialOperation("Payment reminders"); return; }
     if (sendingAllRemindersRef.current || sendingReminderIdsRef.current.has(invoice.id) || isReminderCoolingDown(invoice)) return;
     sendingReminderIdsRef.current.add(invoice.id);
     setSendingReminderIds(new Set(sendingReminderIdsRef.current));
@@ -677,6 +706,7 @@ export function Accounting() {
   };
 
   const sendFilteredReminders = () => {
+    if (realMode) { unavailableFinancialOperation("Payment reminders"); return; }
     const eligibleInvoices = filteredReminderRows.filter((invoice) => !isReminderCoolingDown(invoice));
     if (sendingAllRemindersRef.current || eligibleInvoices.length === 0) return;
     sendingAllRemindersRef.current = true;
@@ -787,7 +817,7 @@ export function Accounting() {
           {view === "active" && (
             <>
               <button
-                onClick={() => setView("history")}
+                disabled={realMode} title={realMode ? "Paid and closed history requires an approved clearing contract." : undefined} onClick={() => setView("history")}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white font-dm hover:bg-slate-50"
                 style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}
               >
@@ -797,10 +827,10 @@ export function Accounting() {
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-dm hover:opacity-90"
                 style={{ backgroundColor: "#FEF3C7", color: "#B45309", fontSize: 12, fontWeight: 700, border: "1px solid #FDE68A" }}
               >
-                <FileText size={14} /> {rows.filter(r => r.status === "pending").length} Pending Invoices
+                <FileText size={14} /> {realMode ? "—" : rows.filter(r => r.status === "pending").length} Pending Invoices
               </button>
               <button
-                onClick={() => setShowOverdueModal(true)}
+                disabled={realMode} title={realMode ? "Payment reminders are unavailable." : undefined} onClick={() => setShowOverdueModal(true)}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 bg-white font-dm hover:bg-slate-50"
                 style={{ borderColor: "#C8102E", color: "#C8102E", fontSize: 12, fontWeight: 700 }}
               >
@@ -812,15 +842,14 @@ export function Accounting() {
         </div>
       </header>
 
-      {realMode && <div role="status" className="border-b border-blue-200 bg-blue-50 px-8 py-3 font-dm text-xs text-blue-950">Real invoice and payment-proof APIs are connected. Existing Demo financial rows remain excluded; invoice ledger data will appear when authenticated records are available.</div>}
-      {realMode && <div className="px-8"><RealPaymentProofQueue /></div>}
+      {realMode && <div role="status" className="border-b border-blue-200 bg-blue-50 px-8 py-3 font-dm text-xs text-blue-950">Invoice and payment records use the original ledger below. Balances, settlement and delivery-cycle state, paid history, reminders, exports, and receipt generation are unavailable. Lists return up to 100 invoices and payments, plus records linked to returned payments and proofs.</div>}
 
       <div className="px-8 py-8 flex flex-col gap-6">
         <div className="grid grid-cols-4 gap-6">
           <KPI label="Total Invoices" value={realMode ? "—" : String(rows.length)} />
-          <KPI label="Total Billed" value={`₱${formatMoney(fromMoneyCents(rows.reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#1A2B4A" />
-          <KPI label="Pending Collection" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "pending").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#D97706" />
-          <KPI label="Paid & Closed" value={`₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#16A34A" />
+          <KPI label="Total Billed" value={realMode ? "—" : `₱${formatMoney(fromMoneyCents(rows.reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#1A2B4A" />
+          <KPI label="Pending Collection" value={realMode ? "—" : `₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "pending").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#D97706" />
+          <KPI label="Paid & Closed" value={realMode ? "—" : `₱${formatMoney(fromMoneyCents(rows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toMoneyCents(row.amount), 0)))}`} accent="#16A34A" />
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
@@ -834,7 +863,7 @@ export function Accounting() {
               style={{ fontSize: 13 }}
             />
           </div>
-          {view === "history" && (
+          {(view === "history" || realMode) && (
             <>
               <input
                 type="date"
@@ -855,6 +884,7 @@ export function Accounting() {
               />
               <div className="relative">
                 <button
+                  disabled={realMode} title={realMode ? "Reporting exports are unavailable." : undefined}
                   onClick={() => setShowMonthPicker(v => !v)}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 bg-white font-dm hover:bg-slate-50"
                   style={{ borderColor: "#16A34A", color: "#16A34A", fontSize: 13, fontWeight: 700 }}
@@ -881,10 +911,10 @@ export function Accounting() {
           )}
         </div>
 
-        {view === "active" && fulfillmentRows.length > 0 && (
+        {view === "active" && (fulfillmentRows.length > 0 || realMode) && (
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <div className="font-syne mb-1" style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>FULFILLMENT COMPLETED · PAYMENT CYCLE</div>
-            <p className="font-dm mb-4" style={{ fontSize: 12, color: "#64748B" }}>Signed-receipt orders awaiting payment-cycle start. Invoice and payment verification controls are unchanged.</p>
+            <p className="font-dm mb-4" style={{ fontSize: 12, color: "#64748B" }}>{realMode ? "Fulfillment completion, signed Delivery Receipts, and payment-cycle start are unavailable from the accounting records." : "Signed-receipt orders awaiting payment-cycle start. Invoice and payment verification controls are unchanged."}</p>
             <div className="flex flex-col gap-3">
               {fulfillmentRows.map((r) => {
                 const daysRemaining = r.dueDate ? paymentDaysRemaining(r.dueDate, now) : undefined;
@@ -953,6 +983,13 @@ export function Accounting() {
           </section>
         )}
 
+        {realMode && <div className="flex flex-wrap items-center gap-3 font-dm text-xs text-slate-600">
+          <button type="button" onClick={remote.refresh} disabled={remote.loading || remote.busy} className="rounded-md border border-slate-200 bg-white px-3 py-2 disabled:opacity-40">{remote.error ? "Retry" : "Refresh records"}</button>
+          {remote.loading && <span role="status">Loading Accounting records…</span>}
+          {remote.error && <span role="alert">{remote.error}</span>}
+          {remote.proofError && <span role="alert">Payment-proof review unavailable: {remote.proofError}</span>}
+          {remote.reviewError && <span role="alert">{remote.reviewError}</span>}
+        </div>}
         <div className="bg-white rounded-xl border border-slate-200/70 overflow-x-auto" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
           <table className="w-full min-w-[1180px] table-fixed">
             <colgroup>
@@ -991,7 +1028,7 @@ export function Accounting() {
                           {(section.key === "downpayment"
                             ? ["ALL", "AWAITING VERIFICATION", "VERIFIED", "REJECTED", "PAID/COMPLETED"]
                             : ["ALL", "PENDING", "PARTIAL", "PAID/COMPLETED", "OVERDUE", "AWAITING VERIFICATION", "REJECTED"]
-                          ).map((filter) => <option key={filter} value={filter}>{filter === "ALL" ? "All" : filter}</option>)}
+                          ).map((filter) => <option key={filter} value={filter} disabled={realMode && (section.key === "downpayment" ? filter === "PAID/COMPLETED" : ["PENDING", "PARTIAL", "PAID/COMPLETED", "OVERDUE"].includes(filter))}>{filter === "ALL" ? "All" : filter}</option>)}
                         </select>
                       </div>
                       <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{section.description}</div>
@@ -1000,7 +1037,7 @@ export function Accounting() {
                   {section.rows.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-4 py-4 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>
-                        {realMode ? "Real payment records are unavailable." : "No orders in this payment stage."}
+                        {realMode ? remote.loading ? "Loading Accounting records…" : remote.error ? "Accounting records are unavailable. Retry above." : "No returned records match this payment section and its filters." : "No orders in this payment stage."}
                       </td>
                     </tr>
                   )}
@@ -1013,12 +1050,12 @@ export function Accounting() {
                       style={{ cursor: "pointer" }}
                       onClick={() => setOpenId(isOpen ? null : r.id)}
                     >
-                      <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
+                      <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.date || "—"}</td>
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>{r.inv}</td>
                       <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{r.po}</td>
                       <td className="px-4 py-3 font-dm break-words" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{r.client}</td>
                       <td className="px-4 py-3 font-dm break-words" style={{ fontSize: 13, color: "#475569" }}>{r.item}</td>
-                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>₱{formatMoney(r.amount)}</td>
+                      <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{r.backend ? accountingMoney(r.backend.invoice.amount) : `₱${formatMoney(r.amount)}`}</td>
                       <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>
                         <div style={{ fontWeight: 700, color: "#1A2B4A" }}>{r.paymentType}</div>
                         <div style={{ fontSize: 11, color: "#64748B" }}>{r.payment}</div>
@@ -1037,7 +1074,7 @@ export function Accounting() {
                             </button>
                           )}
                         </div>
-                        {view === "history" && (
+                        {(view === "history" || realMode) && (
                           <div className="flex flex-col items-start gap-1">
                             {r.officialReceipt ? (
                               <button
@@ -1047,6 +1084,7 @@ export function Accounting() {
                               >View Official Receipt</button>
                             ) : (
                               <button
+                                disabled={realMode} title={realMode ? "Official Receipt issuance is unavailable." : undefined}
                                 onClick={(event) => { event.stopPropagation(); beginOfficialReceipt(r); }}
                                 className="font-dm inline-flex items-center justify-center rounded-md px-3 py-2 text-white shadow-sm transition-opacity hover:opacity-90"
                                 style={{ backgroundColor: "#C8102E", fontSize: 11, fontWeight: 700, lineHeight: 1.2, whiteSpace: "nowrap" }}
@@ -1057,11 +1095,11 @@ export function Accounting() {
                       </td>
                     </tr>
                     {isOpen && (() => {
-                      const pmts = payments[r.id] ?? [];
+                      const pmts = realMode ? [] : payments[r.id] ?? [];
                       const clientPayments = r.paymentRecords;
-                      const localPaidCents = pmts.reduce((sum, payment) => sum + toMoneyCents(payment.amount), 0);
+                      const localPaidCents = realMode ? Number.NaN : pmts.reduce((sum, payment) => sum + toMoneyCents(payment.amount), 0);
                       const verifiedClientPayments = clientPayments.filter((payment) => payment.verificationStatus === "verified");
-                      const unlistedVerifiedPayments = verifiedClientPayments.filter((payment) => !pmts.some((entry) =>
+                      const unlistedVerifiedPayments = realMode ? [] : verifiedClientPayments.filter((payment) => !pmts.some((entry) =>
                         entry.id === payment.id
                         || (entry.date === payment.paymentDate
                           && entry.amount === (payment.verifiedAmount ?? payment.submittedAmount)
@@ -1071,7 +1109,7 @@ export function Accounting() {
                       const totalPaid = r.paymentState.totalVerifiedPayments;
                       const remaining = r.paymentState.remainingInvoiceBalance;
                       const pf = newPmt[r.id] ?? { amount: "", method: "", ref: "", datePaid: "" };
-                      const clientInquiries = byClient(r.client);
+                      const clientInquiries = realMode ? [] : byClient(r.client);
                       const clientReceipts = clientInquiries.flatMap(i => i.clientPaymentReceipts ?? []);
                       const signedDRReceived = Boolean(r.signedDeliveryReceiptReceivedAt);
                       const cycleDaysRemaining = r.dueDate ? paymentDaysRemaining(r.dueDate, now) : undefined;
@@ -1079,7 +1117,7 @@ export function Accounting() {
                         && cycleDaysRemaining !== undefined
                         && cycleDaysRemaining < 0
                         && r.paymentState.remainingInvoiceBalance > 0;
-                      const paymentStatus = r.status === "paid"
+                      const paymentStatus = realMode ? "PAYMENT CYCLE UNAVAILABLE" : r.status === "paid"
                         ? "FULLY PAID"
                         : paymentCycleOverdue
                           ? "PAYMENT OVERDUE"
@@ -1094,22 +1132,22 @@ export function Accounting() {
                               <div>
                                 <div className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>{r.client} — {r.inv}</div>
                                 <div className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>
-                                  {r.payment} · Delivered: {r.deliveredDate ?? r.date} · Due: <span style={{ fontWeight: 600, color: paymentCycleOverdue ? "#C8102E" : "#0F172A" }}>{r.dueDate ?? "—"}</span>
+                                  {r.backend && <>Order: {r.backend.invoice.orderReference} · </>}{r.payment} · Delivered: {r.deliveredDate ?? (realMode ? "Unavailable" : r.date)} · Due: <span style={{ fontWeight: 600, color: paymentCycleOverdue ? "#C8102E" : "#0F172A" }}>{r.dueDate ?? "—"}</span>
                                   {paymentCycleOverdue && <span className="ml-2 font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#FEE2E2", color: "#C8102E" }}>⚠️ {Math.abs(cycleDaysRemaining ?? 0)} DAYS OVERDUE</span>}
                                 </div>
                               </div>
                               <div className="flex gap-6 text-right">
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Invoice Total</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>₱{formatMoney(r.amount)}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>{r.backend ? accountingMoney(r.backend.invoice.amount) : `₱${formatMoney(r.amount)}`}</div>
                                 </div>
                                 <div>
-                                  <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Paid</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#16A34A" }}>₱{formatMoney(totalPaid)}</div>
+                                  <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>{realMode ? "Verified" : "Paid"}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#16A34A" }}>{r.backend ? accountingMoney(r.backend.invoice.verifiedAmount) : `₱${formatMoney(totalPaid)}`}</div>
                                 </div>
                                 <div>
                                   <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Balance Due</div>
-                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: remaining > 0 ? "#C8102E" : "#16A34A" }}>₱{formatMoney(remaining)}</div>
+                                  <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: realMode ? "#64748B" : remaining > 0 ? "#C8102E" : "#16A34A" }}>{realMode ? "Unavailable" : `₱${formatMoney(remaining)}`}</div>
                                 </div>
                               </div>
                             </div>
@@ -1123,7 +1161,7 @@ export function Accounting() {
                                   backgroundColor: signedDRReceived ? "#DCFCE7" : "#E2E8F0",
                                   color: signedDRReceived ? "#166534" : "#475569",
                                 }}>
-                                  {r.fulfillmentCompleted ? "FULFILLMENT COMPLETED" : "FULFILLMENT NOT COMPLETED"}
+                                  {realMode ? "FULFILLMENT UNAVAILABLE" : r.fulfillmentCompleted ? "FULFILLMENT COMPLETED" : "FULFILLMENT NOT COMPLETED"}
                                 </span>
                                 <span className="rounded-full px-3 py-1.5 font-dm" style={{
                                   fontSize: 11,
@@ -1179,7 +1217,7 @@ export function Accounting() {
                                 </>
                               ) : (
                                 <div className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>
-                                  Payment cycle starts only when this order’s signed Delivery Receipt is received.
+                                  {realMode ? "Signed Delivery Receipt and payment-cycle data are unavailable." : "Payment cycle starts only when this order’s signed Delivery Receipt is received."}
                                 </div>
                               )}
                             </div>
@@ -1188,20 +1226,21 @@ export function Accounting() {
                               <div className="rounded-lg p-4 mb-4" style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
                                 <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 800, color: "#1E40AF", letterSpacing: 0.5, textTransform: "uppercase" }}>Client Payment Submissions</div>
                                 {clientPayments.map((p) => {
+                                  const backendPayment = r.backend?.payments.find(payment => payment.id === p.id);
                                   const paymentType = p.paymentType === "DOWNPAYMENT" ? "DOWNPAYMENT"
-                                    : p.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : "FULL PAYMENT";
+                                    : p.paymentType === "BALANCE_PAYMENT" ? "BALANCE PAYMENT" : p.paymentType.replaceAll("_", " ");
                                   const statusLabel = p.verificationStatus === "pending" ? "AWAITING VERIFICATION"
                                     : p.verificationStatus === "verified" ? "VERIFIED" : "REJECTED";
                                   const statusColor = p.verificationStatus === "pending" ? "#B45309"
                                     : p.verificationStatus === "verified" ? "#15803D" : "#C8102E";
                                   const dpPercent = r.downpaymentPercent;
-                                  const paymentBalanceCents = p.paymentType === "DOWNPAYMENT"
+                                  const paymentBalanceCents = realMode ? Number.NaN : p.paymentType === "DOWNPAYMENT"
                                     ? toMoneyCents(r.paymentState.remainingDownpayment)
                                     : toMoneyCents(r.paymentState.remainingInvoiceBalance);
-                                  const remainingAfterCents = p.verificationStatus === "pending"
+                                  const remainingAfterCents = realMode ? Number.NaN : p.verificationStatus === "pending"
                                     ? Math.max(0, paymentBalanceCents - toMoneyCents(p.submittedAmount))
                                     : paymentBalanceCents;
-                                  const remainingAfter = fromMoneyCents(remainingAfterCents);
+                                  const remainingAfter = realMode ? Number.NaN : fromMoneyCents(remainingAfterCents);
                                   const paymentKey = `${r.id}:${p.id}`;
                                   const isPaymentExpanded = expandedClientPayments.has(paymentKey);
                                   return (
@@ -1233,29 +1272,35 @@ export function Accounting() {
                                       <span>Invoice</span><strong>{p.invoiceNo ?? r.inv}</strong>
                                       <span>PO</span><strong>{r.po}</strong>
                                       <span>PAYMENT TYPE</span><strong>{paymentType}</strong>
-                                      <span>Invoice Total</span><strong>₱{formatMoney(r.paymentState.invoiceTotal)}</strong>
+                                      <span>Invoice Total</span><strong>{r.backend ? accountingMoney(r.backend.invoice.amount) : `₱${formatMoney(r.paymentState.invoiceTotal)}`}</strong>
                                       {p.paymentType === "DOWNPAYMENT" ? <>
-                                        <span>DOWNPAYMENT REQUIRED</span><strong>{dpPercent}%</strong>
-                                        <span>Required Amount</span><strong>₱{formatMoney(r.paymentState.requiredDownpaymentAmount)}</strong>
+                                        <span>DOWNPAYMENT REQUIRED</span><strong>{realMode ? "Percentage unavailable" : `${dpPercent}%`}</strong>
+                                        <span>Required Amount</span><strong>{r.backend ? accountingMoney(r.backend.invoice.requiredDownpayment) : `₱${formatMoney(r.paymentState.requiredDownpaymentAmount)}`}</strong>
                                       </> : p.paymentType === "BALANCE_PAYMENT" ? <>
-                                        <span>Previously Verified</span><strong>₱{formatMoney(r.paymentState.totalVerifiedPayments)}</strong>
-                                        <span>Balance Due</span><strong>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</strong>
+                                        <span>{realMode ? "Verified Amount" : "Previously Verified"}</span><strong>{r.backend ? accountingMoney(r.backend.invoice.verifiedAmount) : `₱${formatMoney(r.paymentState.totalVerifiedPayments)}`}</strong>
+                                        <span>Balance Due</span><strong>{realMode ? "Unavailable" : `₱${formatMoney(r.paymentState.remainingInvoiceBalance)}`}</strong>
                                       </> : <>
-                                        <span>FULL PAYMENT REQUIRED</span><strong>₱{formatMoney(r.paymentState.remainingInvoiceBalance)}</strong>
+                                        <span>FULL PAYMENT REQUIRED</span><strong>{realMode ? "Unavailable" : `₱${formatMoney(r.paymentState.remainingInvoiceBalance)}`}</strong>
                                       </>}
-                                      <span>Submitted Amount</span><strong>₱{formatMoney(p.submittedAmount)}</strong>
-                                      <span>Remaining Balance</span><strong>₱{formatMoney(remainingAfter)}</strong>
-                                      <span>Date Submitted</span><strong>{p.paymentDate}</strong>
+                                      <span>Submitted Amount</span><strong>{backendPayment ? accountingMoney(backendPayment.submittedAmount) : `₱${formatMoney(p.submittedAmount)}`}</strong>
+                                      <span>Remaining Balance</span><strong>{realMode ? "Unavailable" : `₱${formatMoney(remainingAfter)}`}</strong>
+                                      <span>Date Submitted</span><strong>{backendPayment ? backendPayment.submittedAt ?? "—" : p.paymentDate}</strong>
+                                      {backendPayment && <><span>Date Paid</span><strong>{backendPayment.paidOn ?? "—"}</strong><span>Verified Amount</span><strong>{accountingMoney(backendPayment.verifiedAmount)}</strong></>}
                                       <span>Payment Method</span><strong>{p.method ?? "Not specified"}</strong>
                                       <span>Reference Number</span><strong>{p.referenceNumber ?? "—"}</strong>
                                       {p.verifiedAt && <><span>Date Verified</span><strong>{new Date(p.verifiedAt).toLocaleString()}</strong></>}
                                       {p.rejectedAt && <><span>Date Rejected</span><strong>{new Date(p.rejectedAt).toLocaleString()}</strong></>}
                                     </div>
+                                    {p.rejectionReason && <p className="mt-2 font-dm text-xs text-red-700">Reason for Rejection: {p.rejectionReason}</p>}
                                     <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-blue-100">
-                                      <button onClick={() => p.receiptDataUrl && setProofToView({ filename: p.receiptFile ?? "Uploaded receipt", dataUrl: p.receiptDataUrl })} disabled={!p.receiptDataUrl} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB" }}><Eye size={11} /> VIEW PROOF OF PAYMENT</button>
+                                      <button onClick={() => {
+                                        if (!p.receiptDataUrl) return;
+                                        if (realMode) window.open(p.receiptDataUrl, "_blank", "noopener,noreferrer");
+                                        else setProofToView({ filename: p.receiptFile ?? "Uploaded receipt", dataUrl: p.receiptDataUrl });
+                                      }} disabled={!p.receiptDataUrl} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB" }}><Eye size={11} /> VIEW PROOF OF PAYMENT</button>
                                       {p.verificationStatus === "pending" && <>
-                                        <button onClick={() => handleRejectClientPayment(r, p)} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-red-200 hover:bg-red-50" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}><X size={11} /> Reject Payment</button>
-                                        <button onClick={() => handleVerifyClientPayment(r, p)} disabled={!p.receiptDataUrl || p.submittedAmount <= 0} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#15803D" }}><CheckCircle2 size={11} /> VERIFY PAYMENT</button>
+                                        <button onClick={() => handleRejectClientPayment(r, p)} disabled={realMode && !remote.canReview(p.id)} title={realMode && !remote.canReview(p.id) ? "Refresh records; only pending backend proof submissions can be reviewed." : undefined} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-red-200 hover:bg-red-50 disabled:opacity-40" style={{ fontSize: 11, fontWeight: 700, color: "#C8102E" }}><X size={11} /> Reject Payment</button>
+                                        <button onClick={() => handleVerifyClientPayment(r, p)} disabled={realMode ? !remote.canReview(p.id) : !p.receiptDataUrl || p.submittedAmount <= 0} className="font-dm flex items-center gap-1 px-2.5 py-1.5 rounded-md text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#15803D" }}><CheckCircle2 size={11} /> VERIFY PAYMENT</button>
                                       </>}
                                     </div>
                                     </div>}
@@ -1279,13 +1324,24 @@ export function Accounting() {
                                     </thead>
                                     <tbody>
                                       <tr className="bg-white border-b border-slate-100">
-                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.date}</td>
+                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#475569" }}>{r.date || "—"}</td>
                                         <td className="px-3 py-2.5 font-mono-jb" style={{ fontSize: 11, color: "#1A2B4A", fontWeight: 600 }}>{r.inv} · Invoice Raised</td>
-                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#C8102E", fontWeight: 600 }}>₱{formatMoney(r.amount)}</td>
+                                        <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#C8102E", fontWeight: 600 }}>{r.backend ? accountingMoney(r.backend.invoice.amount) : `₱${formatMoney(r.amount)}`}</td>
                                         <td className="px-3 py-2.5 font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>—</td>
-                                        <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#C8102E" }}>₱{formatMoney(r.amount)}</td>
+                                        <td className="px-3 py-2.5 font-syne" style={{ fontSize: 12, fontWeight: 700, color: "#C8102E" }}>{realMode ? "Unavailable" : `₱${formatMoney(r.amount)}`}</td>
                                       </tr>
-                                      {pmts.reduce((acc, p) => {
+                                      {r.backend?.payments.filter(payment => payment.verificationStatus === "verified").map(payment => (
+                                        <tr key={payment.id} className="bg-white border-b border-slate-100">
+                                          <td className="px-3 py-2.5 font-dm text-xs text-slate-600">{payment.paidOn ?? "—"}</td>
+                                          <td className="px-3 py-2.5 font-dm text-xs text-slate-900">{payment.paymentType.replaceAll("_", " ")} · {payment.method ?? "—"} {payment.referenceNumber ?? ""}
+                                            <button disabled title="Receipt updates are unavailable." className="ml-2 text-slate-400" aria-label="Edit receipt"><Pencil size={11} /></button>
+                                          </td>
+                                          <td className="px-3 py-2.5 text-xs text-slate-400">—</td>
+                                          <td className="px-3 py-2.5 text-xs text-green-700">{accountingMoney(payment.verifiedAmount)}</td>
+                                          <td className="px-3 py-2.5 text-xs text-slate-500">Unavailable</td>
+                                        </tr>
+                                      ))}
+                                      {!realMode && pmts.reduce((acc, p) => {
                                         const newBalanceCents = Math.max(0, acc.balanceCents - toMoneyCents(p.amount));
                                         const newBal = fromMoneyCents(newBalanceCents);
                                         acc.rows.push(
@@ -1311,7 +1367,7 @@ export function Accounting() {
                                         acc.balanceCents = newBalanceCents;
                                         return acc;
                                       }, { balanceCents: toMoneyCents(r.amount), rows: [] as React.ReactNode[] }).rows}
-                                      {unlistedVerifiedPayments.reduce((acc, payment) => {
+                                      {!realMode && unlistedVerifiedPayments.reduce((acc, payment) => {
                                         const amount = fromMoneyCents(toMoneyCents(payment.verifiedAmount ?? payment.submittedAmount));
                                         const balanceCents = Math.max(0, acc.balanceCents - toMoneyCents(amount));
                                         const balance = fromMoneyCents(balanceCents);
@@ -1338,7 +1394,8 @@ export function Accounting() {
                               {view === "active" && (
                               <div className="flex flex-col gap-3">
                                 <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.5, textTransform: "uppercase" }}>Record Payment</div>
-                                <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                                {realMode && <p className="font-dm text-xs text-slate-500">Payment recording and account clearing are unavailable. Review submitted proofs above.</p>}
+                                <fieldset disabled={realMode} className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                                   <div className="flex flex-col gap-1">
                                     <label className="font-dm" style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Amount (₱)</label>
                                     <input
@@ -1392,13 +1449,14 @@ export function Accounting() {
                                   >
                                     <PlusCircle size={14} /> Add Payment Entry
                                   </button>
-                                </div>
+                                </fieldset>
 
                                 <div className="flex items-center justify-between mt-1 pt-3 border-t border-slate-200">
                                   <span className="font-dm italic" style={{ fontSize: 11, color: "#64748B" }}>Secretary approval required</span>
                                   <button
                                     onClick={() => clearAccount(r.id)}
-                                    disabled={remaining > 0}
+                                    disabled={realMode || remaining > 0}
+                                    title={realMode ? "Account clearing is unavailable." : undefined}
                                     className="flex items-center gap-1.5 px-3 py-2 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: "#16A34A", fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}
                                   >
@@ -1443,7 +1501,7 @@ export function Accounting() {
                 <span>Client</span><strong>{paymentToReject.invoice.client}</strong>
                 <span>Invoice</span><strong>{paymentToReject.payment.invoiceNo ?? paymentToReject.invoice.inv}</strong>
                 <span>Payment Type</span><strong>{paymentToReject.payment.paymentType.replace("_", " ")}</strong>
-                <span>Submitted Amount</span><strong>₱{formatMoney(paymentToReject.payment.submittedAmount)}</strong>
+                <span>Submitted Amount</span><strong>{realMode ? accountingMoney(paymentToReject.invoice.backend?.payments.find(payment => payment.id === paymentToReject.payment.id)?.submittedAmount) : `₱${formatMoney(paymentToReject.payment.submittedAmount)}`}</strong>
               </div>
               <label htmlFor="payment-rejection-reason" className="font-dm block mt-5 mb-1.5" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
                 Reason for Rejection <span style={{ color: "#C8102E" }}>*</span>
@@ -1458,6 +1516,7 @@ export function Accounting() {
                 className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-y"
                 style={{ fontSize: 13 }}
               />
+              {realMode && remote.reviewError && <p role="alert" className="mt-3 font-dm text-xs text-red-700">{remote.reviewError} Close this dialog to refresh records.</p>}
             </div>
             <footer className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
               <button
@@ -1469,7 +1528,7 @@ export function Accounting() {
               </button>
               <button
                 onClick={confirmRejectClientPayment}
-                disabled={!rejectionReason.trim()}
+                disabled={!rejectionReason.trim() || (realMode && !remote.canReview(paymentToReject.payment.id))}
                 className="font-dm px-4 py-2 rounded-md text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}
               >

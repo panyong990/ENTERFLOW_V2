@@ -26,21 +26,27 @@ export function createStockRequestsService({ db }) {
       const [materials] = await connection.execute(`SELECT CAST(id AS CHAR) id, name, unit_code unitCode, quantity_on_hand quantityOnHand FROM materials WHERE active=TRUE AND id IN (${placeholders}) FOR SHARE`, lines.map(line => line.materialId));
       const materialMap = new Map(materials.map(row => [String(row.id), row]));
       if (materials.length !== lines.length) { await connection.rollback(); return { success: false, code: 'MATERIAL_NOT_FOUND' }; }
+      if (materials.some(material => material.quantityOnHand !== null && !validObservedQuantity(material.quantityOnHand))) {
+        await connection.rollback();
+        return { success: false, code: 'INVENTORY_UNAVAILABLE' };
+      }
+      let quotationReference = null;
       if (input.quotationId !== undefined) {
-        const [quotes] = await connection.execute(`SELECT id FROM quotations WHERE id=? AND order_id=? AND status <> 'draft' FOR SHARE`, [input.quotationId, input.orderId]);
+        const [quotes] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference FROM quotations WHERE id=? AND order_id=? AND status <> 'draft' FOR SHARE`, [input.quotationId, input.orderId]);
         if (!quotes.length) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_FOUND' }; }
+        quotationReference = quotes[0].reference;
       }
       const reference = `SR-${new Date().getUTCFullYear()}-${String(input.orderId).padStart(6, '0')}-${Date.now()}`;
-      const [request] = await connection.execute(`INSERT INTO stock_requests (reference,order_id,client_reference,status,requested_by) VALUES (?,?,?,'pending',?)`, [reference, input.orderId, input.quotationId ? `Quotation ${input.quotationId}` : null, actor.userId]);
+      const [request] = await connection.execute(`INSERT INTO stock_requests (reference,order_id,client_reference,status,requested_by) VALUES (?,?,?,'pending',?)`, [reference, input.orderId, quotationReference, actor.userId]);
       if (request.affectedRows !== 1 || request.insertId == null) throw new Error('Stock request write failed.');
       const requestId = String(request.insertId);
       for (const line of lines) {
-        const material = materialMap.get(line.materialId); const available = material.quantityOnHand == null ? null : Number(material.quantityOnHand);
+        const material = materialMap.get(line.materialId); const available = material.quantityOnHand === null ? null : Number(material.quantityOnHand);
         await connection.execute(`INSERT INTO stock_request_lines (stock_request_id,material_id,material_name_snapshot,unit_snapshot,required_quantity,stock_at_request,shortage_at_request) VALUES (?,?,?,?,?,?,?)`, [requestId, line.materialId, material.name, material.unitCode, line.quantity, available, available===null?null:Math.max(0, line.quantity - available)]);
       }
       await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at) VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [actor.userId, 'stock_request.created', 'stock_request', requestId, JSON.stringify({ orderId: String(input.orderId), quotationId: input.quotationId ?? null, reference, lineCount: lines.length }), context.requestId ?? null]);
       await connection.commit(); transaction = false;
-      return { success: true, data: { id: requestId, reference, orderId: String(input.orderId), status: 'pending', lines: lines.map(line => ({ materialId: line.materialId, quantity: line.quantity })) } };
+      return { success: true, data: { id: requestId, reference, orderId: String(input.orderId), clientReference: quotationReference, status: 'pending', lines: lines.map(line => ({ materialId: line.materialId, quantity: line.quantity })) } };
     } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; } finally { connection.release(); }
   }
 
@@ -48,7 +54,10 @@ export function createStockRequestsService({ db }) {
     if (!actor || actor.accountType !== 'employee' || !['sales', 'warehouse'].includes(actor.roleCode)) return { success: false, code: 'FORBIDDEN' };
     const connection = await db.getConnection();
     try {
-      const [rows] = await connection.execute(`SELECT CAST(sr.id AS CHAR) id, sr.reference, CAST(sr.order_id AS CHAR) orderId, sr.status, DATE_FORMAT(sr.created_at,'%Y-%m-%dT%H:%i:%s.%fZ') createdAt, CAST(sr.requested_by AS CHAR) requestedBy FROM stock_requests sr ORDER BY sr.created_at DESC,sr.id DESC`);
+      const [rows] = await connection.execute(`SELECT CAST(sr.id AS CHAR) id, sr.reference, CAST(sr.order_id AS CHAR) orderId,
+        o.reference orderReference, sr.client_reference clientReference, sr.status,
+        DATE_FORMAT(sr.created_at,'%Y-%m-%dT%H:%i:%s.%fZ') createdAt, CAST(sr.requested_by AS CHAR) requestedBy
+        FROM stock_requests sr LEFT JOIN orders o ON o.id=sr.order_id ORDER BY sr.created_at DESC,sr.id DESC`);
       const data = [];
       for (const row of rows) {
         const [lines] = await connection.execute(`SELECT CAST(srl.id AS CHAR) id, CAST(srl.material_id AS CHAR) materialId, srl.material_name_snapshot materialName, srl.unit_snapshot unit, srl.required_quantity requiredQuantity, srl.stock_at_request stockAtRequest, srl.shortage_at_request shortageAtRequest FROM stock_request_lines srl WHERE srl.stock_request_id=? ORDER BY srl.id`, [row.id]);
@@ -83,6 +92,10 @@ export function createStockRequestsService({ db }) {
         if (!Array.isArray(input.inventoryUpdates) || input.inventoryUpdates.length !== requestedMaterials.size || new Set(input.inventoryUpdates.map(update=>String(update?.materialId))).size !== requestedMaterials.size || input.inventoryUpdates.some(update=>!requestedMaterials.has(String(update?.materialId)) || !validObservedQuantity(update?.quantityOnHand))) { await connection.rollback(); return invalid({ inventoryUpdates: 'Manual updates must match the requested materials and contain recorded, non-negative quantities.' }); }
         const observed = new Map(input.lines.map(line=>[String(line.lineId),Number(line.currentQuantity)]));
         if (requestLines.some(line=>Number(input.inventoryUpdates.find(update=>String(update.materialId)===String(line.materialId))?.quantityOnHand)!==observed.get(String(line.id)))) { await connection.rollback(); return invalid({ inventoryUpdates: 'Manual inventory values must match the observed response quantities.' }); }
+        const materialIds = [...requestedMaterials];
+        const materialPlaceholders = materialIds.map(() => '?').join(',');
+        const [materials] = await connection.execute(`SELECT CAST(id AS CHAR) id FROM materials WHERE active=TRUE AND id IN (${materialPlaceholders}) FOR UPDATE`, materialIds);
+        if (materials.length !== requestedMaterials.size) { await connection.rollback(); return { success: false, code: 'MATERIAL_NOT_FOUND' }; }
       }
       const [response] = await connection.execute(`INSERT INTO stock_responses (stock_request_id,order_id,kind,responded_by) VALUES (?,?,?,?)`, [id, requests[0].orderId, input.status === 'updated' ? 'updated' : 'initial', actor.userId]);
       const responseId = String(response.insertId);

@@ -18,10 +18,12 @@ test("Real Sales pipeline exposes all order-state views without Demo fallback", 
   assert.doesNotMatch(source, /aria-label="Record status"/);
   assert.doesNotMatch(source, /aria-label="Order sort"/);
   assert.doesNotMatch(source, /Page \{page\}/);
-  assert.doesNotMatch(source, />Previous<|>Next</);
+  assert.match(source, /aria-label="Cancellation history pages"/);
+  assert.match(source, /cancellationQuery\(filters, cancellationFilter, cancellationPage\)/);
+  assert.match(source, /remote.data\?\.total/);
   assert.match(source, /All Order Records & Stages/);
   assert.match(source, /No inquiries/);
-  for (const label of ["Active Pipeline", "Cancellation Requests", "All Order Records & Stages", "All Requests", "Pending Review", "Approved \/ Cancelled", "Rejected"]) assert.match(source, new RegExp(label));
+  for (const label of ["Active Pipeline", "Cancellation Requests", "All Order Records & Stages", "All Requests", "Pending Review", "Approved \/ Cancelled", "Declined"]) assert.match(source, new RegExp(label));
   assert.match(source, /workspaceSection/);
   assert.match(source, /min-h-\[420px\]/);
   assert.doesNotMatch(source, /New inquiries appear automatically/);

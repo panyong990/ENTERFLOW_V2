@@ -1,0 +1,18 @@
+{
+  "baselineFiles": 88,
+  "unchangedBaselineFiles": 85,
+  "allowedDocumentationOrBuildChanges": [
+    "docs/TESTING.md",
+    "PHASE_1_MASTER_PROGRESS_TRACKER.md",
+    "docs/REPORTING_ANALYTICS_REQUIREMENTS_MATRIX_2026-11-18.md"
+  ],
+  "unexpectedChanges": [],
+  "changedTestFiles": [],
+  "verifiedTestFiles": 102,
+  "productionAssetHashesMatch": true,
+  "productionHtmlHashesMatch": true,
+  "requirementRowsIntact": true,
+  "preparedBaselineSha256": "4f74eed40ab48c99c336589ee98636af8b867e0cdd68a251c37fe0a7e811cc1c",
+  "testInventorySha256": "c07bda5fcde30dc8968f62a115083c04422e549613806c6ee16866767c8e4447",
+  "historicalScannerEvidencePreserved": true
+}

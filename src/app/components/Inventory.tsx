@@ -44,9 +44,9 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<PartCategory | "">("");
-  const [statusFilter, setStatusFilter] = useState<"in-stock" | "low-stock" | "out-of-stock" | "">("");
+  const [statusFilter, setStatusFilter] = useState<"in-stock" | "low-stock" | "out-of-stock" | "unavailable" | "">("");
   const [draftCategoryFilter, setDraftCategoryFilter] = useState<PartCategory | "">("");
-  const [draftStatusFilter, setDraftStatusFilter] = useState<"in-stock" | "low-stock" | "out-of-stock" | "">("");
+  const [draftStatusFilter, setDraftStatusFilter] = useState<"in-stock" | "low-stock" | "out-of-stock" | "unavailable" | "">("");
   const [contextMenu, setContextMenu] = useState<{ material: RawMaterial; x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLDivElement>(null);
@@ -341,6 +341,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                             <option value="in-stock">In Stock</option>
                             <option value="low-stock">Low Stock</option>
                             <option value="out-of-stock">Out of Stock</option>
+                            <option value="unavailable">Not recorded</option>
                           </select>
                         </label>
                       </div>
@@ -515,7 +516,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
       ["Category", partCategoryMeta[selection.item.category].label],
       ["Quantity on hand", Number.isFinite(selection.item.qtyInStock) ? `${selection.item.qtyInStock.toFixed(2)} ${selection.item.unit}` : "Not recorded"],
       ["Unit", selection.item.unit],
-      ["Unit price", `₱${selection.item.unitPrice.toLocaleString("en-PH")}`],
+      ["Unit price", Number.isFinite(selection.item.unitPrice) ? `₱${selection.item.unitPrice.toLocaleString("en-PH")}` : "Not recorded"],
       ["Low-stock threshold", `${selection.item.threshold} ${selection.item.unit}`],
       ...(selection.item.supplier ? [["Supplier", selection.item.supplier]] : []),
     ]
@@ -524,7 +525,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
       ["Enter-Fil PN", selection.item.enterFilPN],
       ["Client", selection.item.client],
       ["Quantity on hand", Number.isFinite(selection.item.qtyInStock) ? `${selection.item.qtyInStock} pcs` : "Not recorded"],
-      ["Buffer minimum", `${selection.item.bufferMin} pcs`],
+      ["Buffer minimum", Number.isFinite(selection.item.bufferMin) ? `${selection.item.bufferMin} pcs` : "Not recorded"],
       ["Demand", selection.item.demand],
       ["Last updated", selection.item.lastUpdated],
       ["Updated by", selection.item.updatedBy],

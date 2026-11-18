@@ -9,17 +9,23 @@ export interface ClientProfile {
 
 export interface ClientOrder {
   archiveReason?: "rejected" | "cancelled" | null; archiveNote?: string | null; archivedAt?: string | null;
+  pendingCancellation?: { reason: string; requestedAt: string; requestedBy: "client" | "management" } | null;
   id: string; reference: string; stageLabel: string | null; paymentTermLabel: string | null;
   deliveryMethodLabel: string | null; submittedAt: string | null; requestedDeliveryDate: string | null;
   fulfillmentCompletedAt: string | null; updatedAt: string | null; itemCount: number;
 }
 
 export interface ClientOrderItem { id: string; lineNumber: number; quantity: string | number; specificationId: string; [key: string]: unknown }
-export interface ClientOrderDetail extends ClientOrder { items: ClientOrderItem[] }
+export interface ClientOrderDetail extends ClientOrder {
+  items: ClientOrderItem[];
+  revisionRequests?: { id: string; reason: string; status: "pending" | "completed"; requestedAt: string; decidedAt: string | null }[];
+  cancellationHistory?: { reason: string; resolution: "pending" | "approved" | "declined" | "completed"; requestedAt: string; requestedBy: "client" | "management"; response?: string; resolvedAt?: string | null }[];
+}
 export interface ClientQuotationLine { id: string; quotationId: string; lineNumber: number; description: string; subDescription: string | null; quantity: string | number; unitLabel: string | null; unitPrice: string }
-export interface ClientQuotation { id: string; reference: string; revisionNumber: number; status: "sent" | "superseded"; downpaymentValid?: boolean; decision?: "accepted" | "rejected" | null; decisionReason?: string | null; decidedAt?: string | null; issuedOn: string | null; validUntil: string | null; paymentTermLabel: string | null; timeOfDelivery: string | null; placeOfDelivery: string | null; totalAmount: string; downpaymentPercent: string | number; downpaymentAmount: string; sentAt: string | null; lines: ClientQuotationLine[] }
+export interface ClientQuotation { id: string; reference: string; revisionNumber: number; status: "sent" | "superseded"; isLatestRevision?: boolean; downpaymentValid?: boolean; decision?: "accepted" | "rejected" | null; decisionReason?: string | null; decidedAt?: string | null; issuedOn: string | null; validUntil: string | null; paymentTermLabel: string | null; timeOfDelivery: string | null; placeOfDelivery: string | null; totalAmount: string; downpaymentPercent: string | number; downpaymentAmount: string; sentAt: string | null; lines: ClientQuotationLine[] }
 export interface ClientQuotationDecision { decision: "accepted" | "rejected"; reason?: string }
 export interface ClientQuotationRevisionRequest { reason: string }
+export interface ClientCancellationRequest { reason: string; termsAcknowledged: true }
 export interface ClientDocumentMetadata { id: string; purchaseOrderId?: string | null; proofFileId?: string | null; originalFilename?: string | null; mimeType?: string | null; sizeBytes?: string | number | null; state?: string | null; uploadedAt?: string | null }
 export interface ClientPurchaseOrder { id: string; acceptedQuotationId: string | null; acceptedQuotationReference: string | null; reference: string; clientReference: string | null; uploadedAt: string | null; receivedAt: string | null; clearedAt: string | null; files?: ClientDocumentMetadata[]; status?: "received" | "validated" | "rejected" | "pending"; decisionReason?: string | null }
 export interface ClientPurchaseOrderSubmission { reference: string }
@@ -67,6 +73,7 @@ export const clientPortalApi = {
   uploadPurchaseOrderDocument: (orderId: string, input: { file: File; reference: string }, signal?: AbortSignal) => { const body = new FormData(); body.append('reference', input.reference); body.append('document', input.file, input.file.name); return api<{ purchaseOrderId: string; orderId: string; file: { id: string; originalFilename: string }; status: string }>(`/api/documents/client/orders/${encodeURIComponent(orderId)}/purchase-order`, { method: 'POST', body, signal }); },
   uploadPaymentProof: (orderId: string, input: { invoiceId: string; amount: string | number; method?: string; referenceNumber?: string; file: File }, signal?: AbortSignal) => { const body = new FormData(); body.append('invoiceId', input.invoiceId); body.append('amount', String(input.amount)); if (input.method) body.append('method', input.method); if (input.referenceNumber) body.append('referenceNumber', input.referenceNumber); body.append('document', input.file, input.file.name); return api<{ paymentId: string; invoiceId: string; orderId: string; verificationStatus: string }>(`/api/documents/client/orders/${encodeURIComponent(orderId)}/payment-proof`, { method: 'POST', body, signal }); },
   requestQuotationRevision: (orderId: string, input: ClientQuotationRevisionRequest, signal?: AbortSignal) => api<{ id: string; orderId: string; quotationId: string; quotationReference: string; revisionNumber: number; status: "pending"; reason: string }>(`/api/client/orders/${encodeURIComponent(orderId)}/quotation-revision`, { method: "POST", body: input, signal }),
+  requestCancellation: (orderId: string, input: ClientCancellationRequest, signal?: AbortSignal) => api<{ id: string; orderId: string; status: "pending"; reason: string; requestedAt: string; requestedBy: "client" }>(`/api/client/orders/${encodeURIComponent(orderId)}/cancellation`, { method: "POST", body: input, signal }),
   purchaseOrder: (id: string, signal?: AbortSignal) => api<ClientPurchaseOrder | null>(`/api/client/orders/${encodeURIComponent(id)}/purchase-order`, { signal }),
   jobOrders: (id: string, signal?: AbortSignal) => api<{ orderId: string; jobOrders: ClientJobOrder[] }>(`/api/client/orders/${encodeURIComponent(id)}/job-orders`, { signal }),
   delivery: (id: string, signal?: AbortSignal) => api<{ orderId: string; shipments: ClientShipment[] }>(`/api/client/orders/${encodeURIComponent(id)}/delivery`, { signal }),

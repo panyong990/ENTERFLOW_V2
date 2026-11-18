@@ -317,13 +317,24 @@ function buildOperationsIssues(
   };
 }
 
-function OperationsBottlenecks({ openIssues, resolvedIssues, onNavigate }: {
+function OperationsBottlenecks({ openIssues, resolvedIssues, unavailable = false, onNavigate }: {
   openIssues: OperationalIssue[];
   resolvedIssues: OperationalIssue[];
+  unavailable?: boolean;
   onNavigate?: (id: string) => void;
 }) {
   const [view, setView] = useState<"open" | "resolved">("open");
   const issues = view === "open" ? openIssues : resolvedIssues;
+
+  if (unavailable) {
+    return (
+      <Card title="Operational Bottlenecks">
+        <p role="status" className="font-dm py-8 text-center text-sm text-slate-500">
+          Operational issue data is unavailable. Open and recently resolved issues cannot be verified.
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card
@@ -696,8 +707,8 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
     (item) => item.qtyInStock <= item.bufferMin,
   ).length;
   const operationsIssues = useMemo(
-    () => buildOperationsIssues(operationsOrders, rawMaterials, finishedGoods),
-    [operationsOrders, rawMaterials, finishedGoods],
+    () => realMode ? { open: [], resolved: [] } : buildOperationsIssues(operationsOrders, rawMaterials, finishedGoods),
+    [realMode, operationsOrders, rawMaterials, finishedGoods],
   );
   const jobsInProgress = completedJOs.filter(i => i.stage === "in_production" || i.stage === "quality_inspection").length;
   const activeProductionJobs = completedJOs.filter(
@@ -864,6 +875,7 @@ function RoleDashboard({ variant = "operations", onNavigate }: { variant?: Role;
             <OperationsBottlenecks
               openIssues={operationsIssues.open}
               resolvedIssues={operationsIssues.resolved}
+              unavailable={realMode}
               onNavigate={onNavigate}
             />
           </div>

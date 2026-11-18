@@ -5,7 +5,7 @@ import { createSalesRouter } from './sales.routes.js';
 
 const token = 'a'.repeat(64);
 
-async function harness(t, { role = 'sales', accountType = 'employee', allowed = true, quotationAllowed = true, quotationCreateAllowed = true, ordersUpdateAllowed = true, dashboardAllowed = true, notificationsAllowed = true, inventoryAllowed = true, service, ordersService, dashboardService, notificationsService } = {}) {
+async function harness(t, { role = 'sales', accountType = 'employee', allowed = true, quotationAllowed = true, quotationCreateAllowed = true, ordersUpdateAllowed = true, inquiriesUpdateAllowed = true, dashboardAllowed = true, notificationsAllowed = true, inventoryAllowed = true, service, ordersService, dashboardService, notificationsService } = {}) {
   const calls = [];
   const router = createSalesRouter({
     service: service ?? {
@@ -23,6 +23,7 @@ async function harness(t, { role = 'sales', accountType = 'employee', allowed = 
       , async createQuotation(id, body, actor) { calls.push(['create-quotation', id, body, actor]); return { success: true, data: { id: '101', orderId: id, status: body.status, totalAmount: '1.00' } }; }
       , async processPurchaseOrder(id, actor, body) { calls.push(['process-po', id, actor, body]); return { success: true, data: { id: '77', orderId: id, status: body.decision } }; }
       , async createJobOrders(id, actor, body) { calls.push(['create-job-orders', id, actor, body]); return { success: true, data: { orderId: id, jobOrders: [{ id: '88', reference: 'JO-2026-0001', status: 'jo' }] } }; }
+      , async reviewCancellation(id, requestId, decision, actor, context) { calls.push(['review-cancellation', id, requestId, decision, actor, context]); return { success: true, data: { id, archiveReason: decision === 'approved' ? 'cancelled' : null, cancellationRequest: { id: requestId, status: decision } } }; }
     },
     dashboardService: dashboardService ?? {
       async dashboard() { calls.push(['dashboard']); return { success: true, data: { pendingInquiries: 0, quotationsSent: 0, purchaseOrdersReceived: 0, verifiedRevenue: '0', monthlyVerifiedRevenue: [] } }; }
@@ -36,7 +37,7 @@ async function harness(t, { role = 'sales', accountType = 'employee', allowed = 
     } : null,
     updateSessionActivityService: async value => value === token,
     permissionChecker: (roleCode, resource, action) => allowed && roleCode === 'sales' &&
-      ((resource === 'clients' && action === 'read') || (resource === 'orders' && (action === 'read' || (action === 'update' && ordersUpdateAllowed))) || (resource === 'inventory' && action === 'read' && inventoryAllowed) || (resource === 'quotations' && ((action === 'read' && quotationAllowed) || (action === 'create' && quotationCreateAllowed))) || (resource === 'inquiries' && action === 'read' && dashboardAllowed) || (resource === 'notifications' && action === 'read' && notificationsAllowed))
+      ((resource === 'clients' && action === 'read') || (resource === 'orders' && (action === 'read' || (action === 'update' && ordersUpdateAllowed))) || (resource === 'inventory' && action === 'read' && inventoryAllowed) || (resource === 'quotations' && ((action === 'read' && quotationAllowed) || (action === 'create' && quotationCreateAllowed))) || (resource === 'inquiries' && ((action === 'read' && dashboardAllowed) || (action === 'update' && inquiriesUpdateAllowed))) || (resource === 'notifications' && action === 'read' && notificationsAllowed))
   });
   const app = express();
   app.use('/api/sales', router);
@@ -62,6 +63,16 @@ test('Sales client routes require authentication, employee account, Sales role, 
   assert.equal((await wrongRole.request('/clients')).status, 403);
   const clientAccount = await harness(t, { accountType: 'client' });
   assert.equal((await clientAccount.request('/clients')).status, 403);
+});
+
+test('cancellation history filters and pagination reach the existing permissioned order list', async t => {
+  const h = await harness(t);
+  const response = await h.request('/orders?status=all&cancellationStatus=approved&page=2&pageSize=10');
+  assert.equal(response.status, 200);
+  assert.deepEqual({ ...h.calls[0][1] }, { status: 'all', cancellationStatus: 'approved', page: '2', pageSize: '10' });
+  const denied = await harness(t, { role: 'warehouse' });
+  assert.equal((await denied.request('/orders?status=all&cancellationStatus=approved')).status, 403);
+  assert.equal(denied.calls.length, 0);
 });
 
 test('Sales client list accepts pagination and detail route retrieves one client', async t => {
@@ -125,6 +136,30 @@ test('Sales purchase-order processing is authenticated and permissioned', async 
   assert.equal(h.calls[0][0], 'process-po');
   assert.equal(h.calls[0][1], '9007199254740993');
   assert.equal(h.calls[0][3].decision, 'rejected');
+});
+
+test('Sales cancellation decisions require the authenticated Sales role and both update permissions', async t => {
+  const unauthenticated = await harness(t);
+  const options = { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: '{}' };
+  assert.equal((await unauthenticated.request('/orders/91/cancellation/802/accept', false, options)).status, 401);
+  const wrongRole = await harness(t, { role: 'owner' });
+  assert.equal((await wrongRole.request('/orders/91/cancellation/802/accept', true, options)).status, 403);
+  const deniedInquiry = await harness(t, { inquiriesUpdateAllowed: false });
+  assert.equal((await deniedInquiry.request('/orders/91/cancellation/802/decline', true, options)).status, 403);
+  assert.equal(deniedInquiry.calls.length, 0);
+  const deniedOrder = await harness(t, { ordersUpdateAllowed: false });
+  assert.equal((await deniedOrder.request('/orders/91/cancellation/802/decline', true, options)).status, 403);
+  assert.equal(deniedOrder.calls.length, 0);
+  const h = await harness(t);
+  const accepted = await h.request('/orders/91/cancellation/802/accept', true, options);
+  assert.equal(accepted.status, 200);
+  assert.equal((await accepted.json()).data.archiveReason, 'cancelled');
+  const declined = await h.request('/orders/91/cancellation/803/decline', true, options);
+  assert.equal(declined.status, 200);
+  assert.deepEqual(h.calls.slice(-2).map(call => call.slice(0, 4)), [
+    ['review-cancellation', '91', '802', 'approved'],
+    ['review-cancellation', '91', '803', 'declined']
+  ]);
 });
 
 test('Sales Job Order creation is authenticated and permissioned', async t => {

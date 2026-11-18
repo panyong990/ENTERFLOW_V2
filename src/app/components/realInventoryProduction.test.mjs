@@ -30,6 +30,27 @@ test('Real MaterialsProvider preserves catalog references and uses an explicit d
   assert.match(inventory, /Not recorded/);
 });
 
+test('Real Inventory exposes unknown stock separately and shows Finished Goods quantities and status', async () => {
+  assert.match(inventory, /<option value="unavailable">Not recorded<\/option>/);
+  assert.match(materials, /available: Number\.NaN/);
+  const finishedGoods = await readFile(new URL('./FinishedGoodsOrderActivity.tsx', import.meta.url), 'utf8');
+  assert.match(finishedGoods, /getFinishedGoodStockStatus/);
+  assert.match(finishedGoods, /Number\.isFinite\(item\.qtyInStock\) \? `\$\{item\.qtyInStock\} pcs` : "Not recorded"/);
+  assert.match(finishedGoods, /stockStatus\.label/);
+});
+
+test('Real Stock Request views retain order, quotation, original stock snapshots, and quantity limits', async () => {
+  const warehouseRequests = await readFile(new URL('./RealWarehouseStockRequests.tsx', import.meta.url), 'utf8');
+  const salesRequests = await readFile(new URL('./sales/RealSalesStockRequests.tsx', import.meta.url), 'utf8');
+  assert.match(warehouseRequests, /stock at request \{line\.stockAtRequest == null \? 'Not recorded'/);
+  assert.match(warehouseRequests, /selected\.orderReference \?\? selected\.orderId/);
+  assert.match(salesRequests, /request\.orderReference \?\? request\.orderId/);
+  assert.match(salesRequests, /request\.clientReference \?\? '—'/);
+  assert.match(salesRequests, /Number\(quantity\) > 1000000000/);
+  assert.match(salesRequests, /up to four decimal places/);
+  assert.match(salesRequests, /Retry Stock Requests/);
+});
+
 test('Real Production uses authenticated Job Order retrieval while keeping the existing screen read-only', async () => {
   assert.match(production, /const realMode = mode === "real"/);
   assert.match(production, /const readOnly = requestedReadOnly \|\| realMode/);

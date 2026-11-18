@@ -1,0 +1,1280 @@
+{
+  "date": "2026-11-18",
+  "baseline": true,
+  "findingsCount": 67,
+  "findings": [
+    {
+      "literal": "F-FMI.FM-043",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792217,
+          "code": "F-FMI.FM-043",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 278,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-FMI.FM-044",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792300,
+          "code": "F-FMI.FM-044",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 279,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-FMI.FM-045",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792385,
+          "code": "F-FMI.FM-045",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 280,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-FMI.FM-047",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792468,
+          "code": "F-FMI.FM-047",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 281,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-FMI.FM-048",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792562,
+          "code": "F-FMI.FM-048",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 282,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-NNWOV.FM-058",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792642,
+          "code": "F-NNWOV.FM-058",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 283,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-NNWOV.FM-059",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792734,
+          "code": "F-NNWOV.FM-059",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 284,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-SNNX.FM-057",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792817,
+          "code": "F-SNNX.FM-057",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 285,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-095",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792909,
+          "code": "RM-FM-095",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 286,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-096-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 792980,
+          "code": "RM-FM-096-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 287,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-098-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793070,
+          "code": "RM-FM-098-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 288,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-098-2",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793160,
+          "code": "RM-FM-098-2",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 289,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-099-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793251,
+          "code": "RM-FM-099-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 290,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-100-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793341,
+          "code": "RM-FM-100-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 291,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-101-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793431,
+          "code": "RM-FM-101-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 292,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-102-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793521,
+          "code": "RM-FM-102-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 293,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FM-103",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793611,
+          "code": "RM-FM-103",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 294,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PFM-110",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793693,
+          "code": "RM-PFM-110",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 295,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PFM-112",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793858,
+          "code": "RM-PFM-112",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 297,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-ACWF-037",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 793934,
+          "code": "F-ACWF-037",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 298,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-ACWF-038",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794021,
+          "code": "F-ACWF-038",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 299,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "F-ACG-039",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794113,
+          "code": "F-ACG-039",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 300,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FC-080",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794284,
+          "code": "RM-FC-080",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 302,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FC-083",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794366,
+          "code": "RM-FC-083",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 303,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FC-084",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794449,
+          "code": "RM-FC-084",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 304,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FC-090",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794531,
+          "code": "RM-FC-090",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 305,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FP-104",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794616,
+          "code": "RM-FP-104",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 306,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-FP-108-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794686,
+          "code": "RM-FP-108-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 307,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PERPO.GI-116",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794783,
+          "code": "RM-PERPO.GI-116",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 310,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.GI-126",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794873,
+          "code": "RM-PLATE.GI-126",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 311,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.GI-127",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 794943,
+          "code": "RM-PLATE.GI-127",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 312,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.EG-128",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795014,
+          "code": "RM-PLATE.EG-128",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 313,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.EG-129",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795084,
+          "code": "RM-PLATE.EG-129",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 314,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.EG-130",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795154,
+          "code": "RM-PLATE.EG-130",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 315,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.ALUM-131",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795224,
+          "code": "RM-PLATE.ALUM-131",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 316,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.ALUM-132",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795301,
+          "code": "RM-PLATE.ALUM-132",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 317,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.SS304-124",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795379,
+          "code": "RM-PLATE.SS304-124",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 318,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PLATE.SS304-125",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795457,
+          "code": "RM-PLATE.SS304-125",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 319,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PERPO.EG-120",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795533,
+          "code": "RM-PERPO.EG-120",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 322,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PERPO.BI-121",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795627,
+          "code": "RM-PERPO.BI-121",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 323,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PERPO.SS304-123",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795721,
+          "code": "RM-PERPO.SS304-123",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 324,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-EXPNDEDMTL.BI-133",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795818,
+          "code": "RM-EXPNDEDMTL.BI-133",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 325,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-EXPNDEDMTL.BI-134",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795905,
+          "code": "RM-EXPNDEDMTL.BI-134",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 326,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PERPO.GI-117",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 795992,
+          "code": "RM-PERPO.GI-117",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 327,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PERPO.BI-122",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796084,
+          "code": "RM-PERPO.BI-122",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 328,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-EXPNDED.ALUM-135",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796178,
+          "code": "RM-EXPNDED.ALUM-135",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 329,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-CHCKENWIRE-136",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796265,
+          "code": "RM-CHCKENWIRE-136",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 330,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-EMJ.EPOX-062",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796344,
+          "code": "RM-EMJ.EPOX-062",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 333,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-EMJ.EPOX-063",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796424,
+          "code": "RM-EMJ.EPOX-063",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 334,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-PSBSI-146",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796599,
+          "code": "RM-PSBSI-146",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 336,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-NNPAO.ADHSV-064-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796671,
+          "code": "RM-NNPAO.ADHSV-064-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 337,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-HNKL.ADHSV-064-2",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796770,
+          "code": "RM-HNKL.ADHSV-064-2",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 338,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "OR-NBR-STD",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796867,
+          "code": "OR-NBR-STD",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 341,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "OR-VITON",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 796948,
+          "code": "OR-VITON",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 342,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "GS-GREEN",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797018,
+          "code": "GS-GREEN",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 345,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "GS-FELT",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797090,
+          "code": "GS-FELT",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 346,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-SPRNGPLTESS-113",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797153,
+          "code": "RM-SPRNGPLTESS-113",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 347,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-NAPPCO.DCCB-065",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797235,
+          "code": "RM-NAPPCO.DCCB-065",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 350,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-NAPPCO.DCCB-066-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797332,
+          "code": "RM-NAPPCO.DCCB-066-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 351,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-NAPPCO.DCCB-070",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797431,
+          "code": "RM-NAPPCO.DCCB-070",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 352,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-NAPPCO.CB-140",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797536,
+          "code": "RM-NAPPCO.CB-140",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 353,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-GSPACK.CBP-143",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797621,
+          "code": "RM-GSPACK.CBP-143",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 354,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-GSPACK.CBP-149",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797814,
+          "code": "RM-GSPACK.CBP-149",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 356,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "RM-MLTIFLX.FB-077-1",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 797918,
+          "code": "RM-MLTIFLX.FB-077-1",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 357,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "OFF-SI-137",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 798005,
+          "code": "OFF-SI-137",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 360,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "OFF-DR-138",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 798065,
+          "code": "OFF-DR-138",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 361,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    },
+    {
+      "literal": "OFF-CR-139",
+      "generatedArtifact": "dist/assets/index-LPFuYMHv.js",
+      "generatedArtifactSha256": "1d006fe8608bc5cb21b907953caa7ead98de9da3d409a4f95489c2499cc6a56a",
+      "oldRule": "unconditional prohibited literal match",
+      "classification": "authentic_catalog_false_positive",
+      "evidence": [
+        {
+          "filename": "index-LPFuYMHv.js",
+          "offset": 798128,
+          "code": "OFF-CR-139",
+          "sourceFile": "src/app/store/materials.tsx",
+          "sourceLine": 362,
+          "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+          "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+          "classification": "verified_catalog_record"
+        }
+      ]
+    }
+  ]
+}

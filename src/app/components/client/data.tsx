@@ -95,16 +95,22 @@ export function useOrders(surface: Surface = 'orders') {
     refresh();
     return result;
   };
+  const requestCancellation = async (orderId: string, input: { reason: string; termsAcknowledged: boolean }) => {
+    if (!input.termsAcknowledged) throw new Error('Acknowledge the cancellation terms before submitting.');
+    const result = await clientPortalApi.requestCancellation(orderId, { reason: input.reason, termsAcknowledged: true });
+    refresh();
+    return result;
+  };
   const submitPayment = async (orderId: string, invoiceId: string, input: { amount: string | number; method?: string; referenceNumber?: string; file: File }) => {
     const result = await clientPortalApi.uploadPaymentProof(orderId, { invoiceId, ...input });
     refresh();
     return result;
   };
   return useMemo(() => ({ inquiries: rows, completedJOs: rows.filter(row => !!row.joNumber), byClient: (_name: string) => rows,
-    decideQuotation, submitPurchaseOrder, requestQuotationRevision,
-    addInquiry, addInquiryWithProductSketches: addInquiry, uploadPO: blocked, requestCancellation: blocked, updateInquiry: blocked, submitPayment,
+    decideQuotation, submitPurchaseOrder, requestQuotationRevision, requestCancellation,
+    addInquiry, addInquiryWithProductSketches: addInquiry, uploadPO: blocked, updateInquiry: blocked, submitPayment,
     generatePONumber: () => 'Assigned by backend on submission', savePendingSignedDeliveryReceipt: blocked, submitPendingSignedDeliveryReceipt: blocked, discardPendingSignedDeliveryReceipt: blocked,
-  }), [rows, addInquiry, decideQuotation, submitPurchaseOrder, requestQuotationRevision, submitPayment]);
+  }), [rows, addInquiry, decideQuotation, submitPurchaseOrder, requestQuotationRevision, requestCancellation, submitPayment]);
 }
 export function useSettings() {
   return { settings: { bankDetails: { bankName: 'Unavailable — not provided by the Client API', accountName: '—', accountNumber: '—' }, paymentMethods: [] as {id: string; label: string; type: string; details: string}[] } };

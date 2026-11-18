@@ -13,9 +13,35 @@ test('another client cannot retrieve rejection narrative from a missing owned pa
   const h=harness();const result=await h.service.detailOrder('3','91');assert.equal(result.code,'NOT_FOUND');assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0].params,['91','3']);
 });
 
-function harness({ profileRows = [], orderRows = [], itemRows = [], quotationRows = [], quotationLineRows = [], purchaseOrderRows = [], jobOrderRows = [], shipmentRows = [], invoiceRows = [], paymentRows = [], dashboardCounts = {}, activityRows = [], deliveryRows = [], total = 0 } = {}) {
+test('Client order detail returns owned quotation revision request state for refresh', async () => {
+  const h = harness({
+    orderRows: [{ id: '91', reference: 'INQ-91', stageLabel: 'Quotation' }],
+    revisionRequestRows: [{ id: '801', reason: 'Please revise the delivery timeline.', status: 'pending', requestedAt: '2026-11-18T10:00:00.000Z', decidedAt: null }],
+    cancellationRequestRows: [{ reason: 'Customer changed requirements.', resolution: 'declined', requestedAt: '2026-11-18T09:00:00.000Z', resolvedAt: '2026-11-18T11:00:00.000Z', requestedBy: 'client', response: 'Declined by Sales.' }]
+  });
+  const result = await h.service.detailOrder('21', '91');
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data.revisionRequests, [{
+    id: '801', reason: 'Please revise the delivery timeline.', status: 'pending',
+    requestedAt: '2026-11-18T10:00:00.000Z', decidedAt: null
+  }]);
+  assert.equal('requestedBy' in result.data.revisionRequests[0], false);
+  assert.equal('response' in result.data.revisionRequests[0], false);
+  assert.deepEqual(result.data.cancellationHistory, [{
+    reason: 'Customer changed requirements.', resolution: 'declined', requestedAt: '2026-11-18T09:00:00.000Z',
+    resolvedAt: '2026-11-18T11:00:00.000Z', requestedBy: 'client', response: 'Declined by Sales.'
+  }]);
+  const requestQuery = h.calls.find(call => call.sql.includes("FROM order_requests WHERE order_id=? AND kind='quotation_revision'"));
+  assert.deepEqual(requestQuery.params, ['91']);
+  assert.match(requestQuery.sql, /kind='quotation_revision'/);
+});
+
+function harness({ profileRows = [], orderRows = [], itemRows = [], quotationRows = [], quotationLineRows = [], purchaseOrderRows = [], jobOrderRows = [], shipmentRows = [], invoiceRows = [], paymentRows = [], revisionRequestRows = [], cancellationRequestRows = [], dashboardCounts = {}, activityRows = [], deliveryRows = [], total = 0 } = {}) {
   const calls = [];
   const connection = {
+    async beginTransaction() {},
+    async commit() {},
+    async rollback() {},
     async execute(sql, params) {
       calls.push({ sql, params });
       if (/activeOrders/.test(sql)) return [[dashboardCounts]];
@@ -29,6 +55,8 @@ function harness({ profileRows = [], orderRows = [], itemRows = [], quotationRow
       if (/FROM order_items/.test(sql)) return [itemRows];
       if (/FROM purchase_order_files/.test(sql)) return [[]];
       if (/FROM purchase_orders/.test(sql)) return [purchaseOrderRows];
+      if (/FROM order_requests r LEFT JOIN users/.test(sql)) return [cancellationRequestRows];
+      if (/FROM order_requests/.test(sql)) return [revisionRequestRows];
       if (/FROM audit_events/.test(sql)) return [[]];
       if (/FROM quotation_lines/.test(sql)) return [quotationLineRows];
       if (/FROM quotations/.test(sql)) return [quotationRows];
@@ -91,16 +119,17 @@ test('invalid client identity is rejected before database access', async () => {
   assert.equal(h.calls.length, 0);
 });
 
-test('quotation history is client-scoped, excludes drafts, preserves IDs and decimal strings, and omits internal fields', async () => {
+test('quotation history is client-scoped, excludes drafts, marks an older sent quote as inactive, preserves decimals, and omits costing internals', async () => {
   const h = harness({
     orderRows: [{ id: '1' }],
-    quotationRows: [{ id: '9007199254740993', reference: 'Q-1', revisionNumber: '2', status: 'sent', totalAmount: '1234567890123.45', downpaymentPercent: '20.0000', downpaymentAmount: '246913578024.69', internalNote: 'private' }],
+    quotationRows: [{ id: '9007199254740993', reference: 'Q-1', revisionNumber: '2', status: 'sent', isLatestRevision: 0, totalAmount: '1234567890123.45', downpaymentPercent: '20.0000', downpaymentAmount: '246913578024.69', internalNote: 'private' }],
     quotationLineRows: [{ id: '9007199254740994', quotationId: '9007199254740993', description: 'Filter', quantity: '2.00', unitPrice: '10.25', laborCost: 'private' }]
   });
   const result = await h.service.quotations('21', '1');
   assert.equal(result.success, true);
   assert.equal(result.data.length, 1);
   assert.equal(result.data[0].id, '9007199254740993');
+  assert.equal(result.data[0].isLatestRevision, false);
   assert.equal(result.data[0].totalAmount, '1234567890123.45');
   assert.equal(result.data[0].downpaymentValid, true);
   assert.equal(result.data[0].lines[0].id, '9007199254740994');
@@ -109,6 +138,7 @@ test('quotation history is client-scoped, excludes drafts, preserves IDs and dec
   assert.equal('laborCost' in result.data[0].lines[0], false);
   assert.match(h.calls[0].sql, /id=\? AND client_id=\?/);
   assert.match(h.calls[1].sql, /q\.status <> 'draft'/);
+  assert.match(h.calls[1].sql, /ORDER BY qlatest\.revision_number DESC/);
   assert.match(h.calls.find(call => call.sql.includes('FROM quotation_lines')).sql, /q\.status <> 'draft'/);
 });
 
@@ -153,6 +183,32 @@ test('client quotation decisions are ownership-scoped, latest-revision-only, aud
   assert.equal(calls.some(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO audit_events')), true);
 });
 
+test('archived or cancelled orders cannot accept/reject quotations, request revisions or submit POs', async () => {
+  for (const closed of [{ archivedAt: '2026-11-18T00:00:00Z', archiveReason: null }, { archivedAt: null, archiveReason: 'cancelled' }, { archivedAt: null, archiveReason: 'rejected' }]) {
+    for (const operation of ['accepted', 'rejected', 'revision', 'po']) {
+      const calls = [];
+      const connection = { async beginTransaction() {}, async rollback() { calls.push('rollback'); },
+        async commit() { assert.fail('Closed orders must not commit writes'); }, release() {},
+        async execute(sql, params) {
+          calls.push(sql);
+          assert.match(sql, /archived_at archivedAt/);
+          assert.match(sql, /archive_reason archiveReason/);
+          assert.match(sql, /client_id=\? FOR UPDATE/);
+          assert.deepEqual(params, ['91', '21']);
+          return [[{ id: '91', clientId: '21', stageCode: 'quotation', ...closed }]];
+        } };
+      const service = createClientPortalService({ db: { getConnection: async () => connection } });
+      const result = operation === 'revision'
+        ? await service.requestQuotationRevision('21', '9', '91', { reason: 'Please revise delivery.' })
+        : operation === 'po' ? await service.submitPurchaseOrder('21', '9', '91', { reference: 'PO-SYNTHETIC' })
+        : await service.decideQuotation('21', '9', '91', '301', { decision: operation, ...(operation === 'rejected' ? { reason: 'Changed requirements.' } : {}) });
+      assert.equal(result.code, 'QUOTATION_NOT_ELIGIBLE');
+      assert.equal(calls.length, 2);
+      assert.equal(calls[1], 'rollback');
+    }
+  }
+});
+
 test('client quotation decisions reject invalid reasons before database access', async () => {
   const h = harness();
   const result = await h.service.decideQuotation('21', '9', '91', '301', { decision: 'rejected' });
@@ -160,14 +216,16 @@ test('client quotation decisions reject invalid reasons before database access',
 });
 
 test('client quotation revision request is owned, reasoned, audited, and duplicate-pending protected', async () => {
+  let pending = false;
   const calls = []; const connection = {
     async beginTransaction() { calls.push('BEGIN'); }, async commit() { calls.push('COMMIT'); }, async rollback() { calls.push('ROLLBACK'); }, release() {},
     async execute(sql, params) {
       calls.push({ sql, params });
-      if (sql.includes('FROM orders WHERE id=? AND client_id=?')) return [[{ id: '91', clientId: '21' }]];
+      if (sql.includes('FROM orders WHERE id=? AND client_id=?')) return [[{ id: '91', clientId: '21', stageCode: 'quotation' }]];
       if (sql.includes('FROM quotations WHERE order_id=?')) return [[{ id: '301', reference: 'Q-91', revisionNumber: '2', status: 'sent' }]];
-      if (sql.includes("kind='quotation_revision'")) return [[]];
-      if (sql.startsWith('INSERT INTO order_requests')) return [{ affectedRows: 1, insertId: '801' }];
+      if (sql.includes('FROM audit_events WHERE subject_type=\'quotation\'')) return [[]];
+      if (sql.includes("kind='quotation_revision'")) return [pending ? [{ id: '801' }] : []];
+      if (sql.startsWith('INSERT INTO order_requests')) { pending = true; return [{ affectedRows: 1, insertId: '801' }]; }
       if (sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1 }];
       throw new Error(`Unexpected SQL: ${sql}`);
     }
@@ -177,6 +235,37 @@ test('client quotation revision request is owned, reasoned, audited, and duplica
   assert.equal(result.success, true); assert.equal(result.data.status, 'pending'); assert.equal(result.data.reason, 'Please revise the delivery timeline.');
   assert.equal(calls.some(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO order_requests')), true);
   assert.equal(calls.some(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO audit_events')), true);
+  const duplicate = await service.requestQuotationRevision('21', '9', '91', { reason: 'Please revise the delivery timeline.' });
+  assert.equal(duplicate.code, 'REVISION_ALREADY_PENDING');
+  assert.equal(calls.filter(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO order_requests')).length, 1);
+});
+
+test('client cannot request revision after a quotation decision or outside quotation stage', async () => {
+  let stage = 'quotation';
+  let decided = true;
+  const calls = [];
+  const connection = {
+    async beginTransaction() {}, async commit() {}, async rollback() { calls.push('ROLLBACK'); }, release() {},
+    async execute(sql) {
+      calls.push(sql);
+      if (sql.includes('FROM orders WHERE id=? AND client_id=?')) return [[{ id: '91', clientId: '21', stageCode: stage }]];
+      if (sql.includes('FROM quotations WHERE order_id=?')) return [[{ id: '301', reference: 'Q-91', revisionNumber: '2', status: 'sent' }]];
+      if (sql.includes('FROM audit_events WHERE subject_type=\'quotation\'')) return [decided ? [{ action: 'quotation.accepted' }] : []];
+      if (sql.includes("kind='quotation_revision'")) return [[]];
+      if (sql.startsWith('INSERT INTO order_requests') || sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1, insertId: '801' }];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+  const service = createClientPortalService({ db: { getConnection: async () => connection } });
+  const body = { reason: 'Please revise the delivery timeline.' };
+  const decidedResult = await service.requestQuotationRevision('21', '9', '91', body);
+  assert.equal(decidedResult.code, 'QUOTATION_ALREADY_DECIDED');
+  assert.equal(calls.some(sql => sql.startsWith('INSERT INTO order_requests')), false);
+  stage = 'po'; decided = false; calls.length = 0;
+  const wrongStage = await service.requestQuotationRevision('21', '9', '91', body);
+  assert.equal(wrongStage.code, 'QUOTATION_NOT_ELIGIBLE');
+  assert.equal(calls.some(sql => sql.includes('FROM audit_events WHERE subject_type=\'quotation\'')), false);
+  assert.equal(calls.some(sql => sql.startsWith('INSERT INTO order_requests')), false);
 });
 
 test('client PO submission associates the latest accepted quotation, preserves downpayment terms, and writes no downstream records', async () => {
@@ -323,4 +412,43 @@ test('dashboard safely handles empty data without financial totals', async () =>
   assert.deepEqual(result.data, { activeOrders: 0, pendingInquiries: 0, sentQuotations: 0, openInvoices: 0, recentOrderActivity: [], upcomingDeliveries: [] });
   assert.equal('revenue' in result.data, false);
   assert.equal('verifiedPayments' in result.data, false);
+});
+
+test('Client cancellation request is ownership-scoped, deduplicated, timestamped, and audited transactionally', async () => {
+  const calls = [];
+  let pending = false, committed = 0, rolledBack = 0;
+  const connection = {
+    async beginTransaction() { calls.push('BEGIN'); },
+    async commit() { committed++; calls.push('COMMIT'); },
+    async rollback() { rolledBack++; calls.push('ROLLBACK'); },
+    release() {},
+    destroy() {},
+    async execute(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('FROM orders WHERE id=? AND client_id=?')) {
+        return params[1] === '21' ? [[{ id: '91', clientId: '21', stageCode: 'inquiry', archiveReason: null, archivedAt: null }]] : [[]];
+      }
+      if (sql.includes("kind='cancellation' AND status='pending'")) return [pending ? [{ id: '801' }] : []];
+      if (sql.startsWith('SELECT id FROM payments')) return [[]];
+      if (sql.startsWith('INSERT INTO order_requests')) { pending = true; return [{ affectedRows: 1, insertId: '801' }]; }
+      if (sql.includes('FROM order_requests WHERE id=?')) return [[{ reason: 'Changed requirements.', status: 'pending', requestedAt: '2026-11-18T10:00:00.000Z' }]];
+      if (sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1 }];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+  const service = createClientPortalService({ db: { getConnection: async () => connection } });
+  const result = await service.requestCancellation('21', '9', '91', { reason: '  Changed requirements.  ', termsAcknowledged: true }, { requestId: '11111111-1111-4111-8111-111111111111' });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data, { id: '801', orderId: '91', status: 'pending', reason: 'Changed requirements.', requestedAt: '2026-11-18T10:00:00.000Z', requestedBy: 'client' });
+  assert.deepEqual(calls[0], 'BEGIN');
+  assert.deepEqual(calls.find(call => typeof call === 'object' && call.sql.includes('FROM orders WHERE')).params, ['91', '21']);
+  const audit = calls.find(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO audit_events'));
+  assert.deepEqual(audit.params.slice(0, 3), ['9', '91', JSON.stringify({ stageCode: 'inquiry', archiveReason: null })]);
+  assert.equal(audit.params.at(-1), '11111111-1111-4111-8111-111111111111');
+  assert.equal(committed, 1);
+  assert.equal(rolledBack, 0);
+  assert.equal((await service.requestCancellation('21', '9', '91', { reason: 'Changed requirements.', termsAcknowledged: true })).code, 'CANCELLATION_ALREADY_PENDING');
+  assert.equal(committed, 1);
+  assert.equal((await service.requestCancellation('22', '9', '91', { reason: 'Changed requirements.', termsAcknowledged: true })).code, 'NOT_FOUND');
+  assert.equal((await service.requestCancellation('21', '9', '91', { reason: 'Changed requirements.', termsAcknowledged: false })).code, 'VALIDATION_ERROR');
 });

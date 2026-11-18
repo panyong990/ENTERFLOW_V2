@@ -1,0 +1,195 @@
+{
+  "date": "2026-11-18",
+  "branch": "integration/dev-phase-merge",
+  "head": "1f4493c38c8903d67bd0f7e3f9707d4afa580246",
+  "scope": "Authorized focused/full offline and injected-double safe regression execution; no application services, browser or live database workflows",
+  "preparedBaselineSha256": "4f74eed40ab48c99c336589ee98636af8b867e0cdd68a251c37fe0a7e811cc1c",
+  "testInventorySha256": "c07bda5fcde30dc8968f62a115083c04422e549613806c6ee16866767c8e4447",
+  "fullBackendFiles": 67,
+  "fullFrontendFiles": 35,
+  "focusedCountsOverlapFullSuites": true,
+  "securityGate": "NOT PASSED: dependency audit exit 1 and external HTML script release hold",
+  "sourceTestDependencyChanges": false,
+  "entries": [
+    {
+      "id": "focused-security-auth",
+      "command": "$taskPreviousOrigin = $env:APP_ORIGIN\ntry {\n$env:APP_ORIGIN = 'http://localhost:5173'\nnode --import ./backend/test/support/mock-database.js --test --test-isolation=none --test-reporter=tap backend/src/config/permissions.test.js backend/src/middleware/auth.middleware.test.js backend/src/middleware/auth-permission.http.integration.test.js backend/src/middleware/origin.middleware.test.js backend/src/controllers/service-failure-log.test.js backend/src/services/auth.service.test.js backend/src/services/session.service.test.js backend/src/services/password.service.test.js 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\n$taskTestExit = $LASTEXITCODE\n} finally { $env:APP_ORIGIN = $taskPreviousOrigin }\nexit $taskTestExit",
+      "exitCode": 0,
+      "counts": {
+        "tests": 125,
+        "pass": 125,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 125\r\n# pass 125\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "focused-business-workflows",
+      "command": "$taskPreviousOrigin = $env:APP_ORIGIN\ntry {\n$env:APP_ORIGIN = 'http://localhost:5173'\nnode --import ./backend/test/support/mock-database.js --test --test-isolation=none --test-reporter=tap backend/src/services/registration.service.test.js backend/src/services/client-applications.service.test.js backend/src/services/client-portal.service.test.js backend/src/services/sales-orders.service.test.js backend/src/services/sales-cancellation.service.test.js backend/src/services/stock-requests.service.test.js backend/src/services/inventory.service.test.js backend/src/services/document-workflows.service.test.js backend/src/services/production-job-orders.service.test.js backend/src/services/sales-job-delivery.service.test.js backend/src/routes/client-onboarding.http.integration.test.js backend/src/routes/client-sales-workflow.http.integration.test.js 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\n$taskTestExit = $LASTEXITCODE\n} finally { $env:APP_ORIGIN = $taskPreviousOrigin }\nexit $taskTestExit",
+      "exitCode": 0,
+      "counts": {
+        "tests": 214,
+        "pass": 214,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 214\r\n# pass 214\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "focused-frontend-nine-role-surfaces",
+      "command": "node --test --test-isolation=none --test-reporter=tap src/app/components/admin/render.test.mjs src/app/components/realInventoryProduction.test.mjs src/app/role-access.test.mjs src/app/components/realAccounting.test.mjs src/app/components/realAnalytics.test.mjs src/app/components/realLogisticsWaybillReceipts.test.mjs src/app/components/realCancellationWorkflow.test.mjs src/app/components/sales/realQuotationPreparation.test.mjs 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "counts": {
+        "tests": 82,
+        "pass": 82,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 82\r\n# pass 82\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "full-safe-backend-67-files",
+      "command": "$taskPreviousOrigin = $env:APP_ORIGIN\ntry {\n$env:APP_ORIGIN = 'http://localhost:5173'\n$taskInventory = Get-Content docs/stabilization/test-inventory.json -Raw | ConvertFrom-Json\n$taskBackendFiles = @($taskInventory.inventory | Where-Object { $_.path.StartsWith('backend/src/') } | ForEach-Object { $_.path })\nif ($taskBackendFiles.Count -ne 67) { throw 'Reviewed backend membership changed.' }\nnode --import ./backend/test/support/mock-database.js --test --test-isolation=none --test-reporter=tap @taskBackendFiles 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\n$taskTestExit = $LASTEXITCODE\n} finally { $env:APP_ORIGIN = $taskPreviousOrigin }\nexit $taskTestExit",
+      "exitCode": 0,
+      "counts": {
+        "tests": 844,
+        "pass": 844,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 844\r\n# pass 844\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "full-safe-frontend-35-files",
+      "command": "$taskInventory = Get-Content docs/stabilization/test-inventory.json -Raw | ConvertFrom-Json\n$taskFrontendFiles = @($taskInventory.inventory | Where-Object { $_.path.StartsWith('src/app/') } | ForEach-Object { $_.path })\nif ($taskFrontendFiles.Count -ne 35) { throw 'Reviewed frontend membership changed.' }\nnode --test --test-isolation=none --test-reporter=tap @taskFrontendFiles 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "counts": {
+        "tests": 218,
+        "pass": 218,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 218\r\n# pass 218\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "scanner-regressions",
+      "command": "node --test --test-isolation=none --test-reporter=tap scripts/production-asset-scan.test.mjs 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 12\r\n# pass 12\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "synthetic-auth-proxy",
+      "command": "node --import ./backend/test/support/mock-database.js --test --test-isolation=none --test-reporter=tap config/api-proxy.test.mjs tests/auth-login.integration.test.mjs 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 2\r\n# pass 2\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "inventory-preparation-regressions",
+      "command": "node --test --test-isolation=none --test-reporter=tap scripts/prepare-section24-inventory.test.mjs 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "counts": {
+        "tests": 13,
+        "pass": 13,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 13\r\n# pass 13\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "selected-legacy-planner",
+      "command": "node --test --test-isolation=none --test-reporter=tap --test-name-pattern=\"unknown quantities|reconciliation reuses|prepared executor\" database/material-catalog-import.test.mjs 2>&1 | Select-String 'not ok|# tests|# pass|# fail|# skipped|# cancelled|# todo'\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "counts": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "output": "\r\n# tests 3\r\n# pass 3\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n"
+    },
+    {
+      "id": "inventory-preparation-freshness",
+      "command": "node scripts/prepare-section24-inventory.mjs --check\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "output": "{\"mode\":\"--check\",\"files\":5,\"materials\":71,\"executionAuthorized\":false}\n"
+    },
+    {
+      "id": "production-build",
+      "command": "npm.cmd run build",
+      "exitCode": 0,
+      "output": "\n> enter-flow-erp@0.0.1 build\n> vite build\n\nvite v6.4.6 building for production...\n(node:33940) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.\n(Use `node --trace-deprecation ...` to show where the warning was created)\ntransforming...\n✓ 2714 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                      0.65 kB │ gzip:   0.40 kB\ndist/assets/index-C-AF-I7H.css     134.58 kB │ gzip:  21.78 kB\ndist/assets/browser-DCA3Hw1c.js     25.78 kB │ gzip:  10.13 kB\ndist/assets/index-3D1EhZ5u.js      458.34 kB │ gzip: 118.44 kB\ndist/assets/index-BBz2fyGp.js    2,316.16 kB │ gzip: 577.34 kB\n\n(!) Some chunks are larger than 500 kB after minification. Consider:\n- Using dynamic import() to code-split the application\n- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\n✓ built in 7.80s\n"
+    },
+    {
+      "id": "dependency-security-audit",
+      "command": "npm.cmd audit --json --ignore-scripts",
+      "exitCode": 1,
+      "output": "{\"exit_code\":1,\"metadata\":{\"vulnerabilities\":{\"info\":0,\"low\":0,\"moderate\":0,\"high\":4,\"critical\":0,\"total\":4},\"dependencies\":{\"prod\":378,\"dev\":136,\"optional\":76,\"peer\":6,\"peerOptional\":0,\"total\":520}},\"vulnerabilities\":[{\"name\":\"fdir\",\"severity\":\"high\",\"isDirect\":false,\"range\":\">=5.2.1\",\"fixAvailable\":{\"name\":\"vite\",\"version\":\"6.2.7\",\"isSemVerMajor\":true},\"via\":[\"picomatch\"]},{\"name\":\"picomatch\",\"severity\":\"high\",\"isDirect\":false,\"range\":\"*\",\"fixAvailable\":{\"name\":\"vite\",\"version\":\"6.2.7\",\"isSemVerMajor\":true},\"via\":[{\"name\":\"picomatch\",\"title\":\"picomatch vulnerable to ReDoS through single-branch repeated extglobs\",\"url\":\"https://github.com/advisories/GHSA-fc5q-39xc-vjpf\",\"severity\":\"high\",\"range\":\"<=4.0.7\"}]},{\"name\":\"tinyglobby\",\"severity\":\"high\",\"isDirect\":false,\"range\":\"*\",\"fixAvailable\":{\"name\":\"vite\",\"version\":\"6.2.7\",\"isSemVerMajor\":true},\"via\":[\"fdir\",\"picomatch\"]},{\"name\":\"vite\",\"severity\":\"high\",\"isDirect\":true,\"range\":\">=6.3.0-beta.0\",\"fixAvailable\":{\"name\":\"vite\",\"version\":\"6.2.7\",\"isSemVerMajor\":true},\"via\":[\"fdir\",\"picomatch\",\"tinyglobby\"]}]}"
+    },
+    {
+      "id": "dependency-affected-tree",
+      "command": "npm.cmd ls vite fdir tinyglobby picomatch --all",
+      "exitCode": 0,
+      "output": "enter-flow-erp@0.0.1 C:\\Users\\larat\\OneDrive\\Documents\\GitHub\\ENTERFLOW_V2\n├─┬ @tailwindcss/vite@4.1.12\n│ └── vite@6.4.6 deduped\n├─┬ @vitejs/plugin-react@4.7.0\n│ └── vite@6.4.6 deduped\n└─┬ vite@6.4.6\n  ├─┬ fdir@6.5.0\n  │ └── picomatch@4.0.4 deduped\n  ├── picomatch@4.0.4\n  └─┬ tinyglobby@0.2.16\n    ├── fdir@6.5.0 deduped\n    └── picomatch@4.0.4 deduped\n\n"
+    },
+    {
+      "id": "fresh-production-scan-evidence",
+      "command": "@'\nimport fs from 'node:fs/promises';\nimport crypto from 'node:crypto';\nimport { scanAssets } from './scripts/production-asset-scan.mjs';\nconst directory='docs/stabilization/execution-2026-11-18';\nconst hash=contents=>crypto.createHash('sha256').update(contents).digest('hex');\nconst filenames=(await fs.readdir('dist/assets')).filter(name=>name.endsWith('.js')).sort();\nconst assets=await Promise.all(filenames.map(async filename=>({filename,contents:await fs.readFile('dist/assets/'+filename,'utf8')})));\nconst catalog=JSON.parse(await fs.readFile('docs/inventory-reconciliation/integrated-main-catalog.json','utf8'));\nconst materialSource=await fs.readFile('src/app/store/materials.tsx','utf8');\nconst result=scanAssets(assets,{catalog,materialSource});\nconst html=await fs.readFile('dist/index.html','utf8');\nconst sourceHtml=await fs.readFile('index.html','utf8');\nconst report={date:'2026-11-18',scope:'Fresh offline production-bundle scan; no remote assets fetched',indexHtml:{path:'dist/index.html',sha256:hash(html)},sourceHtml:{path:'index.html',sha256:hash(sourceHtml)},javascriptAssets:assets.map(a=>({path:'dist/assets/'+a.filename,bytes:Buffer.byteLength(a.contents),sha256:hash(a.contents)})),externalScripts:[...html.matchAll(/<script\\b[^>]*\\bsrc=\"(https?:\\/\\/[^\"]+)\"/g)].map(m=>m[1]),inputs:{catalogSha256:hash(await fs.readFile('docs/inventory-reconciliation/integrated-main-catalog.json')),materialSourceSha256:hash(materialSource),scannerSha256:hash(await fs.readFile('scripts/production-asset-scan.mjs')),policySha256:hash(await fs.readFile('scripts/production-asset-policy.mjs'))},result};\nawait fs.mkdir(directory,{recursive:true});\nawait fs.writeFile(directory+'/production-scan.json',JSON.stringify(report,null,2)+'\\n');\nconsole.log(JSON.stringify({assets:result.assets,verifiedCatalogOccurrences:result.classifiedCatalog.length,verifiedCompatibilityOccurrences:result.classifiedCompatibility.length,unexplainedFindings:result.violations.length,externalScripts:report.externalScripts.length,evidence:directory+'/production-scan.json',javascriptAssets:report.javascriptAssets}));\nif(result.violations.length)process.exitCode=1;\n'@ | node --input-type=module -",
+      "exitCode": 0,
+      "output": "{\"assets\":3,\"verifiedCatalogOccurrences\":71,\"verifiedCompatibilityOccurrences\":4,\"unexplainedFindings\":0,\"externalScripts\":1,\"evidence\":\"docs/stabilization/execution-2026-11-18/production-scan.json\",\"javascriptAssets\":[{\"path\":\"dist/assets/browser-DCA3Hw1c.js\",\"bytes\":25776,\"sha256\":\"b7951c631eb881127c63274c93050d532a9e01eebde5e59b14d65670d3f15442\"},{\"path\":\"dist/assets/index-3D1EhZ5u.js\",\"bytes\":458342,\"sha256\":\"2e1b24f05ae5ca0b5296c8c980dc731524fea3fe3330781b40a13b160a12cdb4\"},{\"path\":\"dist/assets/index-BBz2fyGp.js\",\"bytes\":2316164,\"sha256\":\"a268a28e628e2a2c174564c72bf5f3512bb3744a4def708316535871d4848219\"}]}\n"
+    },
+    {
+      "id": "production-scanner-wrapper",
+      "command": "npm.cmd run check:production-demo-assets\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "output": "\n> enter-flow-erp@0.0.1 check:production-demo-assets\n> node scripts/check-production-demo-assets.mjs\n\n{\"assets\":3,\"verifiedCatalogOccurrences\":71,\"verifiedCompatibilityOccurrences\":4,\"unexplainedFindings\":0}\n"
+    },
+    {
+      "id": "runtime-and-direct-tooling",
+      "command": "node --version\nnpm.cmd --version\nnpm.cmd ls @babel/parser esbuild @playwright/test --depth=0",
+      "exitCode": 0,
+      "output": "v26.13.0\r\n11.20.0\nenter-flow-erp@0.0.1 C:\\Users\\larat\\OneDrive\\Documents\\GitHub\\ENTERFLOW_V2\n├── @babel/parser@7.29.14\n└── @playwright/test@1.56.1\n\n"
+    },
+    {
+      "id": "diff-check",
+      "command": "git diff --check\nexit $LASTEXITCODE",
+      "exitCode": 0,
+      "output": "warning: in the working copy of 'scripts/check-production-demo-assets.mjs', LF will be replaced by CRLF the next time Git touches it\n"
+    },
+    {
+      "id": "baseline-tests-and-bundle-preservation",
+      "command": "@'\nimport fs from 'node:fs';\nimport crypto from 'node:crypto';\nconst h=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');\nconst baseline=JSON.parse(fs.readFileSync('docs/stabilization/worktree-baseline.json'));\nconst inv=JSON.parse(fs.readFileSync('docs/stabilization/test-inventory.json'));\nconst allowed=new Set(['PHASE_1_MASTER_PROGRESS_TRACKER.md','docs/TESTING.md','docs/REPORTING_ANALYTICS_REQUIREMENTS_MATRIX_2026-11-18.md','dist/index.html']);\nconst changed=baseline.entries.filter(e=>h(e.path)!==e.sha256).map(e=>e.path);\nconst unexpected=changed.filter(p=>!allowed.has(p));\nconst changedTests=inv.inventory.filter(e=>h(e.path)!==e.sha256).map(e=>e.path);\nconst scan=JSON.parse(fs.readFileSync('docs/stabilization/execution-2026-11-18/production-scan.json'));\nconst mismatchedAssets=scan.javascriptAssets.filter(e=>h(e.path)!==e.sha256).map(e=>e.path);\nconst htmlMatches=h(scan.indexHtml.path)===scan.indexHtml.sha256&&h(scan.sourceHtml.path)===scan.sourceHtml.sha256;\nconst requirements=[...fs.readFileSync('PHASE_1_MASTER_PROGRESS_TRACKER.md','utf8').matchAll(/^### (\\d+)\\./gm)].map(m=>Number(m[1]));\nconst requirementRowsIntact=JSON.stringify(requirements)===JSON.stringify(Array.from({length:21},(_,i)=>i+1));\nconst result={baselineFiles:baseline.entries.length,unchangedBaselineFiles:baseline.entries.length-changed.length,allowedDocumentationOrBuildChanges:changed,unexpectedChanges:unexpected,changedTestFiles:changedTests,verifiedTestFiles:inv.inventory.length,productionAssetHashesMatch:mismatchedAssets.length===0,productionHtmlHashesMatch:htmlMatches,requirementRowsIntact,preparedBaselineSha256:h('docs/stabilization/worktree-baseline.json'),testInventorySha256:h('docs/stabilization/test-inventory.json'),historicalScannerEvidencePreserved:h('docs/asset-scanner/current-scan.json')===baseline.entries.find(e=>e.path==='docs/asset-scanner/current-scan.json').sha256};\nfs.writeFileSync('docs/stabilization/execution-2026-11-18/preservation-check.json',JSON.stringify(result,null,2)+'\\n');\nconsole.log(JSON.stringify(result));\nif(unexpected.length||changedTests.length||mismatchedAssets.length||!htmlMatches||!requirementRowsIntact||!result.historicalScannerEvidencePreserved)process.exitCode=1;\n'@ | node --input-type=module -",
+      "exitCode": 0,
+      "output": "{\"baselineFiles\":88,\"unchangedBaselineFiles\":85,\"allowedDocumentationOrBuildChanges\":[\"docs/TESTING.md\",\"PHASE_1_MASTER_PROGRESS_TRACKER.md\",\"docs/REPORTING_ANALYTICS_REQUIREMENTS_MATRIX_2026-11-18.md\"],\"unexpectedChanges\":[],\"changedTestFiles\":[],\"verifiedTestFiles\":102,\"productionAssetHashesMatch\":true,\"productionHtmlHashesMatch\":true,\"requirementRowsIntact\":true,\"preparedBaselineSha256\":\"4f74eed40ab48c99c336589ee98636af8b867e0cdd68a251c37fe0a7e811cc1c\",\"testInventorySha256\":\"c07bda5fcde30dc8968f62a115083c04422e549613806c6ee16866767c8e4447\",\"historicalScannerEvidencePreserved\":true}\n"
+    }
+  ]
+}

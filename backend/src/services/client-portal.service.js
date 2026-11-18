@@ -1,5 +1,5 @@
 import { validateApplicationId } from '../validation/client-applications.validation.js';
-import { validateQuotationRevisionRequest, validateSalesOrderId, validateSalesOrderListQuery, validateQuotationDecision, validatePurchaseOrderSubmission } from '../validation/sales.validation.js';
+import { validateCancellationRequest, validateQuotationRevisionRequest, validateSalesOrderId, validateSalesOrderListQuery, validateQuotationDecision, validatePurchaseOrderSubmission } from '../validation/sales.validation.js';
 import { auditRequestId } from './audit-request-id.js';
 
 const profileColumns = `CAST(c.id AS CHAR) id, c.company_name companyName, c.industry,
@@ -16,6 +16,8 @@ const orderColumns = `CAST(o.id AS CHAR) id, o.reference,
  DATE_FORMAT(o.requested_delivery_date, '%Y-%m-%d') requestedDeliveryDate,
  DATE_FORMAT(o.fulfillment_completed_at, '%Y-%m-%dT%H:%i:%s.%fZ') fulfillmentCompletedAt,
  DATE_FORMAT(o.updated_at, '%Y-%m-%dT%H:%i:%s.%fZ') updatedAt,
+ (SELECT r.reason FROM order_requests r WHERE r.order_id=o.id AND r.kind='cancellation' AND r.status='pending' ORDER BY r.requested_at DESC,r.id DESC LIMIT 1) pendingCancellationReason,
+ (SELECT DATE_FORMAT(r.requested_at, '%Y-%m-%dT%H:%i:%s.%fZ') FROM order_requests r WHERE r.order_id=o.id AND r.kind='cancellation' AND r.status='pending' ORDER BY r.requested_at DESC,r.id DESC LIMIT 1) pendingCancellationRequestedAt,
  (SELECT COUNT(*) FROM order_items oi0 WHERE oi0.order_id=o.id AND oi0.client_id=o.client_id) itemCount`;
 
 function projectProfile(row) {
@@ -34,19 +36,24 @@ function projectOrder(row) {
   if (!row) return null;
   return {
     ...row,
-    itemCount: Number(row.itemCount ?? 0)
+    itemCount: Number(row.itemCount ?? 0),
+    pendingCancellation: row.pendingCancellationReason == null ? null : {
+      reason: row.pendingCancellationReason,
+      requestedAt: row.pendingCancellationRequestedAt,
+      requestedBy: 'client'
+    }
   };
 }
 
 function publicOrder(row) {
   if (!row) return null;
   return {
-    id: row.id, reference: row.reference, stageLabel: row.stageLabel,
+    id: row.id, reference: row.reference, stageLabel: row.archiveReason === 'cancelled' ? 'Cancelled' : row.stageLabel,
     archiveReason: row.archiveReason ?? null, archiveNote: row.archiveReason === 'rejected' ? row.archiveNote ?? null : null, archivedAt: row.archivedAt ?? null,
     paymentTermLabel: row.paymentTermLabel, deliveryMethodLabel: row.deliveryMethodLabel,
     submittedAt: row.submittedAt, requestedDeliveryDate: row.requestedDeliveryDate,
     fulfillmentCompletedAt: row.fulfillmentCompletedAt, updatedAt: row.updatedAt,
-    itemCount: row.itemCount
+    itemCount: row.itemCount, pendingCancellation: row.pendingCancellation ?? null
   };
 }
 
@@ -168,7 +175,28 @@ export function createClientPortalService({ db }) {
           ps.others
         FROM order_items oi JOIN product_specifications ps ON ps.id=oi.specification_id AND ps.client_id=oi.client_id
         WHERE oi.order_id=? AND oi.client_id=? ORDER BY oi.line_number, oi.id`, [id, clientId]);
-      return { success: true, data: { ...publicOrder(projectOrder(orders[0])), items } };
+      const [revisionRequests] = await connection.execute(`
+        SELECT CAST(id AS CHAR) id, reason, status,
+          DATE_FORMAT(requested_at, '%Y-%m-%dT%H:%i:%s.%fZ') requestedAt,
+          DATE_FORMAT(decided_at, '%Y-%m-%dT%H:%i:%s.%fZ') decidedAt
+        FROM order_requests WHERE order_id=? AND kind='quotation_revision'
+        ORDER BY requested_at DESC, id DESC`, [id]);
+      const [cancellationRequests] = await connection.execute(`
+        SELECT r.reason, r.status resolution,
+          DATE_FORMAT(r.requested_at, '%Y-%m-%dT%H:%i:%s.%fZ') requestedAt,
+          DATE_FORMAT(r.decided_at, '%Y-%m-%dT%H:%i:%s.%fZ') resolvedAt,
+          CASE WHEN u.account_type='client' THEN 'client' ELSE 'management' END requestedBy,
+          r.response
+        FROM order_requests r LEFT JOIN users u ON u.id=r.requested_by
+        WHERE r.order_id=? AND r.kind='cancellation'
+        ORDER BY r.requested_at DESC, r.id DESC`, [id]);
+      return { success: true, data: {
+        ...publicOrder(projectOrder(orders[0])), items, revisionRequests,
+        cancellationHistory: cancellationRequests.map(request => ({
+          reason: request.reason, resolution: request.resolution, requestedAt: request.requestedAt,
+          resolvedAt: request.resolvedAt, requestedBy: request.requestedBy, response: request.response ?? undefined
+        }))
+      } };
     });
   }
 
@@ -185,6 +213,7 @@ export function createClientPortalService({ db }) {
       if (!await assertOwnedOrder(connection, clientId, id)) return { success: false, code: 'NOT_FOUND' };
       const [rows] = await connection.execute(`
         SELECT CAST(q.id AS CHAR) id, q.reference, q.revision_number revisionNumber, q.status,
+          (q.id=(SELECT qlatest.id FROM quotations qlatest WHERE qlatest.order_id=q.order_id ORDER BY qlatest.revision_number DESC,qlatest.id DESC LIMIT 1)) isLatestRevision,
           DATE_FORMAT(q.issued_on, '%Y-%m-%d') issuedOn, DATE_FORMAT(q.valid_until, '%Y-%m-%d') validUntil,
           pt.label paymentTermLabel, q.time_of_delivery timeOfDelivery, q.place_of_delivery placeOfDelivery,
           q.total_amount totalAmount, q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount,
@@ -211,6 +240,7 @@ export function createClientPortalService({ db }) {
         downpaymentValid: validDownpayment(row.totalAmount, row.downpaymentPercent, row.downpaymentAmount),
         ...(decisionByQuotation.has(row.id) ? { decision: decisionByQuotation.get(row.id).action === 'quotation.accepted' ? 'accepted' : 'rejected', decisionReason: decisionByQuotation.get(row.id).reason, decidedAt: decisionByQuotation.get(row.id).decidedAt } : { decision: null, decisionReason: null, decidedAt: null }),
         id: row.id, reference: row.reference, revisionNumber: Number(row.revisionNumber), status: row.status,
+        isLatestRevision: Boolean(Number(row.isLatestRevision)),
         issuedOn: row.issuedOn, validUntil: row.validUntil, paymentTermLabel: row.paymentTermLabel,
         timeOfDelivery: row.timeOfDelivery, placeOfDelivery: row.placeOfDelivery,
         totalAmount: row.totalAmount, downpaymentPercent: row.downpaymentPercent,
@@ -236,10 +266,12 @@ export function createClientPortalService({ db }) {
       let transaction = false;
       try {
         await connection.beginTransaction(); transaction = true;
-        const [orders] = await connection.execute(`SELECT CAST(o.id AS CHAR) id, CAST(o.client_id AS CHAR) clientId, o.reference, o.stage_code stageCode
+        const [orders] = await connection.execute(`SELECT CAST(o.id AS CHAR) id, CAST(o.client_id AS CHAR) clientId, o.reference, o.stage_code stageCode,
+          o.archived_at archivedAt, o.archive_reason archiveReason
           FROM orders o WHERE o.id=? AND o.client_id=? FOR UPDATE`, [orderId, clientId]);
         if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
         const order = orders[0];
+        if (order.archivedAt || order.archiveReason) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
         const [quotes] = await connection.execute(`SELECT CAST(q.id AS CHAR) id, q.reference, q.revision_number revisionNumber, q.status,
             q.total_amount totalAmount, q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount
           FROM quotations q WHERE q.id=? AND q.order_id=? FOR UPDATE`, [quotationId, orderId]);
@@ -287,8 +319,10 @@ export function createClientPortalService({ db }) {
       let transaction = false;
       try {
         await connection.beginTransaction(); transaction = true;
-        const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId, reference FROM orders WHERE id=? AND client_id=? FOR UPDATE`, [orderId, clientId]);
+        const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId, reference,
+          archived_at archivedAt, archive_reason archiveReason FROM orders WHERE id=? AND client_id=? FOR UPDATE`, [orderId, clientId]);
         if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        if (orders[0].archivedAt || orders[0].archiveReason) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
         const [quotes] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, revision_number revisionNumber, status, total_amount totalAmount, downpayment_percent downpaymentPercent, downpayment_amount downpaymentAmount
           FROM quotations WHERE order_id=? ORDER BY revision_number DESC, id DESC LIMIT 1 FOR UPDATE`, [orderId]);
         if (!quotes.length || quotes[0].status !== 'sent' || !validDownpayment(quotes[0].totalAmount, quotes[0].downpaymentPercent, quotes[0].downpaymentAmount)) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
@@ -319,10 +353,15 @@ export function createClientPortalService({ db }) {
       let transaction = false;
       try {
         await connection.beginTransaction(); transaction = true;
-        const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId FROM orders WHERE id=? AND client_id=? FOR UPDATE`, [orderId, clientId]);
+        const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId, stage_code stageCode,
+          archived_at archivedAt, archive_reason archiveReason FROM orders WHERE id=? AND client_id=? FOR UPDATE`, [orderId, clientId]);
         if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        if (orders[0].archivedAt || orders[0].archiveReason) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
         const [quotes] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, status, revision_number revisionNumber FROM quotations WHERE order_id=? ORDER BY revision_number DESC,id DESC LIMIT 1 FOR UPDATE`, [orderId]);
-        if (!quotes.length || quotes[0].status !== 'sent') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
+        if (orders[0].stageCode !== 'quotation' || !quotes.length || quotes[0].status !== 'sent') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
+        const [decisions] = await connection.execute(`SELECT action FROM audit_events WHERE subject_type='quotation' AND subject_identifier=?
+          AND action IN ('quotation.accepted','quotation.rejected') ORDER BY occurred_at DESC,id DESC LIMIT 1 FOR UPDATE`, [quotes[0].id]);
+        if (decisions.length) { await connection.rollback(); return { success: false, code: 'QUOTATION_ALREADY_DECIDED' }; }
         const [pending] = await connection.execute(`SELECT id FROM order_requests WHERE order_id=? AND kind='quotation_revision' AND status='pending' FOR UPDATE`, [orderId]);
         if (pending.length) { await connection.rollback(); return { success: false, code: 'REVISION_ALREADY_PENDING' }; }
         const [inserted] = await connection.execute(`INSERT INTO order_requests (order_id,kind,reason,requested_by,status) VALUES (?,'quotation_revision',?,?, 'pending')`, [orderId, validation.data.reason, userId]);
@@ -334,6 +373,63 @@ export function createClientPortalService({ db }) {
         return { success: true, data: { id: requestId, orderId, quotationId: quotes[0].id, quotationReference: quotes[0].reference, revisionNumber: Number(quotes[0].revisionNumber), status: 'pending', reason: validation.data.reason } };
       } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; }
     });
+  }
+
+  async function requestCancellation(clientId, userId, orderId, body, context = {}) {
+    if (!validateApplicationId(clientId).success || !validateApplicationId(userId).success) return invalid('FORBIDDEN');
+    const identity = validateSalesOrderId(orderId);
+    if (!identity.success) return identity;
+    const validation = validateCancellationRequest(body);
+    if (!validation.success) return validation;
+    let connection, transaction = false, commitAttempted = false, reusable = true;
+    try {
+      connection = await db.getConnection();
+      await connection.beginTransaction(); transaction = true;
+      const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId,
+          stage_code stageCode, archive_reason archiveReason,
+          DATE_FORMAT(archived_at,'%Y-%m-%dT%H:%i:%s.%fZ') archivedAt
+        FROM orders WHERE id=? AND client_id=? FOR UPDATE`, [orderId, clientId]);
+      if (!orders.length) return { success: false, code: 'NOT_FOUND' };
+      const order = orders[0];
+      if (order.archivedAt || order.archiveReason || !['inquiry', 'quotation', 'po'].includes(order.stageCode)) {
+        return { success: false, code: 'CANCELLATION_NOT_ELIGIBLE' };
+      }
+      const [pending] = await connection.execute(`SELECT CAST(id AS CHAR) id FROM order_requests
+        WHERE order_id=? AND kind='cancellation' AND status='pending' ORDER BY id FOR UPDATE`, [orderId]);
+      if (pending.length) return { success: false, code: 'CANCELLATION_ALREADY_PENDING' };
+      const [payments] = await connection.execute(`SELECT id FROM payments
+        WHERE order_id=? AND payment_type='DOWNPAYMENT' AND verification_status='verified' LIMIT 1 FOR UPDATE`, [orderId]);
+      if (payments.length) return { success: false, code: 'CANCELLATION_NOT_ELIGIBLE' };
+      const [inserted] = await connection.execute(`INSERT INTO order_requests (order_id,kind,reason,requested_by,status)
+        VALUES (?,'cancellation',?,?,'pending')`, [orderId, validation.data.reason, userId]);
+      if (inserted.affectedRows !== 1 || inserted.insertId == null) throw new Error('Cancellation request write failed.');
+      const requestId = String(inserted.insertId);
+      const [saved] = await connection.execute(`SELECT reason, status,
+          DATE_FORMAT(requested_at,'%Y-%m-%dT%H:%i:%s.%fZ') requestedAt
+        FROM order_requests WHERE id=? AND order_id=? AND kind='cancellation'`, [requestId, orderId]);
+      if (!saved[0]) throw new Error('Cancellation request result unavailable.');
+      const [audit] = await connection.execute(`INSERT INTO audit_events
+        (actor_id,action,subject_type,subject_identifier,old_value,new_value,reason,request_id,occurred_at)
+        VALUES (?,'cancellation.requested','order',?,?,?,?,?,UTC_TIMESTAMP(3))`,
+      [userId, orderId, JSON.stringify({ stageCode: order.stageCode, archiveReason: order.archiveReason }),
+        JSON.stringify({ orderId, clientId, cancellationRequestId: requestId, status: 'pending' }),
+        validation.data.reason, auditRequestId(context)]);
+      if (audit.affectedRows !== 1 || audit.warningStatus) throw new Error('Cancellation request audit write failed.');
+      commitAttempted = true;
+      await connection.commit(); transaction = false;
+      return { success: true, data: {
+        id: requestId, orderId, status: 'pending', reason: saved[0].reason,
+        requestedAt: saved[0].requestedAt, requestedBy: 'client'
+      } };
+    } catch {
+      reusable = false;
+      return { success: false, code: commitAttempted ? 'WRITE_OUTCOME_UNKNOWN' : 'SERVICE_UNAVAILABLE' };
+    } finally {
+      if (connection) {
+        if (transaction) try { await connection.rollback(); } catch { reusable = false; }
+        try { reusable ? connection.release() : connection.destroy(); } catch { try { connection.destroy(); } catch {} }
+      }
+    }
   }
 
   async function purchaseOrder(clientId, id) {
@@ -517,5 +613,5 @@ export function createClientPortalService({ db }) {
     });
   }
 
-  return { profile, listOrders, detailOrder, quotations, decideQuotation, submitPurchaseOrder, requestQuotationRevision, purchaseOrder, jobOrders, delivery, invoices, payments, dashboard };
+  return { profile, listOrders, detailOrder, quotations, decideQuotation, submitPurchaseOrder, requestQuotationRevision, requestCancellation, purchaseOrder, jobOrders, delivery, invoices, payments, dashboard };
 }

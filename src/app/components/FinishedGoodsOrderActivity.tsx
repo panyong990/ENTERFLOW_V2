@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, Search, SlidersHorizontal } from "lucide-react";
-import { useMaterials } from "../store/materials";
+import { getFinishedGoodStockStatus, useMaterials } from "../store/materials";
 import { useOrders } from "../store/orders";
 import { buildOrderHistory, getFinishedGoodOrderActivity } from "../store/recurringOrders";
 import { FILTER_TYPES, GROUP_DISPLAY, labelForType } from "../store/filterTemplates";
@@ -265,7 +265,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
           <table className="w-full min-w-[760px]" style={{ fontFamily: '"Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
             <thead style={{ backgroundColor: "#F4F6F9" }}>
               <tr>
-                {["Rank", "Item Code", "Enter-Fil PN", "Item Name", "Client", "Recurring Orders"].map((heading) => (
+                {["Rank", "Item Code", "Enter-Fil PN", "Item Name", "Client", "Qty in Stock", "Status", "Recurring Orders"].map((heading) => (
                   <th key={heading} className="text-left px-4 py-3" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{heading}</th>
                 ))}
               </tr>
@@ -273,6 +273,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
             <tbody>
               {finishedGoodsOrderActivity.rows.map(({ item, recurringOrders }, index) => {
                 const highlighted = finishedGoodsOrderActivity.topDemandIds.has(item.id);
+                const stockStatus = getFinishedGoodStockStatus(item);
                 return (
                   <tr
                     key={item.id}
@@ -305,13 +306,15 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
                     <td className="px-4 py-3" style={{ fontSize: 12, color: "#475569" }}>{item.enterFilPN}</td>
                     <td className="px-4 py-3" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{item.itemName}</td>
                     <td className="px-4 py-3" style={{ fontSize: 12, color: "#475569" }}>{item.client}</td>
+                    <td className="px-4 py-3" style={{ fontSize: 12, fontWeight: 700, color: stockStatus.fg }}>{Number.isFinite(item.qtyInStock) ? `${item.qtyInStock} pcs` : "Not recorded"}</td>
+                    <td className="px-4 py-3"><span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ backgroundColor: stockStatus.bg, color: stockStatus.fg }}>{stockStatus.label}</span></td>
                     <td className="px-4 py-3" style={{ fontSize: 13, fontWeight: highlighted ? 700 : 500, color: highlighted ? "#C8102E" : "#334155" }}>{recurringOrders}</td>
                   </tr>
                 );
               })}
               {finishedGoodsOrderActivity.rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
+                  <td colSpan={8} className="px-6 py-10 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
                     <Boxes size={28} style={{ color: "#CBD5E1", margin: "0 auto 8px" }} />
                     No finished goods match the selected search and filters.
                   </td>

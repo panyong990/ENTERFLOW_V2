@@ -1,5 +1,29 @@
 # ENTER-FLOW test procedures
 
+## Latest stabilization execution — November 18, 2026
+
+Actual focused groups: 125 security/auth, 214 workflows and 82 frontend passed; then explicit full safe **844 backend / 218 frontend** passed. Ancillary groups scanner/proxy/preparation/selected-planner: **12/2/13/3 passed**. Zero failures/skips/cancellations/todos in every test group, exits 0. Focused results overlap full suites. Build 2714 modules and fresh asset scan (0 unexplained) passed. Exact commands/membership/counts/exits: [execution report](stabilization/execution-2026-11-18/EXECUTION_REPORT.md) and [ledger](stabilization/execution-2026-11-18/execution-results.json).
+
+**Security gate not passed:** npm audit exited 1 with 4 high affected package entries through one picomatch advisory; no dependency changes. External design-capture script retained under formal production-release hold. [Security disposition](stabilization/execution-2026-11-18/SECURITY_DISPOSITION.md). Current scan is [bundle-hashed dated evidence](stabilization/execution-2026-11-18/production-scan.json); older scanner JSON remains historical. No live database/browser/application services, migrations, imports, Docker or protected-file access. Full nine-role business/visual acceptance remains open.
+
+## Current stabilization preparation — November 18, 2026
+
+Use the [controlled regression plan](stabilization/REGRESSION_PLAN.md), [exact 102-file inventory](stabilization/test-inventory.json) and [88-file worktree reconciliation](stabilization/WORKTREE_RECONCILIATION.md). Preparation did not rerun the major suites/build/browser/live workflows. Earlier 844/216 full-suite counts below remain historical; the accepted Operations correction later added two frontend regressions. Current full aggregate totals require execution, not arithmetic inference. Plan records layered test overlap, source-only coverage, missing interaction/persistence evidence and excluded environment-dependent harnesses. No database/migration/Docker/protected-file access is authorized by older commands or reports below.
+
+Saved scanner current-scan.json refers to an older, now absent bundle. Preserve it as historical; retain a new dated current-build scan in the next run. The committed index.html also includes an external design-capture script outside the local JS marker gate; review before production acceptance. [Findings and dispositions](stabilization/WORKTREE_RECONCILIATION.md).
+
+## November 18 production scanner and major safe regression refresh
+
+Latest scoped execution: **844 backend tests across 67 files**, **216 frontend tests across 35 files**, **12 scanner regressions**, **2 synthetic auth/proxy regressions**, **13 inventory-preparation regressions**, **3 selected legacy planner tests**; every final group has zero failures/skips and exit 0. Groups and exact commands: [current handoff](asset-scanner/HANDOFF_REPORT.md), [machine-readable file membership](asset-scanner/regression-results.json). Do not add earlier focused/historical counts to these results.
+
+Initial frontend run: 212 passed, 3 failed (obsolete cancellation-unavailable/no-pagination expectations). Reconciled those contracts to the already implemented authenticated workflow, retaining security/history/terms checks and adding an executable cancellation adapter test; final 216 passed. No production workflow was disabled to satisfy assertions.
+
+Production build passes (existing large-chunk/Node deprecation warnings). Scanner passes with zero unexplained findings after occurrence-specific catalog validation and production-only exclusion of demo address defaults; all 132 deny markers retained. [67-finding evidence](asset-scanner/baseline-findings.csv).
+
+These are source/unit/adapter/mock-HTTP suites, not actual accounts, browser acceptance or live persistence. MySQL integration scripts, all migration suites/CLI, Docker/browser database harnesses and the standalone synthetic MySQL-protocol TLS fixture were NOT RUN. The existing database import hook blocked accidental live pool access. Section 24 preparation artifacts were only freshness-checked, not regenerated. No protected Migration 007 access occurred.
+
+Older task-specific and environment evidence below remains historical; it does not override current execution scope or authorization restrictions.
+
 > **Task 29 authenticated acceptance COMPLETE:** [actual execution and retained state](TASK29_AUTHENTICATED_ACCEPTANCE_RESULTS.md).
 > Fresh: **7 passed, 0 failed, 0 unexecuted**, four single-attempt commands, one
 > worker/zero retries. Existing isolated fixtures retained at 28 tables/116 rows.

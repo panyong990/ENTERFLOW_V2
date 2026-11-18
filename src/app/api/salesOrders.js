@@ -58,6 +58,10 @@ export function mapSalesOrder(row) {
 export function rejectSalesInquiry(id, reason, revision) {
   return api(`/api/sales/orders/${encodeURIComponent(id)}/rejection`, {method:'POST',body:{reason,revision}});
 }
+export function reviewSalesCancellation(id, requestId, decision) {
+  if (!['approved', 'declined'].includes(decision)) throw new TypeError('Invalid cancellation decision.');
+  return api(`/api/sales/orders/${encodeURIComponent(id)}/cancellation/${encodeURIComponent(requestId)}/${decision === 'approved' ? 'accept' : 'decline'}`, { method: 'POST', body: {} });
+}
 export function listInquiryRejections(page = 1) {
   return api(`/api/sales/inquiry-rejections?${queryString({page,pageSize:25})}`);
 }

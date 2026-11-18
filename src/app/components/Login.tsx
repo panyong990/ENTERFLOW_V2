@@ -49,6 +49,25 @@ export const clientAccounts: { email: string; password: string; role: Role; name
   { email: "client@be-aerospace.com", password: "demo", role: "client", name: "B.E. Aerospace" },
 ] : [];
 
+export function validateClientRegistration(
+  registration: { companyName: string; contactPerson: string; phone: string; username: string },
+  email: string,
+  password: string
+) {
+  const errors: Record<string, string> = {};
+  if (!registration.companyName.trim()) errors.companyName = "Company name is required.";
+  else if ([...registration.companyName.trim()].length > 200) errors.companyName = "Company name must contain 1 to 200 characters.";
+  if (!registration.contactPerson.trim()) errors.contactPerson = "Contact person is required.";
+  else if ([...registration.contactPerson.trim()].length > 160) errors.contactPerson = "Contact person must contain 1 to 160 characters.";
+  if (!email.trim()) errors.email = "Email is required.";
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || [...email.trim()].length > 254) errors.email = "Enter a valid email address.";
+  if (!registration.username.trim()) errors.username = "Username is required.";
+  else if ([...registration.username.trim()].length > 100) errors.username = "Username must contain 1 to 100 characters.";
+  if (password.length < 8 || password.length > 1024) errors.password = "Password must contain 8 to 1024 characters.";
+  if (registration.phone.trim() && [...registration.phone.trim()].length > 40) errors.phone = "Phone must contain 40 characters or less.";
+  return errors;
+}
+
 interface Props {
   onLogin: (role: Role, name: string) => void;
   onRealLogin?: () => Promise<void>;
@@ -98,6 +117,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
   const [error, setError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
   const [registration, setRegistration] = useState({ companyName: "", contactPerson: "", phone: "", username: "" });
+  const [successNotice, setSuccessNotice] = useState("");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,9 +127,18 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
       submitLocked.current=true;setBusy(true);
       try {
         if(page==='client' && isRegistering) {
+          const registrationErrors = validateClientRegistration(registration, email, password);
+          if (Object.keys(registrationErrors).length) {
+            setFieldErrors(registrationErrors);
+            setError("Please correct the highlighted registration details.");
+            submitLocked.current=false;
+            setBusy(false);
+            return;
+          }
           await api('/api/auth/register',{public:true,method:'POST',body:{companyName:registration.companyName.trim(),contactPerson:registration.contactPerson.trim(),phone:registration.phone.trim(),username:registration.username.trim(),email:email.trim(),password}});
           setPassword('');setIsRegistering(false);setRegistration({companyName:'',contactPerson:'',phone:'',username:''});
-          setError('Application submitted. Enter-Fil staff will review your registration.');
+          setSuccessNotice("Application submitted successfully. Enter-Fil staff must approve it before portal login is available.");
+          setError('');
         } else {
           await api('/api/auth/login',{public:true,method:'POST',body:{identifier:email.trim(),password}});
           setPassword('');await onRealLogin?.();
@@ -121,6 +150,12 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
     if(!import.meta.env.DEV)return;
     const normalizedEmail = email.trim().toLocaleLowerCase();
     if (page === "client" && isRegistering) {
+      const registrationErrors = validateClientRegistration(registration, email, password);
+      if (Object.keys(registrationErrors).length) {
+        setFieldErrors(registrationErrors);
+        setError("Please correct the highlighted registration details.");
+        return;
+      }
       const companyName = registration.companyName.trim();
       const contactPerson = registration.contactPerson.trim();
       const username = registration.username.trim();
@@ -164,10 +199,11 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
           status: "pending",
         }]);
         setIsRegistering(false);
+        setSuccessNotice("Application submitted successfully. Enter-Fil staff must approve it before portal login is available.");
         setEmail("");
         setPassword("");
         setRegistration({ companyName: "", contactPerson: "", phone: "", username: "" });
-        setError("Application submitted. Enter-Fil staff will review your registration.");
+        setError("");
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Unable to submit your application.");
       } finally {submitLocked.current=false;setBusy(false);}
@@ -200,7 +236,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
   };
 
   const switchPage = (p: "staff" | "client") => {
-    setPage(p); setEmail(""); setPassword(""); setError(""); setIsRegistering(false);
+    setPage(p); setEmail(""); setPassword(""); setError(""); setFieldErrors({}); setSuccessNotice(""); setIsRegistering(false);
   };
 
   /* ─── STAFF LOGIN ─── */
@@ -224,6 +260,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
             <form onSubmit={submit} className="flex flex-col gap-4">
               {sessionError&&<p role="alert" className="text-sm text-red-700">{sessionError}</p>}
               {Object.keys(fieldErrors).length>0&&<div role="alert" className="rounded border border-red-200 p-3 text-xs text-red-700">{Object.entries(fieldErrors).map(([key,value])=><p key={key}>{key}: {value}</p>)}</div>}
+              {successNotice&&<div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{successNotice}</div>}
               <div className="flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email or username</label>
                 <input aria-label="Email or username" type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@enter-fil.com"
@@ -280,38 +317,39 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
           <form onSubmit={submit} className="flex flex-col gap-4">
               {sessionError&&<p role="alert" className="text-sm text-red-700">{sessionError}</p>}
               {Object.keys(fieldErrors).length>0&&<div role="alert" className="rounded border border-red-200 p-3 text-xs text-red-700">{Object.entries(fieldErrors).map(([key,value])=><p key={key}>{key}: {value}</p>)}</div>}
+              {successNotice&&<div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{successNotice}</div>}
             {isRegistering && (
               <>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Company name</label>
-                  <input required value={registration.companyName} onChange={(e) => setRegistration({ ...registration, companyName: e.target.value })}
+                  <input required maxLength={200} value={registration.companyName} onChange={(e) => setRegistration({ ...registration, companyName: e.target.value })}
                     className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Contact person</label>
-                  <input required value={registration.contactPerson} onChange={(e) => setRegistration({ ...registration, contactPerson: e.target.value })}
+                  <input required maxLength={160} value={registration.contactPerson} onChange={(e) => setRegistration({ ...registration, contactPerson: e.target.value })}
                     className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Contact number (optional)</label>
-                  <input type="tel" value={registration.phone} onChange={(e) => setRegistration({ ...registration, phone: e.target.value })}
+                  <input type="tel" maxLength={40} value={registration.phone} onChange={(e) => setRegistration({ ...registration, phone: e.target.value })}
                     className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Username</label>
-                  <input required value={registration.username} onChange={(e) => setRegistration({ ...registration, username: e.target.value })}
+                  <input required maxLength={100} value={registration.username} onChange={(e) => setRegistration({ ...registration, username: e.target.value })}
                     className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
                 </div>
               </>
             )}
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email</label>
-              <input aria-label="Email or username" type={isRegistering?"email":"text"} required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com"
+              <input aria-label="Email or username" type={isRegistering?"email":"text"} required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com"
                 className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{isRegistering ? "Set password" : "Password"}</label>
-              <input type="password" autoComplete={isRegistering?"new-password":"current-password"} required minLength={isRegistering ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)}
+              <input type="password" autoComplete={isRegistering?"new-password":"current-password"} required minLength={isRegistering ? 8 : undefined} maxLength={1024} value={password} onChange={(e) => setPassword(e.target.value)}
                 className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
             </div>
 
@@ -335,7 +373,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
           </div>}
 
             <div className="mt-4 text-center">
-              <button type="button" onClick={() => { setIsRegistering((value) => !value); setEmail(""); setPassword(""); setError(""); }}
+              <button type="button" onClick={() => { setIsRegistering((value) => !value); setEmail(""); setPassword(""); setError(""); setFieldErrors({}); setSuccessNotice(""); }}
                 className="font-dm hover:underline" style={{ fontSize: 12, color: "#C8102E" }}>
                 {isRegistering ? "Already have an account? Sign in" : "New client? Apply for portal access"}
               </button>

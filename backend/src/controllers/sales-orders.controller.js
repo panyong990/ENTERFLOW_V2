@@ -1,6 +1,10 @@
+import { logServiceFailure } from './service-failure-log.js';
+
 const errors = {
   FORBIDDEN: [403, 'Sales access is required.'],
   INQUIRY_ALREADY_REJECTED: [409, 'This inquiry was already rejected. Its original rejection is preserved.'],
+  CANCELLATION_ALREADY_DECIDED: [409, 'This cancellation request already has a recorded decision.'],
+  CANCELLATION_NOT_ELIGIBLE: [409, 'This inquiry is no longer eligible for cancellation.'],
   STALE_RECORD: [409, 'This inquiry changed. Reload it before trying again.'],
   INVALID_STATE: [409, 'Only an unarchived inquiry can be rejected.'],
   WRITE_OUTCOME_UNKNOWN: [503, 'The result could not be confirmed. Refresh before retrying.'],
@@ -26,10 +30,15 @@ const errors = {
   SERVICE_UNAVAILABLE: [503, 'Sales order service is temporarily unavailable.']
 };
 
-export function createSalesOrdersController({ service }) {
+export function createSalesOrdersController({ service, logger = console }) {
   return operation => async (request, response) => {
+    let stage = 'service_call';
     try {
       const result = operation === 'rejectInquiry' ? await service.rejectInquiry(request.params.id, request.body, request.auth, { requestId: request.requestId })
+        : operation === 'acceptCancellation' || operation === 'declineCancellation' ? await service.reviewCancellation(
+          request.params.id, request.params.requestId, operation === 'acceptCancellation' ? 'approved' : 'declined',
+          request.auth, { requestId: request.requestId }
+        )
         : operation === 'createQuotation' ? await service.createQuotation(request.params.id, request.body, request.auth)
         : operation === 'rejectionHistory' ? await service.rejectionHistory(request.query)
         : operation === 'list' ? await service.list(request.query)
@@ -42,10 +51,13 @@ export function createSalesOrdersController({ service }) {
               : operation === 'delivery' ? await service.delivery(request.params.id)
                 : operation === 'stockAvailability' ? await service.stockAvailability(request.params.id)
             : await service.detail(request.params.id);
+      stage = 'response';
       if (result?.success === true) return response.status(200).json({ success: true, data: result.data });
       const [status, message] = errors[result?.code] ?? errors.SERVICE_UNAVAILABLE;
+      if (status === 503) logServiceFailure({ logger, operation: `sales.orders.${operation}`, requestId: request.requestId, stage: 'service_result', error: result });
       return response.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message, ...(result?.code === 'VALIDATION_ERROR' ? { errors: result.errors } : {}) });
-    } catch {
+    } catch (error) {
+      logServiceFailure({ logger, operation: `sales.orders.${operation}`, requestId: request.requestId, stage, error });
       return response.status(503).json({ success: false, code: 'SERVICE_UNAVAILABLE', message: errors.SERVICE_UNAVAILABLE[1] });
     }
   };

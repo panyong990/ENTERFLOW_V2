@@ -8,7 +8,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ClipboardList, MapPin, Truck, CreditCard, Upload, CheckCircle2, Circle,
   Building2, User as UserIcon, Info, Camera, Send, Plus, Trash2, ChevronDown,
-  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw, Printer,
+  ChevronUp, FileCheck, X, Settings, ExternalLink, RotateCcw, Printer, RefreshCw,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import {
@@ -56,6 +56,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { FILTER_TYPES as FILTER_TYPE_CATALOG, GROUP_DISPLAY, GROUP_TEMPLATES, DIMENSION_LABELS, groupForType, labelForType, type DimensionKey } from "../../store/filterTemplates";
+import { MAX_INQUIRY_PRODUCTS, validateClientInquiryDraft, validateInquirySketchFile } from "./inquiryValidation.mjs";
 
 type Tab = "orders" | "status" | "logistics" | "accounting" | "notifications" | "settings";
 
@@ -102,17 +103,6 @@ type ClientOrderStatus = {
 };
 
 const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
-  if (inquiry.stage === 'unavailable') return { id: 'unavailable', label: (inquiry as ClientView).publicStage, bg: '#F1F5F9', fg: '#475569', message: 'The Client API does not provide the detailed workflow state for this record.' };
-  if ((inquiry as ClientView).source.invoices.length) return { id: 'invoiceSent', label: 'INVOICE SENT', bg: '#FEF3C7', fg: '#B45309', message: 'Sent invoices are available below. See Accounting for each invoice and its payments.' };
-  if (inquiry.pendingCancellation) {
-    return {
-      id: "cancellationRequested",
-      label: "CANCELLATION REQUESTED",
-      bg: "#FEF3C7",
-      fg: "#92400E",
-      message: "Cancellation request submitted — awaiting Enter-Fil approval.",
-    };
-  }
   if (inquiry.archived && inquiry.archiveReason === "cancelled") {
     return {
       id: "cancelled",
@@ -122,6 +112,17 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
       message: "This order has been cancelled.",
     };
   }
+  if (inquiry.pendingCancellation) {
+    return {
+      id: "cancellationRequested",
+      label: "CANCELLATION REQUESTED",
+      bg: "#FEF3C7",
+      fg: "#92400E",
+      message: "Cancellation request submitted — awaiting Enter-Fil approval.",
+    };
+  }
+  if (inquiry.stage === 'unavailable') return { id: 'unavailable', label: (inquiry as ClientView).publicStage, bg: '#F1F5F9', fg: '#475569', message: 'The Client API does not provide the detailed workflow state for this record.' };
+  if ((inquiry as ClientView).source.invoices.length) return { id: 'invoiceSent', label: 'INVOICE SENT', bg: '#FEF3C7', fg: '#B45309', message: 'Sent invoices are available below. See Accounting for each invoice and its payments.' };
   const payment = paymentState(inquiry);
   const invoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
   if (invoiceSent && payment.invoiceTotal > 0 && payment.state === "FULLY_PAID") {
@@ -328,7 +329,6 @@ const FILTRATION_RATINGS = [
 
 function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void; targetInquiryId?: string }) {
   const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches, submitPurchaseOrder } = useOrders();
-  const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
   const allOrders=byClient(clientName);
   const rejectedOrders=allOrders.filter(inquiry=>inquiry.archived&&inquiry.archiveReason==='rejected');
@@ -396,6 +396,17 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          aria-label="Refresh My Orders"
+          onClick={refresh}
+          disabled={loading}
+          className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}
+        >
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          {loading ? "Refreshing…" : "Refresh My Orders"}
+        </button>
         <button onClick={() => setShowTransactions(true)} className="font-dm flex items-center gap-2 px-4 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>
           <ClipboardList size={14} /> View Transaction History
         </button>
@@ -465,17 +476,7 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
           inquiry={inq}
             onPayInvoice={(invoiceId) => onPayInvoice(invoiceId ?? inq.id)}
           onUploadPO={() => setPoForId(inq.id)}
-          onCancel={(reason) => {
-            unavailable(); return;
-            pushNotif({
-              dept: "sales",
-              title: `🚨 Cancellation request from ${clientName}`,
-              body: `${inq.code} · Reason: ${reason} · awaiting your accept/decline`,
-              link: "sales",
-              recipients: ["owner", "operations", "sales"],
-            });
-            toast.info("Cancellation request sent", { description: "Enter-Fil will accept or decline soon. You'll be notified." });
-          }}
+          onCancel={(reason, termsAcknowledged) => requestCancellation(inq.orderId, { reason, termsAcknowledged })}
         />
       ))}
 
@@ -917,26 +918,25 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
 
   /* Whether step is complete based on current active product. */
   const canProceed = () => {
-    if (step === 1) return !!active.type && (active.filterName?.trim().length ?? 0) >= 3;
+    if (step === 1) {
+      const nameLength = active.filterName?.trim().length ?? 0;
+      return !!active.type && nameLength >= 3 && nameLength <= 200;
+    }
     if (step === 2) {
       const dims = GROUP_TEMPLATES[groupForType(active.type)].dimensions;
       const required = dims[0]; // first listed dim is the primary required field per group
-      return ((active as any)[required] ?? "").toString().trim().length > 0 && (active.media ?? "").trim().length > 0;
+      const primaryDimension = ((active as any)[required] ?? "").toString().trim();
+      const mediaLength = (active.media ?? "").trim().length;
+      return primaryDimension.length > 0 && primaryDimension.length <= 100 && mediaLength > 0 && mediaLength <= 255;
     }
     if (step === 3) return !!(active.filtrationRating ?? "10-micron");
-    if (step === 4) return Number.isInteger(active.qty) && active.qty >= 10;
+    if (step === 4) return Number.isInteger(active.qty) && active.qty >= 10 && active.qty <= 1_000_000;
     return true;
   };
 
   const submit = async () => {
-    if (!contactPerson.trim()) { toast.error("Contact person required"); return; }
-    if (products.some(p => !Number.isInteger(p.qty) || p.qty < 10)) { toast.error("Each product must have a whole-number quantity of at least 10"); return; }
     if (submissionStarted.current) return;
-    submissionStarted.current = true;
-    setIsSubmitting(true);
-    setSubmissionError('');
-    try {
-      const input: ClientInquiryInput = {
+    const input: ClientInquiryInput = {
         contactPerson: contactPerson.trim(),
         paymentTermCode: paymentTerms === "30-Day Terms" ? "NET30" : "NET15",
         requestedDeliveryDate: requestedDeliveryDate || null,
@@ -960,6 +960,16 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
           },
         })),
       };
+    const validationError = validateClientInquiryDraft(input);
+    if (validationError) {
+      setSubmissionError(validationError);
+      toast.error(validationError);
+      return;
+    }
+    submissionStarted.current = true;
+    setIsSubmitting(true);
+    setSubmissionError('');
+    try {
       const retrying = pendingInquiry.current !== null || submissionKey.current !== null;
       submissionKey.current ??= crypto.randomUUID();
       retainRecoveryKey(submissionKey.current);
@@ -988,6 +998,10 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   };
 
   const addAnotherFilter = () => {
+    if (products.length >= MAX_INQUIRY_PRODUCTS) {
+      toast.error(`An inquiry can include no more than ${MAX_INQUIRY_PRODUCTS} products.`);
+      return;
+    }
     const id = `p${Date.now()}`;
     setProducts((prev) => [...prev, { ...blankProduct(id), filtrationRating: "10-micron" }]);
     setActiveIdx(products.length);
@@ -1072,7 +1086,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
           {step === 1 && (
             <div className="rounded-lg p-4 grid grid-cols-2 gap-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
               <Field label="Company"><input value={clientName} disabled className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 bg-slate-100" style={{ fontSize: 13, color: "#475569" }} /></Field>
-              <Field label="Contact Person *"><input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Full name" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+              <Field label="Contact Person *"><input value={contactPerson} maxLength={160} onChange={(e) => setContactPerson(e.target.value)} placeholder="Full name" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
               <Field label="Payment Terms">
                 <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value as any)} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }}>
                   <option>15-Day Terms</option><option>30-Day Terms</option>
@@ -1089,7 +1103,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
               </Field>
               <div className="col-span-2 flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Notes <span style={{ color: "#94A3B8", fontWeight: 400 }}>(optional)</span></label>
-                <textarea value={generalNotes} onChange={(e) => setGeneralNotes(e.target.value)} placeholder="Special instructions, brand references..." rows={2} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none" style={{ fontSize: 13 }} />
+                <textarea value={generalNotes} maxLength={5000} onChange={(e) => setGeneralNotes(e.target.value)} placeholder="Special instructions, brand references..." rows={2} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white resize-none" style={{ fontSize: 13 }} />
               </div>
             </div>
           )}
@@ -1135,17 +1149,17 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
             <div className="flex flex-col gap-4">
               <div>
                 <div className="font-dm mb-3" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Quantity *</div>
-                <input type="number" min={10} step={1} value={active.qty} onChange={(e) => updateActive({ qty: Number(e.target.value) })} className="w-full font-syne px-4 py-3 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A" }} />
-                <div className="font-dm mt-1" style={{ fontSize: 11, color: !Number.isInteger(active.qty) || active.qty < 10 ? "#C8102E" : "#94A3B8" }}>{!Number.isInteger(active.qty) || active.qty < 10 ? "⚠️ Enter a whole number of at least 10 pcs" : "Minimum 10 pcs"}</div>
+                <input type="number" min={10} max={1_000_000} step={1} value={active.qty} onChange={(e) => updateActive({ qty: Number(e.target.value) })} className="w-full font-syne px-4 py-3 rounded-md border-2 border-slate-300 outline-none focus:border-slate-500 bg-white" style={{ fontSize: 24, fontWeight: 800, color: "#0F172A" }} />
+                <div className="font-dm mt-1" style={{ fontSize: 11, color: !Number.isInteger(active.qty) || active.qty < 10 || active.qty > 1_000_000 ? "#C8102E" : "#94A3B8" }}>{!Number.isInteger(active.qty) || active.qty < 10 || active.qty > 1_000_000 ? "⚠️ Enter a whole number from 10 to 1,000,000 pcs" : "Minimum 10 pcs"}</div>
               </div>
               <div>
                 <div className="font-dm mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Optional components</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Inner Core"><input value={active.innerCore ?? ""} onChange={(e) => updateActive({ innerCore: e.target.value })} placeholder="e.g. Perforated 2mm" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="Outer Core"><input value={active.outerCore ?? ""} onChange={(e) => updateActive({ outerCore: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="O-Ring"><input value={active.oring ?? ""} onChange={(e) => updateActive({ oring: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="Gasket"><input value={active.gasket ?? ""} onChange={(e) => updateActive({ gasket: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
-                  <Field label="OEM Reference"><input value={active.oem ?? ""} onChange={(e) => updateActive({ oem: e.target.value })} placeholder="e.g. KF-OS.107.65.252" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="Inner Core"><input value={active.innerCore ?? ""} maxLength={255} onChange={(e) => updateActive({ innerCore: e.target.value })} placeholder="e.g. Perforated 2mm" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="Outer Core"><input value={active.outerCore ?? ""} maxLength={255} onChange={(e) => updateActive({ outerCore: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="O-Ring"><input value={active.oring ?? ""} maxLength={255} onChange={(e) => updateActive({ oring: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="Gasket"><input value={active.gasket ?? ""} maxLength={255} onChange={(e) => updateActive({ gasket: e.target.value })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
+                  <Field label="OEM Reference"><input value={active.oem ?? ""} maxLength={160} onChange={(e) => updateActive({ oem: e.target.value })} placeholder="e.g. KF-OS.107.65.252" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} /></Field>
                 </div>
               </div>
               <div className="rounded-lg p-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
@@ -1170,9 +1184,21 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
                     </div>
                   ) : (
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setSketchFiles((prev) => ({ ...prev, [active.id]: f })); updateActive({ sketchFileName: f.name }); } }} />
+                      <input type="file" accept=".jpg,.jpeg,.png,.pdf" aria-label={`Attach sketch for filter ${activeIdx + 1}`} className="hidden" onChange={(e) => {
+                        const input = e.currentTarget;
+                        const file = input.files?.[0];
+                        if (!file) return;
+                        const existing = Object.entries(sketchFiles)
+                          .filter(([productId, current]) => productId !== active.id && current)
+                          .map(([, current]) => current!);
+                        const validationError = validateInquirySketchFile(file, existing);
+                        input.value = "";
+                        if (validationError) { toast.error(validationError); return; }
+                        setSketchFiles((previous) => ({ ...previous, [active.id]: file }));
+                        updateActive({ sketchFileName: file.name });
+                      }} />
                       <span className="flex items-center gap-2 px-3 py-2 rounded-md font-dm hover:bg-blue-100" style={{ fontSize: 12, fontWeight: 600, color: "#1D4ED8", border: "1.5px dashed #93C5FD" }}>
-                        <Camera size={13} /> Browse JPG / PNG / PDF
+                        <Camera size={13} /> Browse PDF / JPG / PNG · 10 MB each, 25 MB total
                       </span>
                     </label>
                   );
@@ -1271,7 +1297,7 @@ function FilterTypePicker({ selectedType, filterName, onTypeChange, onNameChange
       })}
       <div className="rounded-lg p-4" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
         <label className="font-dm block mb-2" style={{ fontSize: 12, fontWeight: 700, color: "#1E3A8A" }}>Filter Name * <span style={{ fontWeight: 400, color: "#64748B" }}>(at least 3 characters)</span></label>
-        <input value={filterName} onChange={(e) => onNameChange(e.target.value)} placeholder="e.g. Air/Oil Separator Filter" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+        <input value={filterName} maxLength={200} onChange={(e) => onNameChange(e.target.value)} placeholder="e.g. Air/Oil Separator Filter" className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
       </div>
     </div>
   );
@@ -1302,7 +1328,7 @@ function DynamicDimensionFields({ product, onChange }: { product: ProductLine; o
       </div>
       <div>
         <div className="font-dm mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Filter Media *</div>
-        <input value={product.media ?? ""} onChange={(e) => onChange({ media: e.target.value })} placeholder="e.g. Microglass Fiber, Pleated ZS20, Cellulose, Stainless mesh..." className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+        <input value={product.media ?? ""} maxLength={255} onChange={(e) => onChange({ media: e.target.value })} placeholder="e.g. Microglass Fiber, Pleated ZS20, Cellulose, Stainless mesh..." className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
       </div>
     </div>
   );
@@ -1355,8 +1381,8 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Quantity *">
-              <input type="number" min={10} value={product.qty} onChange={(e) => onChange({ qty: Number(e.target.value) })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
-              <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>Min: 10 pcs</div>
+              <input type="number" min={10} max={1_000_000} step={1} value={product.qty} onChange={(e) => onChange({ qty: Number(e.target.value) })} className="w-full font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
+              <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>10–1,000,000 pcs</div>
             </Field>
             <Field label="Line Notes"><Txt v={product.notes ?? ""} onChange={(v) => onChange({ notes: v })} /></Field>
           </div>
@@ -1366,20 +1392,22 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
   );
 }
 
-function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void; onPayInvoice: (invoiceId?: string) => void }) {
+function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string, termsAcknowledged: boolean) => Promise<unknown>; onPayInvoice: (invoiceId?: string) => void }) {
   const { updateInquiry, decideQuotation, requestQuotationRevision } = useOrders();
-  const { push: pushNotif } = useNotifications();
   const [open, setOpen] = useState(inquiry.stage === "quotation" || poReviewStatus(inquiry) === "Rejected");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelTermsOpen, setCancelTermsOpen] = useState(false);
   const [cancelTermsAcknowledged, setCancelTermsAcknowledged] = useState(false);
+  const [cancellationSubmitting, setCancellationSubmitting] = useState(false);
+  const [cancellationError, setCancellationError] = useState("");
   /* Section C — revision request modal */
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [revisionNoteDraft, setRevisionNoteDraft] = useState("");
   const [decisionReason, setDecisionReason] = useState("");
   const [decisionError, setDecisionError] = useState("");
   const [decisionSubmitting, setDecisionSubmitting] = useState(false);
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const revisionSubmissionLock = useRef(false);
   /* View full quotation doc */
   const [showQuotationDoc, setShowQuotationDoc] = useState(false);
@@ -1404,6 +1432,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
     if (revisionNoteDraft.trim().length < 5) { toast.error("Please describe what you'd like changed (at least a few words)"); return; }
     if (revisionSubmissionLock.current) return;
     revisionSubmissionLock.current = true;
+    setRevisionSubmitting(true);
     try {
       await requestQuotationRevision((inquiry as ClientView).orderId, revisionNoteDraft.trim());
       toast.success("Quotation revision requested", { description: "Sales will review your requested changes." });
@@ -1411,7 +1440,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
       setShowRevisionModal(false);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "The revision request could not be recorded.");
-    } finally { revisionSubmissionLock.current = false; }
+    } finally { revisionSubmissionLock.current = false; setRevisionSubmitting(false); }
   };
 
   const submitQuotationDecision = async (decision: "accepted" | "rejected") => {
@@ -1486,8 +1515,17 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               <div className="flex gap-2"><button className="rounded-md border border-emerald-200 bg-white px-3 py-2 text-xs font-bold" onClick={() => setShowInvoice(invoice)}>VIEW INVOICE</button><button className="rounded-md bg-[#1A2B4A] px-3 py-2 text-xs font-bold text-white" onClick={() => onPayInvoice(invoice.id)}>VIEW IN ACCOUNTING</button></div>
             </div>
           </section>)}
+          {inquiry.stage === "quotation" && !inquiry.quotationDoc && (
+            <div role="status" className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 font-dm text-xs text-slate-600">
+              No sent quotation is available for this order.
+            </div>
+          )}
           {inquiry.quotationDoc && (
             <div className="py-4 flex flex-col gap-3">
+              <div className="font-dm flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: 12 }}>
+                <span style={{ color: "#64748B", fontWeight: 700 }}>Quotation status</span>
+                <span style={{ color: "#1D4E8A", fontWeight: 800 }}>{inquiry.quotationStatus === "superseded" ? "SUPERSEDED" : inquiry.quotationStatus === "sent" ? "SENT" : "AVAILABLE"}</span>
+              </div>
               <div className="rounded-lg border border-slate-200 overflow-hidden bg-white">
                 <table className="w-full">
                   <thead style={{ backgroundColor: "#F4F6F9" }}>
@@ -1598,6 +1636,14 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                     </div>
                     {inquiry.quotationDecision === "accepted" && !inquiry.poNumber && <button onClick={onUploadPO} className="flex w-full items-center justify-center gap-2 rounded-md bg-[#1A2B4A] py-3 font-dm text-sm font-bold text-white hover:opacity-90"><FileCheck size={15} /> RECORD PURCHASE ORDER REFERENCE</button>}
                     </>
+                  ) : inquiry.quotationIsLatestRevision === false ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 font-dm text-xs text-amber-900" role="status">
+                      Sales is preparing a newer quotation revision. This previously sent version remains available in quotation history but can no longer be accepted, rejected, or revised.
+                    </div>
+                  ) : inquiry.quotationStatus !== "sent" ? (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 font-dm text-xs text-slate-700" role="status">
+                      This quotation is no longer active. Sales must issue a current sent revision before you can record a decision.
+                    </div>
                   ) : inquiry.quotationDownpaymentValid === false ? (
                     <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 font-dm text-xs text-red-800">
                       This quotation cannot be accepted because its mandatory 20% or 50% downpayment is missing or invalid. Please wait for Sales to issue a corrected quotation.
@@ -1617,21 +1663,20 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                           REJECT QUOTATION
                         </button>
                       </div>
+                      <button
+                        disabled={decisionSubmitting || revisionSubmitting}
+                        onClick={() => { revisionSubmissionLock.current = false; setShowRevisionModal(true); }}
+                        className="w-full rounded-md border-2 border-slate-300 px-4 py-2.5 font-dm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        style={{ fontSize: 13, fontWeight: 700 }}
+                      >
+                        REQUEST QUOTATION REVISION
+                      </button>
                     </div>
-                  ) : <>
-                    {false && (
-                      <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
-                        <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
-                      </button>
-                    )}
-                    {false ? (
-                      <button onClick={() => { revisionSubmissionLock.current = false; setShowRevisionModal(true); }} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
-                        Request Revision
-                      </button>
-                    ) : (
-                      <span className="font-dm px-3 py-2 rounded-md" style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}>Revision Requested · Awaiting Sales</span>
-                    )}
-                  </>}
+                  ) : (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 font-dm text-xs text-amber-900" role="status">
+                      Revision requested · Awaiting Sales
+                    </div>
+                  )}
                 </>
               )}
               {inquiry.stage === "po" && inquiry.poFileName && !isInvoiceSent && (
@@ -1756,7 +1801,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             </div>
           )}
 
-          {/* Cancellation — the real API is read-only until a protected cancellation endpoint exists. */}
+          {/* Cancellation requests are recorded by the authenticated Client API. */}
           {!inquiry.archived && cancellationStage && !inquiry.pendingCancellation && (
             <div className="pt-3 border-t border-slate-200 mt-2">
               {hasRecordedDownpayment && (
@@ -1770,13 +1815,13 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                   className="flex items-center gap-2 px-4 py-2 rounded-md font-dm border-2 hover:bg-red-50 transition-colors"
                   style={{ fontSize: 12, fontWeight: 700, color: "#C8102E", borderColor: "#FECACA", backgroundColor: "white", letterSpacing: 0.4 }}
                 >
-                  ⚠️ {cancellationIsDirect ? "CANCEL THIS ORDER" : "REQUEST CANCELLATION"}
+                  ⚠️ REQUEST CANCELLATION
                 </button>
               ) : (
                 <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA" }}>
                   <div className="flex items-center gap-2">
                     <span style={{ fontSize: 16 }}>⚠️</span>
-                    <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#991B1B" }}>{cancellationIsDirect ? "Cancel this order" : "Request cancellation"}</span>
+                    <span className="font-dm" style={{ fontSize: 13, fontWeight: 700, color: "#991B1B" }}>Request cancellation</span>
                   </div>
                   {/* Order details preview */}
                   <div className="rounded-md p-3 font-dm bg-white" style={{ fontSize: 12, color: "#0F172A", border: "1px solid #FECACA" }}>
@@ -1808,21 +1853,37 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                     <span>I have read and acknowledge the applicable Terms &amp; Conditions.</span>
                   </label>
                   <div className="rounded-md p-2.5 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px dashed #FDE68A" }}>
-                    ℹ️ Cancellation submission is currently unavailable in Real Mode. {cancellationIsDirect ? "The inquiry/quotation remains unchanged." : "Sales review has not been requested."}
+                    ℹ️ Your order will remain active while Enter-Fil reviews this cancellation request.
                   </div>
+                  {cancellationError && <div role="alert" className="rounded border border-red-200 bg-white p-2.5 font-dm text-xs text-red-800">{cancellationError}</div>}
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setConfirmCancel(false); setCancelReason(""); setCancelTermsAcknowledged(false); setCancelTermsOpen(false); }} className="font-dm px-3 py-2 rounded-md hover:bg-white" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
+                    <button disabled={cancellationSubmitting} onClick={() => { setConfirmCancel(false); setCancelReason(""); setCancelTermsAcknowledged(false); setCancelTermsOpen(false); setCancellationError(""); }} className="font-dm px-3 py-2 rounded-md hover:bg-white disabled:opacity-50" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Keep Order</button>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (!cancelReason.trim()) { toast.error("A reason is required"); return; }
                         if (!cancelTermsAcknowledged) { toast.error("Please acknowledge the Terms & Conditions"); return; }
-                        unavailable();
+                        setCancellationSubmitting(true);
+                        setCancellationError("");
+                        try {
+                          await onCancel(cancelReason.trim(), cancelTermsAcknowledged);
+                          setConfirmCancel(false);
+                          setCancelReason("");
+                          setCancelTermsAcknowledged(false);
+                          setCancelTermsOpen(false);
+                          toast.success("Cancellation request submitted", { description: "Enter-Fil will review your request." });
+                        } catch (cause) {
+                          const message = cause instanceof Error ? cause.message : "The cancellation request could not be submitted.";
+                          setCancellationError(message);
+                          toast.error(message);
+                        } finally {
+                          setCancellationSubmitting(false);
+                        }
                       }}
-                      disabled
+                      disabled={cancellationSubmitting || !cancelReason.trim() || !cancelTermsAcknowledged}
                       className="font-dm px-3 py-2 rounded-md text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
                       style={{ fontSize: 12, fontWeight: 700, backgroundColor: "#C8102E" }}
                     >
-                      ⚠️ Cancellation unavailable
+                      ⚠️ {cancellationSubmitting ? "Submitting…" : "Submit cancellation request"}
                     </button>
                   </div>
                 </div>
@@ -1850,12 +1911,12 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
 
       {/* Section C — Revision Request Modal */}
       {showRevisionModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => setShowRevisionModal(false)}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.6)" }} onClick={() => { if (!revisionSubmitting) setShowRevisionModal(false); }}>
           <div className="bg-white rounded-xl w-full max-w-lg flex flex-col" style={{ boxShadow: "0 24px 48px rgba(0,0,0,0.3)", maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2" style={{ backgroundColor: "#FFFBEB" }}>
               <span style={{ fontSize: 18 }}>📝</span>
               <h3 className="font-syne" style={{ fontSize: 16, fontWeight: 700, color: "#92400E" }}>Request Quotation Revision</h3>
-              <button onClick={() => setShowRevisionModal(false)} className="ml-auto w-8 h-8 rounded-md hover:bg-amber-100 flex items-center justify-center"><X size={16} /></button>
+              <button disabled={revisionSubmitting} onClick={() => setShowRevisionModal(false)} className="ml-auto w-8 h-8 rounded-md hover:bg-amber-100 flex items-center justify-center disabled:opacity-50"><X size={16} /></button>
             </div>
             <div className="p-5 overflow-auto flex flex-col gap-4">
               <div className="rounded-md border border-blue-200 bg-blue-50 p-3 font-dm text-xs text-blue-800">Your request will be recorded for Sales review. Quotation values remain controlled by Sales.</div>
@@ -1878,9 +1939,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               )}
             </div>
             <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
-              <button onClick={() => setShowRevisionModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-              <button onClick={() => void submitRevision()} disabled={revisionSubmissionLock.current} className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#1A2B4A" }}>
-                {revisionSubmissionLock.current ? "Submitting…" : "Request revision"}
+              <button disabled={revisionSubmitting} onClick={() => setShowRevisionModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100 disabled:opacity-50" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
+              <button onClick={() => void submitRevision()} disabled={revisionSubmitting} className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#1A2B4A" }}>
+                {revisionSubmitting ? "Submitting…" : "Request revision"}
               </button>
             </div>
           </div>

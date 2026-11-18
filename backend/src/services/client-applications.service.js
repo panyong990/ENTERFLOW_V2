@@ -185,8 +185,8 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
             assertWrite(company); clientId = await insertedId(connection);
             stage = 'user';
             const [user] = await connection.execute(
-              `INSERT INTO users (role_code, account_type, client_id, display_name, email, username, phone, password_hash)
-                VALUES ('client', 'client', ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO users (role_code, account_type, client_id, display_name, email, username, phone, password_hash, active)
+                VALUES ('client', 'client', ?, ?, ?, ?, ?, ?, TRUE)`,
               [clientId, application.contactPerson, application.email, application.username, application.phone, application.passwordHash]
             );
             assertWrite(user); userId = await insertedId(connection);

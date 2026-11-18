@@ -15,6 +15,9 @@ const errors = {
   ,QUOTATION_NOT_ACCEPTED: [409, 'The quotation must be accepted before purchase-order submission.']
   ,PURCHASE_ORDER_ALREADY_EXISTS: [409, 'A purchase order already exists for this order.']
   ,REVISION_ALREADY_PENDING: [409, 'A quotation revision request is already pending for this order.']
+  ,CANCELLATION_ALREADY_PENDING: [409, 'A cancellation request is already pending for this order.']
+  ,CANCELLATION_NOT_ELIGIBLE: [409, 'This order is not eligible for a cancellation request.']
+  ,WRITE_OUTCOME_UNKNOWN: [503, 'The result could not be confirmed. Refresh before retrying.']
 };
 
 function respond(response, result, successStatus = 200) {
@@ -60,6 +63,10 @@ export function createClientPortalController({ service }) {
     },
     requestQuotationRevision: async (request, response) => {
       try { return respond(response, await service.requestQuotationRevision(request.auth.clientId, request.auth.userId, request.params.id, request.body, { requestId: request.requestId }), 201); }
+      catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
+    },
+    requestCancellation: async (request, response) => {
+      try { return respond(response, await service.requestCancellation(request.auth.clientId, request.auth.userId, request.params.id, request.body, { requestId: request.requestId }), 201); }
       catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
     },
     purchaseOrder: async (request, response) => {

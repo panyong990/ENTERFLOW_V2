@@ -17,12 +17,14 @@ test('registration controller requires its service dependency', () => {
 
 test('passes the original body to the service and only exposes pending status', async () => {
   const body = { password: 'private-password' };
-  const controller = createRegistrationController({ register: async input => {
+  const requestId = '839e04c3-0e92-4237-beed-e1ea31a3883b';
+  const controller = createRegistrationController({ register: async (input, context) => {
     assert.equal(input, body);
+    assert.deepEqual(context, { requestId });
     return { success: true, data: { status: 'pending', password_hash: 'secret' }, token: 'secret' };
   } });
   const res = response();
-  await controller.registerClient({ body }, res);
+  await controller.registerClient({ body, requestId }, res);
   assert.equal(res.statusCode, 201);
   assert.deepEqual(res.body, { success: true, data: { status: 'pending' }, message: 'Application submitted for review.' });
 });

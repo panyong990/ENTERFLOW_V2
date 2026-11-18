@@ -9,6 +9,129 @@ const HASH = '$argon2id$mock-test-hash';
 const PRIVATE_ERROR = 'private SQL detail, database credential, private@example.invalid';
 const unavailable = { success: false, code: 'SERVICE_UNAVAILABLE', message: 'Registration service is temporarily unavailable.' };
 const conflict = { success: false, code: 'IDENTITY_CONFLICT', message: 'An account or application already uses these registration details.' };
+const diagnosticRequestId = '839e04c3-0e92-4237-beed-e1ea31a3883b';
+
+function assertDiagnostics(h, expectedStages, statusCode = 503) {
+  assert.deepEqual(h.diagnostics.map(event => event.stage), expectedStages);
+  for (const event of h.diagnostics) {
+    assert.deepEqual(Object.keys(event).sort(), ['event', 'operation', 'requestId', 'stage', 'category', 'code', 'statusCode'].sort());
+    assert.equal(event.event, 'http_request_failed');
+    assert.equal(event.operation, 'auth.register');
+    assert.equal(event.requestId, diagnosticRequestId);
+    assert.equal(event.statusCode, statusCode);
+    const output = JSON.stringify(event);
+    for (const value of [PRIVATE_ERROR, HASH, ...Object.values(valid())]) assert.equal(output.includes(value), false);
+  }
+}
+
+for (const [failAt, stage] of [
+  ['hash', 'password_hash'], ['getConnection', 'connection_acquire'], ['database', 'database_identity'],
+  ['getLock', 'identity_lock_acquire'], ['begin', 'transaction_begin'], ['users', 'user_identity_lookup'],
+  ['applications', 'application_identity_lookup'], ['insert', 'application_insert'], ['commit', 'transaction_commit']
+]) {
+  test(`registration diagnostics: ${stage} exceptions are safe and correlated`, async () => {
+    const h = harness({ failAt, errorCode: 'ER_TABLEACCESS_DENIED_ERROR' });
+    assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), unavailable);
+    assertDiagnostics(h, [stage]);
+    assert.equal(h.diagnostics[0].category, 'database_permission_error');
+    assert.equal(h.diagnostics[0].code, 'ER_TABLEACCESS_DENIED_ERROR');
+  });
+}
+
+test('registration diagnostics: invalid hash and missing database identity are distinguished', async () => {
+  for (const options of [{ hashValue: '' }, { hashValue: 'x'.repeat(256) }, { databaseName: null }]) {
+    const h = harness(options);
+    assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), unavailable);
+    assertDiagnostics(h, [Object.hasOwn(options, 'hashValue') ? 'password_hash_result' : 'database_identity']);
+  }
+});
+
+test('registration diagnostics: lock timeout and invalid acquisition results use fixed codes', async () => {
+  for (const lockResult of [0, '0', null, undefined, -1, 2]) {
+    const h = harness({ lockResult });
+    assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), unavailable);
+    assertDiagnostics(h, ['identity_lock_result']);
+    assert.equal(h.diagnostics[0].code, lockResult === 0 || lockResult === '0' ? 'REGISTRATION_LOCK_TIMEOUT' : 'REGISTRATION_LOCK_INVALID');
+  }
+});
+
+test('registration diagnostics: uncertain lock acquisition transport errors are reported once', async () => {
+  const h = harness({ failAfterAcquire: true });
+  assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), unavailable);
+  assertDiagnostics(h, ['identity_lock_acquire']);
+});
+
+test('registration diagnostics: write counts and warnings identify invalid insert results', async () => {
+  for (const options of [{ affectedRows: 0 }, { affectedRows: 2 }, { warningStatus: 1 }]) {
+    const h = harness(options);
+    assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), unavailable);
+    assertDiagnostics(h, ['application_insert_result']);
+    assert.equal(h.diagnostics[0].code, 'REGISTRATION_INSERT_INVALID');
+  }
+});
+
+test('registration diagnostics: rollback failure is recorded without logging expected duplicate conflicts', async () => {
+  const h = harness({ failAt: 'insert', alsoFailAt: 'rollback', errorCode: 'ER_DUP_ENTRY' });
+  assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), unavailable);
+  assertDiagnostics(h, ['transaction_rollback']);
+  assert.equal(h.diagnostics[0].code, 'UNKNOWN_ERROR');
+});
+
+test('registration diagnostics: cleanup failures retain acknowledged success and report status 201', async () => {
+  for (const [options, stage] of [
+    [{ failAt: 'releaseLock' }, 'identity_lock_release'],
+    [{ releaseResult: 0 }, 'identity_lock_release_result'],
+    [{ releaseResult: null }, 'identity_lock_release_result'],
+    [{ failAt: 'releasePool' }, 'connection_release']
+  ]) {
+    const h = harness(options);
+    assert.equal((await h.service.register(valid(), { requestId: diagnosticRequestId })).success, true);
+    assertDiagnostics(h, [stage], 201);
+    assert.equal(h.shared.applications.length, 1);
+  }
+});
+
+test('registration diagnostics: connection destruction failures preserve the original failure', async () => {
+  const h = harness({ failAt: 'insert', alsoFailAt: 'destroy' });
+  assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), unavailable);
+  assertDiagnostics(h, ['application_insert', 'connection_destroy']);
+});
+
+test('registration diagnostics: cleanup after identity conflict reports status 409', async () => {
+  const h = harness({ failAt: 'releaseLock' });
+  h.shared.users.push({ email: 'new@example.invalid', username: 'existing' });
+  assert.deepEqual(await h.service.register(valid(), { requestId: diagnosticRequestId }), conflict);
+  assertDiagnostics(h, ['identity_lock_release'], 409);
+});
+
+test('registration diagnostics: unknown codes, credential-shaped codes and unsafe request IDs are redacted', async () => {
+  for (const requestId of [undefined, PRIVATE_ERROR, diagnosticRequestId + '\n']) {
+    const h = harness({ failAt: 'hash', errorCode: PRIVATE_ERROR });
+    assert.deepEqual(await h.service.register(valid(), { requestId }), unavailable);
+    assert.equal(h.diagnostics.length, 1);
+    assert.equal(h.diagnostics[0].requestId, null);
+    assert.equal(h.diagnostics[0].code, 'UNKNOWN_ERROR');
+    assert.equal(JSON.stringify(h.diagnostics).includes(PRIVATE_ERROR), false);
+  }
+});
+
+test('registration diagnostics: successful, invalid and ordinary conflict results emit no events', async () => {
+  for (const mode of ['success', 'invalid', 'conflict', 'duplicate']) {
+    const h = harness(mode === 'duplicate' ? { failAt: 'insert', errorCode: 'ER_DUP_ENTRY' } : {});
+    if (mode === 'conflict') h.shared.users.push({ email: 'new@example.invalid', username: 'existing' });
+    await h.service.register(mode === 'invalid' ? {} : valid(), { requestId: diagnosticRequestId });
+    assert.deepEqual(h.diagnostics, []);
+  }
+});
+
+test('registration diagnostics: broken logging sinks cannot change response or cleanup', async () => {
+  for (const options of [{ failAt: 'hash' }, { failAt: 'insert' }, { failAt: 'releaseLock' }]) {
+    const h = harness({ ...options, logger: { error() { throw new Error(PRIVATE_ERROR); } } });
+    const result = await h.service.register(valid(), { requestId: diagnosticRequestId });
+    assert.equal(result.success, options.failAt === 'releaseLock');
+    assert.equal(h.shared.locks.size, 0);
+  }
+});
 
 // A deliberately limited mock of the case/accent/PAD SPACE examples already
 // verified in the isolated MySQL tests. This is not a MySQL collation emulator.
@@ -16,7 +139,7 @@ const comparisonKey = value => value.normalize('NFD').replace(/\p{M}/gu, '').toL
 const state = () => ({ users: [], applications: [], locks: new Map(), waiters: new Map(), nextId: 0 });
 
 function harness(options = {}, shared = state()) {
-  const events = [], calls = [], connections = [];
+  const events = [], calls = [], connections = [], diagnostics = [];
   function stage(name, connection, sql, params) {
     events.push({ stage: name, connection: connection?.id });
     if (sql) calls.push({ sql, params, connection: connection.id });
@@ -92,10 +215,11 @@ function harness(options = {}, shared = state()) {
       connections.push(connection); return connection;
     }
   };
-  const dependencies = { db, lockTimeoutSeconds: options.lockTimeoutSeconds ?? 2 };
+  const dependencies = { db, lockTimeoutSeconds: options.lockTimeoutSeconds ?? 2,
+    logger: options.logger ?? { error: (...args) => { assert.equal(args.length, 1); diagnostics.push(JSON.parse(args[0])); } } };
   if (!options.realHash) dependencies.hashPassword = async password => { stage('hash'); options.onHash?.(password); return options.hashValue ?? HASH; };
   const service = createRegistrationService(dependencies);
-  return { service, events, calls, shared, connections, db };
+  return { service, events, calls, shared, connections, db, diagnostics };
 }
 
 test('success hashes the unchanged password and inserts exactly one pending application with normalized fields', async () => {

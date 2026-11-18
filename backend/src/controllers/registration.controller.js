@@ -5,7 +5,7 @@ export function createRegistrationController({ register }) {
 
   async function registerClient(request, response) {
     try {
-      const result = await register(request.body);
+      const result = await register(request.body, { requestId: request.requestId });
       // Explicit response shapes keep internal service data out of the API.
       if (result?.success === true) {
         return response.status(201).json({

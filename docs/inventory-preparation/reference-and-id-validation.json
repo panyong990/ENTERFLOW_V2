@@ -1,0 +1,759 @@
+{
+  "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+  "materialCount": 71,
+  "executionAuthorized": false,
+  "requiredUnitCodes": [
+    "gal",
+    "kg",
+    "pcs",
+    "roll",
+    "set",
+    "sheet"
+  ],
+  "requiredCategoryCodes": [
+    "bonding_adhesive",
+    "endcap",
+    "filter_media",
+    "gasket",
+    "inner_core",
+    "oring",
+    "outer_core",
+    "packaging"
+  ],
+  "repositoryUnitAllowlist": [
+    "roll",
+    "plate",
+    "sheet",
+    "kg",
+    "gal",
+    "pcs",
+    "set",
+    "m"
+  ],
+  "repositoryCategoryAllowlist": [
+    "filter_media",
+    "endcap",
+    "inner_core",
+    "outer_core",
+    "bonding_adhesive",
+    "oring",
+    "gasket",
+    "packaging"
+  ],
+  "repositoryReferenceValidation": "passed",
+  "databaseReferenceValidation": "not-performed",
+  "historicalEvidence": "docs/inventory-reconciliation/database-readonly-snapshot.json records counts only; does not prove current lookup codes.",
+  "mappingRows": [
+    {
+      "catalogCode": "F-FMI.FM-043",
+      "databaseId": null,
+      "name": "FILTER120 1/4\"T × 82\"W × 20m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "1600",
+      "threshold": "10",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-FMI.FM-044",
+      "databaseId": null,
+      "name": "FILTER200 1/2\" T × 82\" W × 20m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "2640",
+      "threshold": "10",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-FMI.FM-045",
+      "databaseId": null,
+      "name": "FILTER250 3/4\" T × 82\" W × 20m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "3000",
+      "threshold": "8",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-FMI.FM-047",
+      "databaseId": null,
+      "name": "FILTER290 W/ ONE RESIN 1\" T × 96\"W × 30m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "5940",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-FMI.FM-048",
+      "databaseId": null,
+      "name": "FILTER350 1\"T × 82\"W × 20m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "3800",
+      "threshold": "6",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-NNWOV.FM-058",
+      "databaseId": null,
+      "name": "NONWOVEN FR-1 3120 M.GREEN 80\" × 50m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "4657",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-NNWOV.FM-059",
+      "databaseId": null,
+      "name": "NONWOVEN FR-1 3320 80\" × 20m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "4726",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-SNNX.FM-057",
+      "databaseId": null,
+      "name": "SUNNEX PBM240-15mm 1/2\"T × 2m W × 20m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "1960",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-095",
+      "databaseId": null,
+      "name": "FILTER MEDIA PP5MICRON",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "17907",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-096-1",
+      "databaseId": null,
+      "name": "FILTER MEDIA C-F8, 860mm HT, 38kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "25286",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-098-1",
+      "databaseId": null,
+      "name": "FILTER MEDIA ZS20, 610mm HT, 35kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "17952",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-098-2",
+      "databaseId": null,
+      "name": "FILTER MEDIA ZS20, 1000mm HT, 50kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "17952",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-099-1",
+      "databaseId": null,
+      "name": "FILTER MEDIA ZSUI, 610mm HT, 35kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "15147",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-100-1",
+      "databaseId": null,
+      "name": "FILTER MEDIA ZSH3, 610mm HT, 35kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "15708",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-101-1",
+      "databaseId": null,
+      "name": "FILTER MEDIA ZSH5, 610mm HT, 35kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "20196",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-102-1",
+      "databaseId": null,
+      "name": "FILTER MEDIA ZS10, 610mm HT, 35kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "17952",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FM-103",
+      "databaseId": null,
+      "name": "FILTER MEDIA JZCY-H13, 28kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "15147",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PFM-110",
+      "databaseId": null,
+      "name": "POCKET FILTER MEDIA F6 GREEN",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "4998",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PFM-111",
+      "databaseId": null,
+      "name": "POCKET FILTER MEDIA F8 YELLOW 720mm W",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "6426",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PFM-112",
+      "databaseId": null,
+      "name": "POCKET FILTER MEDIA F7 PINK",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "5712",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-ACWF-037",
+      "databaseId": null,
+      "name": "ACTIVATED CARBON AMETEK C1-20, 20\" L",
+      "category": "filter_media",
+      "unit": "pcs",
+      "unitPrice": "855",
+      "threshold": "10",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-ACWF-038",
+      "databaseId": null,
+      "name": "ACTIVATED CARBON WATER CHECK WCB-05, 20\"L",
+      "category": "filter_media",
+      "unit": "pcs",
+      "unitPrice": "855",
+      "threshold": "10",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-ACG-039",
+      "databaseId": null,
+      "name": "ACTIVATED CARBON GRANULE 4×8, 25kg/sack",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "2200",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "F-LNCON.FG-042",
+      "databaseId": null,
+      "name": "FIBERGLASS 50mmT × 2mW × 20m L",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "10500",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FC-080",
+      "databaseId": null,
+      "name": "FILTERCLOTH NEEDLEFELT FSQHAF550G",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "13977",
+      "threshold": "2",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FC-083",
+      "databaseId": null,
+      "name": "FILTERCLOTH NEEDLEFELT PP100MICRON",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "15989",
+      "threshold": "2",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FC-084",
+      "databaseId": null,
+      "name": "FILTERCLOTH NEEDLEFELT PP50MICRON",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "15989",
+      "threshold": "2",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FC-090",
+      "databaseId": null,
+      "name": "FILTERCLOTH NEEDLEFELT FS NOMEX 550G",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "82620",
+      "threshold": "1",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FP-104",
+      "databaseId": null,
+      "name": "FILTER PAPER PK-135250",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "6336",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-FP-108-1",
+      "databaseId": null,
+      "name": "FILTER PAPER PK-120300HX, 610mm HT, 42kgs/roll",
+      "category": "filter_media",
+      "unit": "kg",
+      "unitPrice": "10819",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PERPO.GI-116",
+      "databaseId": null,
+      "name": "PERFORATED G.I 0.8mm × 4×8 × 3mm HOLES",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "2375",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.GI-126",
+      "databaseId": null,
+      "name": "PLATE G.I 0.6 × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "700",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.GI-127",
+      "databaseId": null,
+      "name": "PLATE G.I 1mm × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "1120",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.EG-128",
+      "databaseId": null,
+      "name": "PLATE E.G 0.5 × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "630",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.EG-129",
+      "databaseId": null,
+      "name": "PLATE E.G 1mm × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "810",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.EG-130",
+      "databaseId": null,
+      "name": "PLATE E.G 1.5 × 4×4",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "798",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.ALUM-131",
+      "databaseId": null,
+      "name": "PLATE ALUMINUM 0.6 × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "860",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.ALUM-132",
+      "databaseId": null,
+      "name": "PLATE ALUMINUM 0.8 × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "1150",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.SS304-124",
+      "databaseId": null,
+      "name": "PLATE S/S304 0.8mm × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "2540",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PLATE.SS304-125",
+      "databaseId": null,
+      "name": "PLATE S/S304 1mm × 4×8",
+      "category": "endcap",
+      "unit": "sheet",
+      "unitPrice": "4900",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PERPO.EG-120",
+      "databaseId": null,
+      "name": "PERFORATED E.G 2mm × 4×8 × 3mm Ø HOLES",
+      "category": "inner_core",
+      "unit": "sheet",
+      "unitPrice": "2761",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PERPO.BI-121",
+      "databaseId": null,
+      "name": "PERFORATED B.I 2mm × 4×8 × 7.9mm HOLES",
+      "category": "inner_core",
+      "unit": "sheet",
+      "unitPrice": "2660",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PERPO.SS304-123",
+      "databaseId": null,
+      "name": "PERFORATED S/S304 1mm × 4×8 × 4mm HOLES",
+      "category": "inner_core",
+      "unit": "sheet",
+      "unitPrice": "6400",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-EXPNDEDMTL.BI-133",
+      "databaseId": null,
+      "name": "EXPANDED METAL B.I #2413 4×8",
+      "category": "inner_core",
+      "unit": "roll",
+      "unitPrice": "500",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-EXPNDEDMTL.BI-134",
+      "databaseId": null,
+      "name": "EXPANDED METAL B.I #1819 4×8",
+      "category": "inner_core",
+      "unit": "roll",
+      "unitPrice": "900",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PERPO.GI-117",
+      "databaseId": null,
+      "name": "PERFORATED G.I 1mm × 4×8 × 5mm HOLES",
+      "category": "outer_core",
+      "unit": "sheet",
+      "unitPrice": "2620",
+      "threshold": "5",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PERPO.BI-122",
+      "databaseId": null,
+      "name": "PERFORATED B.I 3mm × 4×8 × 7.9mm HOLES",
+      "category": "outer_core",
+      "unit": "sheet",
+      "unitPrice": "4100",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-EXPNDED.ALUM-135",
+      "databaseId": null,
+      "name": "EXPANDED WIRE ALUMINUM (4ftW)",
+      "category": "outer_core",
+      "unit": "roll",
+      "unitPrice": "2400",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-CHCKENWIRE-136",
+      "databaseId": null,
+      "name": "CHICKENWIRE G.I (4ftW)",
+      "category": "outer_core",
+      "unit": "roll",
+      "unitPrice": "1200",
+      "threshold": "4",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-EMJ.EPOX-062",
+      "databaseId": null,
+      "name": "EPOXY HARDENER/RESIN",
+      "category": "bonding_adhesive",
+      "unit": "set",
+      "unitPrice": "2143",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-EMJ.EPOX-063",
+      "databaseId": null,
+      "name": "EPOXY PUTTY & FILLER HARDENER/RESIN",
+      "category": "bonding_adhesive",
+      "unit": "set",
+      "unitPrice": "2143",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PSBSI-144",
+      "databaseId": null,
+      "name": "1CML2009 PIONEER EPOXY LV",
+      "category": "bonding_adhesive",
+      "unit": "gal",
+      "unitPrice": "3050",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-PSBSI-146",
+      "databaseId": null,
+      "name": "STRUCTURAL EPOXY",
+      "category": "bonding_adhesive",
+      "unit": "gal",
+      "unitPrice": "2367",
+      "threshold": "3",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-NNPAO.ADHSV-064-1",
+      "databaseId": null,
+      "name": "HOTMELT ADHESIVE HM-595T, 25kg/sack",
+      "category": "bonding_adhesive",
+      "unit": "kg",
+      "unitPrice": "278",
+      "threshold": "25",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-HNKL.ADHSV-064-2",
+      "databaseId": null,
+      "name": "HOTMELT ADHESIVE SUPRA, 25kgs/bag",
+      "category": "bonding_adhesive",
+      "unit": "kg",
+      "unitPrice": "5125",
+      "threshold": "25",
+      "supplier": null
+    },
+    {
+      "catalogCode": "OR-NBR-STD",
+      "databaseId": null,
+      "name": "Nitrile Rubber O-Ring (NBR, standard)",
+      "category": "oring",
+      "unit": "pcs",
+      "unitPrice": "35",
+      "threshold": "50",
+      "supplier": null
+    },
+    {
+      "catalogCode": "OR-VITON",
+      "databaseId": null,
+      "name": "Viton O-Ring (heat-resistant)",
+      "category": "oring",
+      "unit": "pcs",
+      "unitPrice": "65",
+      "threshold": "30",
+      "supplier": null
+    },
+    {
+      "catalogCode": "GS-GREEN",
+      "databaseId": null,
+      "name": "Gasket — Green (TOP, standard)",
+      "category": "gasket",
+      "unit": "pcs",
+      "unitPrice": "42",
+      "threshold": "30",
+      "supplier": null
+    },
+    {
+      "catalogCode": "GS-FELT",
+      "databaseId": null,
+      "name": "Mechanical Felt Gasket",
+      "category": "gasket",
+      "unit": "pcs",
+      "unitPrice": "28",
+      "threshold": "30",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-SPRNGPLTESS-113",
+      "databaseId": null,
+      "name": "SPRING PLATE STAINLESS 25mmW",
+      "category": "gasket",
+      "unit": "roll",
+      "unitPrice": "19125",
+      "threshold": "2",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-NAPPCO.DCCB-065",
+      "databaseId": null,
+      "name": "NAPPCO DIECUT CARDBOARD 1\" × 23\" × 23\"",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "41.66",
+      "threshold": "50",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-NAPPCO.DCCB-066-1",
+      "databaseId": null,
+      "name": "NAPPCO DIECUT CARDBOARD 2\" × 23\" × 23\"",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "41.66",
+      "threshold": "50",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-NAPPCO.DCCB-070",
+      "databaseId": null,
+      "name": "NAPPCO DIECUT CARDBOARD 2\" × 24 1/2\" × 24 1/2\"",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "41.66",
+      "threshold": "50",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-NAPPCO.CB-140",
+      "databaseId": null,
+      "name": "NAPPCO CARDBOARD 23 35\" × 30\"",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "14.8",
+      "threshold": "80",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-GSPACK.CBP-143",
+      "databaseId": null,
+      "name": "CORRUGATED BOX PLAIN 4ft × 8ft",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "84.8",
+      "threshold": "20",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-GSPACK.CBP-148",
+      "databaseId": null,
+      "name": "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 14\" H SMALL",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "38",
+      "threshold": "30",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-GSPACK.CBP-149",
+      "databaseId": null,
+      "name": "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 20\" H BIG",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "35",
+      "threshold": "30",
+      "supplier": null
+    },
+    {
+      "catalogCode": "RM-MLTIFLX.FB-077-1",
+      "databaseId": null,
+      "name": "FOAM BLUE 3mm × 110cm × 7ft",
+      "category": "packaging",
+      "unit": "sheet",
+      "unitPrice": "60.6",
+      "threshold": "20",
+      "supplier": null
+    },
+    {
+      "catalogCode": "OFF-SI-137",
+      "databaseId": null,
+      "name": "SALES INVOICE",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "260",
+      "threshold": "8",
+      "supplier": null
+    },
+    {
+      "catalogCode": "OFF-DR-138",
+      "databaseId": null,
+      "name": "DELIVERY RECEIPT",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "190",
+      "threshold": "8",
+      "supplier": null
+    },
+    {
+      "catalogCode": "OFF-CR-139",
+      "databaseId": null,
+      "name": "COLLECTION RECEIPT",
+      "category": "packaging",
+      "unit": "pcs",
+      "unitPrice": "190",
+      "threshold": "8",
+      "supplier": null
+    }
+  ],
+  "publicationRule": "Keep config/material-catalog-ids.json unchanged until approved target reads and committed/reconciled import results establish actual IDs. BIGINT IDs must be decimal strings; never infer from row order."
+}

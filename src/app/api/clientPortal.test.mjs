@@ -45,6 +45,17 @@ test("client portal adapter posts quotation decisions without client-controlled 
   assert.deepEqual(result.options.body, { decision: "rejected", reason: "Price changed" });
 });
 
+test("Client cancellation adapter uses the encoded owned-order endpoint and explicit terms payload", () => {
+  const body = { reason: 'Synthetic changed requirements.', termsAcknowledged: true };
+  const result = adapter().requestCancellation('9007199254740993', body);
+  assert.equal(result.path, '/api/client/orders/9007199254740993/cancellation');
+  assert.equal(result.options.method, 'POST');
+  assert.deepEqual(result.options.body, body);
+  assert.equal('clientId' in result.options.body, false);
+  assert.equal('userId' in result.options.body, false);
+  assert.equal(adapter().requestCancellation('91/other', body).path, '/api/client/orders/91%2Fother/cancellation');
+});
+
 test("client portal adapter submits only a purchase-order reference", () => {
   const result = adapter().submitPurchaseOrder("21", { reference: "PO-CLIENT-1" });
   assert.equal(result.path, "/api/client/orders/21/purchase-order");

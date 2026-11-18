@@ -12,6 +12,7 @@ import { inquiryDraft } from "./drafts";
 import { listSalesQuotations } from "../../api/salesOrderDocuments.js";
 import type { SalesQuotation } from "../useSalesOrderDocuments";
 import { restoreQuotationInputs } from "./quotationDraft.js";
+import { uncertainWrite } from './cancellationModel.mjs';
 
 type QuotationResult = { totalAmount: string; rawMaterialCost: string; laborCost: string; markupAmount: string; downpaymentPercent: number; downpaymentAmount: string; status: "draft" | "sent"; reference: string; revisionNumber: number };
 type Props = { orderId: string; detail: SalesOrderDetail; onClose: () => void; onSaved: (status: "draft" | "sent", result: QuotationResult) => void };
@@ -46,11 +47,13 @@ function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }
   const [dirtyProducts, setDirtyProducts] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [checkingOutcome, setCheckingOutcome] = useState(false);
   const lock = useRef(false);
   const stock = useSalesStockAvailability(true, orderId);
   const inquiry = useMemo(() => ({ ...inquiryDraft(detail), quotationDoc: restored.document as QuotationDoc | undefined, productsCostConfig: detail.items.map((_, index) => costs[index] ?? null) }), [detail, costs, restored]);
   const prepare = async (status: "draft" | "sent", doc: QuotationDoc) => {
-    if (lock.current) return;
+    if (lock.current || uncertain) return;
     setError("");
     if (restored.latest?.addons?.length) { setError("This quotation has saved additional charges. Revising those charges is not yet supported; this quotation cannot be saved without preserving them."); return; }
     if (dirtyProducts.size) { setError("Apply your changed cost inputs for every edited product before saving or sending."); return; }
@@ -75,11 +78,31 @@ function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }
         costing: detail.items.map((item,index) => ({orderItemId: item.id, laborCost: costs[index].laborCost, markupPercent: costs[index].markupPct}))
       });
       onSaved(status, result as QuotationResult);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Quotation could not be saved."); }
+    } catch (cause) {
+      if (uncertainWrite(cause)) setUncertain(true);
+      setError(cause instanceof Error ? cause.message : "Quotation could not be saved.");
+    }
     finally { lock.current = false; setSaving(false); }
   };
-  return <ModalShell title={`Review & Send Quotation · ${detail.reference}`} subtitle={`${detail.companyName} · ${detail.contactPerson || "Contact unavailable"} · ${detail.paymentTermLabel || detail.paymentTermCode}`} onClose={() => { if (!saving) onClose(); }} size="lg">
-    <fieldset disabled={saving} className="min-w-0">
+  const checkOutcome = async () => {
+    if (lock.current) return;
+    lock.current = true; setCheckingOutcome(true);
+    try {
+      const latest = await listSalesQuotations(orderId) as SalesQuotation[];
+      const current = restoreQuotationInputs(latest, detail.items).latest;
+      setError(current?.id !== restored.latest?.id
+        ? 'A different quotation revision is recorded. Keep a copy of your edits, then close and reopen this inquiry to review the saved revision before making changes.'
+        : 'No newer quotation revision is confirmed yet. Your edits are retained. Check again before retrying; the original request may still be completing.');
+    } catch { setError('Quotation history could not be checked. Your edits are retained; do not resubmit until the outcome is confirmed.'); }
+    finally { lock.current = false; setCheckingOutcome(false); }
+  };
+  return <ModalShell title={`Review & Send Quotation · ${detail.reference}`} subtitle={`${detail.companyName} · ${detail.contactPerson || "Contact unavailable"} · ${detail.paymentTermLabel || detail.paymentTermCode}`} onClose={() => { if (!saving && !checkingOutcome) onClose(); }} size="lg">
+    {uncertain && <section role="alert" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+      <p>The save/send outcome is uncertain. Your edits are retained. Check saved quotation history before starting another submission.</p>
+      <button type="button" disabled={checkingOutcome} onClick={() => void checkOutcome()}>{checkingOutcome ? 'Checking…' : 'Check saved quotation state'}</button>
+      {error && <p>{error}</p>}
+    </section>}
+    <fieldset disabled={saving || uncertain} className="min-w-0">
     {restored.latest && <p className="mb-3 text-xs text-slate-600">Starting from {restored.latest.reference}, revision {restored.latest.revisionNumber}. Saving creates a new revision; prices are recalculated from current records.</p>}
     <div className="flex gap-1 border-b border-slate-200 mb-5 -mt-2" role="tablist" aria-label="Quotation preparation">
       {([{id:"inquiry",label:"1 · Inquiry Details"},{id:"cost",label:"2 · Cost & Material Estimation"},{id:"quote",label:"3 · Quotation"}] as const).map(tab => <button type="button" key={tab.id} role="tab" aria-selected={activeTab===tab.id} onClick={() => setActiveTab(tab.id)} className="px-4 py-2.5 font-dm transition-colors" style={{fontSize:13,fontWeight:600,color:activeTab===tab.id?"#C8102E":"#64748B",borderBottom:activeTab===tab.id?"3px solid #C8102E":"3px solid transparent",marginBottom:-1}}>{tab.label}</button>)}

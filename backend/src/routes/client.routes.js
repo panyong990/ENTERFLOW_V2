@@ -39,6 +39,7 @@ export function createClientRouter({ service = createClientPortalService({ db: p
   router.post('/orders/:id/quotations/:quotationId/decision', permission('orders', 'read'), permission('quotations', 'update'), createOriginMiddleware(), express.json({ limit: '16kb' }), controller.decideQuotation);
   router.post('/orders/:id/purchase-order', permission('orders', 'read'), createOriginMiddleware(), express.json({ limit: '16kb' }), controller.submitPurchaseOrder);
   router.post('/orders/:id/quotation-revision', permission('orders', 'read'), permission('quotations', 'update'), createOriginMiddleware(), express.json({ limit: '16kb' }), controller.requestQuotationRevision);
+  router.post('/orders/:id/cancellation', permission('orders', 'read'), permission('inquiries', 'create'), createOriginMiddleware(), express.json({ limit: '16kb' }), controller.requestCancellation);
   router.get('/orders/:id/purchase-order', permission('orders', 'read'), controller.purchaseOrder);
   router.get('/orders/:id/job-orders', permission('orders', 'read'), controller.jobOrders);
   router.get('/orders/:id/delivery', permission('orders', 'read'), controller.delivery);

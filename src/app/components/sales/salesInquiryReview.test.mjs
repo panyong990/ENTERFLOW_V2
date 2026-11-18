@@ -13,8 +13,14 @@ test('client inquiry submission signals an open Sales pipeline to refresh', () =
   assert.match(pipeline, /removeEventListener\("enterflow:client-inquiry-submitted"/);
 });
 
+test('Sales can explicitly refresh inquiries received in a different client session', () => {
+  assert.match(pipeline, /aria-label="Refresh Sales inquiries"/);
+  assert.match(pipeline, /onClick=\{remote\.refresh\}/);
+  assert.match(pipeline, /disabled=\{remote\.loading\}/);
+});
+
 test('Sales review uses the existing authenticated order list and detail APIs', () => {
-  assert.match(pipeline, /useSalesOrders\(!recordsView, filters\)/);
+  assert.match(pipeline, /useSalesOrders\(!recordsView, workspaceSection === 'cancellations' \? cancellationQuery\(filters, cancellationFilter, cancellationPage\) : filters\)/);
   assert.match(pipeline, /useSalesOrderDetail\(Boolean\(selected\), selected\)/);
   for (const field of ['row.reference', 'row.companyName', 'row.contactPerson', 'detail.items', 'item.quantity']) {
     assert.match(pipeline, new RegExp(field.replace('.', '\\.'), 's'));
@@ -27,5 +33,5 @@ test('Real Sales review preserves authenticated rejection behavior and does not 
   assert.match(pipeline, /rejectSalesInquiry\(row\.id,value,detail!\.revision!\)/);
   assert.match(pipeline, /rejectionLock\.current/);
   assert.match(pipeline, /PO review status is unavailable/);
-  assert.match(pipeline, /No record has been changed/);
+  assert.match(pipeline, /Backend integration pending\. This review cannot be saved or sent/);
 });

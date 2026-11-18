@@ -486,8 +486,8 @@ function deriveLegacy(rm: RawMaterial[]): Material[] {
   };
   return (Object.keys(byId) as MaterialKey[]).map((k) => {
     const m = rm.find((x) => x.id === byId[k]);
-    /* Defensive fallback: if the catalogue is later edited and the legacy id is missing, return zeros so the legacy panel stays alive. */
-    if (!m) return { key: k, label: meta[k].label, unit: "pcs", available: 0, threshold: 0, leadTime: meta[k].leadTime };
+    /* A missing representative must remain unknown rather than becoming verified zero stock. */
+    if (!m) return { key: k, label: meta[k].label, unit: "pcs", available: Number.NaN, threshold: 0, leadTime: meta[k].leadTime };
     return { key: k, label: meta[k].label, unit: m.unit, available: Math.floor(m.qtyInStock), threshold: m.threshold, leadTime: meta[k].leadTime };
   });
 }

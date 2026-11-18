@@ -1,0 +1,3017 @@
+{
+  "formatVersion": 1,
+  "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+  "catalogPath": "docs/inventory-reconciliation/integrated-main-catalog.json",
+  "catalogDigest": "fcd1176aff4589779332cb3d6cd25655386c215d247ca25801c2117c574d1881",
+  "executionAuthorized": false,
+  "readiness": "approval-review-only",
+  "targetProposal": {
+    "database": "enterflow_db",
+    "host": "127.0.0.1",
+    "port": 3308,
+    "table": "materials",
+    "identityVerified": false
+  },
+  "assumptions": [
+    "Existing rows are assumed empty for this candidate, not verified.",
+    "Nullable schema and exact import are separately unapproved.",
+    "Fresh permitted metadata/lookup/material reads must precede any final execution plan."
+  ],
+  "quantityPolicy": "nullable-unknown",
+  "proposedSchema": "ALTER TABLE materials MODIFY quantity_on_hand DECIMAL(15,4) NULL DEFAULT NULL;",
+  "candidatePlan": {
+    "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+    "quantityPolicy": "nullable-unknown",
+    "errors": [],
+    "operations": [
+      {
+        "kind": "insert",
+        "catalogCode": "F-FMI.FM-043",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER120 1/4\"T × 82\"W × 20m L",
+          "filter_media",
+          "kg",
+          "1600",
+          null,
+          "10",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-FMI.FM-044",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER200 1/2\" T × 82\" W × 20m L",
+          "filter_media",
+          "kg",
+          "2640",
+          null,
+          "10",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-FMI.FM-045",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER250 3/4\" T × 82\" W × 20m L",
+          "filter_media",
+          "kg",
+          "3000",
+          null,
+          "8",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-FMI.FM-047",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER290 W/ ONE RESIN 1\" T × 96\"W × 30m L",
+          "filter_media",
+          "kg",
+          "5940",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-FMI.FM-048",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER350 1\"T × 82\"W × 20m L",
+          "filter_media",
+          "kg",
+          "3800",
+          null,
+          "6",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-NNWOV.FM-058",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "NONWOVEN FR-1 3120 M.GREEN 80\" × 50m L",
+          "filter_media",
+          "kg",
+          "4657",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-NNWOV.FM-059",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "NONWOVEN FR-1 3320 80\" × 20m L",
+          "filter_media",
+          "kg",
+          "4726",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-SNNX.FM-057",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "SUNNEX PBM240-15mm 1/2\"T × 2m W × 20m L",
+          "filter_media",
+          "kg",
+          "1960",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-095",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA PP5MICRON",
+          "filter_media",
+          "kg",
+          "17907",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-096-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA C-F8, 860mm HT, 38kgs/roll",
+          "filter_media",
+          "kg",
+          "25286",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-098-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA ZS20, 610mm HT, 35kgs/roll",
+          "filter_media",
+          "kg",
+          "17952",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-098-2",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA ZS20, 1000mm HT, 50kgs/roll",
+          "filter_media",
+          "kg",
+          "17952",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-099-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA ZSUI, 610mm HT, 35kgs/roll",
+          "filter_media",
+          "kg",
+          "15147",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-100-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA ZSH3, 610mm HT, 35kgs/roll",
+          "filter_media",
+          "kg",
+          "15708",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-101-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA ZSH5, 610mm HT, 35kgs/roll",
+          "filter_media",
+          "kg",
+          "20196",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-102-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA ZS10, 610mm HT, 35kgs/roll",
+          "filter_media",
+          "kg",
+          "17952",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FM-103",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER MEDIA JZCY-H13, 28kgs/roll",
+          "filter_media",
+          "kg",
+          "15147",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PFM-110",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "POCKET FILTER MEDIA F6 GREEN",
+          "filter_media",
+          "kg",
+          "4998",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PFM-111",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "POCKET FILTER MEDIA F8 YELLOW 720mm W",
+          "filter_media",
+          "kg",
+          "6426",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PFM-112",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "POCKET FILTER MEDIA F7 PINK",
+          "filter_media",
+          "kg",
+          "5712",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-ACWF-037",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "ACTIVATED CARBON AMETEK C1-20, 20\" L",
+          "filter_media",
+          "pcs",
+          "855",
+          null,
+          "10",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-ACWF-038",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "ACTIVATED CARBON WATER CHECK WCB-05, 20\"L",
+          "filter_media",
+          "pcs",
+          "855",
+          null,
+          "10",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-ACG-039",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "ACTIVATED CARBON GRANULE 4×8, 25kg/sack",
+          "filter_media",
+          "kg",
+          "2200",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "F-LNCON.FG-042",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FIBERGLASS 50mmT × 2mW × 20m L",
+          "filter_media",
+          "kg",
+          "10500",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FC-080",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTERCLOTH NEEDLEFELT FSQHAF550G",
+          "filter_media",
+          "kg",
+          "13977",
+          null,
+          "2",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FC-083",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTERCLOTH NEEDLEFELT PP100MICRON",
+          "filter_media",
+          "kg",
+          "15989",
+          null,
+          "2",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FC-084",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTERCLOTH NEEDLEFELT PP50MICRON",
+          "filter_media",
+          "kg",
+          "15989",
+          null,
+          "2",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FC-090",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTERCLOTH NEEDLEFELT FS NOMEX 550G",
+          "filter_media",
+          "kg",
+          "82620",
+          null,
+          "1",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FP-104",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER PAPER PK-135250",
+          "filter_media",
+          "kg",
+          "6336",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-FP-108-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FILTER PAPER PK-120300HX, 610mm HT, 42kgs/roll",
+          "filter_media",
+          "kg",
+          "10819",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PERPO.GI-116",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PERFORATED G.I 0.8mm × 4×8 × 3mm HOLES",
+          "endcap",
+          "sheet",
+          "2375",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.GI-126",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE G.I 0.6 × 4×8",
+          "endcap",
+          "sheet",
+          "700",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.GI-127",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE G.I 1mm × 4×8",
+          "endcap",
+          "sheet",
+          "1120",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.EG-128",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE E.G 0.5 × 4×8",
+          "endcap",
+          "sheet",
+          "630",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.EG-129",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE E.G 1mm × 4×8",
+          "endcap",
+          "sheet",
+          "810",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.EG-130",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE E.G 1.5 × 4×4",
+          "endcap",
+          "sheet",
+          "798",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.ALUM-131",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE ALUMINUM 0.6 × 4×8",
+          "endcap",
+          "sheet",
+          "860",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.ALUM-132",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE ALUMINUM 0.8 × 4×8",
+          "endcap",
+          "sheet",
+          "1150",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.SS304-124",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE S/S304 0.8mm × 4×8",
+          "endcap",
+          "sheet",
+          "2540",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PLATE.SS304-125",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PLATE S/S304 1mm × 4×8",
+          "endcap",
+          "sheet",
+          "4900",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PERPO.EG-120",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PERFORATED E.G 2mm × 4×8 × 3mm Ø HOLES",
+          "inner_core",
+          "sheet",
+          "2761",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PERPO.BI-121",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PERFORATED B.I 2mm × 4×8 × 7.9mm HOLES",
+          "inner_core",
+          "sheet",
+          "2660",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PERPO.SS304-123",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PERFORATED S/S304 1mm × 4×8 × 4mm HOLES",
+          "inner_core",
+          "sheet",
+          "6400",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-EXPNDEDMTL.BI-133",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "EXPANDED METAL B.I #2413 4×8",
+          "inner_core",
+          "roll",
+          "500",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-EXPNDEDMTL.BI-134",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "EXPANDED METAL B.I #1819 4×8",
+          "inner_core",
+          "roll",
+          "900",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PERPO.GI-117",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PERFORATED G.I 1mm × 4×8 × 5mm HOLES",
+          "outer_core",
+          "sheet",
+          "2620",
+          null,
+          "5",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PERPO.BI-122",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "PERFORATED B.I 3mm × 4×8 × 7.9mm HOLES",
+          "outer_core",
+          "sheet",
+          "4100",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-EXPNDED.ALUM-135",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "EXPANDED WIRE ALUMINUM (4ftW)",
+          "outer_core",
+          "roll",
+          "2400",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-CHCKENWIRE-136",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "CHICKENWIRE G.I (4ftW)",
+          "outer_core",
+          "roll",
+          "1200",
+          null,
+          "4",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-EMJ.EPOX-062",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "EPOXY HARDENER/RESIN",
+          "bonding_adhesive",
+          "set",
+          "2143",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-EMJ.EPOX-063",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "EPOXY PUTTY & FILLER HARDENER/RESIN",
+          "bonding_adhesive",
+          "set",
+          "2143",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PSBSI-144",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "1CML2009 PIONEER EPOXY LV",
+          "bonding_adhesive",
+          "gal",
+          "3050",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-PSBSI-146",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "STRUCTURAL EPOXY",
+          "bonding_adhesive",
+          "gal",
+          "2367",
+          null,
+          "3",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-NNPAO.ADHSV-064-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "HOTMELT ADHESIVE HM-595T, 25kg/sack",
+          "bonding_adhesive",
+          "kg",
+          "278",
+          null,
+          "25",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-HNKL.ADHSV-064-2",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "HOTMELT ADHESIVE SUPRA, 25kgs/bag",
+          "bonding_adhesive",
+          "kg",
+          "5125",
+          null,
+          "25",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "OR-NBR-STD",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "Nitrile Rubber O-Ring (NBR, standard)",
+          "oring",
+          "pcs",
+          "35",
+          null,
+          "50",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "OR-VITON",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "Viton O-Ring (heat-resistant)",
+          "oring",
+          "pcs",
+          "65",
+          null,
+          "30",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "GS-GREEN",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "Gasket — Green (TOP, standard)",
+          "gasket",
+          "pcs",
+          "42",
+          null,
+          "30",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "GS-FELT",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "Mechanical Felt Gasket",
+          "gasket",
+          "pcs",
+          "28",
+          null,
+          "30",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-SPRNGPLTESS-113",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "SPRING PLATE STAINLESS 25mmW",
+          "gasket",
+          "roll",
+          "19125",
+          null,
+          "2",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-NAPPCO.DCCB-065",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "NAPPCO DIECUT CARDBOARD 1\" × 23\" × 23\"",
+          "packaging",
+          "pcs",
+          "41.66",
+          null,
+          "50",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-NAPPCO.DCCB-066-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "NAPPCO DIECUT CARDBOARD 2\" × 23\" × 23\"",
+          "packaging",
+          "pcs",
+          "41.66",
+          null,
+          "50",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-NAPPCO.DCCB-070",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "NAPPCO DIECUT CARDBOARD 2\" × 24 1/2\" × 24 1/2\"",
+          "packaging",
+          "pcs",
+          "41.66",
+          null,
+          "50",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-NAPPCO.CB-140",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "NAPPCO CARDBOARD 23 35\" × 30\"",
+          "packaging",
+          "pcs",
+          "14.8",
+          null,
+          "80",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-GSPACK.CBP-143",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "CORRUGATED BOX PLAIN 4ft × 8ft",
+          "packaging",
+          "pcs",
+          "84.8",
+          null,
+          "20",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-GSPACK.CBP-148",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 14\" H SMALL",
+          "packaging",
+          "pcs",
+          "38",
+          null,
+          "30",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-GSPACK.CBP-149",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 20\" H BIG",
+          "packaging",
+          "pcs",
+          "35",
+          null,
+          "30",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "RM-MLTIFLX.FB-077-1",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "FOAM BLUE 3mm × 110cm × 7ft",
+          "packaging",
+          "sheet",
+          "60.6",
+          null,
+          "20",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "OFF-SI-137",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "SALES INVOICE",
+          "packaging",
+          "pcs",
+          "260",
+          null,
+          "8",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "OFF-DR-138",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "DELIVERY RECEIPT",
+          "packaging",
+          "pcs",
+          "190",
+          null,
+          "8",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      },
+      {
+        "kind": "insert",
+        "catalogCode": "OFF-CR-139",
+        "sql": "INSERT INTO materials (name,category_code,unit_code,unit_price,quantity_on_hand,reorder_threshold,supplier_name) VALUES (?,?,?,?,?,?,?)",
+        "params": [
+          "COLLECTION RECEIPT",
+          "packaging",
+          "pcs",
+          "190",
+          null,
+          "8",
+          null
+        ],
+        "quantityEvidence": {
+          "state": "unknown",
+          "quantity": null
+        },
+        "mappingRule": "Capture insertId as a decimal string for this catalog code."
+      }
+    ],
+    "mapping": {},
+    "ready": true,
+    "approvalDigest": "68277bc1d2154a8c2b9a98be4f9e7fa4d3061e20c6c3479873a0bfc950fb4db1"
+  },
+  "rows": [
+    {
+      "catalogCode": "F-FMI.FM-043",
+      "source": {
+        "id": "F-FMI.FM-043",
+        "name": "FILTER120 1/4\"T × 82\"W × 20m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 1600,
+        "threshold": 10
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER120 1/4\"T × 82\"W × 20m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "1600",
+        "quantity_on_hand": null,
+        "reorder_threshold": "10",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-FMI.FM-044",
+      "source": {
+        "id": "F-FMI.FM-044",
+        "name": "FILTER200 1/2\" T × 82\" W × 20m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 2640,
+        "threshold": 10
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER200 1/2\" T × 82\" W × 20m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "2640",
+        "quantity_on_hand": null,
+        "reorder_threshold": "10",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-FMI.FM-045",
+      "source": {
+        "id": "F-FMI.FM-045",
+        "name": "FILTER250 3/4\" T × 82\" W × 20m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 3000,
+        "threshold": 8
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER250 3/4\" T × 82\" W × 20m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "3000",
+        "quantity_on_hand": null,
+        "reorder_threshold": "8",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-FMI.FM-047",
+      "source": {
+        "id": "F-FMI.FM-047",
+        "name": "FILTER290 W/ ONE RESIN 1\" T × 96\"W × 30m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 5940,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER290 W/ ONE RESIN 1\" T × 96\"W × 30m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "5940",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-FMI.FM-048",
+      "source": {
+        "id": "F-FMI.FM-048",
+        "name": "FILTER350 1\"T × 82\"W × 20m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 3800,
+        "threshold": 6
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER350 1\"T × 82\"W × 20m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "3800",
+        "quantity_on_hand": null,
+        "reorder_threshold": "6",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-NNWOV.FM-058",
+      "source": {
+        "id": "F-NNWOV.FM-058",
+        "name": "NONWOVEN FR-1 3120 M.GREEN 80\" × 50m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 4657,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "NONWOVEN FR-1 3120 M.GREEN 80\" × 50m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "4657",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-NNWOV.FM-059",
+      "source": {
+        "id": "F-NNWOV.FM-059",
+        "name": "NONWOVEN FR-1 3320 80\" × 20m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 4726,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "NONWOVEN FR-1 3320 80\" × 20m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "4726",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-SNNX.FM-057",
+      "source": {
+        "id": "F-SNNX.FM-057",
+        "name": "SUNNEX PBM240-15mm 1/2\"T × 2m W × 20m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 1960,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "SUNNEX PBM240-15mm 1/2\"T × 2m W × 20m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "1960",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-095",
+      "source": {
+        "id": "RM-FM-095",
+        "name": "FILTER MEDIA PP5MICRON",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 17907,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA PP5MICRON",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "17907",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-096-1",
+      "source": {
+        "id": "RM-FM-096-1",
+        "name": "FILTER MEDIA C-F8, 860mm HT, 38kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 25286,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA C-F8, 860mm HT, 38kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "25286",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-098-1",
+      "source": {
+        "id": "RM-FM-098-1",
+        "name": "FILTER MEDIA ZS20, 610mm HT, 35kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 17952,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA ZS20, 610mm HT, 35kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "17952",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-098-2",
+      "source": {
+        "id": "RM-FM-098-2",
+        "name": "FILTER MEDIA ZS20, 1000mm HT, 50kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 17952,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA ZS20, 1000mm HT, 50kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "17952",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-099-1",
+      "source": {
+        "id": "RM-FM-099-1",
+        "name": "FILTER MEDIA ZSUI, 610mm HT, 35kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 15147,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA ZSUI, 610mm HT, 35kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "15147",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-100-1",
+      "source": {
+        "id": "RM-FM-100-1",
+        "name": "FILTER MEDIA ZSH3, 610mm HT, 35kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 15708,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA ZSH3, 610mm HT, 35kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "15708",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-101-1",
+      "source": {
+        "id": "RM-FM-101-1",
+        "name": "FILTER MEDIA ZSH5, 610mm HT, 35kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 20196,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA ZSH5, 610mm HT, 35kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "20196",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-102-1",
+      "source": {
+        "id": "RM-FM-102-1",
+        "name": "FILTER MEDIA ZS10, 610mm HT, 35kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 17952,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA ZS10, 610mm HT, 35kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "17952",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FM-103",
+      "source": {
+        "id": "RM-FM-103",
+        "name": "FILTER MEDIA JZCY-H13, 28kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 15147,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER MEDIA JZCY-H13, 28kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "15147",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PFM-110",
+      "source": {
+        "id": "RM-PFM-110",
+        "name": "POCKET FILTER MEDIA F6 GREEN",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 4998,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "POCKET FILTER MEDIA F6 GREEN",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "4998",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PFM-111",
+      "source": {
+        "id": "RM-PFM-111",
+        "name": "POCKET FILTER MEDIA F8 YELLOW 720mm W",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 6426,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "POCKET FILTER MEDIA F8 YELLOW 720mm W",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "6426",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PFM-112",
+      "source": {
+        "id": "RM-PFM-112",
+        "name": "POCKET FILTER MEDIA F7 PINK",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 5712,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "POCKET FILTER MEDIA F7 PINK",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "5712",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-ACWF-037",
+      "source": {
+        "id": "F-ACWF-037",
+        "name": "ACTIVATED CARBON AMETEK C1-20, 20\" L",
+        "category": "filter_media",
+        "unit": "pcs",
+        "unitPrice": 855,
+        "threshold": 10
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "ACTIVATED CARBON AMETEK C1-20, 20\" L",
+        "category_code": "filter_media",
+        "unit_code": "pcs",
+        "unit_price": "855",
+        "quantity_on_hand": null,
+        "reorder_threshold": "10",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-ACWF-038",
+      "source": {
+        "id": "F-ACWF-038",
+        "name": "ACTIVATED CARBON WATER CHECK WCB-05, 20\"L",
+        "category": "filter_media",
+        "unit": "pcs",
+        "unitPrice": 855,
+        "threshold": 10
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "ACTIVATED CARBON WATER CHECK WCB-05, 20\"L",
+        "category_code": "filter_media",
+        "unit_code": "pcs",
+        "unit_price": "855",
+        "quantity_on_hand": null,
+        "reorder_threshold": "10",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-ACG-039",
+      "source": {
+        "id": "F-ACG-039",
+        "name": "ACTIVATED CARBON GRANULE 4×8, 25kg/sack",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 2200,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "ACTIVATED CARBON GRANULE 4×8, 25kg/sack",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "2200",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "F-LNCON.FG-042",
+      "source": {
+        "id": "F-LNCON.FG-042",
+        "name": "FIBERGLASS 50mmT × 2mW × 20m L",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 10500,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FIBERGLASS 50mmT × 2mW × 20m L",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "10500",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FC-080",
+      "source": {
+        "id": "RM-FC-080",
+        "name": "FILTERCLOTH NEEDLEFELT FSQHAF550G",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 13977,
+        "threshold": 2
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTERCLOTH NEEDLEFELT FSQHAF550G",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "13977",
+        "quantity_on_hand": null,
+        "reorder_threshold": "2",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FC-083",
+      "source": {
+        "id": "RM-FC-083",
+        "name": "FILTERCLOTH NEEDLEFELT PP100MICRON",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 15989,
+        "threshold": 2
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTERCLOTH NEEDLEFELT PP100MICRON",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "15989",
+        "quantity_on_hand": null,
+        "reorder_threshold": "2",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FC-084",
+      "source": {
+        "id": "RM-FC-084",
+        "name": "FILTERCLOTH NEEDLEFELT PP50MICRON",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 15989,
+        "threshold": 2
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTERCLOTH NEEDLEFELT PP50MICRON",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "15989",
+        "quantity_on_hand": null,
+        "reorder_threshold": "2",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FC-090",
+      "source": {
+        "id": "RM-FC-090",
+        "name": "FILTERCLOTH NEEDLEFELT FS NOMEX 550G",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 82620,
+        "threshold": 1
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTERCLOTH NEEDLEFELT FS NOMEX 550G",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "82620",
+        "quantity_on_hand": null,
+        "reorder_threshold": "1",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FP-104",
+      "source": {
+        "id": "RM-FP-104",
+        "name": "FILTER PAPER PK-135250",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 6336,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER PAPER PK-135250",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "6336",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-FP-108-1",
+      "source": {
+        "id": "RM-FP-108-1",
+        "name": "FILTER PAPER PK-120300HX, 610mm HT, 42kgs/roll",
+        "category": "filter_media",
+        "unit": "kg",
+        "unitPrice": 10819,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FILTER PAPER PK-120300HX, 610mm HT, 42kgs/roll",
+        "category_code": "filter_media",
+        "unit_code": "kg",
+        "unit_price": "10819",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PERPO.GI-116",
+      "source": {
+        "id": "RM-PERPO.GI-116",
+        "name": "PERFORATED G.I 0.8mm × 4×8 × 3mm HOLES",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 2375,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PERFORATED G.I 0.8mm × 4×8 × 3mm HOLES",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "2375",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.GI-126",
+      "source": {
+        "id": "RM-PLATE.GI-126",
+        "name": "PLATE G.I 0.6 × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 700,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE G.I 0.6 × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "700",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.GI-127",
+      "source": {
+        "id": "RM-PLATE.GI-127",
+        "name": "PLATE G.I 1mm × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 1120,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE G.I 1mm × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "1120",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.EG-128",
+      "source": {
+        "id": "RM-PLATE.EG-128",
+        "name": "PLATE E.G 0.5 × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 630,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE E.G 0.5 × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "630",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.EG-129",
+      "source": {
+        "id": "RM-PLATE.EG-129",
+        "name": "PLATE E.G 1mm × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 810,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE E.G 1mm × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "810",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.EG-130",
+      "source": {
+        "id": "RM-PLATE.EG-130",
+        "name": "PLATE E.G 1.5 × 4×4",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 798,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE E.G 1.5 × 4×4",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "798",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.ALUM-131",
+      "source": {
+        "id": "RM-PLATE.ALUM-131",
+        "name": "PLATE ALUMINUM 0.6 × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 860,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE ALUMINUM 0.6 × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "860",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.ALUM-132",
+      "source": {
+        "id": "RM-PLATE.ALUM-132",
+        "name": "PLATE ALUMINUM 0.8 × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 1150,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE ALUMINUM 0.8 × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "1150",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.SS304-124",
+      "source": {
+        "id": "RM-PLATE.SS304-124",
+        "name": "PLATE S/S304 0.8mm × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 2540,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE S/S304 0.8mm × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "2540",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PLATE.SS304-125",
+      "source": {
+        "id": "RM-PLATE.SS304-125",
+        "name": "PLATE S/S304 1mm × 4×8",
+        "category": "endcap",
+        "unit": "sheet",
+        "unitPrice": 4900,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PLATE S/S304 1mm × 4×8",
+        "category_code": "endcap",
+        "unit_code": "sheet",
+        "unit_price": "4900",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PERPO.EG-120",
+      "source": {
+        "id": "RM-PERPO.EG-120",
+        "name": "PERFORATED E.G 2mm × 4×8 × 3mm Ø HOLES",
+        "category": "inner_core",
+        "unit": "sheet",
+        "unitPrice": 2761,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PERFORATED E.G 2mm × 4×8 × 3mm Ø HOLES",
+        "category_code": "inner_core",
+        "unit_code": "sheet",
+        "unit_price": "2761",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PERPO.BI-121",
+      "source": {
+        "id": "RM-PERPO.BI-121",
+        "name": "PERFORATED B.I 2mm × 4×8 × 7.9mm HOLES",
+        "category": "inner_core",
+        "unit": "sheet",
+        "unitPrice": 2660,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PERFORATED B.I 2mm × 4×8 × 7.9mm HOLES",
+        "category_code": "inner_core",
+        "unit_code": "sheet",
+        "unit_price": "2660",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PERPO.SS304-123",
+      "source": {
+        "id": "RM-PERPO.SS304-123",
+        "name": "PERFORATED S/S304 1mm × 4×8 × 4mm HOLES",
+        "category": "inner_core",
+        "unit": "sheet",
+        "unitPrice": 6400,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PERFORATED S/S304 1mm × 4×8 × 4mm HOLES",
+        "category_code": "inner_core",
+        "unit_code": "sheet",
+        "unit_price": "6400",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-EXPNDEDMTL.BI-133",
+      "source": {
+        "id": "RM-EXPNDEDMTL.BI-133",
+        "name": "EXPANDED METAL B.I #2413 4×8",
+        "category": "inner_core",
+        "unit": "roll",
+        "unitPrice": 500,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "EXPANDED METAL B.I #2413 4×8",
+        "category_code": "inner_core",
+        "unit_code": "roll",
+        "unit_price": "500",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-EXPNDEDMTL.BI-134",
+      "source": {
+        "id": "RM-EXPNDEDMTL.BI-134",
+        "name": "EXPANDED METAL B.I #1819 4×8",
+        "category": "inner_core",
+        "unit": "roll",
+        "unitPrice": 900,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "EXPANDED METAL B.I #1819 4×8",
+        "category_code": "inner_core",
+        "unit_code": "roll",
+        "unit_price": "900",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PERPO.GI-117",
+      "source": {
+        "id": "RM-PERPO.GI-117",
+        "name": "PERFORATED G.I 1mm × 4×8 × 5mm HOLES",
+        "category": "outer_core",
+        "unit": "sheet",
+        "unitPrice": 2620,
+        "threshold": 5
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PERFORATED G.I 1mm × 4×8 × 5mm HOLES",
+        "category_code": "outer_core",
+        "unit_code": "sheet",
+        "unit_price": "2620",
+        "quantity_on_hand": null,
+        "reorder_threshold": "5",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PERPO.BI-122",
+      "source": {
+        "id": "RM-PERPO.BI-122",
+        "name": "PERFORATED B.I 3mm × 4×8 × 7.9mm HOLES",
+        "category": "outer_core",
+        "unit": "sheet",
+        "unitPrice": 4100,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "PERFORATED B.I 3mm × 4×8 × 7.9mm HOLES",
+        "category_code": "outer_core",
+        "unit_code": "sheet",
+        "unit_price": "4100",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-EXPNDED.ALUM-135",
+      "source": {
+        "id": "RM-EXPNDED.ALUM-135",
+        "name": "EXPANDED WIRE ALUMINUM (4ftW)",
+        "category": "outer_core",
+        "unit": "roll",
+        "unitPrice": 2400,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "EXPANDED WIRE ALUMINUM (4ftW)",
+        "category_code": "outer_core",
+        "unit_code": "roll",
+        "unit_price": "2400",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-CHCKENWIRE-136",
+      "source": {
+        "id": "RM-CHCKENWIRE-136",
+        "name": "CHICKENWIRE G.I (4ftW)",
+        "category": "outer_core",
+        "unit": "roll",
+        "unitPrice": 1200,
+        "threshold": 4
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "CHICKENWIRE G.I (4ftW)",
+        "category_code": "outer_core",
+        "unit_code": "roll",
+        "unit_price": "1200",
+        "quantity_on_hand": null,
+        "reorder_threshold": "4",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-EMJ.EPOX-062",
+      "source": {
+        "id": "RM-EMJ.EPOX-062",
+        "name": "EPOXY HARDENER/RESIN",
+        "category": "bonding_adhesive",
+        "unit": "set",
+        "unitPrice": 2143,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "EPOXY HARDENER/RESIN",
+        "category_code": "bonding_adhesive",
+        "unit_code": "set",
+        "unit_price": "2143",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-EMJ.EPOX-063",
+      "source": {
+        "id": "RM-EMJ.EPOX-063",
+        "name": "EPOXY PUTTY & FILLER HARDENER/RESIN",
+        "category": "bonding_adhesive",
+        "unit": "set",
+        "unitPrice": 2143,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "EPOXY PUTTY & FILLER HARDENER/RESIN",
+        "category_code": "bonding_adhesive",
+        "unit_code": "set",
+        "unit_price": "2143",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PSBSI-144",
+      "source": {
+        "id": "RM-PSBSI-144",
+        "name": "1CML2009 PIONEER EPOXY LV",
+        "category": "bonding_adhesive",
+        "unit": "gal",
+        "unitPrice": 3050,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "1CML2009 PIONEER EPOXY LV",
+        "category_code": "bonding_adhesive",
+        "unit_code": "gal",
+        "unit_price": "3050",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-PSBSI-146",
+      "source": {
+        "id": "RM-PSBSI-146",
+        "name": "STRUCTURAL EPOXY",
+        "category": "bonding_adhesive",
+        "unit": "gal",
+        "unitPrice": 2367,
+        "threshold": 3
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "STRUCTURAL EPOXY",
+        "category_code": "bonding_adhesive",
+        "unit_code": "gal",
+        "unit_price": "2367",
+        "quantity_on_hand": null,
+        "reorder_threshold": "3",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-NNPAO.ADHSV-064-1",
+      "source": {
+        "id": "RM-NNPAO.ADHSV-064-1",
+        "name": "HOTMELT ADHESIVE HM-595T, 25kg/sack",
+        "category": "bonding_adhesive",
+        "unit": "kg",
+        "unitPrice": 278,
+        "threshold": 25
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "HOTMELT ADHESIVE HM-595T, 25kg/sack",
+        "category_code": "bonding_adhesive",
+        "unit_code": "kg",
+        "unit_price": "278",
+        "quantity_on_hand": null,
+        "reorder_threshold": "25",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-HNKL.ADHSV-064-2",
+      "source": {
+        "id": "RM-HNKL.ADHSV-064-2",
+        "name": "HOTMELT ADHESIVE SUPRA, 25kgs/bag",
+        "category": "bonding_adhesive",
+        "unit": "kg",
+        "unitPrice": 5125,
+        "threshold": 25
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "HOTMELT ADHESIVE SUPRA, 25kgs/bag",
+        "category_code": "bonding_adhesive",
+        "unit_code": "kg",
+        "unit_price": "5125",
+        "quantity_on_hand": null,
+        "reorder_threshold": "25",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "OR-NBR-STD",
+      "source": {
+        "id": "OR-NBR-STD",
+        "name": "Nitrile Rubber O-Ring (NBR, standard)",
+        "category": "oring",
+        "unit": "pcs",
+        "unitPrice": 35,
+        "threshold": 50
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "Nitrile Rubber O-Ring (NBR, standard)",
+        "category_code": "oring",
+        "unit_code": "pcs",
+        "unit_price": "35",
+        "quantity_on_hand": null,
+        "reorder_threshold": "50",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "OR-VITON",
+      "source": {
+        "id": "OR-VITON",
+        "name": "Viton O-Ring (heat-resistant)",
+        "category": "oring",
+        "unit": "pcs",
+        "unitPrice": 65,
+        "threshold": 30
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "Viton O-Ring (heat-resistant)",
+        "category_code": "oring",
+        "unit_code": "pcs",
+        "unit_price": "65",
+        "quantity_on_hand": null,
+        "reorder_threshold": "30",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "GS-GREEN",
+      "source": {
+        "id": "GS-GREEN",
+        "name": "Gasket — Green (TOP, standard)",
+        "category": "gasket",
+        "unit": "pcs",
+        "unitPrice": 42,
+        "threshold": 30
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "Gasket — Green (TOP, standard)",
+        "category_code": "gasket",
+        "unit_code": "pcs",
+        "unit_price": "42",
+        "quantity_on_hand": null,
+        "reorder_threshold": "30",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "GS-FELT",
+      "source": {
+        "id": "GS-FELT",
+        "name": "Mechanical Felt Gasket",
+        "category": "gasket",
+        "unit": "pcs",
+        "unitPrice": 28,
+        "threshold": 30
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "Mechanical Felt Gasket",
+        "category_code": "gasket",
+        "unit_code": "pcs",
+        "unit_price": "28",
+        "quantity_on_hand": null,
+        "reorder_threshold": "30",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-SPRNGPLTESS-113",
+      "source": {
+        "id": "RM-SPRNGPLTESS-113",
+        "name": "SPRING PLATE STAINLESS 25mmW",
+        "category": "gasket",
+        "unit": "roll",
+        "unitPrice": 19125,
+        "threshold": 2
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "SPRING PLATE STAINLESS 25mmW",
+        "category_code": "gasket",
+        "unit_code": "roll",
+        "unit_price": "19125",
+        "quantity_on_hand": null,
+        "reorder_threshold": "2",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-NAPPCO.DCCB-065",
+      "source": {
+        "id": "RM-NAPPCO.DCCB-065",
+        "name": "NAPPCO DIECUT CARDBOARD 1\" × 23\" × 23\"",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 41.66,
+        "threshold": 50
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "NAPPCO DIECUT CARDBOARD 1\" × 23\" × 23\"",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "41.66",
+        "quantity_on_hand": null,
+        "reorder_threshold": "50",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-NAPPCO.DCCB-066-1",
+      "source": {
+        "id": "RM-NAPPCO.DCCB-066-1",
+        "name": "NAPPCO DIECUT CARDBOARD 2\" × 23\" × 23\"",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 41.66,
+        "threshold": 50
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "NAPPCO DIECUT CARDBOARD 2\" × 23\" × 23\"",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "41.66",
+        "quantity_on_hand": null,
+        "reorder_threshold": "50",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-NAPPCO.DCCB-070",
+      "source": {
+        "id": "RM-NAPPCO.DCCB-070",
+        "name": "NAPPCO DIECUT CARDBOARD 2\" × 24 1/2\" × 24 1/2\"",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 41.66,
+        "threshold": 50
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "NAPPCO DIECUT CARDBOARD 2\" × 24 1/2\" × 24 1/2\"",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "41.66",
+        "quantity_on_hand": null,
+        "reorder_threshold": "50",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-NAPPCO.CB-140",
+      "source": {
+        "id": "RM-NAPPCO.CB-140",
+        "name": "NAPPCO CARDBOARD 23 35\" × 30\"",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 14.8,
+        "threshold": 80
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "NAPPCO CARDBOARD 23 35\" × 30\"",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "14.8",
+        "quantity_on_hand": null,
+        "reorder_threshold": "80",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-GSPACK.CBP-143",
+      "source": {
+        "id": "RM-GSPACK.CBP-143",
+        "name": "CORRUGATED BOX PLAIN 4ft × 8ft",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 84.8,
+        "threshold": 20
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "CORRUGATED BOX PLAIN 4ft × 8ft",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "84.8",
+        "quantity_on_hand": null,
+        "reorder_threshold": "20",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-GSPACK.CBP-148",
+      "source": {
+        "id": "RM-GSPACK.CBP-148",
+        "name": "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 14\" H SMALL",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 38,
+        "threshold": 30
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 14\" H SMALL",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "38",
+        "quantity_on_hand": null,
+        "reorder_threshold": "30",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-GSPACK.CBP-149",
+      "source": {
+        "id": "RM-GSPACK.CBP-149",
+        "name": "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 20\" H BIG",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 35,
+        "threshold": 30
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "CORRUGATED BOX PLAIN 14 3/4W × 14 3/4L × 20\" H BIG",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "35",
+        "quantity_on_hand": null,
+        "reorder_threshold": "30",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "RM-MLTIFLX.FB-077-1",
+      "source": {
+        "id": "RM-MLTIFLX.FB-077-1",
+        "name": "FOAM BLUE 3mm × 110cm × 7ft",
+        "category": "packaging",
+        "unit": "sheet",
+        "unitPrice": 60.6,
+        "threshold": 20
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "FOAM BLUE 3mm × 110cm × 7ft",
+        "category_code": "packaging",
+        "unit_code": "sheet",
+        "unit_price": "60.6",
+        "quantity_on_hand": null,
+        "reorder_threshold": "20",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "OFF-SI-137",
+      "source": {
+        "id": "OFF-SI-137",
+        "name": "SALES INVOICE",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 260,
+        "threshold": 8
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "SALES INVOICE",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "260",
+        "quantity_on_hand": null,
+        "reorder_threshold": "8",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "OFF-DR-138",
+      "source": {
+        "id": "OFF-DR-138",
+        "name": "DELIVERY RECEIPT",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 190,
+        "threshold": 8
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "DELIVERY RECEIPT",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "190",
+        "quantity_on_hand": null,
+        "reorder_threshold": "8",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    },
+    {
+      "catalogCode": "OFF-CR-139",
+      "source": {
+        "id": "OFF-CR-139",
+        "name": "COLLECTION RECEIPT",
+        "category": "packaging",
+        "unit": "pcs",
+        "unitPrice": 190,
+        "threshold": 8
+      },
+      "proposedDatabaseId": null,
+      "databaseValues": {
+        "name": "COLLECTION RECEIPT",
+        "category_code": "packaging",
+        "unit_code": "pcs",
+        "unit_price": "190",
+        "quantity_on_hand": null,
+        "reorder_threshold": "8",
+        "supplier_name": null
+      },
+      "quantityState": "unknown",
+      "mappingStatus": "pending-approved-target-reconciliation"
+    }
+  ],
+  "reviewDigest": "2603a7004df3bcb955caad829f7ec2e4fc7a9c49c84a87a5cad9156549d2866e"
+}

@@ -1,0 +1,890 @@
+{
+  "date": "2026-11-18",
+  "branch": "integration/dev-phase-merge",
+  "head": "1f4493c38c8903d67bd0f7e3f9707d4afa580246",
+  "scope": "Pre-preparation baseline, before documentation edits; hashes fingerprint file bytes, not migration history.",
+  "trackedModified": 55,
+  "untracked": 33,
+  "entries": [
+    {
+      "status": " M",
+      "path": "backend/src/controllers/client-portal.controller.js",
+      "bytes": 6528,
+      "sha256": "0d7f8b6de563a17e2625bbdf9e210c81787465d8f50719acda4915720943096e",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/controllers/inventory.controller.js",
+      "bytes": 796,
+      "sha256": "ee6f997b637b353a67080f292925eb0170b1f11a59826e01f09aa8f353aafec8",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/controllers/registration.controller.js",
+      "bytes": 1423,
+      "sha256": "959d2a0f4c87128bbb5d1a0413b840d3605af736ba74d340b4828496c1d26729",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/controllers/registration.controller.test.js",
+      "bytes": 3110,
+      "sha256": "f6959814bda4f2506ed733f612ddfacb2ea1ffb474d78c1ab7e2454b3c33de51",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/controllers/sales-dashboard.controller.js",
+      "bytes": 1013,
+      "sha256": "f7f6bd1c8d8b020895b6a45772cab01d7339efd51c3e29e42d2a4913df766f3f",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/controllers/sales-orders.controller.js",
+      "bytes": 5344,
+      "sha256": "d0342434dd81afe58f522e09d5c32dd208567c3288198c3f662e97e6aa36feb9",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/controllers/stock-requests.controller.js",
+      "bytes": 1527,
+      "sha256": "dfd97531282c11e61122cd3692a9083b1d4d822225a122b884df9d8cd6c1727f",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/controllers/stock-requests.controller.test.js",
+      "bytes": 1810,
+      "sha256": "be70fa4a5be28f2a9c00a3b7d22f6c060bf1e3f204790d7690d36d0c0213f868",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/routes/client.http.integration.test.js",
+      "bytes": 15179,
+      "sha256": "bcb55925ad46cefe59acd28e41f2b6914067e58cff46a41ccb10506ae211da3e",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/routes/client.routes.js",
+      "bytes": 5128,
+      "sha256": "40fe63fa1e1b62dc78198e6e28a1a3836e9d2848ad3f5cf13d0da475fa5df2da",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/routes/sales.http.integration.test.js",
+      "bytes": 18618,
+      "sha256": "738a0eeb9c0fdfc4c99370640883e493d9aa7b64b1f3974cc02dc8b1b9bfc5bb",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/routes/sales.routes.js",
+      "bytes": 6995,
+      "sha256": "1b597372140b968d565e95669bafd8f02b2643ed4433a117397a30c9dfa6dc1a",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/client-applications.service.js",
+      "bytes": 13143,
+      "sha256": "2f61649a620c1ed55f7c2c9e0fa3291f4274ff2e59b426148f7c63955a190248",
+      "group": "Onboarding",
+      "purpose": "Explicit approved-user activation or frontend validation/pending feedback",
+      "evidence": "Client-applications/registration/auth/onboarding + rendered Login",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/client-applications.service.test.js",
+      "bytes": 32717,
+      "sha256": "6bc878c767b85c4fecb4bed2f8753f7749ff8c5023413758c7a8c65b633041f1",
+      "group": "Onboarding",
+      "purpose": "Explicit approved-user activation or frontend validation/pending feedback",
+      "evidence": "Client-applications/registration/auth/onboarding + rendered Login",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/client-portal.service.js",
+      "bytes": 45321,
+      "sha256": "6490d56c4e586fc96d6dfb1e90b769d289a890570c73500a97f7eac1b6d0faf0",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/client-portal.service.test.js",
+      "bytes": 30702,
+      "sha256": "a28714a146c174c55c8c538147cb621a88a8253c61c82a8b789354d2b44ed9d5",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/inventory.service.test.js",
+      "bytes": 1536,
+      "sha256": "008e9d94d5961d980eab9ef2603702522db47b1c10e853277acdcac79a97ee81",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/registration.service.js",
+      "bytes": 8135,
+      "sha256": "35c664fe95873e6048ced94f25d5dbce082f7968a2cce2b1a11b50c08926e778",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/registration.service.test.js",
+      "bytes": 25726,
+      "sha256": "20e9ff8ec7ff0f1c9d986d6400435c9a4a6c834a375a8acc95956b8b8a9bf90c",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/sales-orders.service.js",
+      "bytes": 75813,
+      "sha256": "bd8f55c62736bc9cecb5d0ff830b05bce11de047ca220d8fb169504632e1cd34",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/sales-orders.service.test.js",
+      "bytes": 31014,
+      "sha256": "bef9f6c5499ae7b22cdc04555317187cdc5dbc8c7726e3a0bf5492e6cdb46d15",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/stock-requests.service.js",
+      "bytes": 13503,
+      "sha256": "4f83abf449e3db943687831cac2b2c65b68d5cdc727c5abd326c23e6c68a3e0d",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/services/stock-requests.service.test.js",
+      "bytes": 8679,
+      "sha256": "b08dfbdab29fe9cecc96af130cd48562687c9bee9c091fa99c5ba696af3e42e0",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "backend/src/validation/sales.validation.js",
+      "bytes": 14231,
+      "sha256": "33007b146d6167e4c4e181f74560871ffd41415ce0742034e0e9b0c2a1317421",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "database/material-catalog-import.mjs",
+      "bytes": 6843,
+      "sha256": "31e09c7f7b145358cf15c982be90c183b10e79d5de40d2c6758da31d2c3b6709",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "dist/index.html",
+      "bytes": 652,
+      "sha256": "1e239d06ac2f464121c2ee16f6570faa70a569bd9009a91d9c17eccda0455a12",
+      "group": "Generated output",
+      "purpose": "Build-generated hashed entry links; pre-existing external capture script remains",
+      "evidence": "Build/scanner passed previously; HTML/external script not covered by JS marker gate",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "docs/TESTING.md",
+      "bytes": 12874,
+      "sha256": "52d77e371ed4fc0316560f44dafd7b76832020459c151d57ba493adafa39de4a",
+      "group": "Status/evidence",
+      "purpose": "Tracker, reporting reconciliation or historical task handoff",
+      "evidence": "Documentation only; historical results are not fresh execution",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "package-lock.json",
+      "bytes": 278738,
+      "sha256": "3a5dc8ba44f991f50cbab11fc3275dd3e95e931c0588637f752a43ff7af9dabb",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "package.json",
+      "bytes": 3875,
+      "sha256": "fd07cbf1d9124179d22472cdc89ad20fa0c582961a7955e7b8b44558aae117b3",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "scripts/check-production-demo-assets.mjs",
+      "bytes": 1509,
+      "sha256": "1d21565228e76423c51ba40a67a2ca80130fa7a192f9fceca49dbaac63cb9c71",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/api/clientPortal.test.mjs",
+      "bytes": 4888,
+      "sha256": "2376a0913bb230c118b45b8fb058066fbd46d7546c4139c8565b229df3b37029",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/api/clientPortal.ts",
+      "bytes": 11489,
+      "sha256": "2a1a6d1c4c99fa87979372bc15c33b019d3d2f49c842fdf0037d2127ea21ac97",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/api/salesOrders.js",
+      "bytes": 2835,
+      "sha256": "e44b286d752c345577780c2173010037cb1f81f98f065baf2983516dd6d8b90d",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/Dashboard.tsx",
+      "bytes": 76938,
+      "sha256": "acb6739f1b27b78efb67f35b6d8f0afecc04121056d606779452d56ff472466d",
+      "group": "Operations reliability",
+      "purpose": "Real Mode bottleneck unavailable guard; accepted source/test level",
+      "evidence": "Latest 64 frontend/13 backend/12 scanner; full-suite refresh pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/FinishedGoodsOrderActivity.tsx",
+      "bytes": 18047,
+      "sha256": "0ccb5c07c2f7697b27b8b3595649dcf384dfca416ede144716b1c32cd8bd5c9e",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/Inventory.tsx",
+      "bytes": 56313,
+      "sha256": "610e1630601b2cc4abd402f6af84428e526d154326686c0d8108e7dfd4fd0755",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/Login.tsx",
+      "bytes": 24066,
+      "sha256": "c4dc29e73dc261d9eb517470fa1aa8d254ccf9ea7ef88f6e6b39010801e61aaf",
+      "group": "Onboarding",
+      "purpose": "Explicit approved-user activation or frontend validation/pending feedback",
+      "evidence": "Client-applications/registration/auth/onboarding + rendered Login",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/QuotationBuilder.tsx",
+      "bytes": 37801,
+      "sha256": "a6bff2291d8e5dd4caf52df43326bff386ee1422f39af53666d1876e28fa8e0f",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/RealWarehouseStockRequests.tsx",
+      "bytes": 7349,
+      "sha256": "4343e939c68ee2df2fed582f82fbad08c0057ea02fe174c15fa7cc1f6376fccc",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/admin/render.test.mjs",
+      "bytes": 35217,
+      "sha256": "c9414e80ccb34bf86763dd846f903d098a7a88639afc274458a699bd555ed5ce",
+      "group": "Shared rendered tests",
+      "purpose": "Existing multi-role/provider/Login checks plus accepted Operations regressions",
+      "evidence": "Shared suite overlaps role runs; count once in full frontend pass",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/client/ClientPortal.tsx",
+      "bytes": 256796,
+      "sha256": "2c5d1eba930a06c68b08782bf3205b26f4048ec24f7dca1f21371940f3a367dd",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/client/adapters.ts",
+      "bytes": 7921,
+      "sha256": "d80ec1b1dccd801c67179ba679ef3f466420aa7171828263edafcba86c8ab8af",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/client/data.tsx",
+      "bytes": 10827,
+      "sha256": "18ed9311aed4c3cd58f0c5b2a86de0e7097be6a958730e9360990dd29af04f13",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/client/model.ts",
+      "bytes": 24330,
+      "sha256": "ffee68b3ab0dc718aac79b2ef73e0f1630799f235abfeb754032042a3fadbd2e",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/realCancellationWorkflow.test.mjs",
+      "bytes": 2821,
+      "sha256": "ac8a0ed820b8c6526d072d8ba30c218fa94f67a16aa588f853ec0ec6a1375fe1",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/realClientPortal.test.mjs",
+      "bytes": 5538,
+      "sha256": "a5869e011352eb0acb11a6ccbce8cea8d6af41e31123bae8640785f95f1a76c1",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/realInventoryProduction.test.mjs",
+      "bytes": 4843,
+      "sha256": "e14720060b7fbfda45308144c06f28127755a0beb7697d0681d54dc8a6c0e125",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/realSalesOrdersCompletion.test.mjs",
+      "bytes": 4118,
+      "sha256": "d4ee4ac2e612616c95742f3464bbcc4c6ef23f60deecd3525361c1c350f2f129",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/sales/RealQuotationPreparation.tsx",
+      "bytes": 14962,
+      "sha256": "457263facd84f80663d531cd1bb2c728a49cc6355d89f255d47ccecda062befa",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/sales/RealSalesStockRequests.tsx",
+      "bytes": 6402,
+      "sha256": "0111376f1ced9b54a7628de477ae69a11712029229924da53b05510c3b63945f",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/sales/SalesPipeline.tsx",
+      "bytes": 29317,
+      "sha256": "d3d1e78d88f90cf1728724d4804f4265d812f1cfe60665352c66799d40d025a2",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/sales/realQuotationPreparation.test.mjs",
+      "bytes": 3833,
+      "sha256": "57c7404bfdbe499e3ac30742308150c8997fbee6d15412827de4e16246d73964",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/sales/salesInquiryReview.test.mjs",
+      "bytes": 2128,
+      "sha256": "13834917ee42380e1af0d6abf07fb8f91ec5a874795c73bc8a9afbf009efd383",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/components/useSalesOrders.ts",
+      "bytes": 8828,
+      "sha256": "80a684badd177acad318a1697f9163e675a8011b89cdbd41287d16961ebd5ed2",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": " M",
+      "path": "src/app/store/materials.tsx",
+      "bytes": 43180,
+      "sha256": "0e318403b4c4f6ea49d27be0c196776281c9935c70eebd43d621802c59e04989",
+      "group": "Inventory/Stock Requests",
+      "purpose": "Unknown stock, numeric limits, snapshots/references/manual-confirmation guards",
+      "evidence": "Inventory/stock-request services/routes/adapters/models; live stock/BOM gates open",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "PHASE_1_MASTER_PROGRESS_TRACKER.md",
+      "bytes": 56508,
+      "sha256": "d11831c525c5e89d4c2be924b4d6a075fdd1909dd32d1ba2e580cc47b7935441",
+      "group": "Status/evidence",
+      "purpose": "Tracker, reporting reconciliation or historical task handoff",
+      "evidence": "Documentation only; historical results are not fresh execution",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "backend/src/controllers/service-failure-log.js",
+      "bytes": 3480,
+      "sha256": "3c9e33719d442542aea2e5d240b5243d5835079e1510df6586880b8bbbf6e737",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "backend/src/controllers/service-failure-log.test.js",
+      "bytes": 10558,
+      "sha256": "dee650197fa2983be5c838f07e12cda6e321b10a369b7059d86c46fcf3475530",
+      "group": "Safe diagnostics",
+      "purpose": "Service-stage/controller-safe logging and related tests",
+      "evidence": "Registration/diagnostic/backend service suites; real cause remains blocked",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "backend/src/routes/client-onboarding.http.integration.test.js",
+      "bytes": 21709,
+      "sha256": "442397708a067c51c13ce9bf836f374d1f8564097779feef45e91ce5ee655b34",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "backend/src/routes/client-sales-workflow.http.integration.test.js",
+      "bytes": 19979,
+      "sha256": "7eefc40173b8575fe27ae1109da40d1309ce2c892792956fa76277e0beb414ea",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "backend/src/services/sales-cancellation.service.test.js",
+      "bytes": 7565,
+      "sha256": "1de0accc852938c57fd4e2036541f119cc64e738db69fb385d4c0b2869799c7b",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/CANCELLATION_PHASE_1_ACCEPTANCE_REPORT_2026-11-18.md",
+      "bytes": 11694,
+      "sha256": "19678396a4651744fd63b66f4fa240b2b177e7e225c94028e2af816577485887",
+      "group": "Status/evidence",
+      "purpose": "Tracker, reporting reconciliation or historical task handoff",
+      "evidence": "Documentation only; historical results are not fresh execution",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/PHASE_1_RESUMPTION_HANDOFF_2026-11-18.md",
+      "bytes": 9265,
+      "sha256": "33cb74fffcfa95f4088a3e087542592f9dd5ad86a73c16482333aa74da90060f",
+      "group": "Status/evidence",
+      "purpose": "Tracker, reporting reconciliation or historical task handoff",
+      "evidence": "Documentation only; historical results are not fresh execution",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/REGISTRATION_503_ROOT_CAUSE_INVESTIGATION_2026-11-18.md",
+      "bytes": 17747,
+      "sha256": "c122a5e19798885134316b369a93b868e3278ad0f21d3b49e4e36a72a1c77df4",
+      "group": "Status/evidence",
+      "purpose": "Tracker, reporting reconciliation or historical task handoff",
+      "evidence": "Documentation only; historical results are not fresh execution",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/REPORTING_ANALYTICS_REQUIREMENTS_MATRIX_2026-11-18.md",
+      "bytes": 19487,
+      "sha256": "5fdaeebb6aa1d2f8870c29ad9f2ed5bd3d14bc898637bb94be0e4f04746a604e",
+      "group": "Status/evidence",
+      "purpose": "Tracker, reporting reconciliation or historical task handoff",
+      "evidence": "Documentation only; historical results are not fresh execution",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/asset-scanner/HANDOFF_REPORT.md",
+      "bytes": 14000,
+      "sha256": "7a413604dabd948547019d9d91d229c79e632ee89b29c3cd3d229844e813d887",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/asset-scanner/README.md",
+      "bytes": 5693,
+      "sha256": "4c75439f1148acc14e6335cb17b39ec9e7853a4ad00a608b0a082a2589dc6395",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/asset-scanner/baseline-findings.csv",
+      "bytes": 22971,
+      "sha256": "cd2b90ddf18820d8e4f792b5b611b724e589560658829a552ab2a1262b6ee523",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/asset-scanner/baseline-findings.json",
+      "bytes": 52278,
+      "sha256": "1fb3728acc7e5bfabd9cb10c905269c55dd4cad7e0b4e994a2ad0c082d5f2491",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/asset-scanner/current-scan.json",
+      "bytes": 28071,
+      "sha256": "2201862b13aed523764382424e471cf2aba6b6448d1c10c8c8bf9143b389cca2",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/asset-scanner/regression-results.json",
+      "bytes": 7400,
+      "sha256": "da10b81671e125305b7f11a4bec232452a19930008751ea763e356990f503189",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/APPROVAL_PACKET.md",
+      "bytes": 16866,
+      "sha256": "daab68b36bb1b3d62ef5f9e6c418c8525d513361574945ba09ae0bd4d0257601",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/BOM_REQUIREMENTS.md",
+      "bytes": 5585,
+      "sha256": "4d34ae1d65f4dc777891249708ede1e4ec58d782dc47e756cfe346882580e2ee",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/HANDOFF_REPORT.md",
+      "bytes": 10342,
+      "sha256": "23cb74e75151ff535dd41f5bf75f9280c6db6ed3c2b407bdca3989b59e92b980",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/bom-business-data-required.json",
+      "bytes": 1159,
+      "sha256": "25d59869e5b60e86741f9ee4f32e2c37f5443ca63edfa1276ad3c70bdf549fcc",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/material-import-review.csv",
+      "bytes": 7664,
+      "sha256": "362a0b2393fd9e19b00110f5c0d46f2586fc6964cab8a2c9407726cc0cdc5696",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/nullable-import-proposal.json",
+      "bytes": 92851,
+      "sha256": "d91878c571f089baf370100123994bfcdf8e960a9ecac2cfe761ed9f577ae507",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/reference-and-id-validation.json",
+      "bytes": 19349,
+      "sha256": "8e9e3ccdd51877e4fe17760bd9e27b6d83ce946b6dbc5d4ad8ba23f32962a4a5",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "docs/inventory-preparation/verified-only-current-schema-plan.json",
+      "bytes": 7637,
+      "sha256": "78a687ebb5964a164a50a59b879d06ce253ec3dbd864b729445bca0dc4cfa805",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "scripts/prepare-section24-inventory.mjs",
+      "bytes": 7681,
+      "sha256": "08bcbf85076daed9568a05fe1b93557cd5a7514eec816ff1637b5f3d321d3ba3",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "scripts/prepare-section24-inventory.test.mjs",
+      "bytes": 8079,
+      "sha256": "b520906cd7126fcf471820a06a6c32dc27d8ea0532fc103f325efc8722217410",
+      "group": "Inventory preparation",
+      "purpose": "Offline approval packet/planner, mapping validation and missing BOM plan",
+      "evidence": "Preparation 13 + selected planner 3 (historical); execution prohibited",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "scripts/production-asset-policy.mjs",
+      "bytes": 3980,
+      "sha256": "ce02a4a6ca1b096ce2f23736b6331390c5d13b048990abd3a47aa13e11e2e432",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "scripts/production-asset-scan.mjs",
+      "bytes": 6868,
+      "sha256": "e4afe50f6d0fb5c4204a4cd497d40b54e2ac48e09f7a0dad7ddd6ff9dc3f01a9",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "scripts/production-asset-scan.test.mjs",
+      "bytes": 5619,
+      "sha256": "05c187e0b05948182ff145709607d3f7830a347c386c20a04fb4fe6a535823de",
+      "group": "Asset scanner",
+      "purpose": "Context-sensitive catalog scanner, pinned parser, tests/evidence; DEV-only address previews",
+      "evidence": "Scanner 12/build/scan historical; current-scan bundle reference stale",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "src/app/components/client/inquiryValidation.mjs",
+      "bytes": 3504,
+      "sha256": "3c558e0ffde83e51ea1c43a0af6df5178c25326c5603cfa19c40d4fc0dcbea40",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "src/app/components/client/inquiryValidation.test.mjs",
+      "bytes": 2516,
+      "sha256": "f3e5142c20f7b36b7bfab9a26b4f316103b0daa247fb540da5a479863a3c98e8",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "src/app/components/sales/cancellationModel.mjs",
+      "bytes": 442,
+      "sha256": "14a8bc60b7421778b57ba7644739e7d61daa269b5e5d6e7ed78238a74a06f29c",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    },
+    {
+      "status": "??",
+      "path": "src/app/components/sales/cancellationModel.test.mjs",
+      "bytes": 1716,
+      "sha256": "5cd3af2798f4bca4da0092d847991393d563b5f4d52c3f18483f18e3836819aa",
+      "group": "Cancellation/quotation/inquiry",
+      "purpose": "Existing cancellation/history/ownership/uncertain-outcome or inquiry validation work",
+      "evidence": "Client/Sales services/HTTP, API adapters/models/UI; live cross-role acceptance pending",
+      "currentValidation": "NOT RERUN in preparation; source/static or prior evidence only"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ export type SalesOrderStage = "all" | "inquiry" | "quotation" | "po" | "jo" | "i
 export type SalesOrderSort = "submitted-asc" | "submitted-desc" | "client-asc" | "client-desc" | "id-asc" | "id-desc";
 
 export interface SalesOrderFilters {
+  cancellationStatus?: 'all' | 'pending' | 'approved' | 'declined';
   q: string;
   status: SalesOrderStatus;
   stage: SalesOrderStage;
@@ -108,11 +109,11 @@ export type SalesOrderDetail = SalesOrderRow & {
 
 export interface SalesStockAssessment {
   inventoryId: string | null; description: string; classification: "raw_material" | "finished_good";
-  categoryCode: string | null; requiredQuantity: number; availableQuantity: number | null;
+  categoryCode: string | null; requiredQuantity: number | null; availableQuantity: number | null;
   shortageQuantity: number | null; unit: string | null; inventoryState: "recorded" | "zero_stock" | "inventory_unavailable";
   status: "available" | "insufficient" | "inventory_unavailable"; source: "bom_template" | "finished_goods";
   itemId: string; specificationId: string; filterTypeCode: string | null; filterName: string | null;
-  checkedAt: string; itemCode?: string; partNumber?: string; bufferMinimum?: number; demand?: string;
+  checkedAt: string; itemCode?: string; partNumber?: string; bufferMinimum?: number | null; demand?: string;
 }
 export interface SalesStockAvailability {
   orderId: string; checkedAt: string;

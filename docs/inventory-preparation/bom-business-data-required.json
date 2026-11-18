@@ -1,0 +1,40 @@
+{
+  "executionAuthorized": false,
+  "templates": [],
+  "lines": [],
+  "status": "business-data-required",
+  "affectedTablesAfterSeparateApproval": [
+    "bom_templates",
+    "bom_template_lines"
+  ],
+  "requiredTemplateFields": [
+    "filter_type_code",
+    "size_label and supported selection criteria",
+    "labor_cost",
+    "markup_percent",
+    "discount_percent",
+    "vat_type",
+    "vat_rate",
+    "include_labor",
+    "apply_markup",
+    "apply_vat",
+    "notes if approved",
+    "authorized created_by user ID"
+  ],
+  "requiredLineFields": [
+    "template identity",
+    "line_number",
+    "mapped numeric material ID",
+    "quantity_per_filter > 0",
+    "waste_percent 0..100",
+    "pricing/consumption unit agreement or explicitly approved conversion"
+  ],
+  "requiredEvidence": [
+    "manufacturing owner approval",
+    "source document/revision/date",
+    "dimensional applicability and overlap rules",
+    "unit conversion evidence",
+    "expected worked costing and stock-availability examples"
+  ],
+  "prohibition": "No templates, product/material associations, quantities, waste percentages, conversions or business IDs have been guessed."
+}

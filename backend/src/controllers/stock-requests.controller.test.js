@@ -25,3 +25,11 @@ test('Stock Request list converts service failures to a useful JSON error', asyn
   assert.equal(res.statusCode, 503);
   assert.deepEqual(res.body, { success: false, code: 'SERVICE_UNAVAILABLE', message: 'Stock request service is temporarily unavailable.' });
 });
+
+test('invalid persisted inventory fails closed with a specific retryable response', async () => {
+  const controller = createStockRequestsController({ service: { create: async () => ({ success: false, code: 'INVENTORY_UNAVAILABLE' }) } });
+  const res = response();
+  await controller.create({ auth: { roleCode: 'sales' }, body: {} }, res);
+  assert.equal(res.statusCode, 503);
+  assert.deepEqual(res.body, { success: false, code: 'INVENTORY_UNAVAILABLE', message: 'Recorded inventory quantities are invalid; refresh and retry.' });
+});

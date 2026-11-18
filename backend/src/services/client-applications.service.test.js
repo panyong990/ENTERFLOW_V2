@@ -115,7 +115,7 @@ function harness(options = {}, shared = freshState()) {
           stage('insertUser'); assert.match(text, /VALUES \('client', 'client', \?/);
           this.lastId = String(data.nextId++);
           data.users.push({ id: this.lastId, roleCode: 'client', accountType: 'client', clientId: params[0],
-            displayName: params[1], email: params[2], username: params[3], phone: params[4], passwordHash: params[5] });
+            displayName: params[1], email: params[2], username: params[3], phone: params[4], passwordHash: params[5], active: 1 });
           return [header('insertUser')];
         }
         if (text.startsWith('UPDATE client_applications')) {
@@ -228,6 +228,8 @@ test('approval atomically creates one linked company/client user, decision, and 
   assert.equal(data.companies.length, 1); assert.equal(data.users.length, 1); assert.equal(data.audits.length, 1);
   const user = data.users[0];
   assert.equal(user.roleCode, 'client'); assert.equal(user.accountType, 'client');
+  assert.equal(Number(user.active), 1);
+  assert.match(h.calls.find(call => call.sql.startsWith('INSERT INTO users')).sql, /password_hash, active\).*TRUE\)/);
   assert.equal(user.clientId, data.companies[0].id); assert.equal(user.passwordHash === HASH, true);
   assert.equal(result.data.userId, user.id); assert.equal(result.data.clientId, user.clientId);
   assert.equal(data.applications[0].approvedClientId, user.clientId); assert.equal(data.applications[0].decidedBy, ACTOR.userId);

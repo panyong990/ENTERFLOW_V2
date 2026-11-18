@@ -48,9 +48,16 @@ export function project(bundle: OrderBundle, profile: ClientProfile, surface: Su
     paymentTerms: order.paymentTermLabel ?? '—', submittedDate: order.submittedAt ? new Date(order.submittedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : 'Unavailable',
     stage: stages[order.stageLabel ?? ''] ?? 'unavailable', products: order.items.map(product),
     dueDate: order.requestedDeliveryDate ?? undefined, quotationDoc: latest ? quote(latest) : undefined,
-    quotationId: latest?.id, quotationDecision: latest?.decision ?? null, quotationDecisionReason: latest?.decisionReason ?? null, quotationDecidedAt: latest?.decidedAt ?? null,
+    quotationId: latest?.id, quotationStatus: latest?.status, quotationIsLatestRevision: latest?.isLatestRevision, quotationDecision: latest?.decision ?? null, quotationDecisionReason: latest?.decisionReason ?? null, quotationDecidedAt: latest?.decidedAt ?? null,
     quotationDownpaymentValid: latest?.downpaymentValid,
     quotationHistory: quotations.slice(0, -1).map(quote), quotedTotal: latest ? draftMoney(latest.totalAmount) : NaN,
+    revisionRequests: order.revisionRequests?.map(request => ({
+      id: request.id, note: request.reason, requestedAt: request.requestedAt,
+      status: request.status === 'pending' ? 'pending' : 'processed',
+      processedAt: request.decidedAt ?? undefined,
+    })),
+    pendingCancellation: order.pendingCancellation ?? undefined,
+    cancellationHistory: order.cancellationHistory ?? [],
     poNumber: purchaseOrder?.clientReference ?? purchaseOrder?.reference, poUploadedAt: purchaseOrder?.uploadedAt, poFileName: purchaseOrder?.files?.[0]?.originalFilename ?? undefined, poFileId: purchaseOrder?.files?.[0]?.id ?? undefined,
     // No file or review status is inferred from a received/cleared timestamp.
     payments: [],

@@ -77,6 +77,11 @@ export function createSalesOrdersService({ db }) {
       if (input.status === 'open') where.push('o.archived_at IS NULL');
       if (input.status === 'archived') where.push('o.archived_at IS NOT NULL');
       if (input.stage !== 'all') { where.push('o.stage_code=?'); parameters.push(input.stage); }
+      if (input.cancellationStatus !== undefined) {
+        const states = { pending: ['pending'], approved: ['approved', 'cancelled'], declined: ['declined', 'rejected'] }[input.cancellationStatus];
+        where.push(`EXISTS (SELECT 1 FROM order_requests cr WHERE cr.order_id=o.id AND cr.kind='cancellation'${states ? ` AND cr.status IN (${states.map(() => '?').join(',')})` : ''})`);
+        if (states) parameters.push(...states);
+      }
       if (input.q) {
         where.push('(LOCATE(?, o.reference)>0 OR LOCATE(?, CAST(o.id AS CHAR))>0 OR LOCATE(?, c.company_name)>0 OR LOCATE(?, COALESCE(o.contact_person, \'\'))>0)');
         parameters.push(input.q, input.q, input.q, input.q);
@@ -503,19 +508,37 @@ export function createSalesOrdersService({ db }) {
     return value >= 400 ? 'Large' : value >= 200 ? 'Medium' : 'Small';
   }
 
+  function inventoryQuantity(value) {
+    if (value === null || value === undefined || !['number', 'string'].includes(typeof value)) return null;
+    if (typeof value === 'string' && !/^\d+(?:\.\d+)?$/.test(value)) return null;
+    const quantity = Number(value);
+    return Number.isFinite(quantity) && quantity >= 0 ? quantity : null;
+  }
+
+  function validNonNegativeDecimal(value) {
+    if (!['number', 'string'].includes(typeof value)) return false;
+    if (typeof value === 'string' && !/^\d+(?:\.\d+)?$/.test(value)) return false;
+    return Number.isFinite(Number(value)) && Number(value) >= 0;
+  }
+
+  function validPositiveDecimal(value) {
+    return validNonNegativeDecimal(value) && Number(value) > 0;
+  }
+
   function materialAssessment(row, requiredQuantity, checkedAt) {
-    const availableQuantity = row.inventoryId === null || row.availableQuantity === null ? null : Number(row.availableQuantity);
+    const availableQuantity = row.inventoryId === null ? null : inventoryQuantity(row.availableQuantity);
     const required = Number(requiredQuantity);
-    const validAvailable = availableQuantity !== null && Number.isFinite(availableQuantity);
-    const shortageQuantity = validAvailable ? Math.max(0, required - availableQuantity) : null;
+    const validAvailable = availableQuantity !== null;
+    const validRequired = Number.isFinite(required) && required > 0;
+    const shortageQuantity = validAvailable && validRequired ? Math.max(0, required - availableQuantity) : null;
     return {
       inventoryId: row.inventoryId,
       description: row.inventoryName ?? `Material ${row.materialId}`,
       classification: 'raw_material', categoryCode: row.categoryCode ?? null,
-      requiredQuantity: required, availableQuantity: validAvailable ? availableQuantity : null,
+      requiredQuantity: validRequired ? required : null, availableQuantity: validAvailable ? availableQuantity : null,
       shortageQuantity, unit: row.unitCode ?? null,
       inventoryState: !validAvailable ? 'inventory_unavailable' : availableQuantity === 0 ? 'zero_stock' : 'recorded',
-      status: !validAvailable ? 'inventory_unavailable' : shortageQuantity > 0 ? 'insufficient' : 'available',
+      status: !validAvailable || !validRequired ? 'inventory_unavailable' : shortageQuantity > 0 ? 'insufficient' : 'available',
       source: 'bom_template', checkedAt
     };
   }
@@ -548,7 +571,8 @@ export function createSalesOrdersService({ db }) {
         [item.filterTypeCode, size, size]);
         const templateId = bomRows[0]?.templateId;
         const selectedBom = templateId ? bomRows.filter(row => row.templateId === templateId) : [];
-        if (!selectedBom.length || selectedBom.some(row => row.quantityPerFilter === null || Number(row.quantityPerFilter) <= 0)) {
+        if (!selectedBom.length
+          || selectedBom.some(row => row.materialId === null || row.inventoryId === null || !validPositiveDecimal(row.quantityPerFilter))) {
           unmappedItems.push({ itemId: item.itemId, specificationId: item.specificationId, filterTypeCode: item.filterTypeCode, filterName: item.filterName, reason: 'No approved BOM template is available for this product and size.' });
         } else {
           for (const row of selectedBom) assessments.push({ ...materialAssessment(row, Number(row.quantityPerFilter) * Number(item.quantity), checkedAt), itemId: item.itemId, specificationId: item.specificationId, filterTypeCode: item.filterTypeCode, filterName: item.filterName });
@@ -559,16 +583,19 @@ export function createSalesOrdersService({ db }) {
           WHERE fg.client_id=? AND (fg.specification_id=? OR (? IS NOT NULL AND fg.enterfil_part_number=?))`,
         [orders[0].clientId, item.specificationId, item.oemPartNumber, item.oemPartNumber]);
         for (const finishedGood of finishedGoods) {
-          const available = Number(finishedGood.availableQuantity);
+          const available = inventoryQuantity(finishedGood.availableQuantity);
           const required = Number(item.quantity);
+          const validRequired = Number.isFinite(required) && required > 0;
+          const shortage = available !== null && validRequired ? Math.max(0, required - available) : null;
           assessments.push({
             inventoryId: finishedGood.inventoryId, description: finishedGood.itemCode || finishedGood.partNumber,
-            classification: 'finished_good', categoryCode: null, requiredQuantity: required,
-            availableQuantity: available, shortageQuantity: Math.max(0, required - available), unit: finishedGood.unitCode,
-            inventoryState: available === 0 ? 'zero_stock' : 'recorded', status: available >= required ? 'available' : 'insufficient',
+            classification: 'finished_good', categoryCode: null, requiredQuantity: validRequired ? required : null,
+            availableQuantity: available, shortageQuantity: shortage, unit: finishedGood.unitCode,
+            inventoryState: available === null ? 'inventory_unavailable' : available === 0 ? 'zero_stock' : 'recorded',
+            status: available === null || !validRequired ? 'inventory_unavailable' : shortage > 0 ? 'insufficient' : 'available',
             source: 'finished_goods', itemId: item.itemId, specificationId: item.specificationId,
             filterTypeCode: item.filterTypeCode, filterName: item.filterName, itemCode: finishedGood.itemCode,
-            partNumber: finishedGood.partNumber, bufferMinimum: Number(finishedGood.bufferMinimum), demand: finishedGood.demand, checkedAt
+            partNumber: finishedGood.partNumber, bufferMinimum: inventoryQuantity(finishedGood.bufferMinimum), demand: finishedGood.demand, checkedAt
           });
         }
       }
@@ -576,7 +603,7 @@ export function createSalesOrdersService({ db }) {
       const hasUnavailable = assessments.some(item => item.status === 'inventory_unavailable');
       const available = mapped.filter(item => item.status === 'available').length;
       const insufficient = mapped.filter(item => item.status === 'insufficient').length;
-      const overallStatus = !assessments.length && unmappedItems.length ? 'unmapped' : hasUnavailable ? 'unavailable' : insufficient && available ? 'partially_available' : insufficient ? 'insufficient' : 'available';
+      const overallStatus = unmappedItems.length ? 'unmapped' : !assessments.length || hasUnavailable ? 'unavailable' : insufficient && available ? 'partially_available' : insufficient ? 'insufficient' : 'available';
       return { success: true, data: { orderId: id, checkedAt, overallStatus, assessments, unmappedItems, stockChanged: false } };
     });
   }
@@ -624,7 +651,12 @@ export function createSalesOrdersService({ db }) {
           ORDER BY CASE WHEN bt.size_label=? THEN 0 ELSE 1 END, bt.id, btl.line_number`, [item.filterTypeCode, size, size]);
         const templateId = bomRows[0]?.templateId;
         const selectedBom = templateId ? bomRows.filter(row => row.templateId === templateId) : [];
-        if (!selectedBom.length || selectedBom.some(row => row.materialId === null || row.unitPrice === null || Number(row.quantityPerFilter) <= 0 || Number(row.wastePercent) < 0)) return { success: false, code: 'MATERIAL_COSTING_INCOMPLETE', errors: { [item.orderItemId]: 'An approved BOM mapping and material price are required.' } };
+        if (!selectedBom.length || selectedBom.some(row => row.materialId === null
+          || !validNonNegativeDecimal(row.unitPrice)
+          || !validPositiveDecimal(row.quantityPerFilter)
+          || (row.wastePercent !== null && row.wastePercent !== undefined && !validNonNegativeDecimal(row.wastePercent)))) {
+          return { success: false, code: 'MATERIAL_COSTING_INCOMPLETE', errors: { [item.orderItemId]: 'An approved BOM mapping and material price are required.' } };
+        }
         const cost = costingByItem.get(item.orderItemId);
         const rawMaterialUnitCost = quoteRound(selectedBom.reduce((sum, row) => sum + Number(row.unitPrice) * Number(row.quantityPerFilter) * (1 + Number(row.wastePercent ?? 0) / 100), 0));
         const laborUnitCost = input.includeLabor ? cost.laborCost : 0;
@@ -701,6 +733,77 @@ export function createSalesOrdersService({ db }) {
     });
   }
 
+  async function reviewCancellation(id, requestId, decision, actor, context = {}) {
+    const identity = validateSalesOrderId(id);
+    if (!identity.success) return identity;
+    if (!validateSalesOrderId(requestId).success || !['approved', 'declined'].includes(decision)) return { success: false, code: 'VALIDATION_ERROR' };
+    const failure = code => ({ success: false, code });
+    if (actor?.roleCode !== 'sales' || actor?.accountType !== 'employee' || !validateSalesOrderId(actor.userId).success) return failure('FORBIDDEN');
+    let connection, transaction = false, commitAttempted = false, reusable = true;
+    try {
+      connection = await db.getConnection();
+      await connection.beginTransaction(); transaction = true;
+      const [actors] = await connection.execute("SELECT id FROM users WHERE id=? AND active=TRUE AND role_code='sales' AND account_type='employee' FOR SHARE", [actor.userId]);
+      if (actors.length !== 1) return failure('FORBIDDEN');
+      const [orders] = await connection.execute(`SELECT ${rejectionColumns} FROM orders o WHERE o.id=? FOR UPDATE`, [id]);
+      const order = orders[0];
+      if (!order) return failure('NOT_FOUND');
+      const [requests] = await connection.execute(`SELECT ${cancellationColumns}, response FROM order_requests
+        WHERE id=? AND order_id=? AND kind='cancellation' FOR UPDATE`, [requestId, id]);
+      const request = requests[0];
+      if (!request) return failure('NOT_FOUND');
+      if (request.status !== 'pending') return failure('CANCELLATION_ALREADY_DECIDED');
+      if (order.archivedAt || order.archiveReason || !['inquiry', 'quotation', 'po'].includes(order.stageCode)) return failure('CANCELLATION_NOT_ELIGIBLE');
+      if (decision === 'approved') {
+        const [payments] = await connection.execute(`SELECT id FROM payments WHERE order_id=?
+          AND payment_type='DOWNPAYMENT' AND verification_status='verified' LIMIT 1 FOR UPDATE`, [id]);
+        if (payments.length) return failure('CANCELLATION_NOT_ELIGIBLE');
+        const [archived] = await connection.execute(`UPDATE orders SET archive_reason='cancelled',archive_note=NULL,
+          archived_by=?,archived_at=UTC_TIMESTAMP(3),updated_at=GREATEST(UTC_TIMESTAMP(3),updated_at + INTERVAL 1000 MICROSECOND)
+          WHERE id=? AND archived_at IS NULL AND archive_reason IS NULL`, [actor.userId, id]);
+        if (archived.affectedRows !== 1 || archived.warningStatus) throw new Error('Cancellation archive write failed.');
+      }
+      const response = decision === 'approved' ? 'Cancellation request approved by Sales.' : 'Cancellation request declined by Sales.';
+      const [updated] = await connection.execute(`UPDATE order_requests SET status=?,response=?,decided_by=?,decided_at=UTC_TIMESTAMP(3)
+        WHERE id=? AND order_id=? AND kind='cancellation' AND status='pending'`,
+      [decision, response, actor.userId, requestId, id]);
+      if (updated.affectedRows !== 1 || updated.warningStatus) throw new Error('Cancellation decision write failed.');
+      const [saved] = await connection.execute(`SELECT CAST(id AS CHAR) id, reason, status,
+          DATE_FORMAT(requested_at,'%Y-%m-%dT%H:%i:%s.%fZ') requestedAt,
+          DATE_FORMAT(decided_at,'%Y-%m-%dT%H:%i:%s.%fZ') resolvedAt, response
+        FROM order_requests WHERE id=? AND order_id=?`, [requestId, id]);
+      if (!saved[0]) throw new Error('Cancellation decision result unavailable.');
+      const [audit] = await connection.execute(`INSERT INTO audit_events
+        (actor_id,action,subject_type,subject_identifier,old_value,new_value,reason,request_id,occurred_at)
+        VALUES (?,?,'order',?,?,?,?,?,UTC_TIMESTAMP(3))`,
+      [actor.userId, `cancellation.${decision}`, id,
+        JSON.stringify({ orderId: id, stageCode: order.stageCode, archiveReason: order.archiveReason,
+          requestId, requestStatus: request.status }),
+        JSON.stringify({ orderId: id, stageCode: order.stageCode, archiveReason: decision === 'approved' ? 'cancelled' : null,
+          requestId, requestStatus: decision, reason: request.reason }),
+        request.reason, auditRequestId(context)]);
+      if (audit.affectedRows !== 1 || audit.warningStatus) throw new Error('Cancellation decision audit write failed.');
+      commitAttempted = true;
+      await connection.commit(); transaction = false;
+      return { success: true, data: {
+        id: order.id, reference: order.reference, stageCode: order.stageCode,
+        archiveReason: decision === 'approved' ? 'cancelled' : null,
+        archived: decision === 'approved', cancellationRequest: {
+          id: saved[0].id, reason: saved[0].reason, status: saved[0].status,
+          requestedAt: saved[0].requestedAt, resolvedAt: saved[0].resolvedAt, response: saved[0].response
+        }
+      } };
+    } catch {
+      reusable = false;
+      return failure(commitAttempted ? 'WRITE_OUTCOME_UNKNOWN' : 'SERVICE_UNAVAILABLE');
+    } finally {
+      if (connection) {
+        if (transaction) try { await connection.rollback(); } catch { reusable = false; }
+        try { reusable ? connection.release() : connection.destroy(); } catch { try { connection.destroy(); } catch {} }
+      }
+    }
+  }
+
   async function rejectInquiry(id, body, actor, context) {
     const validation = validateInquiryRejection(body);
     if (!validation.success) return validation;
@@ -753,5 +856,5 @@ export function createSalesOrdersService({ db }) {
     }
   }
 
-  return { list, detail, quotations, purchaseOrder, processPurchaseOrder, generateInvoice, createJobOrders, jobOrders, delivery, stockAvailability, createQuotation, rejectInquiry, rejectionHistory };
+  return { list, detail, quotations, purchaseOrder, processPurchaseOrder, generateInvoice, createJobOrders, jobOrders, delivery, stockAvailability, createQuotation, rejectInquiry, reviewCancellation, rejectionHistory };
 }

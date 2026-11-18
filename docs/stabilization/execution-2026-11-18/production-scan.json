@@ -1,0 +1,781 @@
+{
+  "date": "2026-11-18",
+  "scope": "Fresh offline production-bundle scan; no remote assets fetched",
+  "indexHtml": {
+    "path": "dist/index.html",
+    "sha256": "1e239d06ac2f464121c2ee16f6570faa70a569bd9009a91d9c17eccda0455a12"
+  },
+  "sourceHtml": {
+    "path": "index.html",
+    "sha256": "0f1f54d0cbc87b1b35ae85a90f9a34d0ec6ed4746398ce5866830a66e12ec654"
+  },
+  "javascriptAssets": [
+    {
+      "path": "dist/assets/browser-DCA3Hw1c.js",
+      "bytes": 25776,
+      "sha256": "b7951c631eb881127c63274c93050d532a9e01eebde5e59b14d65670d3f15442"
+    },
+    {
+      "path": "dist/assets/index-3D1EhZ5u.js",
+      "bytes": 458342,
+      "sha256": "2e1b24f05ae5ca0b5296c8c980dc731524fea3fe3330781b40a13b160a12cdb4"
+    },
+    {
+      "path": "dist/assets/index-BBz2fyGp.js",
+      "bytes": 2316164,
+      "sha256": "a268a28e628e2a2c174564c72bf5f3512bb3744a4def708316535871d4848219"
+    }
+  ],
+  "externalScripts": [
+    "https://mcp.figma.com/mcp/html-to-design/capture.js"
+  ],
+  "inputs": {
+    "catalogSha256": "6d322fc14252923992d3c4ca5e7a23e1ffcb227daf3abb26896c2ccc16abf186",
+    "materialSourceSha256": "0e318403b4c4f6ea49d27be0c196776281c9935c70eebd43d621802c59e04989",
+    "scannerSha256": "e4afe50f6d0fb5c4204a4cd497d40b54e2ac48e09f7a0dad7ddd6ff9dc3f01a9",
+    "policySha256": "ce02a4a6ca1b096ce2f23736b6331390c5d13b048990abd3a47aa13e11e2e432"
+  },
+  "result": {
+    "assets": 3,
+    "catalogSourceCount": 71,
+    "classifiedCatalog": [
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 798128,
+        "code": "OFF-CR-139",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 362,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 798065,
+        "code": "OFF-DR-138",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 361,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 798005,
+        "code": "OFF-SI-137",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 360,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797918,
+        "code": "RM-MLTIFLX.FB-077-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 357,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797814,
+        "code": "RM-GSPACK.CBP-149",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 356,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797707,
+        "code": "RM-GSPACK.CBP-148",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 355,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797621,
+        "code": "RM-GSPACK.CBP-143",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 354,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797536,
+        "code": "RM-NAPPCO.CB-140",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 353,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797431,
+        "code": "RM-NAPPCO.DCCB-070",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 352,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797332,
+        "code": "RM-NAPPCO.DCCB-066-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 351,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797235,
+        "code": "RM-NAPPCO.DCCB-065",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 350,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797153,
+        "code": "RM-SPRNGPLTESS-113",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 347,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797090,
+        "code": "GS-FELT",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 346,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 797018,
+        "code": "GS-GREEN",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 345,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796948,
+        "code": "OR-VITON",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 342,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796867,
+        "code": "OR-NBR-STD",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 341,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796770,
+        "code": "RM-HNKL.ADHSV-064-2",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 338,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796671,
+        "code": "RM-NNPAO.ADHSV-064-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 337,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796599,
+        "code": "RM-PSBSI-146",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 336,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796518,
+        "code": "RM-PSBSI-144",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 335,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796424,
+        "code": "RM-EMJ.EPOX-063",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 334,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796344,
+        "code": "RM-EMJ.EPOX-062",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 333,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796265,
+        "code": "RM-CHCKENWIRE-136",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 330,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796178,
+        "code": "RM-EXPNDED.ALUM-135",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 329,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 796084,
+        "code": "RM-PERPO.BI-122",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 328,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795992,
+        "code": "RM-PERPO.GI-117",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 327,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795905,
+        "code": "RM-EXPNDEDMTL.BI-134",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 326,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795818,
+        "code": "RM-EXPNDEDMTL.BI-133",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 325,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795721,
+        "code": "RM-PERPO.SS304-123",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 324,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795627,
+        "code": "RM-PERPO.BI-121",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 323,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795533,
+        "code": "RM-PERPO.EG-120",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 322,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795457,
+        "code": "RM-PLATE.SS304-125",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 319,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795379,
+        "code": "RM-PLATE.SS304-124",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 318,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795301,
+        "code": "RM-PLATE.ALUM-132",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 317,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795224,
+        "code": "RM-PLATE.ALUM-131",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 316,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795154,
+        "code": "RM-PLATE.EG-130",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 315,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795084,
+        "code": "RM-PLATE.EG-129",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 314,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 795014,
+        "code": "RM-PLATE.EG-128",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 313,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794943,
+        "code": "RM-PLATE.GI-127",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 312,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794873,
+        "code": "RM-PLATE.GI-126",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 311,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794783,
+        "code": "RM-PERPO.GI-116",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 310,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794686,
+        "code": "RM-FP-108-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 307,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794616,
+        "code": "RM-FP-104",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 306,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794531,
+        "code": "RM-FC-090",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 305,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794449,
+        "code": "RM-FC-084",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 304,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794366,
+        "code": "RM-FC-083",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 303,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794284,
+        "code": "RM-FC-080",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 302,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794200,
+        "code": "F-LNCON.FG-042",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 301,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794113,
+        "code": "F-ACG-039",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 300,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 794021,
+        "code": "F-ACWF-038",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 299,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793934,
+        "code": "F-ACWF-037",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 298,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793858,
+        "code": "RM-PFM-112",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 297,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793771,
+        "code": "RM-PFM-111",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 296,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793693,
+        "code": "RM-PFM-110",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 295,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793611,
+        "code": "RM-FM-103",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 294,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793521,
+        "code": "RM-FM-102-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 293,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793431,
+        "code": "RM-FM-101-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 292,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793341,
+        "code": "RM-FM-100-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 291,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793251,
+        "code": "RM-FM-099-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 290,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793160,
+        "code": "RM-FM-098-2",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 289,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 793070,
+        "code": "RM-FM-098-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 288,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792980,
+        "code": "RM-FM-096-1",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 287,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792909,
+        "code": "RM-FM-095",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 286,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792817,
+        "code": "F-SNNX.FM-057",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 285,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792734,
+        "code": "F-NNWOV.FM-059",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 284,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792642,
+        "code": "F-NNWOV.FM-058",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 283,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792562,
+        "code": "F-FMI.FM-048",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 282,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792468,
+        "code": "F-FMI.FM-047",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 281,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792385,
+        "code": "F-FMI.FM-045",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 280,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792300,
+        "code": "F-FMI.FM-044",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 279,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 792217,
+        "code": "F-FMI.FM-043",
+        "sourceFile": "src/app/store/materials.tsx",
+        "sourceLine": 278,
+        "referenceFile": "docs/inventory-reconciliation/integrated-main-catalog.json",
+        "sourceCommit": "e59364c1c9bd0257c82319df29e84081740ff694",
+        "classification": "verified_catalog_record"
+      }
+    ],
+    "classifiedCompatibility": [
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 798383,
+        "literal": "RM-GSPACK.CBP-148",
+        "classification": "exact_legacy_key_mapping"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 798364,
+        "literal": "RM-PSBSI-144",
+        "classification": "exact_legacy_key_mapping"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 798338,
+        "literal": "F-LNCON.FG-042",
+        "classification": "exact_legacy_key_mapping"
+      },
+      {
+        "filename": "index-BBz2fyGp.js",
+        "offset": 798311,
+        "literal": "RM-PFM-111",
+        "classification": "exact_legacy_key_mapping"
+      }
+    ],
+    "violations": []
+  }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Calculator, ChevronDown, ChevronUp, FileText, Search } from "lucide-react";
+import { ArrowRight, Calculator, ChevronDown, ChevronUp, FileText, RefreshCw, Search } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useSalesOrders, type SalesOrderFilters, type SalesOrderRow, type SalesOrderDetail } from "../useSalesOrders";
 import { SalesRecordBrowser, OrderDetail } from "./SalesRecordBrowser";
@@ -8,7 +8,8 @@ import { GenerateJOModal } from "./OriginalSalesForms";
 import { RealQuotationPreparation } from "./RealQuotationPreparation";
 import { inquiryDraft, pendingIntegration } from "./drafts";
 import { pipelineColumn, moneyAtLeast } from "./pipelineModel.mjs";
-import { rejectSalesInquiry, sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
+import { getSalesOrder, rejectSalesInquiry, reviewSalesCancellation, sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
+import { cancellationQuery, uncertainWrite } from './cancellationModel.mjs';
 import { usePipelineDetails } from "./usePipelineDetails";
 import { SalesInvoicePreparation } from "./SalesInvoicePreparation";
 import { RealSalesStockRequests as SalesStockRequests } from "./RealSalesStockRequests";
@@ -27,7 +28,7 @@ const statusOptions = [
   ["downpayment", "Required Downpayment Pending"], ["cancellation", "Cancellation Requested"],
 ];
 const cancellationFilters = [
-  ["all", "All Requests"], ["pending", "Pending Review"], ["approved", "Approved / Cancelled"], ["rejected", "Rejected"],
+  ["all", "All Requests"], ["pending", "Pending Review"], ["approved", "Approved / Cancelled"], ["declined", "Declined"],
 ] as const;
 
 export function SalesPipeline({ targetInquiryId }: { targetInquiryId?: string } = {}) {
@@ -39,7 +40,8 @@ export function SalesPipeline({ targetInquiryId }: { targetInquiryId?: string } 
   const [workspaceSection, setWorkspaceSection] = useState<"pipeline" | "cancellations" | "records">("pipeline");
   const [cancellationFilter, setCancellationFilter] = useState<(typeof cancellationFilters)[number][0]>("all");
   useEffect(() => { if (targetInquiryId) setSelected(targetInquiryId); }, [targetInquiryId]);
-  const remote = useSalesOrders(!recordsView, filters);
+  const [cancellationPage, setCancellationPage] = useState(1);
+  const remote = useSalesOrders(!recordsView, workspaceSection === 'cancellations' ? cancellationQuery(filters, cancellationFilter, cancellationPage) : filters);
   useEffect(() => {
     const onClientInquirySubmitted = () => remote.refresh();
     window.addEventListener("enterflow:client-inquiry-submitted", onClientInquirySubmitted);
@@ -62,6 +64,10 @@ export function SalesPipeline({ targetInquiryId }: { targetInquiryId?: string } 
             {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           </>}
+          <button type="button" aria-label="Refresh Sales inquiries" onClick={remote.refresh} disabled={remote.loading} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+            <RefreshCw size={14} className={remote.loading ? "animate-spin" : ""} />
+            {remote.loading ? "Refreshing…" : "Refresh"}
+          </button>
           <button onClick={() => setStockOpen(true)} className="rounded-lg bg-[#1A2B4A] px-4 py-2.5 text-xs font-bold text-white">Stock Requests</button>
           <SalesNotificationBell />
         </div>
@@ -88,7 +94,16 @@ export function SalesPipeline({ targetInquiryId }: { targetInquiryId?: string } 
           })}
         </div></div>
         </>}
-        {workspaceSection === "cancellations" && <CancellationSection filter={cancellationFilter} setFilter={setCancellationFilter} title="Cancellation Requests" rows={cancellationRows} details={details.records} empty="No cancellation requests were returned by the authenticated Sales API." onSelect={setSelected} />}
+        {workspaceSection === "cancellations" && <>
+          {details.loading && <p role="status" className="px-8 py-3">Loading cancellation history…</p>}
+          {Object.keys(details.errors).length > 0 && <p role="alert" className="px-8 py-3">Some cancellation history could not be loaded. <button onClick={remote.refresh}>Retry history</button></p>}
+          <CancellationSection filter={cancellationFilter} setFilter={value => { setCancellationFilter(value); setCancellationPage(1); }} title="Cancellation Requests" rows={cancellationRows} details={details.records} empty={details.loading ? 'Loading cancellation history…' : Object.keys(details.errors).length ? 'Cancellation history is unavailable for some orders.' : 'No cancellation requests were returned by the authenticated Sales API.'} onSelect={setSelected} onDecision={remote.refresh} />
+          <nav aria-label="Cancellation history pages" className="mx-8 mb-6 flex items-center gap-3 text-sm">
+            <button disabled={(remote.data?.page ?? 1) <= 1} onClick={() => setCancellationPage((remote.data?.page ?? 1) - 1)}>Previous</button>
+            <span>Page {remote.data?.page ?? 1} of {Math.max(1, Math.ceil((remote.data?.total ?? 0) / (remote.data?.pageSize ?? 25)))}</span>
+            <button disabled={(remote.data?.page ?? 1) * (remote.data?.pageSize ?? 25) >= (remote.data?.total ?? 0)} onClick={() => setCancellationPage((remote.data?.page ?? 1) + 1)}>Next</button>
+          </nav>
+        </>}
       </>}
     </>}
     {selected && <OrderDetail detail={selectedDetail.data} loading={selectedDetail.loading} error={selectedDetail.error} retry={selectedDetail.retry} onClose={() => setSelected(null)} />}
@@ -117,18 +132,74 @@ function matches(row: SalesOrderRow, detail: SalesOrderDetail | undefined, statu
 function hasCancellationRequest(detail: SalesOrderDetail | undefined, filter = "all") {
   return (detail?.requests ?? []).some((request) => {
     const value = request as { kind?: string; status?: string };
-    return value.kind === "cancellation" && (filter === "all" || value.status === filter || (filter === "approved" && value.status === "cancelled"));
+    return value.kind === "cancellation" && (filter === "all" || value.status === filter || (filter === "approved" && value.status === "cancelled") || (filter === "declined" && value.status === "rejected"));
   });
 }
 
-function CancellationSection({ title, rows, details, empty, onSelect, filter, setFilter }: { title: string; rows: SalesOrderRow[]; details: Record<string, SalesOrderDetail>; empty: string; onSelect: (id: string) => void; filter: string; setFilter: (value: (typeof cancellationFilters)[number][0]) => void }) {
+function CancellationSection({ title, rows, details, empty, onSelect, onDecision, filter, setFilter }: { title: string; rows: SalesOrderRow[]; details: Record<string, SalesOrderDetail>; empty: string; onSelect: (id: string) => void; onDecision: () => void; filter: string; setFilter: (value: (typeof cancellationFilters)[number][0]) => void }) {
   return <section aria-label={title} className="mx-8 mb-8 rounded-xl border border-slate-200/70 bg-white p-5 shadow-sm">
     <div className="flex items-center justify-between gap-3"><h2 className="font-syne font-bold text-slate-900">{title}</h2><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{rows.length}</span></div>
     <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Cancellation request filters">{cancellationFilters.map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${filter === value ? "bg-[#1A2B4A] text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>{label}</button>)}</div>
     <div className="mt-3 flex flex-col gap-2">{rows.length ? rows.map(row => {
-      const requests = (details[row.id]?.requests ?? []).filter((request) => (request as { kind?: string }).kind === "cancellation") as { reason?: string; requestedAt?: string; status?: string }[];
-      return <button key={row.id} onClick={() => onSelect(row.id)} className="rounded border border-amber-100 bg-amber-50/40 p-3 text-left text-xs hover:bg-amber-50"><b>{row.reference}</b> · {row.companyName}<div className="mt-1 text-slate-600">{requests.map((request, index) => <span key={`${row.id}-${index}`}>{request.status || "Status unavailable"} · {request.reason || "Reason unavailable"}{request.requestedAt ? ` · ${request.requestedAt}` : " · Timestamp unavailable"}{index < requests.length - 1 ? " | " : ""}</span>)}</div><div className="mt-1 text-amber-800">Review and approval actions are unavailable until an authenticated cancellation API is provided.</div></button>;
+      const requests = (details[row.id]?.requests ?? []).filter((request) => (request as { kind?: string }).kind === "cancellation") as { id?: string; reason?: string; requestedAt?: string; status?: string }[];
+      const pending = requests.find(request => request.status === "pending");
+      return <article key={row.id} className="rounded border border-amber-100 bg-amber-50/40 p-3 text-xs">
+        <button type="button" onClick={() => onSelect(row.id)} className="text-left hover:underline"><b>{row.reference}</b> · {row.companyName}</button>
+        <div className="mt-1 text-slate-600">{requests.map((request, index) => <span key={`${row.id}-${index}`}>{request.status || "Status unavailable"} · {request.reason || "Reason unavailable"}{request.requestedAt ? ` · ${request.requestedAt}` : " · Timestamp unavailable"}{index < requests.length - 1 ? " | " : ""}</span>)}</div>
+        {pending?.id && <CancellationReview orderId={row.id} request={{ id: pending.id, reason: pending.reason, requestedAt: pending.requestedAt }} onResolved={onDecision} />}
+      </article>;
     }) : <p className="text-xs text-slate-400">{empty}</p>}</div>
+  </section>;
+}
+
+type CancellationRequestRow = { id: string; reason?: string; requestedAt?: string };
+
+function CancellationReview({ orderId, request, onResolved }: { orderId: string; request: CancellationRequestRow; onResolved: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const decisionLock = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [error, setError] = useState("");
+  const checkState = async () => {
+    if (decisionLock.current) return;
+    decisionLock.current = true; setSubmitting(true);
+    try {
+      const latest = await getSalesOrder(orderId) as SalesOrderDetail;
+      const current = (latest.requests ?? []).find((row: any) => row.id === request.id) as { status?: string } | undefined;
+      if (!current) { setError('The request state could not be confirmed. Check again before retrying.'); return; }
+      if (current.status !== 'pending') { onResolved(); setError(`Cancellation is ${current.status}. Refreshing history.`); }
+      else { setUncertain(false); setError('The request is still pending. Review before submitting another decision.'); }
+    } catch { setError('The request state could not be confirmed. Check again before retrying.'); }
+    finally { decisionLock.current = false; setSubmitting(false); }
+  };
+  const decide = async (decision: "approved" | "declined") => {
+    if (decisionLock.current || uncertain) return;
+    decisionLock.current = true;
+    setSubmitting(true);
+    setError("");
+    try {
+      await reviewSalesCancellation(orderId, request.id, decision);
+      toast.success(decision === "approved" ? "Cancellation accepted and archived." : "Cancellation declined; inquiry restored.");
+      onResolved();
+    } catch (cause) {
+      if (uncertainWrite(cause)) setUncertain(true);
+      const message = cause instanceof Error ? cause.message : "The cancellation decision could not be confirmed.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      decisionLock.current = false;
+      setSubmitting(false);
+    }
+  };
+  return <section aria-label="Cancellation review" className="mt-3 rounded-md border border-amber-300 bg-white p-3 text-xs text-amber-950">
+    <div className="font-bold">Cancellation Requested</div>
+    <div className="mt-1">Client reason: {request.reason || "Reason unavailable"}</div>
+    <div className="mt-1">Request date: {request.requestedAt || "Date unavailable"}</div>
+    {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
+    <div className="mt-3 flex flex-wrap gap-2">
+      <button type="button" disabled={submitting || uncertain} onClick={() => void decide("approved")} className="rounded bg-red-700 px-3 py-2 font-bold text-white disabled:opacity-50">{submitting ? "Saving…" : "ACCEPT CANCEL"}</button>
+      <button type="button" disabled={submitting || uncertain} onClick={() => void decide("declined")} className="rounded border border-slate-300 px-3 py-2 font-bold text-slate-700 disabled:opacity-50">DECLINE</button>
+      {uncertain && <button type="button" disabled={submitting} onClick={() => void checkState()}>Check latest cancellation state</button>}
+    </div>
   </section>;
 }
 
@@ -147,7 +218,7 @@ function PipelineCard({ row, detail, error, ready, onRecords, retry }: { row: Sa
   const cancellationRequest = (detail?.requests ?? []).find((request) => {
     const value = request as { kind?: string; status?: string };
     return value.kind === "cancellation" && value.status === "pending";
-  }) as { reason?: string; requestedAt?: string } | undefined;
+  }) as { id?: string; reason?: string; requestedAt?: string } | undefined;
   const eligible = row.stageCode === 'inquiry' && !row.archivedAt && detail?.stageCode === 'inquiry' && !detail.archivedAt && !!detail.revision;
   const submitRejection = async () => {
     if (rejectionLock.current || !eligible) return;
@@ -170,10 +241,13 @@ function PipelineCard({ row, detail, error, ready, onRecords, retry }: { row: Sa
   return <article className="rounded-lg border bg-white p-5 transition-all hover:shadow-sm" style={{ borderColor: ready ? "#BBF7D0" : "#E2E8F0" }}>
     <div className="mb-3 flex items-center justify-between gap-2"><b className="font-mono-jb text-xs text-[#1A2B4A]">{row.reference}</b><div className="flex items-center gap-2">{row.urgent && <span className="rounded-full bg-red-100 px-2 text-[10px] font-bold text-red-700">RUSH</span>}<button aria-label={expanded ? "Collapse order details" : "Expand order details"} aria-expanded={expanded} onClick={() => setExpanded(!expanded)} className="rounded-full p-1 hover:bg-slate-100">{expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button></div></div>
     <div className="mb-1.5 text-sm font-semibold text-slate-900">{row.companyName}</div><div className="mb-2 text-xs text-slate-500">{row.contactPerson || "Contact unavailable"} · {row.paymentTermLabel}</div>
-    <span className="mb-3 inline-block rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">{row.stageLabel}</span>
+    <span className="mb-3 inline-block rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">{cancellationRequest ? "CANCELLATION REQUESTED" : row.stageLabel}</span>
     {expanded && <div className="flex flex-col gap-3">
+      {cancellationRequest ? cancellationRequest.id
+        ? <CancellationReview orderId={row.id} request={{ id: cancellationRequest.id, reason: cancellationRequest.reason, requestedAt: cancellationRequest.requestedAt }} onResolved={retry} />
+        : <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950"><div className="font-bold">Cancellation Requested</div><div>{cancellationRequest.reason || "Reason unavailable"} · {cancellationRequest.requestedAt || "Date unavailable"}</div><div className="mt-1">The request identifier is unavailable; refresh before reviewing.</div></div>
+        : <>
       {detail ? <><button onClick={() => setProductsOpen(!productsOpen)} className="flex items-center gap-1 self-start rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">{detail.items.length} products {productsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</button>{productsOpen && <div className="space-y-2 rounded bg-slate-50 p-3">{detail.items.map(item => <div key={item.id} className="text-xs"><b>{item.filterName || item.filterTypeCode}</b> × {item.quantity}<div className="mt-1 grid grid-cols-2 gap-1 text-slate-500">{Object.entries(item).filter(([key, value]) => !["id", "lineNumber", "quantity", "filterName", "filterTypeCode"].includes(key) && value != null).map(([key, value]) => <span key={key}>{key}: {String(value)}</span>)}</div></div>)}</div>}</> : error ? <p role="alert" className="text-xs text-red-700">{error} <button onClick={retry}>Retry details</button></p> : <p role="status" className="text-xs text-slate-500">Loading product specifications…</p>}
-      {cancellationRequest && <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950"><div className="font-bold">Cancellation requested</div><div className="mt-1">{cancellationRequest.reason || "Reason unavailable"}{cancellationRequest.requestedAt ? ` · ${cancellationRequest.requestedAt}` : ""}</div><div className="mt-1 text-amber-800">Review is presentation-only until the authorized cancellation API is available. No record has been changed.</div></div>}
       <button onClick={onRecords} className="flex items-center gap-1 self-start rounded-md border border-red-200 px-2.5 py-1.5 text-[11px] font-semibold text-red-700"><FileText size={12} />View Quotation, PO &amp; Document History</button>
       {row.latestQuotationReference && <p className="text-xs text-slate-500">Quotation: {row.latestQuotationReference} · {row.latestQuotationStatus || "Status unavailable"}</p>}
       {detail?.quotations?.length > 0 && <p className="font-syne text-sm font-bold text-slate-900">Latest quotation total: ₱{(detail.quotations[0] as { totalAmount?: string }).totalAmount ?? "Unavailable"}</p>}
@@ -182,6 +256,7 @@ function PipelineCard({ row, detail, error, ready, onRecords, retry }: { row: Sa
       {row.stageCode === "po" && <><div className="flex gap-2"><button onClick={() => setAction("approve")} className="flex-1 rounded bg-green-600 py-2 text-xs font-bold text-white">APPROVE PO</button><button onClick={() => { setReason(""); setAction("reject"); }} className="flex-1 rounded border border-red-200 py-2 text-xs font-bold text-red-700">REJECT PO</button></div><button disabled={!draft?.products.length} onClick={() => setAction("invoice")} className="rounded border px-3 py-2 text-xs font-bold disabled:opacity-40">PREPARE INVOICE</button><button disabled={!draft?.products.length} onClick={() => setAction("jo")} className="rounded bg-[#C8102E] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">CONFIGURE / GENERATE JOB ORDER</button><p className="text-[11px] text-slate-500">Readiness uses received and cleared PO, accepted quotation, sent invoices and their verified payments. Server validation is required to generate a JO.</p></>}
       {eligible && <button onClick={() => { setReason('');setRejectionError('');setAction('reject-inquiry'); }} className="text-xs text-red-700">Reject inquiry</button>}
       <button onClick={() => pendingIntegration("Cancellation review")} className="text-xs text-slate-500">Review cancellation</button>
+        </>}
     </div>}
     {detail && action === "quotation" && <RealQuotationPreparation orderId={row.id} detail={detail} onClose={() => setAction(null)} onSaved={(savedStatus) => { setAction(null); retry(); toast.success(savedStatus === "sent" ? "Quotation sent and saved." : "Quotation draft saved."); }} />}
     {draft && action === "jo" && <GenerateJOModal inquiry={draft} onClose={() => setAction(null)} onConfirm={() => pendingIntegration("Job Order generation")} />}

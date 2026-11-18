@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { hashPassword } from './password.service.js';
 import { validateRegistration } from '../validation/registration.validation.js';
+import { logServiceFailure } from '../controllers/service-failure-log.js';
 
 const unavailable = () => ({
   success: false,
@@ -27,7 +28,8 @@ export function registrationIdentityLockName(databaseName) {
 export function createRegistrationService({
   db,
   hashPassword: hash = hashPassword,
-  lockTimeoutSeconds = 2
+  lockTimeoutSeconds = 2,
+  logger = console
 }) {
   if (!db || typeof db.getConnection !== 'function') {
     throw new Error('A valid database pool is required.');
@@ -37,7 +39,10 @@ export function createRegistrationService({
     throw new Error('Registration lock timeout must be an integer from 0 to 10 seconds.');
   }
 
-  async function register(input) {
+  async function register(input, context = {}) {
+    const diagnostic = (stage, error, statusCode = 503) => logServiceFailure({
+      logger, operation: 'auth.register', requestId: context?.requestId, stage, error, statusCode
+    });
     const validation = validateRegistration(input);
     if (!validation.success) {
       return { success: false, code: 'VALIDATION_ERROR', message: 'Invalid registration details.', errors: validation.errors };
@@ -48,8 +53,12 @@ export function createRegistrationService({
       // Hash before holding a pooled connection or identity lock. The HTTP phase
       // must apply its independent abuse controls before invoking this service.
       passwordHash = await hash(password);
-      if (typeof passwordHash !== 'string' || !passwordHash || passwordHash.length > 255) return unavailable();
-    } catch {
+      if (typeof passwordHash !== 'string' || !passwordHash || passwordHash.length > 255) {
+        diagnostic('password_hash_result', { code: 'REGISTRATION_HASH_INVALID' });
+        return unavailable();
+      }
+    } catch (error) {
+      diagnostic('password_hash', error);
       return unavailable();
     }
 
@@ -62,25 +71,32 @@ export function createRegistrationService({
     let reusable = true;
     let inserting = false;
     let result = unavailable();
+    let stage = 'connection_acquire';
     try {
       connection = await db.getConnection();
+      stage = 'database_identity';
       const [[identity]] = await connection.execute('SELECT DATABASE() AS databaseName');
       lockName = registrationIdentityLockName(identity?.databaseName);
       lockAttempted = true;
+      stage = 'identity_lock_acquire';
       const [[lock]] = await connection.execute('SELECT GET_LOCK(?, ?) AS acquired', [lockName, lockTimeoutSeconds]);
       lockAcquired = lock?.acquired === 1 || lock?.acquired === '1';
       lockTimedOut = lock?.acquired === 0 || lock?.acquired === '0';
+      if (!lockAcquired) diagnostic('identity_lock_result', { code: lockTimedOut ? 'REGISTRATION_LOCK_TIMEOUT' : 'REGISTRATION_LOCK_INVALID' });
       if (lockAcquired) {
         transactionMayBeOpen = true;
+        stage = 'transaction_begin';
         await connection.beginTransaction();
         // Both submitted identifiers are compared with both columns. Leave
         // equality to the schema's utf8mb4_unicode_ci collation, not JS folding.
         const identities = [email, username, email, username];
+        stage = 'user_identity_lookup';
         const [users] = await connection.execute(
           `SELECT 1 FROM users
           WHERE email IN (?, ?) OR username IN (?, ?)
           LIMIT 1`, identities
         );
+        stage = 'application_identity_lookup';
         const [applications] = users.length ? [[]] : await connection.execute(
           `SELECT 1 FROM client_applications
           WHERE status IN ('pending', 'approved')
@@ -91,6 +107,7 @@ export function createRegistrationService({
           result = conflict();
         } else {
           inserting = true;
+          stage = 'application_insert';
           const [insert] = await connection.execute(
             `INSERT INTO client_applications
               (company_name, contact_person, email, username, phone, password_hash, status)
@@ -98,7 +115,11 @@ export function createRegistrationService({
             [companyName, contactPerson, email, username, phone, passwordHash]
           );
           inserting = false;
-          if (insert.affectedRows !== 1 || insert.warningStatus) throw new Error('Registration insert failed.');
+          stage = 'application_insert_result';
+          if (insert.affectedRows !== 1 || insert.warningStatus) {
+            throw Object.assign(new Error('Registration insert failed.'), { code: 'REGISTRATION_INSERT_INVALID' });
+          }
+          stage = 'transaction_commit';
           await connection.commit();
           transactionMayBeOpen = false;
           result = { success: true, data: { status: 'pending' }, message: 'Application submitted for review.' };
@@ -107,27 +128,40 @@ export function createRegistrationService({
     } catch (error) {
       // Never expose driver errors, SQL, credentials, PII, or the password hash.
       result = inserting && error?.code === 'ER_DUP_ENTRY' ? conflict() : unavailable();
+      if (result.code === 'SERVICE_UNAVAILABLE') diagnostic(stage, error);
       reusable = false;
     } finally {
       if (connection) {
         if (transactionMayBeOpen) {
-          try { await connection.rollback(); } catch { reusable = false; result = unavailable(); }
+          try { await connection.rollback(); } catch (error) {
+            reusable = false; result = unavailable(); diagnostic('transaction_rollback', error);
+          }
         }
         if (lockAcquired) {
           try {
             const [[released]] = await connection.execute('SELECT RELEASE_LOCK(?) AS released', [lockName]);
-            if (released?.released !== 1 && released?.released !== '1') reusable = false;
-          } catch { reusable = false; }
+            if (released?.released !== 1 && released?.released !== '1') {
+              reusable = false;
+              diagnostic('identity_lock_release_result', { code: 'REGISTRATION_LOCK_RELEASE_INVALID' }, result.success ? 201 : result.code === 'IDENTITY_CONFLICT' ? 409 : 503);
+            }
+          } catch (error) {
+            reusable = false;
+            diagnostic('identity_lock_release', error, result.success ? 201 : result.code === 'IDENTITY_CONFLICT' ? 409 : 503);
+          }
         } else if (lockAttempted && !lockTimedOut) {
           // Acquisition may have succeeded on the server despite a transport error.
           reusable = false;
         }
         // Never return a connection with uncertain transaction/lock state to the
         // pool. Closing the session also drops any outstanding advisory lock.
+        const cleanupStatus = result.success ? 201 : result.code === 'IDENTITY_CONFLICT' ? 409 : 503;
+        const destroy = () => {
+          try { connection.destroy(); } catch (error) { diagnostic('connection_destroy', error, cleanupStatus); }
+        };
         if (reusable) {
-          try { connection.release(); } catch { try { connection.destroy(); } catch {} }
+          try { connection.release(); } catch (error) { diagnostic('connection_release', error, cleanupStatus); destroy(); }
         } else {
-          try { connection.destroy(); } catch {}
+          destroy();
         }
       }
     }

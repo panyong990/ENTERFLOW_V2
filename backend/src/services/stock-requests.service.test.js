@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStockRequestsService } from './stock-requests.service.js';
 
-function harness() {
+function harness({ quantityOnHand = '2' } = {}) {
   const calls = [];
   const connection = {
     async beginTransaction() { calls.push('BEGIN'); }, async commit() { calls.push('COMMIT'); }, async rollback() { calls.push('ROLLBACK'); }, release() {},
     async execute(sql, params) {
       calls.push({ sql, params });
       if (sql.includes('FROM orders')) return [[{ id: '91', clientId: '7' }]];
-      if (sql.includes('FROM materials') && sql.includes('active=TRUE')) return [[{ id: '61', name: 'Media', unitCode: 'pcs', quantityOnHand: '2' }]];
+      if (sql.includes('FROM quotations')) return [[{ id: '201', reference: 'QT-91-R2' }]];
+      if (sql.includes('FROM materials') && sql.includes('active=TRUE')) return [[{ id: '61', name: 'Media', unitCode: 'pcs', quantityOnHand }]];
       if (sql.startsWith('INSERT INTO stock_requests')) return [{ affectedRows: 1, insertId: 501 }];
       if (sql.startsWith('INSERT INTO stock_request_lines')) return [{ affectedRows: 1 }];
       if (sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1 }];
@@ -26,6 +27,28 @@ test('Sales creates an explicit stock request without reserving or deducting inv
   assert.equal(h.calls.some(call => typeof call === 'object' && /UPDATE materials|material_movements/i.test(call.sql)), false);
 });
 
+test('Sales Stock Request snapshots preserve unknown and verified zero inventory', async () => {
+  for (const [quantityOnHand, expectedStock, expectedShortage] of [[null, null, null], ['0.0000', 0, 5]]) {
+    const h = harness({ quantityOnHand });
+    const result = await h.service.create({ accountType: 'employee', roleCode: 'sales', userId: '8' }, { orderId: '91', lines: [{ materialId: '61', quantity: 5 }] });
+    assert.equal(result.success, true);
+    const snapshot = h.calls.find(call => call.sql?.startsWith('INSERT INTO stock_request_lines'));
+    assert.deepEqual(snapshot.params.slice(5), [expectedStock, expectedShortage]);
+  }
+});
+
+test('Sales Stock Request retains the quotation reference and rejects malformed recorded inventory', async () => {
+  const quoted = harness();
+  const result = await quoted.service.create({ accountType: 'employee', roleCode: 'sales', userId: '8' }, { orderId: '91', quotationId: '201', lines: [{ materialId: '61', quantity: 5 }] });
+  assert.equal(result.data.clientReference, 'QT-91-R2');
+  assert.equal(quoted.calls.find(call => call.sql?.startsWith('INSERT INTO stock_requests')).params[2], 'QT-91-R2');
+
+  const invalid = harness({ quantityOnHand: '-1' });
+  assert.equal((await invalid.service.create({ accountType: 'employee', roleCode: 'sales', userId: '8' }, { orderId: '91', lines: [{ materialId: '61', quantity: 5 }] })).code, 'INVENTORY_UNAVAILABLE');
+  assert.equal(invalid.calls.some(call => call.sql?.startsWith('INSERT')), false);
+  assert.ok(invalid.calls.includes('ROLLBACK'));
+});
+
 test('Stock request creation rejects unauthorized roles and invalid quantities before database access', async () => {
   const h = harness();
   assert.equal((await h.service.create({ accountType: 'employee', roleCode: 'warehouse', userId: '8' }, { orderId: '91', lines: [{ materialId: '61', quantity: 1 }] })).code, 'FORBIDDEN');
@@ -33,12 +56,13 @@ test('Stock request creation rejects unauthorized roles and invalid quantities b
   assert.equal(h.calls.length, 0);
 });
 
-function processingHarness() {
+function processingHarness({ materialFound = true } = {}) {
   const calls=[];
   const connection={async beginTransaction(){calls.push('BEGIN');},async commit(){calls.push('COMMIT');},async rollback(){calls.push('ROLLBACK');},release(){},async execute(sql,params){
     calls.push({sql,params});assert.equal((sql.match(/\?/g)??[]).length,params.length);
     if(sql.includes('FROM stock_requests'))return [[{id:'501',orderId:'91',status:'pending'}]];
     if(sql.includes('FROM stock_request_lines'))return [[{id:'601',materialId:'61',requiredQuantity:'5.0000'}]];
+    if(sql.includes('FROM materials WHERE active=TRUE'))return [materialFound?[{id:'61'}]:[]];
     if(sql.startsWith('INSERT INTO stock_responses'))return [{insertId:'701',affectedRows:1}];
     if(sql.startsWith('INSERT')||sql.startsWith('UPDATE'))return [{affectedRows:1}];
     throw new Error('Unexpected test SQL');
@@ -70,9 +94,16 @@ test('unknown, duplicate, unrelated or inconsistent manual stock updates fail be
   const h=processingHarness();assert.equal((await h.service.process({...warehouse,roleCode:'sales'},'501',zeroResponse)).code,'FORBIDDEN');assert.equal(h.calls.length,0);
 });
 
+test('Warehouse manual updates require the referenced active material to remain present', async () => {
+  const h = processingHarness({ materialFound: false });
+  assert.equal((await h.service.process(warehouse, '501', zeroResponse)).code, 'MATERIAL_NOT_FOUND');
+  assert.equal(h.calls.some(call => call.sql?.startsWith('INSERT') || call.sql?.startsWith('UPDATE')), false);
+  assert.ok(h.calls.includes('ROLLBACK'));
+});
+
 test('Sales and Warehouse see the same latest response without rewriting request snapshots',async()=>{
   const calls=[];const connection={release(){},async execute(sql,params){calls.push({sql,params});
-    if(sql.includes('FROM stock_requests sr'))return [[{id:'501',reference:'SR-1',orderId:'91',status:'updated'}]];
+    if(sql.includes('FROM stock_requests sr'))return [[{id:'501',reference:'SR-1',orderId:'91',orderReference:'ORD-91',clientReference:'QT-91-R2',status:'updated'}]];
     if(sql.includes('FROM stock_request_lines srl'))return [[{id:'601',materialId:'61',stockAtRequest:null,shortageAtRequest:null}]];
     if(sql.includes('FROM stock_response_lines srl'))return [[{lineId:'601',currentQuantity:'0.0000',shortageQuantity:'5.0000',respondedAt:'2026-11-18'}]];
     throw new Error('Unexpected test SQL');
@@ -80,6 +111,7 @@ test('Sales and Warehouse see the same latest response without rewriting request
   const service=createStockRequestsService({db:{getConnection:async()=>connection}});
   const sales=await service.list({...warehouse,roleCode:'sales'}),wh=await service.list(warehouse);
   assert.deepEqual(sales,wh);assert.equal(sales.data[0].lines[0].stockAtRequest,null);
+  assert.equal(sales.data[0].orderReference,'ORD-91');assert.equal(sales.data[0].clientReference,'QT-91-R2');
   assert.equal(sales.data[0].lines[0].latestResponse.currentQuantity,'0.0000');
   assert.ok(calls.every(call=>call.sql.startsWith('SELECT')));
 });

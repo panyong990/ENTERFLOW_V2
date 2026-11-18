@@ -553,6 +553,8 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
 /* ─────────── helpers ─────────── */
 
 function clientAddress(name: string): string {
+  // Preview defaults are development-only; Real Mode supplies delivery details.
+  if (!import.meta.env.DEV) return "";
   /* Best-effort default — the real backend would pull this from the client record */
   const map: Record<string, string> = {
     "B.E. Aerospace":  "Makati City",

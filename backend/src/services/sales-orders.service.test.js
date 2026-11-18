@@ -48,6 +48,36 @@ test('Sales order list is company-wide, filtered, sorted, paginated, and not dup
   assert.deepEqual(h.calls[1].params.slice(-2), ['10', '0']);
 });
 
+test('cancellation history includes archived orders and filters both count and page before pagination', async () => {
+  const h = database({ rows: [{ ...order, archiveReason: 'cancelled', archivedAt: '2026-11-18T00:00:00Z' }] });
+  const result = await createSalesOrdersService(h).list({ status: 'all', cancellationStatus: 'approved', pageSize: '10' });
+  assert.equal(result.data.items[0].archived, true);
+  for (const call of h.calls) {
+    assert.match(call.sql, /EXISTS \(SELECT 1 FROM order_requests cr WHERE cr.order_id=o.id AND cr.kind='cancellation' AND cr.status IN \(\?,\?\)\)/);
+    assert.doesNotMatch(call.sql, /o.archived_at IS NULL/);
+    assert.deepEqual(call.params.slice(0, 2), ['approved', 'cancelled']);
+  }
+  assert.match(h.calls[1].sql, /LIMIT \? OFFSET \?/);
+  assert.equal(result.data.total, 1);
+});
+
+test('cancellation filters preserve pending and historical declined aliases without interpolating input', async () => {
+  for (const [filter, states] of [['all', []], ['pending', ['pending']], ['declined', ['declined', 'rejected']]]) {
+    const h = database();
+    assert.equal((await createSalesOrdersService(h).list({ cancellationStatus: filter })).success, true);
+    assert.deepEqual(h.calls[0].params, states);
+    assert.match(h.calls[0].sql, /cr.kind='cancellation'/);
+  }
+});
+
+test('invalid cancellation filters cannot open a connection', async () => {
+  for (const cancellationStatus of ['approved OR 1=1', ['pending'], {}, 'unknown']) {
+    const h = database();
+    assert.equal((await createSalesOrdersService(h).list({ cancellationStatus })).code, 'VALIDATION_ERROR');
+    assert.equal(h.calls.length, 0);
+  }
+});
+
 test('Sales order detail preserves BIGINT IDs and loads related records independently', async () => {
   const h = database();
   const result = await createSalesOrdersService(h).detail('9007199254740993');
@@ -75,15 +105,15 @@ test('Sales order list rejects unsupported query fields', async () => {
   assert.equal(h.calls.length, 0);
 });
 
-function stockDatabase({ unmapped = false, noFinishedGoods = false } = {}) {
+function stockDatabase({ unmapped = false, missingInventoryMapping = false, noFinishedGoods = false, materialQuantity = 4, finishedGoodQuantity = 1, bomQuantity = 3 } = {}) {
   const calls = [];
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
       if (sql.includes('FROM orders o WHERE o.id')) return [[{ id: '9007199254740993', clientId: '7' }]];
       if (sql.includes('FROM order_items')) return [[{ itemId: '11', quantity: 2, specificationId: '22', filterTypeCode: 'OILSEP', filterName: 'Oil separator', height: 300, oemPartNumber: 'OEM-1' }]];
-      if (sql.includes('FROM bom_templates')) return [unmapped ? [] : [{ templateId: '51', sizeLabel: 'Medium', materialId: '61', quantityPerFilter: 3, inventoryName: 'Media', categoryCode: 'media', unitCode: 'pcs', inventoryId: '61', availableQuantity: 4 }]];
-      if (sql.includes('FROM finished_goods')) return noFinishedGoods ? [[]] : [[{ inventoryId: '71', itemCode: 'FG-1', partNumber: 'OEM-1', availableQuantity: 1, bufferMinimum: 1, unitCode: 'pcs', demand: '2' }]];
+      if (sql.includes('FROM bom_templates')) return [unmapped ? [] : [{ templateId: '51', sizeLabel: 'Medium', materialId: '61', quantityPerFilter: bomQuantity, inventoryName: missingInventoryMapping ? null : 'Media', categoryCode: 'media', unitCode: 'pcs', inventoryId: missingInventoryMapping ? null : '61', availableQuantity: materialQuantity }]];
+      if (sql.includes('FROM finished_goods')) return noFinishedGoods ? [[]] : [[{ inventoryId: '71', itemCode: 'FG-1', partNumber: 'OEM-1', availableQuantity: finishedGoodQuantity, bufferMinimum: 1, unitCode: 'pcs', demand: '2' }]];
       throw new Error(`Unexpected SQL in stock test: ${sql}`);
     },
     release() {}
@@ -112,13 +142,54 @@ test('Sales stock availability reports unmapped products instead of inventing ze
   assert.equal(result.data.unmappedItems.length, 1);
 });
 
+test('Sales stock availability preserves unknown and verified-zero quantities as distinct states', async () => {
+  const unknown = await createSalesOrdersService(stockDatabase({ materialQuantity: null, finishedGoodQuantity: null })).stockAvailability('9007199254740993');
+  assert.equal(unknown.data.overallStatus, 'unavailable');
+  assert.deepEqual(unknown.data.assessments.map(item => [item.availableQuantity, item.shortageQuantity, item.inventoryState, item.status]), [
+    [null, null, 'inventory_unavailable', 'inventory_unavailable'],
+    [null, null, 'inventory_unavailable', 'inventory_unavailable']
+  ]);
+
+  const zero = await createSalesOrdersService(stockDatabase({ materialQuantity: 0, noFinishedGoods: true })).stockAvailability('9007199254740993');
+  assert.equal(zero.data.overallStatus, 'insufficient');
+  assert.deepEqual([zero.data.assessments[0].availableQuantity, zero.data.assessments[0].inventoryState, zero.data.assessments[0].status], [0, 'zero_stock', 'insufficient']);
+});
+
+test('Sales stock availability fails closed on invalid quantities and keeps unmapped BOMs visible', async () => {
+  const invalidQuantity = await createSalesOrdersService(stockDatabase({ materialQuantity: '-1', noFinishedGoods: true })).stockAvailability('9007199254740993');
+  assert.equal(invalidQuantity.data.overallStatus, 'unavailable');
+  assert.equal(invalidQuantity.data.assessments[0].availableQuantity, null);
+  assert.equal(invalidQuantity.data.assessments[0].inventoryState, 'inventory_unavailable');
+
+  const unmappedWithFinishedGood = await createSalesOrdersService(stockDatabase({ unmapped: true })).stockAvailability('9007199254740993');
+  assert.equal(unmappedWithFinishedGood.data.overallStatus, 'unmapped');
+  assert.equal(unmappedWithFinishedGood.data.assessments.length, 1);
+  assert.equal(unmappedWithFinishedGood.data.unmappedItems.length, 1);
+
+  const malformedBom = await createSalesOrdersService(stockDatabase({ bomQuantity: 'not-a-quantity', noFinishedGoods: true })).stockAvailability('9007199254740993');
+  assert.equal(malformedBom.data.overallStatus, 'unmapped');
+  assert.equal(malformedBom.data.assessments.length, 0);
+  assert.equal(malformedBom.data.unmappedItems.length, 1);
+
+  const missingMapping = await createSalesOrdersService(stockDatabase({ missingInventoryMapping: true, noFinishedGoods: true })).stockAvailability('9007199254740993');
+  assert.equal(missingMapping.data.overallStatus, 'unmapped');
+  assert.equal(missingMapping.data.assessments.length, 0);
+  assert.equal(missingMapping.data.unmappedItems.length, 1);
+
+  const invalidFinishedGood = await createSalesOrdersService(stockDatabase({ noFinishedGoods: true, materialQuantity: 6 })).stockAvailability('9007199254740993');
+  assert.equal(invalidFinishedGood.data.overallStatus, 'available');
+  const invalidFinishedQuantity = await createSalesOrdersService(stockDatabase({ finishedGoodQuantity: '-1', materialQuantity: 6 })).stockAvailability('9007199254740993');
+  assert.equal(invalidFinishedQuantity.data.overallStatus, 'unavailable');
+  assert.equal(invalidFinishedQuantity.data.assessments[1].availableQuantity, null);
+});
+
 test('Sales stock availability validates the order identifier before opening a database connection', async () => {
   const h = stockDatabase();
   assert.equal((await createSalesOrdersService(h).stockAvailability('0')).code, 'VALIDATION_ERROR');
   assert.equal(h.calls.length, 0);
 });
 
-function quotationDatabase({ missingPrice = false, existingQuotes = [], failSql } = {}) {
+function quotationDatabase({ missingPrice = false, bomQuantity = 2, wastePercent = 0, unitPrice, existingQuotes = [], failSql } = {}) {
   const calls = [];
   const savedQuotes = existingQuotes.map(row => ({ ...row }));
   let insertedId = 100;
@@ -133,7 +204,7 @@ function quotationDatabase({ missingPrice = false, existingQuotes = [], failSql 
       if (failSql?.test(sql)) throw new Error('Synthetic write failure');
       if (sql.includes('FROM orders o WHERE o.id=? FOR UPDATE')) return [[{ id: '91', clientId: '7', reference: 'ORD-91', stageCode: 'inquiry', archivedAt: null, paymentTermCode: 'NET15' }]];
       if (sql.includes('FROM order_items')) return [[{ orderItemId: '11', quantity: 2, specificationId: '22', filterTypeCode: 'OILSEP', filterName: 'Oil separator', height: 300 }]];
-      if (sql.includes('FROM bom_templates')) return [[{ templateId: '51', materialId: '61', quantityPerFilter: 2, wastePercent: 0, materialName: 'Media', unitCode: 'pcs', unitPrice: missingPrice ? null : 10 }]];
+      if (sql.includes('FROM bom_templates')) return [[{ templateId: '51', materialId: '61', quantityPerFilter: bomQuantity, wastePercent, materialName: 'Media', unitCode: 'pcs', unitPrice: missingPrice ? null : unitPrice ?? 10 }]];
       if (sql.includes('FROM quotations WHERE order_id')) return [[...savedQuotes].sort((a, b) => b.revisionNumber - a.revisionNumber)];
       if (sql.includes('FROM quotation_references')) return [[]];
       if (sql.startsWith('INSERT INTO quotations')) {
@@ -288,6 +359,18 @@ test('Sales quotation preparation fails closed when material pricing is missing 
   assert.equal(result.code, 'MATERIAL_COSTING_INCOMPLETE');
   assert.equal(h.calls.some(call => call.sql === 'COMMIT'), false);
   assert.equal(h.calls.some(call => call.sql === 'ROLLBACK'), true);
+});
+
+test('Sales quotation preparation rejects malformed BOM quantities and material prices', async () => {
+  for (const options of [{ bomQuantity: 'unknown' }, { wastePercent: 'unknown' }, { unitPrice: 'unknown' }]) {
+    const h = quotationDatabase(options);
+    const result = await createSalesOrdersService(h).createQuotation('91', quotationBody, { userId: '8', roleCode: 'sales', accountType: 'employee' });
+    assert.equal(result.success, false);
+    assert.equal(result.code, 'MATERIAL_COSTING_INCOMPLETE');
+    assert.equal(h.calls.some(call => call.sql === 'COMMIT'), false);
+    assert.equal(h.calls.some(call => call.sql === 'ROLLBACK'), true);
+    assert.equal(h.calls.some(call => call.sql.startsWith('INSERT INTO quotations')), false);
+  }
 });
 
 test('Sales quotation preparation rejects unauthorized actors before opening a transaction', async () => {

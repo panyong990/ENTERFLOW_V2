@@ -7,6 +7,18 @@ const pipeline = readFileSync(new URL('./SalesPipeline.tsx', import.meta.url), '
 const builder = readFileSync(new URL('../QuotationBuilder.tsx', import.meta.url), 'utf8');
 const costing = readFileSync(new URL('../CostEstimationPanel.tsx', import.meta.url), 'utf8');
 const specifications = readFileSync(new URL('./OriginalSalesForms.tsx', import.meta.url), 'utf8');
+const drafts = readFileSync(new URL('./drafts.ts', import.meta.url), 'utf8');
+
+test('uncertain quotation writes preserve edits and require history reconciliation without automatic retry', () => {
+  assert.match(source, /lock.current \|\| uncertain/);
+  assert.match(source, /uncertainWrite\(cause\)/);
+  assert.match(source, /disabled=\{saving \|\| uncertain\}/);
+  assert.match(source, /Check saved quotation state/);
+  assert.match(source, /listSalesQuotations\(orderId\)/);
+  assert.match(source, /original request may still be completing/);
+  const recheck = source.slice(source.indexOf('const checkOutcome'), source.indexOf('return <ModalShell title=', source.indexOf('const checkOutcome')));
+  assert.doesNotMatch(recheck, /createSalesQuotation|setCosts|setUncertain\(false\)/);
+});
 
 test('Real quotation preparation is connected to the Sales inquiry detail and authenticated quotation adapter', () => {
   assert.match(pipeline, /<RealQuotationPreparation orderId=\{row\.id\}/);
@@ -14,6 +26,14 @@ test('Real quotation preparation is connected to the Sales inquiry detail and au
   assert.match(source, /useSalesStockAvailability/);
   assert.match(builder, /Save draft/);
   assert.match(builder, /Send to Client/);
+});
+
+test('Client inquiry, Sales quotation, and quotation revisions retain authoritative record references', () => {
+  assert.match(drafts, /id: order\.id, code: order\.reference, clientName: order\.companyName/);
+  assert.match(pipeline, /<RealQuotationPreparation orderId=\{row\.id\} detail=\{detail\}/);
+  assert.match(source, /createSalesQuotation\(orderId/);
+  assert.match(source, /detail\.reference/);
+  assert.match(source, /baseQuotationId: restored\.latest\?\.id/);
 });
 
 test('Real quotation preparation keeps costing inputs explicit and renders backend-authoritative results', () => {

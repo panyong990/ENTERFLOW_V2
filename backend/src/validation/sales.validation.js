@@ -59,7 +59,7 @@ const ORDER_STAGES = ['inquiry', 'quotation', 'po', 'jo', 'in_production', 'qual
 
 export function validateSalesOrderListQuery(query = {}) {
   try {
-    const input = ownData(query, ['q', 'status', 'stage', 'sort', 'page', 'pageSize']);
+    const input = ownData(query, ['q', 'status', 'stage', 'sort', 'page', 'pageSize', 'cancellationStatus']);
     if (!input) return fail({ query: 'Unsupported query fields.' });
     const integer = (value, fallback, max) => value === undefined
       ? fallback
@@ -75,10 +75,12 @@ export function validateSalesOrderListQuery(query = {}) {
     if (!page || !pageSize || typeof q !== 'string' || q.length > 254 || !q.isWellFormed() ||
         !['all', 'open', 'archived'].includes(status) ||
         !(stage === 'all' || ORDER_STAGES.includes(stage)) ||
+        (input.cancellationStatus !== undefined && !['all', 'pending', 'approved', 'declined'].includes(input.cancellationStatus)) ||
         !['submitted-asc', 'submitted-desc', 'client-asc', 'client-desc', 'id-asc', 'id-desc'].includes(sort)) {
       return fail({ query: 'Invalid order filters or pagination.' });
     }
-    return { success: true, data: { page, pageSize, q: q.trim(), status, stage, sort } };
+    return { success: true, data: { page, pageSize, q: q.trim(), status, stage, sort,
+      ...(input.cancellationStatus === undefined ? {} : { cancellationStatus: input.cancellationStatus }) } };
   } catch {
     return fail({ query: 'Valid order directory parameters are required.' });
   }
@@ -147,6 +149,17 @@ export function validateQuotationRevisionRequest(body) {
   const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
   if (reason.length < 5 || reason.length > 2000) errors.reason = 'A revision reason between 5 and 2000 characters is required.';
   return Object.keys(errors).length ? { success: false, code: 'VALIDATION_ERROR', errors } : { success: true, data: { reason } };
+}
+
+export function validateCancellationRequest(body) {
+  try {
+    const input = ownData(body, ['reason', 'termsAcknowledged']);
+    if (!input) return fail({ body: 'Only reason and termsAcknowledged are allowed.' });
+    const reason = validateApplicationRejection({ reason: input.reason });
+    if (!reason.success) return fail(reason.errors);
+    if (input.termsAcknowledged !== true) return fail({ termsAcknowledged: 'Acknowledge the cancellation terms before submitting.' });
+    return { success: true, data: { reason: reason.data.reason, termsAcknowledged: true } };
+  } catch { return fail({ body: 'Invalid cancellation request.' }); }
 }
 
 export function validateQuotationPreparation(body) {

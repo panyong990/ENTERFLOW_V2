@@ -25,12 +25,23 @@ test("Client business data has no Demo persistence and all unsupported commands 
 
 test("Real Client Orders keeps the target layout and separates unavailable, empty, and filtered states", () => {
   for (const marker of ["My Orders", "Create Order", "View Transaction History", "Search My Orders", "Filter My Orders by status", "Sort My Orders by submission date"]) assert.match(portal, new RegExp(marker));
+  assert.match(portal, /aria-label="Refresh My Orders"[\s\S]*onClick=\{refresh\}[\s\S]*disabled=\{loading\}/);
   assert.match(portal, /Loading authenticated orders/);
   assert.match(portal, /Unable to load authenticated orders/);
   assert.match(portal, /No orders are available for this account/);
   assert.match(portal, /No orders match your search or status filter/);
   assert.doesNotMatch(portal, /Refresh records/);
   assert.doesNotMatch(portal, /Real Client records\. Drafts are unsaved/);
+});
+
+test("Client inquiry form validates API limits and keeps sketch retries within upload limits", async () => {
+  const validation = await readFile(new URL("./client/inquiryValidation.mjs", import.meta.url), "utf8");
+  assert.match(portal, /validateClientInquiryDraft\(input\)/);
+  assert.match(portal, /validateInquirySketchFile\(file, existing\)/);
+  for (const marker of ["160", "200", "1_000_000", "MAX_INQUIRY_PRODUCTS", "MAX_SKETCH_FILE_BYTES", "MAX_SKETCH_TOTAL_BYTES"]) {
+    assert.ok(validation.includes(marker), marker);
+  }
+  assert.match(portal, /Retry checks the original inquiry and resends the same details and sketches safely/);
 });
 
 test("Real Client Portal keeps populated sections while making unsupported writes explicit", () => {
@@ -48,4 +59,24 @@ test("Real Client Portal keeps unavailable notification mutations disabled and p
   assert.match(notifications, /disabled[\s\S]*Hide notification from your history/);
   assert.match(demo, /from "\.\.\/store\/orders"/);
   assert.doesNotMatch(demo, /RealModePending/);
+});
+
+test("Real Client quotation projection exposes public status and never exposes costing internals", async () => {
+  const adapters = await readFile(new URL("./client/adapters.ts", import.meta.url), "utf8");
+  assert.match(adapters, /quotationStatus: latest\?\./);
+  assert.match(adapters, /quotationIsLatestRevision: latest\?\.isLatestRevision/);
+  assert.match(adapters, /revisionRequests: order\.revisionRequests\?\.map/);
+  assert.doesNotMatch(adapters, /rawMaterial|laborCost|markupPercent|quantityPerFilter|wastePercent/);
+  assert.match(portal, /Quotation status/);
+  assert.match(portal, /No sent quotation is available for this order/);
+  assert.match(portal, /Internal costing is unavailable from the Client API/);
+});
+
+test("Client can request one revision only from the active sent quotation and sees refreshed pending state", () => {
+  assert.match(portal, /REQUEST QUOTATION REVISION/);
+  assert.match(portal, /quotationIsLatestRevision === false/);
+  assert.match(portal, /quotationStatus !== "sent"/);
+  assert.match(portal, /Revision requested · Awaiting Sales/);
+  assert.match(portal, /revisionSubmitting \? "Submitting…"/);
+  assert.doesNotMatch(portal, /\{false \? \([\s\S]{0,400}Request Revision/);
 });

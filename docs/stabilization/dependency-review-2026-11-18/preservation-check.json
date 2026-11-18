@@ -1,0 +1,15 @@
+{
+  "manifestUnchanged": true,
+  "lockfileUnchanged": true,
+  "manifestSha256": "fd07cbf1d9124179d22472cdc89ad20fa0c582961a7955e7b8b44558aae117b3",
+  "lockfileSha256": "3a5dc8ba44f991f50cbab11fc3275dd3e95e931c0588637f752a43ff7af9dabb",
+  "baselinePreserved": true,
+  "testInventoryPreserved": true,
+  "verifiedTestFiles": 102,
+  "changedTests": [],
+  "unexpectedBaselineChanges": [],
+  "requirementRowsIntact": true,
+  "dependencyChanges": [],
+  "postRemediationTestsBuildScanner": "NOT RUN: safe patch unavailable, stop condition reached",
+  "databaseChanges": "NONE"
+}

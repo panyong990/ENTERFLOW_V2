@@ -1,0 +1,853 @@
+{
+  "date": "2026-11-18",
+  "scope": "Static inventory only, not executed test totals. 67 backend/src + 35 src/app test files; excludes DB/migration/browser/cloud execution.",
+  "staticTestCallSites": 834,
+  "sourceRegexAssertions": 545,
+  "inventory": [
+    {
+      "path": "backend/src/config/database-ca.test.js",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "e2b4f3d9853e7b32f3d41a0477c44573c6367a2b06e3b669baee7522867c1db0"
+    },
+    {
+      "path": "backend/src/config/database-tls.test.js",
+      "staticTestCallSites": 6,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "358d71e8fa0295122dd55409723c7b7a4dac8ac7cdbc65650cf5fa6ad9171254"
+    },
+    {
+      "path": "backend/src/config/permissions.test.js",
+      "staticTestCallSites": 35,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "42ab943d341da96c484f16ac532d1c3e8e90e6eea63f1ed0ee8f6e5e2140d7bd"
+    },
+    {
+      "path": "backend/src/config/runtime-config.test.js",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "e043260bffb1ed09f74f62f4dc5ddf9e889ca75b58cc948ff0addb48d56af58a"
+    },
+    {
+      "path": "backend/src/controllers/auth.controller.test.js",
+      "staticTestCallSites": 9,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "e45951c2ff0c109c4598cb45c52a095ef1a17390e13dd8dd6fb87d624822d418"
+    },
+    {
+      "path": "backend/src/controllers/client-applications.controller.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 2,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "41053b8389527e3a1fe825e714b761f6c77bae8fbcbd238355003d51b2f3c4c7"
+    },
+    {
+      "path": "backend/src/controllers/health.controller.test.js",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "a762cf658dc715421b84692aefdd2d269037caf2816e177507d04387fe4931e2"
+    },
+    {
+      "path": "backend/src/controllers/registration.controller.test.js",
+      "staticTestCallSites": 5,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "f6959814bda4f2506ed733f612ddfacb2ea1ffb474d78c1ab7e2454b3c33de51"
+    },
+    {
+      "path": "backend/src/controllers/service-failure-log.test.js",
+      "staticTestCallSites": 14,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "dee650197fa2983be5c838f07e12cda6e321b10a369b7059d86c46fcf3475530"
+    },
+    {
+      "path": "backend/src/controllers/stock-requests.controller.test.js",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "be70fa4a5be28f2a9c00a3b7d22f6c060bf1e3f204790d7690d36d0c0213f868"
+    },
+    {
+      "path": "backend/src/middleware/admin-rate-limit.middleware.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "6d889468cb6eab7273cd88cd1d76a4616ad9d392d4f9edf97c4be5910540d4fd"
+    },
+    {
+      "path": "backend/src/middleware/auth-permission.http.integration.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "32f0f3021e19648ab11f731fccbe490f8a864547a54e4031f521d188d7d12df0"
+    },
+    {
+      "path": "backend/src/middleware/auth.middleware.test.js",
+      "staticTestCallSites": 14,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "241c2c0e8a9d10ecb643bff9d57e28d25e8897188442861154258c43dcb2025d"
+    },
+    {
+      "path": "backend/src/middleware/login-rate-limit.middleware.test.js",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "d5ef1ae2d67fd9eff2d648969c0c6dbb5d87c7f15cd215fce9382ce7604f560f"
+    },
+    {
+      "path": "backend/src/middleware/origin.middleware.test.js",
+      "staticTestCallSites": 6,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "36d7587f8cfc91a5d456a05feb09c5f9a78c2b85a4b540094c78fd99359e8f4a"
+    },
+    {
+      "path": "backend/src/middleware/permission.http.integration.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "dcedf8bd367d75f95ddbbffc18f8c723114e2ffc18b8ae8f153e41d6a1231d04"
+    },
+    {
+      "path": "backend/src/middleware/permission.middleware.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "40d4a850c240f563c1df72983d54904a584558b0c52a3c6cc59eb73423a59b00"
+    },
+    {
+      "path": "backend/src/middleware/registration-rate-limit.middleware.test.js",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "505ac23b0d39e7f068b0690fdb3d7f1325b8e22a5333522b08987ee927426e69"
+    },
+    {
+      "path": "backend/src/middleware/request-id.http.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 2,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "3c5bdf559bc43e90efa7d44e8a333ca8617cc83c68325cb7cf14fa6e266ff086"
+    },
+    {
+      "path": "backend/src/middleware/request-log.middleware.test.js",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "820ccac0fa0e55a529b40a4a109afb2191017f55a916e3b63bf62651811507d6"
+    },
+    {
+      "path": "backend/src/middleware/request-tracing.http.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "d25c8c2357144d74b003b3dbd202e017de591a7ff919fe5d580212f1ce8a541b"
+    },
+    {
+      "path": "backend/src/middleware/role.middleware.test.js",
+      "staticTestCallSites": 11,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "66fbf3ba1d21f49fc7cbd0d301d0395bcc2d99eb1c7aada2f5d64d143b030b9f"
+    },
+    {
+      "path": "backend/src/middleware/runtime-redaction.http.test.js",
+      "staticTestCallSites": 5,
+      "sourceRegexAssertions": 4,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "e5636911d6e8a9602dbb0480128335330061bf3325708766b0fa2bc861547c2e"
+    },
+    {
+      "path": "backend/src/routes/admin.http.integration.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "b2c2441ecbe287f0dd1391c7864d6032d6c7439857f13f2e6393e7c9f64be4dc"
+    },
+    {
+      "path": "backend/src/routes/auth.http.integration.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 5,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "d8465720b5879b1ec5a6f9855982ff5f344b6f87e455ca2f85f734496ad629e2"
+    },
+    {
+      "path": "backend/src/routes/client-applications.http.integration.test.js",
+      "staticTestCallSites": 21,
+      "sourceRegexAssertions": 3,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "800fbbefcde1edf70342843234303113635b08d9489987b508353b66ee0335ed"
+    },
+    {
+      "path": "backend/src/routes/client-onboarding.http.integration.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 3,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "442397708a067c51c13ce9bf836f374d1f8564097779feef45e91ce5ee655b34"
+    },
+    {
+      "path": "backend/src/routes/client-sales-workflow.http.integration.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "7eefc40173b8575fe27ae1109da40d1309ce2c892792956fa76277e0beb414ea"
+    },
+    {
+      "path": "backend/src/routes/client.http.integration.test.js",
+      "staticTestCallSites": 15,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "bcb55925ad46cefe59acd28e41f2b6914067e58cff46a41ccb10506ae211da3e"
+    },
+    {
+      "path": "backend/src/routes/engineer-sketch.http.integration.test.js",
+      "staticTestCallSites": 9,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "8f1e5179bad52eb8a1f54dcee5f9aa0ac962f08eda13ae8a01e6f831ee710777"
+    },
+    {
+      "path": "backend/src/routes/inventory.http.integration.test.js",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "576b19eaac794dc6363c20a5332f260900405c06c9f44b67307b1f89707f19b1"
+    },
+    {
+      "path": "backend/src/routes/owner-employee-directory.routes.test.js",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "54f67c4d4a41102f841ea77410aabc93f4d4f1c7876d23a8ea4962e3c499bc38"
+    },
+    {
+      "path": "backend/src/routes/production.http.integration.test.js",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "56a425b9c1e669d22bebedca8c8216b9af968b09129fb80a9314acedbba766f6"
+    },
+    {
+      "path": "backend/src/routes/registration.http.integration.test.js",
+      "staticTestCallSites": 11,
+      "sourceRegexAssertions": 5,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "ff2df7b73cdc8f5e99104351482129d3afbab945b56b5ef6f02adf14e42ca0a2"
+    },
+    {
+      "path": "backend/src/routes/sales-workspace.http.integration.test.js",
+      "staticTestCallSites": 5,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "b01e9928b5cf4dec77a2f49fc4b4384ce4efddd451c819096043b5aaf305c153"
+    },
+    {
+      "path": "backend/src/routes/sales.http.integration.test.js",
+      "staticTestCallSites": 15,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "738a0eeb9c0fdfc4c99370640883e493d9aa7b64b1f3974cc02dc8b1b9bfc5bb"
+    },
+    {
+      "path": "backend/src/routes/stock-requests.routes.test.js",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "89436a88182b36312e472bb29d413732edc26646177291c15ae458be145bbbe7"
+    },
+    {
+      "path": "backend/src/server-lifecycle.test.js",
+      "staticTestCallSites": 13,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "3051bdfc89023b904a387db5717ac8c34fffe2cf353518c1bcd3b7e9f7c508cd"
+    },
+    {
+      "path": "backend/src/server-redaction.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "575ec2f5acbd2f15ab3fed58f133dd35a05181f5f9b764c80ab32ba19ef06faf"
+    },
+    {
+      "path": "backend/src/services/admin.service.test.js",
+      "staticTestCallSites": 31,
+      "sourceRegexAssertions": 8,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "620ef8b8746988206f42a71ef24d55565c33830bfcac3aaff8ecd88cda624f37"
+    },
+    {
+      "path": "backend/src/services/audit-request-id.test.js",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 2,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "ac031d4c36002be2b7743cf07e2dc38075596c97bde50d6a1916134019d509a4"
+    },
+    {
+      "path": "backend/src/services/auth.service.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "5eb2d9926c6a9a753310b71c342132eb213f3be62f4ba2370e9d81f1ffaaf46c"
+    },
+    {
+      "path": "backend/src/services/client-applications.service.test.js",
+      "staticTestCallSites": 39,
+      "sourceRegexAssertions": 8,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "6bc878c767b85c4fecb4bed2f8753f7749ff8c5023413758c7a8c65b633041f1"
+    },
+    {
+      "path": "backend/src/services/client-inquiry.service.test.js",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "c7f8c351eadecbcbcc41faf4d48e1f481b5a8b22b97d90ccefaac37d17c1cedd"
+    },
+    {
+      "path": "backend/src/services/client-portal.service.test.js",
+      "staticTestCallSites": 46,
+      "sourceRegexAssertions": 16,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "a28714a146c174c55c8c538147cb621a88a8253c61c82a8b789354d2b44ed9d5"
+    },
+    {
+      "path": "backend/src/services/document-workflows.service.test.js",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "f37cd548cbc3d2ab0a8de183e303bcfde0198018ebe3e2cbf9be293870b9725c"
+    },
+    {
+      "path": "backend/src/services/engineer-sketch.service.test.js",
+      "staticTestCallSites": 18,
+      "sourceRegexAssertions": 4,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "a2cf6dfc78ff6109a8d4ad544adf702af3d27f59faba012d4c0613014732d061"
+    },
+    {
+      "path": "backend/src/services/inventory.service.test.js",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "008e9d94d5961d980eab9ef2603702522db47b1c10e853277acdcac79a97ee81"
+    },
+    {
+      "path": "backend/src/services/owner-employee-directory.service.test.js",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "9c5852e32e5f9fb138eb7539dd11cc0292b961d086fbf3613ccfe4d2136cdd22"
+    },
+    {
+      "path": "backend/src/services/password-change.service.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 4,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "b2050ba704c62ff320a30897829ac6a9fee05cee163a3af32ef86fcb6f840783"
+    },
+    {
+      "path": "backend/src/services/password.service.test.js",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "f2fd304e5b3a0544d497998e5674002bbf4733fb3f173a559c6262ca96598cb0"
+    },
+    {
+      "path": "backend/src/services/production-job-orders.service.test.js",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "0f5415b087f30556e302fe23dc4f3c8854002b02e4cffb8c2a1ea4b35fab60c5"
+    },
+    {
+      "path": "backend/src/services/registration.service.test.js",
+      "staticTestCallSites": 45,
+      "sourceRegexAssertions": 4,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "20e9ff8ec7ff0f1c9d986d6400435c9a4a6c834a375a8acc95956b8b8a9bf90c"
+    },
+    {
+      "path": "backend/src/services/sales-cancellation.service.test.js",
+      "staticTestCallSites": 5,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "1de0accc852938c57fd4e2036541f119cc64e738db69fb385d4c0b2869799c7b"
+    },
+    {
+      "path": "backend/src/services/sales-clients.service.test.js",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "71bc542df9e42817a7730987c1e212d9b5c623340ce418b2402239587f345e1f"
+    },
+    {
+      "path": "backend/src/services/sales-dashboard.service.test.js",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 13,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "829fa5e013022fddd6a54da9d5636615caeb86704437cf6d8e24f17e1adb1807"
+    },
+    {
+      "path": "backend/src/services/sales-inquiry-rejection.service.test.js",
+      "staticTestCallSites": 17,
+      "sourceRegexAssertions": 4,
+      "usesEsbuild": false,
+      "loopbackFixture": true,
+      "sha256": "c2c9ac623b987fa76e51e7abe01d38fd47faa5a12224cdc0281cbeb88c621c66"
+    },
+    {
+      "path": "backend/src/services/sales-job-delivery.service.test.js",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 2,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "b884287de7820940adca571fab4a79048e4564c99472c9e37663bf9525b9f832"
+    },
+    {
+      "path": "backend/src/services/sales-notifications.service.test.js",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 8,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "0f59753355903d24c83600cfc6adca36998e0c784c0cb3b90618ae90509f2339"
+    },
+    {
+      "path": "backend/src/services/sales-order-documents.service.test.js",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "5825c30785a670c5d787b76e55c34e8a2d1bab079f4ee2f7d1578ce84195451a"
+    },
+    {
+      "path": "backend/src/services/sales-orders.service.test.js",
+      "staticTestCallSites": 37,
+      "sourceRegexAssertions": 5,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "bef9f6c5499ae7b22cdc04555317187cdc5dbc8c7726e3a0bf5492e6cdb46d15"
+    },
+    {
+      "path": "backend/src/services/session.service.test.js",
+      "staticTestCallSites": 21,
+      "sourceRegexAssertions": 15,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "e7072ea0a404110e08eab144be60ebb71b9c771449a96091b56296119da2d766"
+    },
+    {
+      "path": "backend/src/services/stock-requests.service.test.js",
+      "staticTestCallSites": 11,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "b08dfbdab29fe9cecc96af130cd48562687c9bee9c091fa99c5ba696af3e42e0"
+    },
+    {
+      "path": "backend/src/storage/document-storage.test.js",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 1,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "11b06d44aaa7a0828ebfd49cb509f76f377c7230fff6e938b89599962d8473e9"
+    },
+    {
+      "path": "backend/src/validation/admin.validation.test.js",
+      "staticTestCallSites": 6,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "5624b398522a36c39fad61144ef81a89e17482ccf89e974bdd6f4e99bfe9fb33"
+    },
+    {
+      "path": "backend/src/validation/client-applications.validation.test.js",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "9685d20d80e5a36543f64ec3580f6e8679f33fd5678886984c382a6315bdcadc"
+    },
+    {
+      "path": "backend/src/validation/registration.validation.test.js",
+      "staticTestCallSites": 9,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "0fe6565f9a6acfd35d62a4c4a95344e3103fb63ab8c5f3e1788b793a358c4550"
+    },
+    {
+      "path": "src/app/api/client.test.mjs",
+      "staticTestCallSites": 10,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "772e11b7e1e4edc2eff767f6b9a1986d12b29a882c0aa3f9dd1db707ae9ecc74"
+    },
+    {
+      "path": "src/app/api/clientPortal.test.mjs",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "2376a0913bb230c118b45b8fb058066fbd46d7546c4139c8565b229df3b37029"
+    },
+    {
+      "path": "src/app/api/inquiryRecovery.test.mjs",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "3bfa83fa8bc9ed0ed1362e629deedc7af51ab3c64c5a37abc4993f2a1d76a17f"
+    },
+    {
+      "path": "src/app/api/productionJobOrders.test.mjs",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "e7b766ece3197266cd627c63af86e38bba3a7811101f0cf1739f0d43f2c842ad"
+    },
+    {
+      "path": "src/app/api/salesClients.test.mjs",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "009d81d88eefb83fe41eb9f1d9dd413c6ac86b62c2d5d093f08ca0113c5b8325"
+    },
+    {
+      "path": "src/app/api/salesDelivery.test.mjs",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 10,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "ca5634a836c6c1d2ea92da7fb2907768dd3d4876836268dad1a9f1810af35c1a"
+    },
+    {
+      "path": "src/app/api/salesJobOrders.test.mjs",
+      "staticTestCallSites": 5,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "4dea3172a18a53b3c581e7679bd69f172da1c9e7effd469b721c32382f6f4f67"
+    },
+    {
+      "path": "src/app/api/salesOrderDocuments.test.mjs",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "5153907ceec0689732bb72ae92ca9ef67b292cb53b95bf5d4e57c9b60f930d8c"
+    },
+    {
+      "path": "src/app/api/salesOrders.test.mjs",
+      "staticTestCallSites": 6,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "a51577e17fa47118e044bcdc2e651f96e86054a8f162eec565f08077494d3c63"
+    },
+    {
+      "path": "src/app/api/stockRequests.test.mjs",
+      "staticTestCallSites": 1,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "31fe6360acac99802efdba83e46a6c60b65d23c95f55dc352d660bfde0a23028"
+    },
+    {
+      "path": "src/app/components/admin/render.test.mjs",
+      "staticTestCallSites": 51,
+      "sourceRegexAssertions": 24,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "c9414e80ccb34bf86763dd846f903d098a7a88639afc274458a699bd555ed5ce"
+    },
+    {
+      "path": "src/app/components/cancellationWorkflow.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 13,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "000d89a8bff41d29304236662bfa88d329efe955b5df0d1d89a9f4572dff533f"
+    },
+    {
+      "path": "src/app/components/client/inquiryValidation.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 10,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "f3e5142c20f7b36b7bfab9a26b4f316103b0daa247fb540da5a479863a3c98e8"
+    },
+    {
+      "path": "src/app/components/realAccounting.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 12,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "4665c4e42e9305c6a1f4e4f8337546d434b933928b58756c232fe0847690a04e"
+    },
+    {
+      "path": "src/app/components/realAnalytics.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 14,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "724588b161d249827081e10296f6b35509d1c4bbe682f732f57ba7d849e3f980"
+    },
+    {
+      "path": "src/app/components/realCancellationWorkflow.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 25,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "ac8a0ed820b8c6526d072d8ba30c218fa94f67a16aa588f853ec0ec6a1375fe1"
+    },
+    {
+      "path": "src/app/components/realClientPortal.test.mjs",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 43,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "a5869e011352eb0acb11a6ccbce8cea8d6af41e31123bae8640785f95f1a76c1"
+    },
+    {
+      "path": "src/app/components/realEmployeeDirectory.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 17,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "2f1348fd59b7b00b8958f3a4ef360311bf2fd1d1f66b3d7b8419899f691b1bb1"
+    },
+    {
+      "path": "src/app/components/realInventoryProduction.test.mjs",
+      "staticTestCallSites": 6,
+      "sourceRegexAssertions": 38,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "e14720060b7fbfda45308144c06f28127755a0beb7697d0681d54dc8a6c0e125"
+    },
+    {
+      "path": "src/app/components/realLogisticsWaybillReceipts.test.mjs",
+      "staticTestCallSites": 2,
+      "sourceRegexAssertions": 12,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "e4ecdd3cc7efe68b2920c3dea2a1cfb51cebc19344e0ac7a1737a08c502dcafb"
+    },
+    {
+      "path": "src/app/components/realNotifications.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 10,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "1e0994eb9ec5badd438c6e75050c18ba8fc134a8c3ab300acfc03254e7971117"
+    },
+    {
+      "path": "src/app/components/realSalesOrders.test.mjs",
+      "staticTestCallSites": 10,
+      "sourceRegexAssertions": 51,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "161b3be1b25bb5b85c2b9676aea49a93222b108b3434593ef9488b28733d9fec"
+    },
+    {
+      "path": "src/app/components/realSalesOrdersCompletion.test.mjs",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 36,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "d4ee4ac2e612616c95742f3464bbcc4c6ef23f60deecd3525361c1c350f2f129"
+    },
+    {
+      "path": "src/app/components/realSettings.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 14,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "c325a05235119d8ec989100418551367178daa89aae4f1e3eaf468688ad8c69c"
+    },
+    {
+      "path": "src/app/components/sales/cancellationModel.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "5cd3af2798f4bca4da0092d847991393d563b5f4d52c3f18483f18e3836819aa"
+    },
+    {
+      "path": "src/app/components/sales/inquiryRejection.test.mjs",
+      "staticTestCallSites": 8,
+      "sourceRegexAssertions": 6,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "072dd32b04c3615b9bb626d96571ebae8b7cf694758b170b057e19d01e5895a5"
+    },
+    {
+      "path": "src/app/components/sales/pipelineModel.test.mjs",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "11e34657b4dce6b3a9218c01344d21090024f9e8b71b9897b554512bdbd5ef38"
+    },
+    {
+      "path": "src/app/components/sales/quotationDraft.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "c54c9cb6156a3e4189f19a46f389502b34b1405153d417be44b15c10518408be"
+    },
+    {
+      "path": "src/app/components/sales/realQuotationPreparation.test.mjs",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 38,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "57c7404bfdbe499e3ac30742308150c8997fbee6d15412827de4e16246d73964"
+    },
+    {
+      "path": "src/app/components/sales/salesInquiryReview.test.mjs",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 16,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "13834917ee42380e1af0d6abf07fb8f91ec5a874795c73bc8a9afbf009efd383"
+    },
+    {
+      "path": "src/app/components/sales/salesStockAvailability.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 13,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "d9ba10d74d30bd79343f55d42e1df643d5a47d9ba468561a5e637b42189303a6"
+    },
+    {
+      "path": "src/app/logging-redaction.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 2,
+      "usesEsbuild": true,
+      "loopbackFixture": false,
+      "sha256": "d8bddf73c8457df64025bf6f64960e7fe11c4cf25f04d9ed68e5dbd1aa2c2af1"
+    },
+    {
+      "path": "src/app/role-access.test.mjs",
+      "staticTestCallSites": 7,
+      "sourceRegexAssertions": 11,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "4809c8e122ff906d6e9c8a53e04fb8aa37f8181f7ff4c387ffc29eb9eb6fe494"
+    },
+    {
+      "path": "src/app/store/inventoryModel.test.mjs",
+      "staticTestCallSites": 4,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "32c711b2550988b69cda8d26f98a3d3b753aa3b58bf929c357c64951b2bac1b7"
+    },
+    {
+      "path": "src/app/store/realMode.test.mjs",
+      "staticTestCallSites": 3,
+      "sourceRegexAssertions": 0,
+      "usesEsbuild": false,
+      "loopbackFixture": false,
+      "sha256": "1014549c846de1592aee73701ede92b051e47a4bafb0e9d52cfd2d479db812fc"
+    }
+  ],
+  "duplicateLiteralTitles": [
+    {
+      "title": "sales cannot verify payments",
+      "locations": [
+        {
+          "path": "backend/src/config/permissions.test.js",
+          "line": 101
+        },
+        {
+          "path": "backend/src/middleware/permission.http.integration.test.js",
+          "line": 100
+        }
+      ]
+    },
+    {
+      "title": "unknown roles are denied",
+      "locations": [
+        {
+          "path": "backend/src/config/permissions.test.js",
+          "line": 238
+        },
+        {
+          "path": "backend/src/middleware/permission.http.integration.test.js",
+          "line": 138
+        }
+      ]
+    }
+  ],
+  "duplicateCallbackBodies": []
+}

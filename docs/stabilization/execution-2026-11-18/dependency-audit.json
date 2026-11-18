@@ -1,0 +1,139 @@
+{
+  "date": "2026-11-18",
+  "command": "npm.cmd audit --json --ignore-scripts",
+  "exitCode": 1,
+  "scope": "Registry advisory check of existing dependencies; no packages installed/changed",
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 4,
+      "critical": 0,
+      "total": 4
+    },
+    "dependencies": {
+      "prod": 378,
+      "dev": 136,
+      "optional": 76,
+      "peer": 6,
+      "peerOptional": 0,
+      "total": 520
+    }
+  },
+  "vulnerabilities": {
+    "fdir": {
+      "name": "fdir",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "picomatch"
+      ],
+      "effects": [
+        "tinyglobby",
+        "vite"
+      ],
+      "range": ">=5.2.1",
+      "nodes": [
+        "node_modules/fdir"
+      ],
+      "fixAvailable": {
+        "name": "vite",
+        "version": "6.2.7",
+        "isSemVerMajor": true
+      }
+    },
+    "picomatch": {
+      "name": "picomatch",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1247710,
+          "name": "picomatch",
+          "dependency": "picomatch",
+          "title": "picomatch vulnerable to ReDoS through single-branch repeated extglobs",
+          "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+          "severity": "high",
+          "cwe": [
+            "CWE-1333"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<=4.0.7"
+        }
+      ],
+      "effects": [
+        "fdir",
+        "tinyglobby",
+        "vite"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/picomatch"
+      ],
+      "fixAvailable": {
+        "name": "vite",
+        "version": "6.2.7",
+        "isSemVerMajor": true
+      }
+    },
+    "tinyglobby": {
+      "name": "tinyglobby",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "fdir",
+        "picomatch"
+      ],
+      "effects": [
+        "vite"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/tinyglobby"
+      ],
+      "fixAvailable": {
+        "name": "vite",
+        "version": "6.2.7",
+        "isSemVerMajor": true
+      }
+    },
+    "vite": {
+      "name": "vite",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "fdir",
+        "picomatch",
+        "tinyglobby"
+      ],
+      "effects": [],
+      "range": ">=6.3.0-beta.0",
+      "nodes": [
+        "node_modules/vite"
+      ],
+      "fixAvailable": {
+        "name": "vite",
+        "version": "6.2.7",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "confirmedInstalled": {
+    "vite": "6.4.6",
+    "fdir": "6.5.0",
+    "tinyglobby": "0.2.16",
+    "picomatch": "4.0.4"
+  },
+  "lockfileClassification": "All four affected entries are dev:true; deployed exploitability not established",
+  "primaryAdvisory": {
+    "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+    "affected": "<=4.0.7",
+    "patchedVersions": "None listed at review",
+    "reviewDate": "2026-11-18"
+  },
+  "disposition": "Security gate not passed. No audit fix, force, downgrade, override or package change."
+}

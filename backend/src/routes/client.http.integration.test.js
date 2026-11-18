@@ -19,6 +19,7 @@ async function harness(t, { accountType = 'client', roleCode = 'client', clientI
       async quotations(client, id) { calls.push(['quotations', client, id]); return { success: true, data: [] }; },
       async decideQuotation(client, user, orderId, quotationId, body) { calls.push(['decide-quotation', client, user, orderId, quotationId, body]); return { success: true, data: { quotationId, orderId, decision: body.decision } }; },
       async submitPurchaseOrder(client, user, orderId, body) { calls.push(['submit-po', client, user, orderId, body]); return { success: true, data: { id: '77', orderId, reference: body.reference, status: 'received' } }; },
+      async requestCancellation(client, user, orderId, body) { calls.push(['cancellation', client, user, orderId, body]); return { success: true, data: { id: '802', orderId, status: 'pending', requestedBy: 'client' } }; },
       async purchaseOrder(client, id) { calls.push(['purchase-order', client, id]); return { success: true, data: null }; },
       async jobOrders(client, id) { calls.push(['job-orders', client, id]); return { success: true, data: { orderId: id, jobOrders: [] } }; },
       async delivery(client, id) { calls.push(['delivery', client, id]); return { success: true, data: { orderId: id, shipments: [] } }; },
@@ -131,6 +132,30 @@ test('client purchase-order submission uses authenticated ownership and referenc
   const response = await h.request('/orders/91/purchase-order', true, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:5173' }, body: JSON.stringify({ clientId: '999', reference: 'PO-CLIENT-1' }) });
   assert.equal(response.status, 201);
   assert.deepEqual(h.calls.at(-1), ['submit-po', '21', '9', '91', { clientId: '999', reference: 'PO-CLIENT-1' }]);
+});
+
+test('Client cancellation request uses authenticated ownership, inquiry-create permission, and origin protection', async t => {
+  const h = await harness(t);
+  const response = await h.request('/orders/91/cancellation', true, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'Changed requirements.', termsAcknowledged: true, clientId: 'forged' })
+  });
+  assert.equal(response.status, 201);
+  assert.deepEqual(h.calls.at(-1), ['cancellation', '21', '9', '91', { reason: 'Changed requirements.', termsAcknowledged: true, clientId: 'forged' }]);
+  const denied = await harness(t, { allowed: false });
+  const blocked = await denied.request('/orders/91/cancellation', true, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'Changed requirements.', termsAcknowledged: true })
+  });
+  assert.equal(blocked.status, 403);
+  assert.equal(denied.calls.length, 0);
+  const wrongOrigin = await harness(t);
+  const originResponse = await wrongOrigin.request('/orders/91/cancellation', true, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://untrusted.invalid' },
+    body: JSON.stringify({ reason: 'Changed requirements.', termsAcknowledged: true })
+  });
+  assert.equal(originResponse.status, 403);
+  assert.equal(wrongOrigin.calls.length, 0);
 });
 
 test('cross-client and nonexistent parents return equivalent public 404 responses', async t => {

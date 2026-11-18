@@ -1,0 +1,264 @@
+{
+  "date": "2026-11-18",
+  "result": "BLOCKED: no verified patched compatible dependency version; stopped before package changes",
+  "advisory": {
+    "id": "GHSA-fc5q-39xc-vjpf",
+    "cve": "CVE-2026-112366",
+    "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+    "affectedVersions": "<=4.0.7",
+    "patchedVersions": "None listed at review"
+  },
+  "currentProject": {
+    "manifestSha256": "fd07cbf1d9124179d22472cdc89ad20fa0c582961a7955e7b8b44558aae117b3",
+    "lockfileSha256": "3a5dc8ba44f991f50cbab11fc3275dd3e95e931c0588637f752a43ff7af9dabb",
+    "declarations": {
+      "vite": "^6.4.6",
+      "pnpmViteOverride": "6.4.6",
+      "npmOverrides": null
+    },
+    "packages": [
+      {
+        "name": "vite",
+        "version": "6.4.6",
+        "dev": true,
+        "dependencies": {
+          "esbuild": "^0.25.0",
+          "fdir": "^6.4.4",
+          "picomatch": "^4.0.2",
+          "postcss": "^8.5.3",
+          "rollup": "^4.34.9",
+          "tinyglobby": "^0.2.13"
+        },
+        "peerDependencies": {
+          "@types/node": "^18.0.0 || ^20.0.0 || >=22.0.0",
+          "jiti": ">=1.21.0",
+          "less": "*",
+          "lightningcss": "^1.21.0",
+          "sass": "*",
+          "sass-embedded": "*",
+          "stylus": "*",
+          "sugarss": "*",
+          "terser": "^5.16.0",
+          "tsx": "^4.8.1",
+          "yaml": "^2.4.2"
+        },
+        "peerDependenciesMeta": {
+          "@types/node": {
+            "optional": true
+          },
+          "jiti": {
+            "optional": true
+          },
+          "less": {
+            "optional": true
+          },
+          "lightningcss": {
+            "optional": true
+          },
+          "sass": {
+            "optional": true
+          },
+          "sass-embedded": {
+            "optional": true
+          },
+          "stylus": {
+            "optional": true
+          },
+          "sugarss": {
+            "optional": true
+          },
+          "terser": {
+            "optional": true
+          },
+          "tsx": {
+            "optional": true
+          },
+          "yaml": {
+            "optional": true
+          }
+        },
+        "engines": {
+          "node": "^18.0.0 || ^20.0.0 || >=22.0.0"
+        }
+      },
+      {
+        "name": "fdir",
+        "version": "6.5.0",
+        "dev": true,
+        "peerDependencies": {
+          "picomatch": "^3 || ^4"
+        },
+        "peerDependenciesMeta": {
+          "picomatch": {
+            "optional": true
+          }
+        },
+        "engines": {
+          "node": ">=12.0.0"
+        }
+      },
+      {
+        "name": "tinyglobby",
+        "version": "0.2.16",
+        "dev": true,
+        "dependencies": {
+          "fdir": "^6.5.0",
+          "picomatch": "^4.0.4"
+        },
+        "engines": {
+          "node": ">=12.0.0"
+        }
+      },
+      {
+        "name": "picomatch",
+        "version": "4.0.4",
+        "dev": true,
+        "engines": {
+          "node": ">=12"
+        }
+      }
+    ]
+  },
+  "registry": {
+    "picomatchLatest": "4.0.7",
+    "picomatchVersionsChecked": "Published version list ends at 4.0.7; all listed versions fall in affected range",
+    "latestVite6": "6.4.6"
+  },
+  "commands": [
+    {
+      "command": "npm.cmd ls vite fdir tinyglobby picomatch --all\nnpm.cmd view picomatch version dist-tags versions --json\nnpm.cmd view vite@6 version --json",
+      "exitCode": 0,
+      "output": "enter-flow-erp@0.0.1 C:\\Users\\larat\\OneDrive\\Documents\\GitHub\\ENTERFLOW_V2\n├─┬ @tailwindcss/vite@4.1.12\n│ └── vite@6.4.6 deduped\n├─┬ @vitejs/plugin-react@4.7.0\n│ └── vite@6.4.6 deduped\n└─┬ vite@6.4.6\n  ├─┬ fdir@6.5.0\n  │ └── picomatch@4.0.4 deduped\n  ├── picomatch@4.0.4\n  └─┬ tinyglobby@0.2.16\n    ├── fdir@6.5.0 deduped\n    └── picomatch@4.0.4 deduped\n\n{\n  \"version\": \"4.0.7\",\n  \"dist-tags\": {\n    \"latest\": \"4.0.7\"\n  },\n  \"versions\": [\n    \"1.0.0\",\n    \"1.0.1\",\n    \"1.0.2\",\n    \"1.1.0\",\n    \"1.1.1\",\n    \"1.1.2\",\n    \"1.2.0\",\n    \"2.0.0\",\n    \"2.0.1\",\n    \"2.0.2\",\n    \"2.0.3\",\n    \"2.0.4\",\n    \"2.0.5\",\n    \"2.0.6\",\n    \"2.0.7\",\n    \"2.1.0\",\n    \"2.1.1\",\n    \"2.2.0\",\n    \"2.2.1\",\n    \"2.2.2\",\n    \"2.2.3\",\n    \"2.3.0\",\n    \"2.3.1\",\n    \"2.3.2\",\n    \"3.0.0\",\n    \"3.0.1\",\n    \"3.0.2\",\n    \"4.0.0\",\n    \"4.0.1\",\n    \"4.0.2\",\n    \"4.0.3\",\n    \"4.0.4\",\n    \"4.0.5\",\n    \"4.0.6\",\n    \"4.0.7\"\n  ]\n}\n[\n  \"6.0.0\",\n  \"6.0.1\",\n  \"6.0.2\",\n  \"6.0.3\",\n  \"6.0.4\",\n  \"6.0.5\",\n  \"6.0.6\",\n  \"6.0.7\",\n  \"6.0.8\",\n  \"6.0.9\",\n  \"6.0.10\",\n  \"6.0.11\",\n  \"6.1.0\",\n  \"6.1.1\",\n  \"6.2.0\",\n  \"6.2.1\",\n  \"6.2.2\",\n  \"6.2.3\",\n  \"6.1.2\",\n  \"6.0.12\",\n  \"6.2.4\",\n  \"6.1.3\",\n  \"6.0.13\",\n  \"6.2.5\",\n  \"6.1.4\",\n  \"6.0.14\",\n  \"6.2.6\",\n  \"6.1.5\",\n  \"6.0.15\",\n  \"6.3.0\",\n  \"6.3.1\",\n  \"6.3.2\",\n  \"6.3.3\",\n  \"6.3.4\",\n  \"6.2.7\",\n  \"6.1.6\",\n  \"6.3.5\",\n  \"6.3.6\",\n  \"6.3.7\",\n  \"6.4.0\",\n  \"6.4.1\",\n  \"6.4.2\",\n  \"6.4.3\",\n  \"6.4.4\",\n  \"6.4.5\",\n  \"6.4.6\"\n]\n"
+    },
+    {
+      "command": "npm.cmd audit --json --ignore-scripts",
+      "exitCode": 1,
+      "audit": {
+        "auditReportVersion": 2,
+        "vulnerabilities": {
+          "fdir": {
+            "name": "fdir",
+            "severity": "high",
+            "isDirect": false,
+            "via": [
+              "picomatch"
+            ],
+            "effects": [
+              "tinyglobby",
+              "vite"
+            ],
+            "range": ">=5.2.1",
+            "nodes": [
+              "node_modules/fdir"
+            ],
+            "fixAvailable": {
+              "name": "vite",
+              "version": "6.2.7",
+              "isSemVerMajor": true
+            }
+          },
+          "picomatch": {
+            "name": "picomatch",
+            "severity": "high",
+            "isDirect": false,
+            "via": [
+              {
+                "source": 1247710,
+                "name": "picomatch",
+                "dependency": "picomatch",
+                "title": "picomatch vulnerable to ReDoS through single-branch repeated extglobs",
+                "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+                "severity": "high",
+                "cwe": [
+                  "CWE-1333"
+                ],
+                "cvss": {
+                  "score": 7.5,
+                  "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                },
+                "range": "<=4.0.7"
+              }
+            ],
+            "effects": [
+              "fdir",
+              "tinyglobby",
+              "vite"
+            ],
+            "range": "*",
+            "nodes": [
+              "node_modules/picomatch"
+            ],
+            "fixAvailable": {
+              "name": "vite",
+              "version": "6.2.7",
+              "isSemVerMajor": true
+            }
+          },
+          "tinyglobby": {
+            "name": "tinyglobby",
+            "severity": "high",
+            "isDirect": false,
+            "via": [
+              "fdir",
+              "picomatch"
+            ],
+            "effects": [
+              "vite"
+            ],
+            "range": "*",
+            "nodes": [
+              "node_modules/tinyglobby"
+            ],
+            "fixAvailable": {
+              "name": "vite",
+              "version": "6.2.7",
+              "isSemVerMajor": true
+            }
+          },
+          "vite": {
+            "name": "vite",
+            "severity": "high",
+            "isDirect": true,
+            "via": [
+              "fdir",
+              "picomatch",
+              "tinyglobby"
+            ],
+            "effects": [],
+            "range": ">=6.3.0-beta.0",
+            "nodes": [
+              "node_modules/vite"
+            ],
+            "fixAvailable": {
+              "name": "vite",
+              "version": "6.2.7",
+              "isSemVerMajor": true
+            }
+          }
+        },
+        "metadata": {
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 4,
+            "critical": 0,
+            "total": 4
+          },
+          "dependencies": {
+            "prod": 378,
+            "dev": 136,
+            "optional": 76,
+            "peer": 6,
+            "peerOptional": 0,
+            "total": 520
+          }
+        }
+      }
+    }
+  ],
+  "dependencyChanges": [],
+  "testBuildScannerExecution": "NOT RUN: no dependency change applied; explicit stop boundary reached",
+  "securityAcceptance": false,
+  "databaseChanges": "NONE"
+}

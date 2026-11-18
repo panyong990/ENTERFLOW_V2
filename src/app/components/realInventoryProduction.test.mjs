@@ -3,22 +3,40 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const inventory = await readFile(new URL('./Inventory.tsx', import.meta.url), 'utf8');
+const materials = await readFile(new URL('../store/materials.tsx', import.meta.url), 'utf8');
 const production = await readFile(new URL('./ProductionFloor.tsx', import.meta.url), 'utf8');
 const operationsProduction = await readFile(new URL('./OperationsProductionFloor.tsx', import.meta.url), 'utf8');
 const workspace = await readFile(new URL('./RealRoleWorkspace.tsx', import.meta.url), 'utf8');
 
-test('Real Inventory keeps the complete interface while excluding Demo data and writes', () => {
+test('Real Inventory keeps the complete interface while excluding Demo data and writes', async () => {
   assert.match(inventory, /const realMode = mode === "real"/);
-  assert.match(inventory, /Real Inventory records are not connected/);
+  assert.match(inventory, /Inventory quantities and Stock Requests are loaded from authenticated APIs/);
   assert.match(inventory, /realMode \? "—"/);
   assert.match(inventory, /const readOnly = isOperationsReadOnly \|\| realMode/);
+  assert.match(inventory, /INCOMING STOCK REQUESTS/);
+  assert.match(await readFile(new URL('./RealWarehouseStockRequests.tsx', import.meta.url), 'utf8'), /loading \? .*error \?/s);
+  assert.match(await readFile(new URL('../api/stockRequests.js', import.meta.url), 'utf8'), /normalizeStockRequests/);
+  const workspaceSource = await readFile(new URL('./RealRoleWorkspace.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(workspaceSource, /LiveDataNotice/);
+  assert.doesNotMatch(workspaceSource, /inventoryHasItsOwnDataState/);
 });
 
-test('Real Production keeps monitoring and detail surfaces read-only with unavailable data states', () => {
+test('Real MaterialsProvider preserves the existing catalog and overlays persisted quantities by material ID', () => {
+  const catalogEntries = (materials.match(/MAT\(/g) ?? []).length - 1;
+  assert.ok(catalogEntries >= 1);
+  assert.match(materials, /export const materialCatalog/);
+  assert.match(inventory, /Not recorded/);
+});
+
+test('Real Production uses authenticated Job Order retrieval while keeping the existing screen read-only', async () => {
   assert.match(production, /const realMode = mode === "real"/);
   assert.match(production, /const readOnly = requestedReadOnly \|\| realMode/);
-  assert.match(production, /Real Production records are not connected/);
-  assert.match(production, /realMode \? "Production records are unavailable"/);
+  assert.match(production, /ProductionRealJobOrders/);
+  assert.match(await readFile(new URL('./ProductionRealJobOrders.tsx', import.meta.url), 'utf8'), /useProductionJobOrders/);
+  const productionReal = await readFile(new URL('./ProductionRealJobOrders.tsx', import.meta.url), 'utf8');
+  assert.match(productionReal, /Outer diameter 1/);
+  assert.doesNotMatch(productionReal, /label=\{key\} value=\{detail\[key\]\}/);
+  assert.match(await readFile(new URL('../api/productionJobOrders.js', import.meta.url), 'utf8'), /\/api\/production\/job-orders/);
   assert.match(operationsProduction, /const realMode = mode === "real"/);
   assert.match(operationsProduction, /realMode \? "—"/);
   assert.match(operationsProduction, /Real Production records are not connected/);

@@ -27,6 +27,31 @@ test("client portal adapter uses the completed client endpoints and preserves st
   assert.equal(read.options.method, "PATCH");
 });
 
+test("client portal adapter submits an authenticated inquiry to the client orders endpoint", () => {
+  const result = adapter().createInquiry({
+    contactPerson: "Client Contact", paymentTermCode: "NET30", products: [{
+      type: "AIRFIL", filterName: "AHU Filter", quantity: 10, specifications: { od1: "100" }
+    }]
+  });
+  assert.equal(result.path, "/api/client/orders");
+  assert.equal(result.options.method, "POST");
+  assert.equal(result.options.body.paymentTermCode, "NET30");
+});
+
+test("client portal adapter posts quotation decisions without client-controlled ownership", () => {
+  const result = adapter().decideQuotation("21", "34", { decision: "rejected", reason: "Price changed" });
+  assert.equal(result.path, "/api/client/orders/21/quotations/34/decision");
+  assert.equal(result.options.method, "POST");
+  assert.deepEqual(result.options.body, { decision: "rejected", reason: "Price changed" });
+});
+
+test("client portal adapter submits only a purchase-order reference", () => {
+  const result = adapter().submitPurchaseOrder("21", { reference: "PO-CLIENT-1" });
+  assert.equal(result.path, "/api/client/orders/21/purchase-order");
+  assert.equal(result.options.method, "POST");
+  assert.deepEqual(result.options.body, { reference: "PO-CLIENT-1" });
+});
+
 test("client portal adapter encodes query parameters without accepting ownership parameters", () => {
   const result = adapter().orders({ page: 2, pageSize: 10, q: "A&B" });
   assert.equal(result.path, "/api/client/orders?page=2&pageSize=10&q=A%26B");

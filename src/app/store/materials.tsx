@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createRealReadOnlyProvider } from "./realMode.js";
+import { getInventory } from "../api/inventory";
 
 /* ─────────── Types ─────────── */
 
@@ -50,13 +51,16 @@ export interface RawMaterial {
 }
 
 export interface RawMaterialStockStatus {
-  key: "out-of-stock" | "low-stock" | "in-stock";
+  key: "out-of-stock" | "low-stock" | "in-stock" | "unavailable";
   label: string;
   bg: string;
   fg: string;
 }
 
 export function getRawMaterialStockStatus(material: RawMaterial): RawMaterialStockStatus {
+  if (!Number.isFinite(material.qtyInStock)) {
+    return { key: "unavailable", label: "Not recorded", bg: "#F1F5F9", fg: "#64748B" };
+  }
   if (material.qtyInStock <= 0) {
     return { key: "out-of-stock", label: "🔴 Out of Stock", bg: "#FEE2E2", fg: "#991B1B" };
   }
@@ -263,7 +267,7 @@ const MAT = (
  * Filter media is uniformly tracked in kg (Section B — Filter media unit change), except for
  * spring plates and a few legacy roll-only stocks.
  */
-const seedMaterials: RawMaterial[] = import.meta.env.DEV ? [
+const seedMaterials: RawMaterial[] = [
   /* ───── Filter Media (kg unit per Section B) ───── */
   MAT("F-FMI.FM-043",  "FILTER120 1/4\"T × 82\"W × 20m L",                      "filter_media", "kg", 1600,  35, 10),
   MAT("F-FMI.FM-044",  "FILTER200 1/2\" T × 82\" W × 20m L",                    "filter_media", "kg", 2640,  30, 10),
@@ -350,7 +354,8 @@ const seedMaterials: RawMaterial[] = import.meta.env.DEV ? [
   MAT("OFF-SI-137",    "SALES INVOICE",       "packaging", "pcs", 260, 24, 8),
   MAT("OFF-DR-138",    "DELIVERY RECEIPT",    "packaging", "pcs", 190, 30, 8),
   MAT("OFF-CR-139",    "COLLECTION RECEIPT",  "packaging", "pcs", 190, 28, 8),
-] : [];
+];
+export const materialCatalog: ReadonlyArray<RawMaterial> = seedMaterials;
 
 const RAW_MATERIALS_STORAGE_KEY = "enterflow.raw-materials.v1";
 const rawMaterialUnits: readonly string[] = ["roll", "plate", "sheet", "kg", "gal", "pcs", "set", "m"];
@@ -512,7 +517,7 @@ const MaterialsContext = createContext<Ctx | null>(null);
 
 export function MaterialsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
   const realMode = mode === "real";
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? [] : loadPersistedRawMaterials());
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? seedMaterials.map(material => ({ ...material, qtyInStock: Number.NaN, history: [] })) : loadPersistedRawMaterials());
   const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(() => realMode ? [] : seedFinishedGoods);
   const rawMaterialsRef = useRef(rawMaterials);
   const generatedJOsDeducted = useRef(new Set<string>());
@@ -521,6 +526,22 @@ export function MaterialsProvider({ children, mode = "demo" }: { children: React
   useEffect(() => {
     persistRawMaterials(mode, rawMaterials);
   }, [rawMaterials, mode]);
+  useEffect(() => {
+    if (!realMode) return undefined;
+    const controller = new AbortController();
+    void getInventory(controller.signal).then((result: any) => {
+      const persisted = new Map((result.materials ?? []).map((item: any) => [String(item.id), item]));
+      const mappedCatalog = seedMaterials.map(catalogItem => {
+        const item = persisted.get(catalogItem.id);
+        return item ? { ...catalogItem, ...item, category: item.category as PartCategory, unit: item.unit as Unit, unitPrice: Number(item.unitPrice), qtyInStock: Number(item.qtyInStock), threshold: Number(item.threshold), history: [] } : { ...catalogItem, qtyInStock: Number.NaN, history: [] };
+      });
+      const catalogIds = new Set(seedMaterials.map(item => item.id));
+      const additionalPersisted = [...persisted.values()].filter((item: any) => !catalogIds.has(String(item.id))).map((item: any) => ({ ...item, id: String(item.id), category: item.category as PartCategory, unit: item.unit as Unit, unitPrice: Number(item.unitPrice), qtyInStock: Number(item.qtyInStock), threshold: Number(item.threshold), history: [] }));
+      setRawMaterials([...mappedCatalog, ...additionalPersisted]);
+      setFinishedGoods((result.finishedGoods ?? []).map((item: any) => ({ ...item, enterFilPN: item.enterFilPN ?? '', itemName: item.itemCode, client: '—', qtyInStock: Number(item.qtyInStock), bufferMin: Number(item.bufferMin), lastUpdated: item.lastUpdated, updatedBy: 'Backend', specs: {}, history: [] })));
+    }).catch(() => {}).finally(() => {});
+    return () => controller.abort();
+  }, [realMode]);
 
   const commitRawMaterials = (update: (current: RawMaterial[]) => RawMaterial[]) => {
     const next = update(rawMaterialsRef.current);

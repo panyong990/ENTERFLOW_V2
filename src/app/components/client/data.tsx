@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { clientPortalApi, type ClientProfile, type ClientNotification } from '../../api/clientPortal';
+import { clientPortalApi, type ClientProfile, type ClientNotification, type ClientInquiryInput, type ClientInquiryCreated, type ClientQuotationDecision } from '../../api/clientPortal';
 import type { Inquiry } from './model';
 import { project, type OrderBundle, type Surface } from './adapters';
 
@@ -69,12 +69,40 @@ export function ClientDataProvider({ children }: { children: ReactNode }) {
   return <Context.Provider value={{ profile, bundles, notifications, loading, error, refresh: () => setRevision(v => v + 1), markRead, realMode: true }}>{children}</Context.Provider>;
 }
 export function useOrders(surface: Surface = 'orders') {
-  const { profile, bundles } = useClientData();
+  const { profile, bundles, refresh } = useClientData();
   const rows = useMemo(() => profile ? bundles.flatMap(bundle => project(bundle, profile, surface)) : [], [profile, bundles, surface]);
+  const addInquiry = async (input: ClientInquiryInput): Promise<ClientInquiryCreated> => {
+    const created = await clientPortalApi.createInquiry(input);
+    refresh();
+    window.dispatchEvent(new Event('enterflow:client-inquiry-submitted'));
+    return created;
+  };
+  const decideQuotation = async (orderId: string, quotationId: string, input: ClientQuotationDecision) => {
+    const result = await clientPortalApi.decideQuotation(orderId, quotationId, input);
+    refresh();
+    return result;
+  };
+  const submitPurchaseOrder = async (orderId: string, reference: string, file?: File) => {
+    if (file) { const result = await clientPortalApi.uploadPurchaseOrderDocument(orderId, { reference, file }); refresh(); return result; }
+    const result = await clientPortalApi.submitPurchaseOrder(orderId, { reference });
+    refresh();
+    return result;
+  };
+  const requestQuotationRevision = async (orderId: string, reason: string) => {
+    const result = await clientPortalApi.requestQuotationRevision(orderId, { reason });
+    refresh();
+    return result;
+  };
+  const submitPayment = async (orderId: string, invoiceId: string, input: { amount: string | number; method?: string; referenceNumber?: string; file: File }) => {
+    const result = await clientPortalApi.uploadPaymentProof(orderId, { invoiceId, ...input });
+    refresh();
+    return result;
+  };
   return useMemo(() => ({ inquiries: rows, completedJOs: rows.filter(row => !!row.joNumber), byClient: (_name: string) => rows,
-    addInquiry: blocked, addInquiryWithProductSketches: blocked, uploadPO: blocked, requestCancellation: blocked, updateInquiry: blocked, submitPayment: blocked,
+    decideQuotation, submitPurchaseOrder, requestQuotationRevision,
+    addInquiry, addInquiryWithProductSketches: blocked, uploadPO: blocked, requestCancellation: blocked, updateInquiry: blocked, submitPayment,
     generatePONumber: () => 'Assigned by backend on submission', savePendingSignedDeliveryReceipt: blocked, submitPendingSignedDeliveryReceipt: blocked, discardPendingSignedDeliveryReceipt: blocked,
-  }), [rows]);
+  }), [rows, addInquiry, decideQuotation, submitPurchaseOrder, requestQuotationRevision, submitPayment]);
 }
 export function useSettings() {
   return { settings: { bankDetails: { bankName: 'Unavailable — not provided by the Client API', accountName: '—', accountNumber: '—' }, paymentMethods: [] as {id: string; label: string; type: string; details: string}[] } };

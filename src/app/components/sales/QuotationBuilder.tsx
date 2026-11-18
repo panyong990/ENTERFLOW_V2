@@ -85,7 +85,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   );
   const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? "");
   const [validUntil, setValidUntil] = useState(inquiry.quotationDoc?.validUntil ?? defaultValidUntil);
-  const [downpaymentPercent, setDownpaymentPercent] = useState(inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 30);
+  const [downpaymentPercent, setDownpaymentPercent] = useState(inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 20);
 
   const [showPreview, setShowPreview] = useState(false);
 
@@ -220,7 +220,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
       return false;
     }
     if (packagingOpen && (!packagingName.trim() || !Number.isFinite(packagingPrice) || packagingPrice < 0 || !Number.isFinite(packagingQty) || packagingQty <= 0)) { toast.error("Enter valid draft packaging details and costs"); return false; }
-    if (!Number.isFinite(shippingAmount) || shippingAmount < 0 || !Number.isFinite(downpaymentPercent) || downpaymentPercent < 0 || downpaymentPercent > 100 || !Number.isFinite(grandTotal) || grandTotal < 0) { toast.error("Enter valid amounts and a downpayment percentage between 0 and 100"); return false; }
+    if (!Number.isFinite(shippingAmount) || shippingAmount < 0 || !Number.isFinite(downpaymentPercent) || ![20, 50].includes(downpaymentPercent) || !Number.isFinite(grandTotal) || grandTotal < 0) { toast.error("A mandatory downpayment of 20% or 50% is required"); return false; }
     if (shippingOpen && !shippingMethod && (!savedShippingLabel || savedShippingLabel === "Shipping")) {
       toast.error("Select a delivery method");
       return false;

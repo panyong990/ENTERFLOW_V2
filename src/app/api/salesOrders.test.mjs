@@ -44,6 +44,20 @@ test('Sales order detail adapter preserves BIGINT IDs in the URL', () => {
   assert.equal(result.path, '/api/sales/orders/18446744073709551615');
 });
 
+test('Sales stock availability adapter uses the authenticated order-scoped endpoint', () => {
+  const { getSalesStockAvailability } = adapter();
+  const signal = new AbortController().signal;
+  const result = getSalesStockAvailability('18446744073709551615', signal);
+  assert.equal(result.path, '/api/sales/orders/18446744073709551615/stock-availability');
+  assert.equal(result.options.signal, signal);
+});
+
+test('Sales quotation adapter posts to the order-scoped quotation endpoint', () => {
+  const { createSalesQuotation } = adapter();
+  const result = createSalesQuotation('91', { status: 'draft' });
+  assert.deepEqual(result, { path: '/api/sales/orders/91/quotations', options: { method: 'POST', body: { status: 'draft' }, signal: undefined } });
+});
+
 test('Sales order mapping preserves identifiers and monetary values without conversion', () => {
   const { mapSalesOrder, mapSalesPayment, sumVerifiedPaymentAmounts } = adapter();
   const result = mapSalesOrder({ id: '18446744073709551615', clientId: '9007199254740993', archived: 0, urgent: 1, invoiceAmount: '123456789012345678.90', payments: [{ id: '18446744073709551614', invoiceId: '9007199254740992', submittedAmount: '999999999999999999.99', verifiedAmount: '123456789012345678.90', verificationStatus: 'verified' }] });

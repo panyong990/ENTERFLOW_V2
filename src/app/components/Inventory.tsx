@@ -9,6 +9,7 @@ import { useStockRequests } from "../store/stockRequests";
 import { StockRequestsModal } from "./StockRequestsModal";
 import { useSession } from "../store/session";
 import { useOrders } from "../store/orders";
+import { RealWarehouseStockRequests } from "./RealWarehouseStockRequests";
 
 const STOCK_REASONS = [
   "Restocked from supplier",
@@ -229,14 +230,14 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {!readOnly && (
+          {((realMode && role === "warehouse") || !readOnly) && (
             <button
               onClick={() => setShowStockRequests(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-dm"
               style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}
             >
-              STOCK REQUESTS
-              <span className="px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 10, fontWeight: 800 }}>{warehouseStockRequestCount}</span>
+              {realMode && role === "warehouse" ? "INCOMING STOCK REQUESTS" : "STOCK REQUESTS"}
+              {!realMode && <span className="px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: "#1A2B4A", fontSize: 10, fontWeight: 800 }}>{warehouseStockRequestCount}</span>}
             </button>
           )}
           {!readOnly && tab === "raw" && (
@@ -252,8 +253,8 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
         </div>
       </header>
 
-      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-950">
-        Real Inventory records are not connected to an authenticated inventory API. The complete inventory interface remains available for navigation and filtering, but Demo records are excluded and no quantities, movements, or updates are inferred.
+      {realMode && <div role="status" className="border-b border-blue-200 bg-blue-50 px-8 py-3 text-sm text-blue-950">
+        Inventory quantities and Stock Requests are loaded from authenticated APIs. Demo records are excluded; stock updates remain manually authorized for Warehouse users.
       </div>}
 
       {/* Tabs */}
@@ -355,7 +356,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                 filterRow(item) &&
                 (!readOnly || !statusFilter || getRawMaterialStockStatus(item).key === statusFilter)
               );
-              const lowCount = items.filter((m) => getRawMaterialStockStatus(m).key !== "in-stock").length;
+              const lowCount = items.filter((m) => ["low-stock", "out-of-stock"].includes(getRawMaterialStockStatus(m).key)).length;
               const collapsed = collapsedCats.has(cat);
               if (items.length === 0 && (query !== "" || (readOnly && (categoryFilter || statusFilter)))) return null;
               if (readOnly && categoryFilter && categoryFilter !== cat) return null;
@@ -383,6 +384,8 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                       <tbody>
                         {items.map((m) => {
                           const s = getRawMaterialStockStatus(m);
+                          const quantity = Number.isFinite(m.qtyInStock) ? `${m.qtyInStock.toFixed(2)} ${m.unit}` : "Not recorded";
+                          const price = Number.isFinite(m.unitPrice) ? `₱${m.unitPrice.toLocaleString("en-PH")}` : "Not recorded";
                           return (
                             <tr
                               key={m.id}
@@ -411,8 +414,8 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                                 {m.supplier && <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8", marginTop: 1 }}>{m.supplier}</div>}
                               </td>
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{m.unit}</td>
-                              <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 700, color: s.fg }}>{m.qtyInStock.toFixed(2)} <span className="font-dm" style={{ fontSize: 10, fontWeight: 500, color: "#94A3B8" }}>{m.unit}</span></td>
-                              <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>₱{m.unitPrice.toLocaleString("en-PH")}</td>
+                              <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 700, color: s.fg }}>{quantity}</td>
+                              <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>{price}</td>
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{m.threshold}</td>
                               <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: s.bg, color: s.fg }}>{s.label}</span></td>
                             </tr>
@@ -453,7 +456,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
       {historyFor && (
         <HistoryDrawer m={historyFor} onClose={() => setHistoryFor(null)} />
       )}
-      {showStockRequests && <StockRequestsModal mode="warehouse" onClose={() => setShowStockRequests(false)} />}
+      {showStockRequests && (realMode ? <RealWarehouseStockRequests onClose={() => setShowStockRequests(false)} /> : <StockRequestsModal mode="warehouse" onClose={() => setShowStockRequests(false)} />)}
       {readOnly && selectedItem && (
         <InventoryDetailsDrawer
           selection={selectedItem}

@@ -48,8 +48,10 @@ export function project(bundle: OrderBundle, profile: ClientProfile, surface: Su
     paymentTerms: order.paymentTermLabel ?? '—', submittedDate: order.submittedAt ? new Date(order.submittedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : 'Unavailable',
     stage: stages[order.stageLabel ?? ''] ?? 'unavailable', products: order.items.map(product),
     dueDate: order.requestedDeliveryDate ?? undefined, quotationDoc: latest ? quote(latest) : undefined,
+    quotationId: latest?.id, quotationDecision: latest?.decision ?? null, quotationDecisionReason: latest?.decisionReason ?? null, quotationDecidedAt: latest?.decidedAt ?? null,
+    quotationDownpaymentValid: latest?.downpaymentValid,
     quotationHistory: quotations.slice(0, -1).map(quote), quotedTotal: latest ? draftMoney(latest.totalAmount) : NaN,
-    poNumber: purchaseOrder?.clientReference ?? purchaseOrder?.reference, poUploadedAt: purchaseOrder?.uploadedAt,
+    poNumber: purchaseOrder?.clientReference ?? purchaseOrder?.reference, poUploadedAt: purchaseOrder?.uploadedAt, poFileName: purchaseOrder?.files?.[0]?.originalFilename ?? undefined, poFileId: purchaseOrder?.files?.[0]?.id ?? undefined,
     // No file or review status is inferred from a received/cleared timestamp.
     payments: [],
   } as unknown as ClientView;
@@ -58,7 +60,7 @@ export function project(bundle: OrderBundle, profile: ClientProfile, surface: Su
     invoiceSentAt: invoice.sentAt, invoiceDueDate: invoice.dueOn ?? undefined, paymentCycleStartedAt: invoice.paymentCycleStartedAt ?? undefined,
     // Required DP is authoritative; do not recompute it from a different quotation revision.
     downpaymentAmount: draftMoney(invoice.requiredDownpayment), quotationDoc: undefined,
-    payments: bundle.payments.filter(p => p.invoiceId === invoice.id).map(p => ({ id: p.id, inquiryId: order.id, invoiceNo: invoice.reference, paymentType: p.paymentType, submittedAmount: draftMoney(p.submittedAmount), verifiedAmount: p.verifiedAmount == null ? undefined : draftMoney(p.verifiedAmount), method: p.method ?? undefined, referenceNumber: p.referenceNumber ?? undefined, paymentDate: p.paidOn, verificationStatus: p.verificationStatus, submittedAt: p.submittedAt })),
+    payments: bundle.payments.filter(p => p.invoiceId === invoice.id).map(p => ({ id: p.id, inquiryId: order.id, invoiceNo: invoice.reference, paymentType: p.paymentType, submittedAmount: draftMoney(p.submittedAmount), verifiedAmount: p.verifiedAmount == null ? undefined : draftMoney(p.verifiedAmount), method: p.method ?? undefined, referenceNumber: p.referenceNumber ?? undefined, rejectionReason: p.rejectionReason ?? undefined, proofFileId: p.proofFileId ?? undefined, proofFilename: p.proofFilename ?? undefined, paymentDate: p.paidOn, verificationStatus: p.verificationStatus, submittedAt: p.submittedAt })),
   } as ClientView));
   if (surface === 'invoices') return invoices;
   if (surface === 'shipments') return bundle.shipments.map(shipment => ({ ...base, id: shipment.id, sourceShipment: shipment,

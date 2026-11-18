@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { auditRequestId } from './audit-request-id.js';
 import { recordInquiryRejectionNotification } from './sales-notifications.service.js';
-import { validateInquiryRejection, validateSalesOrderId, validateSalesOrderListQuery } from '../validation/sales.validation.js';
+import { validateInquiryRejection, validateJobOrderCreation, validateQuotationPreparation, validatePurchaseOrderDecision, validateSalesOrderId, validateSalesOrderListQuery } from '../validation/sales.validation.js';
 
 const orderColumns = `CAST(o.id AS CHAR) id, o.reference, CAST(o.client_id AS CHAR) clientId,
  c.company_name companyName, o.contact_person contactPerson, o.stage_code stageCode,
@@ -58,6 +58,12 @@ async function withConnection(db, work) {
   try { return await work(connection); } finally { connection.release(); }
 }
 
+function validDownpayment(totalAmount, percent, amount) {
+  const total = Number(totalAmount), rate = Number(percent), required = Number(amount);
+  const expected = Number.isFinite(total) && Number.isFinite(rate) ? Math.round(total * rate) / 100 : NaN;
+  return Number.isFinite(total) && total >= 0 && [20, 50].includes(rate) && Number.isFinite(required) && required > 0 && required <= total && Math.abs(required - expected) < 0.001;
+}
+
 export function createSalesOrdersService({ db }) {
   if (!db || typeof db.getConnection !== 'function') throw new TypeError('A database pool is required.');
 
@@ -112,7 +118,11 @@ export function createSalesOrdersService({ db }) {
         q.note, q.note_highlighted noteHighlighted, q.total_amount totalAmount,
         q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount,
         DATE_FORMAT(q.stock_checked_at, '%Y-%m-%dT%H:%i:%s.%fZ') stockCheckedAt,
-        DATE_FORMAT(q.sent_at, '%Y-%m-%dT%H:%i:%s.%fZ') sentAt FROM quotations q WHERE q.order_id=? ORDER BY q.revision_number DESC, q.id DESC`, [id]);
+        DATE_FORMAT(q.sent_at, '%Y-%m-%dT%H:%i:%s.%fZ') sentAt,
+        (SELECT CASE WHEN a.action='quotation.accepted' THEN 'accepted' WHEN a.action='quotation.rejected' THEN 'rejected' END FROM audit_events a WHERE a.subject_type='quotation' AND a.subject_identifier=CAST(q.id AS CHAR) AND a.action IN ('quotation.accepted','quotation.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) decision,
+        (SELECT a.reason FROM audit_events a WHERE a.subject_type='quotation' AND a.subject_identifier=CAST(q.id AS CHAR) AND a.action IN ('quotation.accepted','quotation.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) decisionReason,
+        (SELECT DATE_FORMAT(a.occurred_at, '%Y-%m-%dT%H:%i:%s.%fZ') FROM audit_events a WHERE a.subject_type='quotation' AND a.subject_identifier=CAST(q.id AS CHAR) AND a.action IN ('quotation.accepted','quotation.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) decidedAt
+        FROM quotations q WHERE q.order_id=? ORDER BY q.revision_number DESC, q.id DESC`, [id]);
       const [quotationLines] = await connection.execute(`SELECT CAST(ql.id AS CHAR) id, CAST(ql.quotation_id AS CHAR) quotationId,
         ql.line_number lineNumber, CAST(ql.order_item_id AS CHAR) orderItemId, ql.description,
         ql.sub_description subDescription, ql.quantity, ql.unit_label unitLabel, ql.unit_price unitPrice
@@ -170,7 +180,10 @@ export function createSalesOrdersService({ db }) {
         q.place_of_delivery placeOfDelivery, q.note, q.note_highlighted noteHighlighted, q.total_amount totalAmount,
         q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount,
         DATE_FORMAT(q.stock_checked_at, '%Y-%m-%dT%H:%i:%s.%fZ') stockCheckedAt,
-        DATE_FORMAT(q.sent_at, '%Y-%m-%dT%H:%i:%s.%fZ') sentAt
+        DATE_FORMAT(q.sent_at, '%Y-%m-%dT%H:%i:%s.%fZ') sentAt,
+        (SELECT CASE WHEN a.action='quotation.accepted' THEN 'accepted' WHEN a.action='quotation.rejected' THEN 'rejected' END FROM audit_events a WHERE a.subject_type='quotation' AND a.subject_identifier=CAST(q.id AS CHAR) AND a.action IN ('quotation.accepted','quotation.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) decision,
+        (SELECT a.reason FROM audit_events a WHERE a.subject_type='quotation' AND a.subject_identifier=CAST(q.id AS CHAR) AND a.action IN ('quotation.accepted','quotation.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) decisionReason,
+        (SELECT DATE_FORMAT(a.occurred_at, '%Y-%m-%dT%H:%i:%s.%fZ') FROM audit_events a WHERE a.subject_type='quotation' AND a.subject_identifier=CAST(q.id AS CHAR) AND a.action IN ('quotation.accepted','quotation.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) decidedAt
         FROM quotations q JOIN payment_terms pt ON pt.code=q.payment_term_code
         WHERE q.order_id=? ORDER BY q.revision_number ASC, q.id ASC`, [id]);
       const [lines] = await connection.execute(`SELECT CAST(ql.id AS CHAR) id, CAST(ql.quotation_id AS CHAR) quotationId,
@@ -198,6 +211,7 @@ export function createSalesOrdersService({ db }) {
         success: true,
         data: rows.map(quote => ({
           ...quote,
+          downpaymentValid: validDownpayment(quote.totalAmount, quote.downpaymentPercent, quote.downpaymentAmount),
           noteHighlighted: Boolean(Number(quote.noteHighlighted)),
           sent: quote.sentAt !== null,
           lines: lines.filter(line => line.quotationId === quote.id),
@@ -224,7 +238,9 @@ export function createSalesOrdersService({ db }) {
         q.reference acceptedQuotationReference, po.reference, po.client_reference clientReference,
         DATE_FORMAT(po.uploaded_at, '%Y-%m-%dT%H:%i:%s.%fZ') uploadedAt,
         DATE_FORMAT(po.received_at, '%Y-%m-%dT%H:%i:%s.%fZ') receivedAt,
-        DATE_FORMAT(po.cleared_at, '%Y-%m-%dT%H:%i:%s.%fZ') clearedAt
+        DATE_FORMAT(po.cleared_at, '%Y-%m-%dT%H:%i:%s.%fZ') clearedAt,
+        (SELECT CASE WHEN a.action='purchase_order.validated' THEN 'validated' WHEN a.action='purchase_order.rejected' THEN 'rejected' WHEN a.action='purchase_order.received' THEN 'received' END FROM audit_events a WHERE a.subject_type='purchase_order' AND a.subject_identifier=CAST(po.id AS CHAR) AND a.action IN ('purchase_order.received','purchase_order.validated','purchase_order.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) poStatus,
+        (SELECT a.reason FROM audit_events a WHERE a.subject_type='purchase_order' AND a.subject_identifier=CAST(po.id AS CHAR) AND a.action IN ('purchase_order.received','purchase_order.validated','purchase_order.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) poDecisionReason
         FROM purchase_orders po LEFT JOIN quotations q ON q.id=po.accepted_quotation_id AND q.order_id=po.order_id
         WHERE po.order_id=?`, [id]);
       if (!rows.length) return { success: false, code: 'PURCHASE_ORDER_NOT_FOUND' };
@@ -233,7 +249,155 @@ export function createSalesOrdersService({ db }) {
         f.state, DATE_FORMAT(f.uploaded_at, '%Y-%m-%dT%H:%i:%s.%fZ') uploadedAt
         FROM purchase_order_files pof JOIN files f ON f.id=pof.file_id
         WHERE pof.purchase_order_id=? ORDER BY f.id`, [rows[0].id]);
-      return { success: true, data: { ...rows[0], received: rows[0].receivedAt !== null, cleared: rows[0].clearedAt !== null, files } };
+      return { success: true, data: { ...rows[0], status: rows[0].poStatus ?? (rows[0].clearedAt ? 'validated' : rows[0].receivedAt ? 'received' : 'pending'), decisionReason: rows[0].poDecisionReason ?? null, received: rows[0].receivedAt !== null, cleared: rows[0].clearedAt !== null, files } };
+    });
+  }
+
+  async function processPurchaseOrder(id, actor, body, context = {}) {
+    if (!actor || actor.accountType !== 'employee' || actor.roleCode !== 'sales' || !validateSalesOrderId(id).success) return { success: false, code: 'FORBIDDEN' };
+    const validation = validatePurchaseOrderDecision(body);
+    if (!validation.success) return validation;
+    return withConnection(db, async connection => {
+      let transaction = false;
+      try {
+        await connection.beginTransaction(); transaction = true;
+        const [rows] = await connection.execute(`SELECT CAST(po.id AS CHAR) id, CAST(po.order_id AS CHAR) orderId, CAST(po.accepted_quotation_id AS CHAR) acceptedQuotationId,
+          po.reference, po.received_at receivedAt, po.cleared_at clearedAt, CAST(o.client_id AS CHAR) clientId
+          FROM purchase_orders po JOIN orders o ON o.id=po.order_id WHERE po.order_id=? FOR UPDATE`, [id]);
+        if (!rows.length) { await connection.rollback(); return { success: false, code: 'PURCHASE_ORDER_NOT_FOUND' }; }
+        const po = rows[0];
+        const [quotes] = await connection.execute(`SELECT CAST(q.id AS CHAR) id, q.reference, q.revision_number revisionNumber, q.status, q.total_amount totalAmount, q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount
+          FROM quotations q WHERE q.id=? AND q.order_id=? FOR UPDATE`, [po.acceptedQuotationId, id]);
+        const quote = quotes[0];
+        if (!quote || quote.status !== 'sent' || !validDownpayment(quote.totalAmount, quote.downpaymentPercent, quote.downpaymentAmount)) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
+        const [decisions] = await connection.execute(`SELECT action FROM audit_events WHERE subject_type='quotation' AND subject_identifier=? AND action IN ('quotation.accepted','quotation.rejected') ORDER BY occurred_at DESC,id DESC LIMIT 1`, [quote.id]);
+        if (!decisions.length || decisions[0].action !== 'quotation.accepted') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ACCEPTED' }; }
+        const [prior] = await connection.execute(`SELECT action, reason FROM audit_events WHERE subject_type='purchase_order' AND subject_identifier=? AND action IN ('purchase_order.validated','purchase_order.rejected') ORDER BY occurred_at DESC,id DESC LIMIT 1`, [po.id]);
+        if (prior.length) { await connection.rollback(); return { success: false, code: 'PURCHASE_ORDER_ALREADY_DECIDED' }; }
+        const action = validation.data.decision === 'validated' ? 'purchase_order.validated' : 'purchase_order.rejected';
+        if (validation.data.decision === 'validated') {
+          const [updated] = await connection.execute(`UPDATE purchase_orders SET received_at=COALESCE(received_at,CURRENT_TIMESTAMP(3)), received_by=?, cleared_at=CURRENT_TIMESTAMP(3), cleared_by=? WHERE id=? AND order_id=?`, [actor.userId, actor.userId, po.id, id]);
+          if (updated.affectedRows !== 1) throw new Error('Purchase-order update failed.');
+        }
+        const [audit] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,old_value,new_value,reason,request_id,occurred_at)
+          VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [actor.userId, action, 'purchase_order', po.id, JSON.stringify({ receivedAt: po.receivedAt, clearedAt: po.clearedAt }), JSON.stringify({ orderId: id, acceptedQuotationId: quote.id, decision: validation.data.decision, downpaymentPercent: Number(quote.downpaymentPercent), downpaymentAmount: quote.downpaymentAmount }), validation.data.reason, auditRequestId(context)]);
+        if (audit.affectedRows !== 1) throw new Error('Purchase-order audit write failed.');
+        await connection.commit(); transaction = false;
+        return { success: true, data: { id: po.id, orderId: id, reference: po.reference, acceptedQuotationId: quote.id, acceptedQuotationReference: quote.reference, status: validation.data.decision, discrepancy: null, downpaymentPercent: Number(quote.downpaymentPercent), downpaymentAmount: quote.downpaymentAmount, paymentStatus: 'unverified', jobOrderCreated: false } };
+      } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; }
+    });
+  }
+
+  async function generateInvoice(id, actor, context = {}) {
+    if (!actor || actor.accountType !== 'employee' || actor.roleCode !== 'sales' || !validateSalesOrderId(id).success) return { success: false, code: 'FORBIDDEN' };
+    return withConnection(db, async connection => {
+      let transaction = false;
+      try {
+        await connection.beginTransaction(); transaction = true;
+        const [orders] = await connection.execute(`SELECT CAST(o.id AS CHAR) id, CAST(o.client_id AS CHAR) clientId, o.reference
+          FROM orders o WHERE o.id=? FOR UPDATE`, [id]);
+        if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        const [purchaseOrders] = await connection.execute(`SELECT CAST(po.id AS CHAR) id, CAST(po.accepted_quotation_id AS CHAR) acceptedQuotationId, po.reference
+          FROM purchase_orders po WHERE po.order_id=? FOR UPDATE`, [id]);
+        if (!purchaseOrders.length) { await connection.rollback(); return { success: false, code: 'PURCHASE_ORDER_NOT_FOUND' }; }
+        const purchaseOrder = purchaseOrders[0];
+        const [poDecisions] = await connection.execute(`SELECT action FROM audit_events WHERE subject_type='purchase_order' AND subject_identifier=?
+          AND action IN ('purchase_order.validated','purchase_order.rejected') ORDER BY occurred_at DESC,id DESC LIMIT 1`, [purchaseOrder.id]);
+        if (!poDecisions.length || poDecisions[0].action !== 'purchase_order.validated') { await connection.rollback(); return { success: false, code: 'PURCHASE_ORDER_NOT_VALIDATED' }; }
+        const [quotes] = await connection.execute(`SELECT CAST(q.id AS CHAR) id, q.reference, q.revision_number revisionNumber, q.status,
+          q.total_amount totalAmount, q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount, q.payment_term_code paymentTermCode
+          FROM quotations q WHERE q.id=? AND q.order_id=? FOR UPDATE`, [purchaseOrder.acceptedQuotationId, id]);
+        const quote = quotes[0];
+        if (!quote || quote.status !== 'sent' || !validDownpayment(quote.totalAmount, quote.downpaymentPercent, quote.downpaymentAmount)) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
+        const [latest] = await connection.execute(`SELECT CAST(id AS CHAR) id FROM quotations WHERE order_id=? ORDER BY revision_number DESC,id DESC LIMIT 1 FOR UPDATE`, [id]);
+        if (!latest.length || latest[0].id !== quote.id) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_LATEST' }; }
+        const [decisions] = await connection.execute(`SELECT action FROM audit_events WHERE subject_type='quotation' AND subject_identifier=? AND action IN ('quotation.accepted','quotation.rejected') ORDER BY occurred_at DESC,id DESC LIMIT 1`, [quote.id]);
+        if (!decisions.length || decisions[0].action !== 'quotation.accepted') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ACCEPTED' }; }
+        const [existing] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, DATE_FORMAT(issued_on,'%Y-%m-%d') issuedOn,
+          amount, required_downpayment requiredDownpayment, DATE_FORMAT(sent_at,'%Y-%m-%dT%H:%i:%s.%fZ') sentAt
+          FROM invoices WHERE order_id=? FOR UPDATE`, [id]);
+        if (existing.length) { await connection.rollback(); return { success: false, code: 'INVOICE_ALREADY_EXISTS', data: existing[0] }; }
+        const reference = `SI-${new Date().getUTCFullYear()}-${String(id).padStart(4, '0')}`;
+        const [inserted] = await connection.execute(`INSERT INTO invoices
+          (order_id, reference, issued_on, amount, payment_term_code, required_downpayment, created_by, sent_at, sent_by)
+          VALUES (?, ?, UTC_DATE(), ?, ?, ?, ?, CURRENT_TIMESTAMP(3), ?)`,
+          [id, reference, quote.totalAmount, quote.paymentTermCode, quote.downpaymentAmount, actor.userId, actor.userId]);
+        if (inserted.affectedRows !== 1 || inserted.insertId == null) throw new Error('Invoice write failed.');
+        const invoiceId = String(inserted.insertId);
+        const [audit] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at)
+          VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [actor.userId, 'invoice.issued', 'invoice', invoiceId, JSON.stringify({ orderId: id, clientId: orders[0].clientId, invoiceId, reference, acceptedQuotationId: quote.id, purchaseOrderId: purchaseOrder.id, amount: quote.totalAmount, requiredDownpayment: quote.downpaymentAmount }), auditRequestId(context)]);
+        if (audit.affectedRows !== 1) throw new Error('Invoice audit write failed.');
+        await connection.commit(); transaction = false;
+        return { success: true, data: { id: invoiceId, orderId: id, reference, issuedOn: new Date().toISOString().slice(0, 10), amount: quote.totalAmount, requiredDownpayment: quote.downpaymentAmount, acceptedQuotationId: quote.id, purchaseOrderId: purchaseOrder.id, status: 'issued' } };
+      } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; }
+    });
+  }
+
+  async function createJobOrders(id, actor, body, context = {}) {
+    if (!actor || actor.accountType !== 'employee' || actor.roleCode !== 'sales' || !validateSalesOrderId(id).success) return { success: false, code: 'FORBIDDEN' };
+    const validation = validateJobOrderCreation(body);
+    if (!validation.success) return validation;
+    return withConnection(db, async connection => {
+      let transaction = false;
+      try {
+        await connection.beginTransaction(); transaction = true;
+        const [orders] = await connection.execute(`SELECT CAST(o.id AS CHAR) id, CAST(o.client_id AS CHAR) clientId, o.stage_code stageCode
+          FROM orders o WHERE o.id=? FOR UPDATE`, [id]);
+        if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        const order = orders[0];
+        const [purchaseOrders] = await connection.execute(`SELECT CAST(po.id AS CHAR) id, CAST(po.accepted_quotation_id AS CHAR) acceptedQuotationId, po.reference
+          FROM purchase_orders po WHERE po.order_id=? FOR UPDATE`, [id]);
+        if (!purchaseOrders.length) { await connection.rollback(); return { success: false, code: 'PURCHASE_ORDER_NOT_FOUND' }; }
+        const purchaseOrder = purchaseOrders[0];
+        const [poDecisions] = await connection.execute(`SELECT action FROM audit_events WHERE subject_type='purchase_order' AND subject_identifier=?
+          AND action IN ('purchase_order.validated','purchase_order.rejected') ORDER BY occurred_at DESC,id DESC LIMIT 1`, [purchaseOrder.id]);
+        if (!poDecisions.length || poDecisions[0].action !== 'purchase_order.validated') { await connection.rollback(); return { success: false, code: 'PURCHASE_ORDER_NOT_VALIDATED' }; }
+        const [quotes] = await connection.execute(`SELECT CAST(q.id AS CHAR) id, q.reference, q.revision_number revisionNumber, q.status, q.total_amount totalAmount,
+          q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount
+          FROM quotations q WHERE q.id=? AND q.order_id=? FOR UPDATE`, [purchaseOrder.acceptedQuotationId, id]);
+        const quote = quotes[0];
+        if (!quote || quote.status !== 'sent' || !validDownpayment(quote.totalAmount, quote.downpaymentPercent, quote.downpaymentAmount)) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
+        const [latest] = await connection.execute(`SELECT CAST(id AS CHAR) id FROM quotations WHERE order_id=? ORDER BY revision_number DESC,id DESC LIMIT 1 FOR UPDATE`, [id]);
+        if (!latest.length || latest[0].id !== quote.id) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_LATEST' }; }
+        const [quoteDecisions] = await connection.execute(`SELECT action FROM audit_events WHERE subject_type='quotation' AND subject_identifier=?
+          AND action IN ('quotation.accepted','quotation.rejected') ORDER BY occurred_at DESC,id DESC LIMIT 1`, [quote.id]);
+        if (!quoteDecisions.length || quoteDecisions[0].action !== 'quotation.accepted') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ACCEPTED' }; }
+        const [invoices] = await connection.execute(`SELECT id FROM invoices WHERE order_id=? AND sent_at IS NOT NULL AND amount=? AND required_downpayment=? FOR UPDATE`, [id, quote.totalAmount, quote.downpaymentAmount]);
+        if (!invoices.length) { await connection.rollback(); return { success: false, code: 'INVOICE_NOT_ISSUED' }; }
+        const [verifiedPayments] = await connection.execute(`SELECT COALESCE(SUM(p.verified_amount),0) verifiedAmount
+          FROM payments p JOIN payment_files pf ON pf.payment_id=p.id JOIN users u ON u.id=p.submitted_by AND u.account_type='client' AND u.client_id=?
+          WHERE p.order_id=? AND p.invoice_id=? AND p.payment_type='DOWNPAYMENT' AND p.verification_status='verified'`, [order.clientId, id, invoices[0].id]);
+        if (Number(verifiedPayments[0]?.verifiedAmount ?? 0) + 0.001 < Number(quote.downpaymentAmount)) { await connection.rollback(); return { success: false, code: 'DOWNPAYMENT_NOT_VERIFIED' }; }
+        const [existing] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference FROM job_orders WHERE order_id=? FOR UPDATE`, [id]);
+        if (existing.length) { await connection.rollback(); return { success: false, code: 'JOB_ORDER_ALREADY_EXISTS' }; }
+        const [items] = await connection.execute(`SELECT CAST(oi.id AS CHAR) orderItemId, CAST(oi.specification_id AS CHAR) specificationId, oi.quantity inquiryQuantity,
+            ql.quantity quotationQuantity, CAST(qc.id AS CHAR) costingId
+          FROM order_items oi JOIN product_specifications ps ON ps.id=oi.specification_id AND ps.client_id=oi.client_id
+          LEFT JOIN quotation_lines ql ON ql.order_item_id=oi.id AND ql.order_id=oi.order_id AND ql.quotation_id=?
+          LEFT JOIN quotation_costing qc ON qc.order_item_id=oi.id AND qc.order_id=oi.order_id AND qc.quotation_id=?
+          WHERE oi.order_id=? ORDER BY oi.line_number,oi.id`, [quote.id, quote.id, id]);
+        if (!items.length || items.some(item => item.quotationQuantity == null || Number(item.inquiryQuantity) !== Number(item.quotationQuantity))) { await connection.rollback(); return { success: false, code: 'ORDER_QUOTATION_CONFLICT' }; }
+        const year = new Date().getUTCFullYear();
+        const [references] = await connection.execute(`SELECT reference FROM job_orders WHERE reference LIKE ? FOR UPDATE`, [`JO-${year}-%`]);
+        const used = new Set(references.map(row => row.reference));
+        let sequence = 1;
+        while (used.has(`JO-${year}-${String(sequence).padStart(4, '0')}`)) sequence += 1;
+        const created = [];
+        for (const item of items) {
+          const reference = `JO-${year}-${String(sequence++).padStart(4, '0')}`;
+          const [inserted] = await connection.execute(`INSERT INTO job_orders
+            (reference, order_id, client_id, order_item_id, specification_id, costing_id, quantity, production_due_date, current_stage_cursor, status, created_by)
+            VALUES (?,?,?,?,?,?,?,? ,0,'jo',?)`, [reference, id, order.clientId, item.orderItemId, item.specificationId, item.costingId, item.quotationQuantity, validation.data.productionDueDate, actor.userId]);
+          if (inserted.affectedRows !== 1 || inserted.insertId == null) throw new Error('Job-order write failed.');
+          const jobOrderId = String(inserted.insertId);
+          const [audit] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at)
+            VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [actor.userId, 'job_order.created', 'job_order', jobOrderId, JSON.stringify({ orderId: id, clientId: order.clientId, acceptedQuotationId: quote.id, purchaseOrderId: purchaseOrder.id, purchaseOrderReference: purchaseOrder.reference, orderItemId: item.orderItemId, specificationId: item.specificationId, quantity: item.quotationQuantity, status: 'jo' }), auditRequestId(context)]);
+          if (audit.affectedRows !== 1) throw new Error('Job-order audit write failed.');
+          created.push({ id: jobOrderId, reference, orderId: id, orderItemId: item.orderItemId, specificationId: item.specificationId, quantity: Number(item.quotationQuantity), status: 'jo', productionStarted: false, inventoryChanged: false });
+        }
+        await connection.commit(); transaction = false;
+        return { success: true, data: { orderId: id, acceptedQuotationId: quote.id, purchaseOrderId: purchaseOrder.id, jobOrders: created } };
+      } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; }
     });
   }
 
@@ -327,6 +491,193 @@ export function createSalesOrdersService({ db }) {
     });
   }
 
+  function inquirySize(height) {
+    const value = Number.parseFloat(height ?? '');
+    if (!Number.isFinite(value)) return null;
+    return value >= 400 ? 'Large' : value >= 200 ? 'Medium' : 'Small';
+  }
+
+  function materialAssessment(row, requiredQuantity, checkedAt) {
+    const availableQuantity = row.inventoryId === null || row.availableQuantity === null ? null : Number(row.availableQuantity);
+    const required = Number(requiredQuantity);
+    const validAvailable = availableQuantity !== null && Number.isFinite(availableQuantity);
+    const shortageQuantity = validAvailable ? Math.max(0, required - availableQuantity) : null;
+    return {
+      inventoryId: row.inventoryId,
+      description: row.inventoryName ?? `Material ${row.materialId}`,
+      classification: 'raw_material', categoryCode: row.categoryCode ?? null,
+      requiredQuantity: required, availableQuantity: validAvailable ? availableQuantity : null,
+      shortageQuantity, unit: row.unitCode ?? null,
+      inventoryState: !validAvailable ? 'inventory_unavailable' : availableQuantity === 0 ? 'zero_stock' : 'recorded',
+      status: !validAvailable ? 'inventory_unavailable' : shortageQuantity > 0 ? 'insufficient' : 'available',
+      source: 'bom_template', checkedAt
+    };
+  }
+
+  async function stockAvailability(id) {
+    const validation = validateSalesOrderId(id);
+    if (!validation.success) return validation;
+    return withConnection(db, async connection => {
+      const [orders] = await connection.execute('SELECT CAST(o.id AS CHAR) id, CAST(o.client_id AS CHAR) clientId FROM orders o WHERE o.id=?', [id]);
+      if (!orders.length) return { success: false, code: 'NOT_FOUND' };
+      const checkedAt = new Date().toISOString();
+      const [items] = await connection.execute(`SELECT CAST(oi.id AS CHAR) itemId, oi.quantity,
+        CAST(ps.id AS CHAR) specificationId, ps.filter_type_code filterTypeCode, ps.filter_name filterName,
+        ps.height, ps.oem_part_number oemPartNumber
+        FROM order_items oi JOIN product_specifications ps ON ps.id=oi.specification_id AND ps.client_id=oi.client_id
+        WHERE oi.order_id=? ORDER BY oi.line_number, oi.id`, [id]);
+      const assessments = [];
+      const unmappedItems = [];
+      for (const item of items) {
+        const size = inquirySize(item.height);
+        const [bomRows] = await connection.execute(`SELECT CAST(bt.id AS CHAR) templateId, bt.size_label sizeLabel,
+          CAST(btl.material_id AS CHAR) materialId, btl.quantity_per_filter quantityPerFilter,
+          m.name inventoryName, m.category_code categoryCode, u.code unitCode,
+          CAST(m.id AS CHAR) inventoryId, m.quantity_on_hand availableQuantity
+          FROM bom_templates bt JOIN bom_template_lines btl ON btl.template_id=bt.id
+          LEFT JOIN materials m ON m.id=btl.material_id AND m.active=TRUE
+          LEFT JOIN units u ON u.code=m.unit_code
+          WHERE bt.filter_type_code=? AND (bt.size_label=? OR bt.size_label IS NULL)
+          ORDER BY CASE WHEN bt.size_label=? THEN 0 ELSE 1 END, bt.id, btl.line_number`,
+        [item.filterTypeCode, size, size]);
+        const templateId = bomRows[0]?.templateId;
+        const selectedBom = templateId ? bomRows.filter(row => row.templateId === templateId) : [];
+        if (!selectedBom.length || selectedBom.some(row => row.quantityPerFilter === null || Number(row.quantityPerFilter) <= 0)) {
+          unmappedItems.push({ itemId: item.itemId, specificationId: item.specificationId, filterTypeCode: item.filterTypeCode, filterName: item.filterName, reason: 'No approved BOM template is available for this product and size.' });
+        } else {
+          for (const row of selectedBom) assessments.push({ ...materialAssessment(row, Number(row.quantityPerFilter) * Number(item.quantity), checkedAt), itemId: item.itemId, specificationId: item.specificationId, filterTypeCode: item.filterTypeCode, filterName: item.filterName });
+        }
+        const [finishedGoods] = await connection.execute(`SELECT CAST(fg.id AS CHAR) inventoryId, fg.item_code itemCode,
+          fg.enterfil_part_number partNumber, fg.quantity_on_hand availableQuantity, fg.buffer_minimum bufferMinimum,
+          'pcs' unitCode, fg.demand FROM finished_goods fg
+          WHERE fg.client_id=? AND (fg.specification_id=? OR (? IS NOT NULL AND fg.enterfil_part_number=?))`,
+        [orders[0].clientId, item.specificationId, item.oemPartNumber, item.oemPartNumber]);
+        for (const finishedGood of finishedGoods) {
+          const available = Number(finishedGood.availableQuantity);
+          const required = Number(item.quantity);
+          assessments.push({
+            inventoryId: finishedGood.inventoryId, description: finishedGood.itemCode || finishedGood.partNumber,
+            classification: 'finished_good', categoryCode: null, requiredQuantity: required,
+            availableQuantity: available, shortageQuantity: Math.max(0, required - available), unit: finishedGood.unitCode,
+            inventoryState: available === 0 ? 'zero_stock' : 'recorded', status: available >= required ? 'available' : 'insufficient',
+            source: 'finished_goods', itemId: item.itemId, specificationId: item.specificationId,
+            filterTypeCode: item.filterTypeCode, filterName: item.filterName, itemCode: finishedGood.itemCode,
+            partNumber: finishedGood.partNumber, bufferMinimum: Number(finishedGood.bufferMinimum), demand: finishedGood.demand, checkedAt
+          });
+        }
+      }
+      const mapped = assessments.filter(item => item.status !== 'inventory_unavailable');
+      const hasUnavailable = assessments.some(item => item.status === 'inventory_unavailable');
+      const available = mapped.filter(item => item.status === 'available').length;
+      const insufficient = mapped.filter(item => item.status === 'insufficient').length;
+      const overallStatus = !assessments.length && unmappedItems.length ? 'unmapped' : hasUnavailable ? 'unavailable' : insufficient && available ? 'partially_available' : insufficient ? 'insufficient' : 'available';
+      return { success: true, data: { orderId: id, checkedAt, overallStatus, assessments, unmappedItems, stockChanged: false } };
+    });
+  }
+
+  function quoteRound(value, places = 4) {
+    return Number(Number(value).toFixed(places));
+  }
+
+  async function createQuotation(id, body, actor) {
+    const identity = validateSalesOrderId(id);
+    if (!identity.success) return identity;
+    const validation = validateQuotationPreparation(body);
+    if (!validation.success) return validation;
+    if (actor?.roleCode !== 'sales' || actor?.accountType !== 'employee' || !validateSalesOrderId(actor.userId).success) return { success: false, code: 'FORBIDDEN' };
+    const input = validation.data;
+    let connection;
+    let transaction = false;
+    try {
+      connection = await db.getConnection();
+      await connection.beginTransaction();
+      transaction = true;
+      const [orders] = await connection.execute(`SELECT CAST(o.id AS CHAR) id, CAST(o.client_id AS CHAR) clientId, o.reference,
+        o.stage_code stageCode, o.archived_at archivedAt, o.payment_term_code paymentTermCode,
+        o.delivery_method_code deliveryMethodCode FROM orders o WHERE o.id=? FOR UPDATE`, [id]);
+      const order = orders[0];
+      if (!order) return { success: false, code: 'NOT_FOUND' };
+      if (order.archivedAt || !['inquiry', 'quotation'].includes(order.stageCode)) return { success: false, code: 'INVALID_STATE' };
+      if (input.paymentTermCode !== order.paymentTermCode && !['NET15', 'NET30'].includes(input.paymentTermCode)) return { success: false, code: 'VALIDATION_ERROR' };
+      const [items] = await connection.execute(`SELECT CAST(oi.id AS CHAR) orderItemId, oi.quantity, CAST(ps.id AS CHAR) specificationId,
+        ps.filter_type_code filterTypeCode, ps.filter_name filterName, ps.height
+        FROM order_items oi JOIN product_specifications ps ON ps.id=oi.specification_id AND ps.client_id=oi.client_id
+        WHERE oi.order_id=? ORDER BY oi.line_number, oi.id`, [id]);
+      if (!items.length) return { success: false, code: 'MATERIAL_COSTING_INCOMPLETE', errors: { items: 'The inquiry has no product specifications.' } };
+      const costingByItem = new Map(input.costing.map(row => [row.orderItemId, row]));
+      if (items.some(item => !costingByItem.has(item.orderItemId)) || input.costing.some(row => !items.some(item => item.orderItemId === row.orderItemId))) return { success: false, code: 'VALIDATION_ERROR', errors: { costing: 'Costing must include each inquiry product exactly once.' } };
+      const preparedItems = [];
+      for (const item of items) {
+        const size = inquirySize(item.height);
+        const [bomRows] = await connection.execute(`SELECT CAST(bt.id AS CHAR) templateId, CAST(btl.material_id AS CHAR) materialId,
+          btl.quantity_per_filter quantityPerFilter, btl.waste_percent wastePercent,
+          m.name materialName, m.unit_code unitCode, m.unit_price unitPrice
+          FROM bom_templates bt JOIN bom_template_lines btl ON btl.template_id=bt.id
+          LEFT JOIN materials m ON m.id=btl.material_id AND m.active=TRUE
+          WHERE bt.filter_type_code=? AND (bt.size_label=? OR bt.size_label IS NULL)
+          ORDER BY CASE WHEN bt.size_label=? THEN 0 ELSE 1 END, bt.id, btl.line_number`, [item.filterTypeCode, size, size]);
+        const templateId = bomRows[0]?.templateId;
+        const selectedBom = templateId ? bomRows.filter(row => row.templateId === templateId) : [];
+        if (!selectedBom.length || selectedBom.some(row => row.materialId === null || row.unitPrice === null || Number(row.quantityPerFilter) <= 0 || Number(row.wastePercent) < 0)) return { success: false, code: 'MATERIAL_COSTING_INCOMPLETE', errors: { [item.orderItemId]: 'An approved BOM mapping and material price are required.' } };
+        const cost = costingByItem.get(item.orderItemId);
+        const rawMaterialUnitCost = quoteRound(selectedBom.reduce((sum, row) => sum + Number(row.unitPrice) * Number(row.quantityPerFilter) * (1 + Number(row.wastePercent ?? 0) / 100), 0));
+        const laborUnitCost = input.includeLabor ? cost.laborCost : 0;
+        const baseUnitCost = rawMaterialUnitCost + laborUnitCost;
+        const markupAmount = input.applyMarkup ? baseUnitCost * cost.markupPercent / 100 : 0;
+        const beforeDiscount = baseUnitCost + markupAmount;
+        const afterDiscount = beforeDiscount * (1 - input.discountPercent / 100);
+        const calculatedUnitPrice = quoteRound(input.applyVat && input.vatType === 'Exclusive' ? afterDiscount * (1 + input.vatRate / 100) : afterDiscount);
+        preparedItems.push({ item, cost, selectedBom, rawMaterialUnitCost, calculatedUnitPrice, total: quoteRound(calculatedUnitPrice * Number(item.quantity), 2) });
+      }
+      const [existing] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, revision_number revisionNumber, status FROM quotations WHERE order_id=? ORDER BY revision_number DESC, id DESC FOR UPDATE`, [id]);
+      if (input.status === 'draft' && existing[0]?.status === 'draft') return { success: false, code: 'QUOTATION_DRAFT_EXISTS' };
+      const revisionNumber = Number(existing[0]?.revisionNumber ?? 0) + 1;
+      const reference = input.reference || existing[0]?.reference || `QT-${id}`;
+      const [referenceRows] = await connection.execute('SELECT order_id orderId FROM quotation_references WHERE reference=? FOR UPDATE', [reference]);
+      if (referenceRows.length && String(referenceRows[0].orderId) !== String(id)) return { success: false, code: 'VALIDATION_ERROR', errors: { reference: 'The quotation reference belongs to another order.' } };
+      if (!referenceRows.length) await connection.execute('INSERT INTO quotation_references (reference, order_id) VALUES (?,?)', [reference, id]);
+      const totalAmount = quoteRound(preparedItems.reduce((sum, row) => sum + row.total, 0), 2);
+      const downpaymentAmount = quoteRound(totalAmount * input.downpaymentPercent / 100, 2);
+      const [quoteResult] = await connection.execute(`INSERT INTO quotations
+        (order_id, reference, revision_number, status, issued_on, valid_until, payment_term_code, time_of_delivery, place_of_delivery,
+         note, note_highlighted, total_amount, downpayment_percent, downpayment_amount, stock_checked_at, prepared_by, sent_by, sent_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(3),?,?,?,?)`,
+      [id, reference, revisionNumber, input.status, input.issuedOn, input.validUntil, input.paymentTermCode, input.timeOfDelivery, input.placeOfDelivery,
+        input.note, input.noteHighlighted, totalAmount, input.downpaymentPercent, downpaymentAmount, actor.userId, input.status === 'sent' ? actor.userId : null, input.status === 'sent' ? new Date() : null]);
+      const quotationId = String(quoteResult.insertId);
+      for (const [index, row] of preparedItems.entries()) {
+        await connection.execute(`INSERT INTO quotation_lines (quotation_id, order_id, order_item_id, line_number, description, sub_description, quantity, unit_label, unit_price)
+          VALUES (?,?,?,?,?,?,?,?,?)`, [quotationId, id, row.item.orderItemId, index + 1, row.item.filterName || row.item.filterTypeCode, null, row.item.quantity, 'pcs', row.calculatedUnitPrice]);
+        const [costingResult] = await connection.execute(`INSERT INTO quotation_costing
+          (quotation_id, order_id, order_item_id, labor_cost, markup_percent, discount_percent, vat_type, vat_rate, include_labor, apply_markup, apply_vat, calculated_unit_price)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, [quotationId, id, row.item.orderItemId, row.cost.laborCost, row.cost.markupPercent, input.discountPercent, input.vatType, input.vatRate, input.includeLabor, input.applyMarkup, input.applyVat, row.calculatedUnitPrice]);
+        const costingId = String(costingResult.insertId);
+        for (const [lineNumber, bom] of row.selectedBom.entries()) {
+          await connection.execute(`INSERT INTO quotation_bom_lines (costing_id, line_number, material_id, material_name_snapshot, unit_snapshot, unit_price_snapshot, quantity_per_filter, waste_percent)
+            VALUES (?,?,?,?,?,?,?,?)`, [costingId, lineNumber + 1, bom.materialId, bom.materialName, bom.unitCode, bom.unitPrice, bom.quantityPerFilter, bom.wastePercent ?? 0]);
+        }
+      }
+      if (input.discountPercent > 0) await connection.execute('INSERT INTO quotation_discounts (quotation_id, line_number, label, percent) VALUES (?,?,?,?)', [quotationId, 1, 'Quotation discount', input.discountPercent]);
+      if (input.status === 'sent') {
+        if (existing[0]?.status === 'sent') await connection.execute(`UPDATE quotations SET status='superseded' WHERE order_id=? AND status='sent'`, [id]);
+        await connection.execute(`UPDATE order_requests SET status='completed', response=?, decided_by=?, decided_at=CURRENT_TIMESTAMP(3)
+          WHERE order_id=? AND kind='quotation_revision' AND status='pending'`, [JSON.stringify({ quotationId, revisionNumber, reference }), actor.userId, id]);
+        await connection.execute(`UPDATE orders SET stage_code='quotation', updated_at=GREATEST(UTC_TIMESTAMP(3),updated_at + INTERVAL 1000 MICROSECOND) WHERE id=?`, [id]);
+      }
+      await connection.commit();
+      transaction = false;
+      return { success: true, data: { id: quotationId, orderId: String(id), clientId: String(order.clientId), reference, revisionNumber, status: input.status, totalAmount: String(totalAmount.toFixed(2)), downpaymentPercent: input.downpaymentPercent, downpaymentAmount: String(downpaymentAmount.toFixed(2)), rawMaterialCost: String(preparedItems.reduce((sum, row) => sum + row.rawMaterialUnitCost * Number(row.item.quantity), 0).toFixed(2)), laborCost: String(preparedItems.reduce((sum, row) => sum + (input.includeLabor ? row.cost.laborCost * Number(row.item.quantity) : 0), 0).toFixed(2)), markupAmount: String(preparedItems.reduce((sum, row) => { const base = row.rawMaterialUnitCost + (input.includeLabor ? row.cost.laborCost : 0); return sum + base * (input.applyMarkup ? row.cost.markupPercent / 100 : 0) * Number(row.item.quantity); }, 0).toFixed(2)), markupPercent: preparedItems.length === 1 ? preparedItems[0].cost.markupPercent : null } };
+    } catch (error) {
+      if (transaction) try { await connection.rollback(); } catch {}
+      transaction = false;
+      if (error?.code === 'ER_DUP_ENTRY') return { success: false, code: 'QUOTATION_CONFLICT' };
+      return { success: false, code: 'SERVICE_UNAVAILABLE' };
+    } finally {
+      if (transaction) try { await connection.rollback(); } catch {}
+      if (connection) connection.release();
+    }
+  }
+
 
   async function rejectionHistory(query) {
     const validation = validateSalesOrderListQuery(query);
@@ -395,5 +746,5 @@ export function createSalesOrdersService({ db }) {
     }
   }
 
-  return { list, detail, quotations, purchaseOrder, jobOrders, delivery, rejectInquiry, rejectionHistory };
+  return { list, detail, quotations, purchaseOrder, processPurchaseOrder, generateInvoice, createJobOrders, jobOrders, delivery, stockAvailability, createQuotation, rejectInquiry, rejectionHistory };
 }

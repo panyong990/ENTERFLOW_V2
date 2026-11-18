@@ -1,5 +1,6 @@
 import { validateApplicationId } from '../validation/client-applications.validation.js';
-import { validateSalesOrderId, validateSalesOrderListQuery } from '../validation/sales.validation.js';
+import { validateQuotationRevisionRequest, validateSalesOrderId, validateSalesOrderListQuery, validateQuotationDecision, validatePurchaseOrderSubmission } from '../validation/sales.validation.js';
+import { auditRequestId } from './audit-request-id.js';
 
 const profileColumns = `CAST(c.id AS CHAR) id, c.company_name companyName, c.industry,
  c.contact_person contactPerson, c.email, c.phone, c.address_line1 addressLine1,
@@ -54,7 +55,34 @@ async function withConnection(db, work) {
   try { return await work(connection); } finally { connection.release(); }
 }
 
+function quotationDecisionAction(decision) { return decision === 'accepted' ? 'quotation.accepted' : 'quotation.rejected'; }
+
+async function recordQuotationDecisionNotification(connection, order, quote, actorId, decision, reason) {
+  const [recipients] = await connection.execute(`SELECT CAST(id AS CHAR) id
+    FROM users WHERE active=TRUE AND ((account_type='client' AND role_code='client' AND client_id=?)
+      OR (account_type='employee' AND role_code='sales')) ORDER BY id FOR SHARE`, [order.clientId]);
+  const ids = [...new Set(recipients.map(row => row.id))];
+  const title = decision === 'accepted' ? `Quotation accepted: ${quote.reference}` : `Quotation rejected: ${quote.reference}`;
+  const body = decision === 'accepted' ? 'The client accepted the quotation.' : reason;
+  const [event] = await connection.execute(`INSERT INTO notifications
+    (department,title,body,order_id,client_id,created_by) VALUES ('sales',?,?,?,?,?)`,
+    [title, body, order.id, order.clientId, actorId]);
+  if (event.affectedRows !== 1 || event.insertId == null) throw new Error('Notification write failed.');
+  const notificationId = String(event.insertId);
+  for (const userId of ids) {
+    const [row] = await connection.execute('INSERT INTO notification_recipients (notification_id,user_id) VALUES (?,?)', [notificationId, userId]);
+    if (row.affectedRows !== 1) throw new Error('Notification recipient write failed.');
+  }
+  return { notificationId, recipientCount: ids.length };
+}
+
 function invalid(code, errors) { return { success: false, code, errors }; }
+
+function validDownpayment(totalAmount, percent, amount) {
+  const total = Number(totalAmount), rate = Number(percent), required = Number(amount);
+  const expected = Number.isFinite(total) && Number.isFinite(rate) ? Math.round(total * rate) / 100 : NaN;
+  return Number.isFinite(total) && total >= 0 && [20, 50].includes(rate) && Number.isFinite(required) && required > 0 && required <= total && Math.abs(required - expected) < 0.001;
+}
 
 const jobStatusLabels = Object.freeze({
   jo: 'Scheduled',
@@ -164,6 +192,14 @@ export function createClientPortalService({ db }) {
         FROM quotations q LEFT JOIN payment_terms pt ON pt.code=q.payment_term_code
         WHERE q.order_id=? AND q.status <> 'draft'
         ORDER BY q.revision_number ASC, q.id ASC`, [id]);
+      const decisions = rows.length ? await connection.execute(`
+        SELECT subject_identifier quotationId, action, reason, DATE_FORMAT(occurred_at, '%Y-%m-%dT%H:%i:%s.%fZ') decidedAt
+        FROM audit_events
+        WHERE subject_type='quotation' AND action IN ('quotation.accepted','quotation.rejected')
+          AND subject_identifier IN (${rows.map(() => '?').join(',')})
+        ORDER BY occurred_at DESC, id DESC`, rows.map(row => row.id)) : [[]];
+      const decisionByQuotation = new Map();
+      for (const row of decisions[0]) if (!decisionByQuotation.has(row.quotationId)) decisionByQuotation.set(row.quotationId, row);
       const [lines] = await connection.execute(`
         SELECT CAST(ql.id AS CHAR) id, CAST(ql.quotation_id AS CHAR) quotationId,
           ql.line_number lineNumber, ql.description, ql.sub_description subDescription,
@@ -172,6 +208,8 @@ export function createClientPortalService({ db }) {
         WHERE ql.order_id=? AND q.order_id=? AND q.status <> 'draft'
         ORDER BY ql.quotation_id, ql.line_number`, [id, id]);
       return { success: true, data: rows.map(row => ({
+        downpaymentValid: validDownpayment(row.totalAmount, row.downpaymentPercent, row.downpaymentAmount),
+        ...(decisionByQuotation.has(row.id) ? { decision: decisionByQuotation.get(row.id).action === 'quotation.accepted' ? 'accepted' : 'rejected', decisionReason: decisionByQuotation.get(row.id).reason, decidedAt: decisionByQuotation.get(row.id).decidedAt } : { decision: null, decisionReason: null, decidedAt: null }),
         id: row.id, reference: row.reference, revisionNumber: Number(row.revisionNumber), status: row.status,
         issuedOn: row.issuedOn, validUntil: row.validUntil, paymentTermLabel: row.paymentTermLabel,
         timeOfDelivery: row.timeOfDelivery, placeOfDelivery: row.placeOfDelivery,
@@ -186,6 +224,118 @@ export function createClientPortalService({ db }) {
     });
   }
 
+  async function decideQuotation(clientId, userId, orderId, quotationId, body, context = {}) {
+    if (!validateApplicationId(clientId).success || !validateApplicationId(userId).success) return invalid('FORBIDDEN');
+    const orderValidation = validateSalesOrderId(orderId);
+    if (!orderValidation.success) return orderValidation;
+    const quotationValidation = validateApplicationId(quotationId);
+    if (!quotationValidation.success) return invalid('VALIDATION_ERROR', { quotationId: 'Invalid quotation identifier.' });
+    const validation = validateQuotationDecision(body);
+    if (!validation.success) return validation;
+    return withConnection(db, async connection => {
+      let transaction = false;
+      try {
+        await connection.beginTransaction(); transaction = true;
+        const [orders] = await connection.execute(`SELECT CAST(o.id AS CHAR) id, CAST(o.client_id AS CHAR) clientId, o.reference, o.stage_code stageCode
+          FROM orders o WHERE o.id=? AND o.client_id=? FOR UPDATE`, [orderId, clientId]);
+        if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        const order = orders[0];
+        const [quotes] = await connection.execute(`SELECT CAST(q.id AS CHAR) id, q.reference, q.revision_number revisionNumber, q.status,
+            q.total_amount totalAmount, q.downpayment_percent downpaymentPercent, q.downpayment_amount downpaymentAmount
+          FROM quotations q WHERE q.id=? AND q.order_id=? FOR UPDATE`, [quotationId, orderId]);
+        if (!quotes.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        const quote = quotes[0];
+        const [latestRows] = await connection.execute(`SELECT CAST(id AS CHAR) id, status FROM quotations WHERE order_id=? ORDER BY revision_number DESC, id DESC LIMIT 1 FOR UPDATE`, [orderId]);
+        if (!latestRows.length || latestRows[0].id !== quote.id || quote.status !== 'sent' || latestRows[0].status !== 'sent' || !validDownpayment(quote.totalAmount, quote.downpaymentPercent, quote.downpaymentAmount)) {
+          await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' };
+        }
+        const [pendingRevision] = await connection.execute(`SELECT id FROM order_requests WHERE order_id=? AND kind='quotation_revision' AND status='pending' FOR UPDATE`, [orderId]);
+        if (pendingRevision.length) { await connection.rollback(); return { success: false, code: 'REVISION_ALREADY_PENDING' }; }
+        const [existing] = await connection.execute(`SELECT action, reason, DATE_FORMAT(occurred_at, '%Y-%m-%dT%H:%i:%s.%fZ') decidedAt
+          FROM audit_events WHERE subject_type='quotation' AND subject_identifier=?
+            AND action IN ('quotation.accepted','quotation.rejected') ORDER BY occurred_at DESC, id DESC LIMIT 1 FOR UPDATE`, [quotationId]);
+        if (existing.length) { await connection.rollback(); return { success: false, code: 'QUOTATION_ALREADY_DECIDED' }; }
+        if (validation.data.decision === 'accepted' && order.stageCode !== 'quotation') {
+          await connection.rollback(); return { success: false, code: 'QUOTATION_CONFLICT' };
+        }
+        if (validation.data.decision === 'accepted') {
+          const [updated] = await connection.execute(`UPDATE orders SET stage_code='po', updated_at=CURRENT_TIMESTAMP(3) WHERE id=? AND client_id=? AND stage_code='quotation'`, [orderId, clientId]);
+          if (updated.affectedRows !== 1) { await connection.rollback(); return { success: false, code: 'QUOTATION_CONFLICT' }; }
+        }
+        const action = quotationDecisionAction(validation.data.decision);
+        const newValue = JSON.stringify({ orderId, clientId, quotationId, reference: quote.reference, revisionNumber: Number(quote.revisionNumber), decision: validation.data.decision });
+        const [audit] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,old_value,new_value,reason,request_id,occurred_at)
+          VALUES (?,?,?, ?,?,?,?, ?,CURRENT_TIMESTAMP(3))`, [userId, action, 'quotation', quotationId, JSON.stringify({ status: quote.status }), newValue, validation.data.reason, auditRequestId(context)]);
+        if (audit.affectedRows !== 1) throw new Error('Audit write failed.');
+        const notification = await recordQuotationDecisionNotification(connection, order, quote, userId, validation.data.decision, validation.data.reason);
+        await connection.commit(); transaction = false;
+        return { success: true, data: { quotationId, orderId, reference: quote.reference, revisionNumber: Number(quote.revisionNumber), decision: validation.data.decision, reason: validation.data.reason, decidedAt: new Date().toISOString(), orderStage: validation.data.decision === 'accepted' ? 'po' : order.stageCode, notification } };
+      } catch (error) {
+        if (transaction) { try { await connection.rollback(); } catch {} }
+        throw error;
+      }
+    });
+  }
+
+  async function submitPurchaseOrder(clientId, userId, orderId, body, context = {}) {
+    if (!validateApplicationId(clientId).success || !validateApplicationId(userId).success) return invalid('FORBIDDEN');
+    const orderValidation = validateSalesOrderId(orderId);
+    if (!orderValidation.success) return orderValidation;
+    const validation = validatePurchaseOrderSubmission(body);
+    if (!validation.success) return validation;
+    return withConnection(db, async connection => {
+      let transaction = false;
+      try {
+        await connection.beginTransaction(); transaction = true;
+        const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId, reference FROM orders WHERE id=? AND client_id=? FOR UPDATE`, [orderId, clientId]);
+        if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        const [quotes] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, revision_number revisionNumber, status, total_amount totalAmount, downpayment_percent downpaymentPercent, downpayment_amount downpaymentAmount
+          FROM quotations WHERE order_id=? ORDER BY revision_number DESC, id DESC LIMIT 1 FOR UPDATE`, [orderId]);
+        if (!quotes.length || quotes[0].status !== 'sent' || !validDownpayment(quotes[0].totalAmount, quotes[0].downpaymentPercent, quotes[0].downpaymentAmount)) { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
+        const quote = quotes[0];
+        const [decisions] = await connection.execute(`SELECT action FROM audit_events WHERE subject_type='quotation' AND subject_identifier=? AND action IN ('quotation.accepted','quotation.rejected') ORDER BY occurred_at DESC, id DESC LIMIT 1`, [quote.id]);
+        if (!decisions.length || decisions[0].action !== 'quotation.accepted') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ACCEPTED' }; }
+        const [existing] = await connection.execute('SELECT CAST(id AS CHAR) id FROM purchase_orders WHERE order_id=? FOR UPDATE', [orderId]);
+        if (existing.length) { await connection.rollback(); return { success: false, code: 'PURCHASE_ORDER_ALREADY_EXISTS' }; }
+        const [inserted] = await connection.execute(`INSERT INTO purchase_orders (order_id, accepted_quotation_id, reference, client_reference, uploaded_by, uploaded_at)
+          VALUES (?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [orderId, quote.id, validation.data.reference, validation.data.reference, userId]);
+        if (inserted.affectedRows !== 1 || inserted.insertId == null) throw new Error('Purchase-order write failed.');
+        const purchaseOrderId = String(inserted.insertId);
+        const newValue = JSON.stringify({ orderId, clientId, purchaseOrderId, reference: validation.data.reference, acceptedQuotationId: quote.id, acceptedQuotationReference: quote.reference, downpaymentPercent: Number(quote.downpaymentPercent), downpaymentAmount: quote.downpaymentAmount });
+        const [audit] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at)
+          VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [userId, 'purchase_order.received', 'purchase_order', purchaseOrderId, newValue, auditRequestId(context)]);
+        if (audit.affectedRows !== 1) throw new Error('Purchase-order audit write failed.');
+        await connection.commit(); transaction = false;
+        return { success: true, data: { id: purchaseOrderId, orderId, reference: validation.data.reference, acceptedQuotationId: quote.id, acceptedQuotationReference: quote.reference, status: 'received', documentUpload: 'unavailable', downpaymentPercent: Number(quote.downpaymentPercent), downpaymentAmount: quote.downpaymentAmount } };
+      } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; }
+    });
+  }
+
+  async function requestQuotationRevision(clientId, userId, orderId, body, context = {}) {
+    if (!validateApplicationId(clientId).success || !validateApplicationId(userId).success) return invalid('FORBIDDEN');
+    const orderValidation = validateSalesOrderId(orderId); if (!orderValidation.success) return orderValidation;
+    const validation = validateQuotationRevisionRequest(body); if (!validation.success) return validation;
+    return withConnection(db, async connection => {
+      let transaction = false;
+      try {
+        await connection.beginTransaction(); transaction = true;
+        const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId FROM orders WHERE id=? AND client_id=? FOR UPDATE`, [orderId, clientId]);
+        if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
+        const [quotes] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference, status, revision_number revisionNumber FROM quotations WHERE order_id=? ORDER BY revision_number DESC,id DESC LIMIT 1 FOR UPDATE`, [orderId]);
+        if (!quotes.length || quotes[0].status !== 'sent') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ELIGIBLE' }; }
+        const [pending] = await connection.execute(`SELECT id FROM order_requests WHERE order_id=? AND kind='quotation_revision' AND status='pending' FOR UPDATE`, [orderId]);
+        if (pending.length) { await connection.rollback(); return { success: false, code: 'REVISION_ALREADY_PENDING' }; }
+        const [inserted] = await connection.execute(`INSERT INTO order_requests (order_id,kind,reason,requested_by,status) VALUES (?,'quotation_revision',?,?, 'pending')`, [orderId, validation.data.reason, userId]);
+        if (inserted.affectedRows !== 1 || inserted.insertId == null) throw new Error('Revision request write failed.');
+        const requestId = String(inserted.insertId);
+        const [audit] = await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,reason,request_id,occurred_at) VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [userId, 'quotation.revision_requested', 'order', orderId, JSON.stringify({ orderId, clientId, quotationId: quotes[0].id, quotationReference: quotes[0].reference, revisionNumber: Number(quotes[0].revisionNumber), requestId }), validation.data.reason, auditRequestId(context)]);
+        if (audit.affectedRows !== 1) throw new Error('Revision audit write failed.');
+        await connection.commit(); transaction = false;
+        return { success: true, data: { id: requestId, orderId, quotationId: quotes[0].id, quotationReference: quotes[0].reference, revisionNumber: Number(quotes[0].revisionNumber), status: 'pending', reason: validation.data.reason } };
+      } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; }
+    });
+  }
+
   async function purchaseOrder(clientId, id) {
     if (!validateApplicationId(clientId).success) return invalid('FORBIDDEN');
     const validation = validateSalesOrderId(id);
@@ -197,16 +347,19 @@ export function createClientPortalService({ db }) {
           q.reference acceptedQuotationReference, po.reference, po.client_reference clientReference,
           DATE_FORMAT(po.uploaded_at, '%Y-%m-%dT%H:%i:%s.%fZ') uploadedAt,
           DATE_FORMAT(po.received_at, '%Y-%m-%dT%H:%i:%s.%fZ') receivedAt,
-          DATE_FORMAT(po.cleared_at, '%Y-%m-%dT%H:%i:%s.%fZ') clearedAt
+          DATE_FORMAT(po.cleared_at, '%Y-%m-%dT%H:%i:%s.%fZ') clearedAt,
+          (SELECT CASE WHEN a.action='purchase_order.validated' THEN 'validated' WHEN a.action='purchase_order.rejected' THEN 'rejected' WHEN a.action='purchase_order.received' THEN 'received' END FROM audit_events a WHERE a.subject_type='purchase_order' AND a.subject_identifier=CAST(po.id AS CHAR) AND a.action IN ('purchase_order.received','purchase_order.validated','purchase_order.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) poStatus,
+          (SELECT a.reason FROM audit_events a WHERE a.subject_type='purchase_order' AND a.subject_identifier=CAST(po.id AS CHAR) AND a.action IN ('purchase_order.received','purchase_order.validated','purchase_order.rejected') ORDER BY a.occurred_at DESC,a.id DESC LIMIT 1) poDecisionReason
         FROM purchase_orders po LEFT JOIN quotations q ON q.id=po.accepted_quotation_id AND q.order_id=po.order_id
         WHERE po.order_id=?`, [id]);
       if (!rows.length) return { success: true, data: null };
+      const [files] = await connection.execute(`SELECT CAST(pof.purchase_order_id AS CHAR) purchaseOrderId, CAST(f.id AS CHAR) id, pof.purpose, f.original_filename originalFilename, f.mime_type mimeType, f.size_bytes sizeBytes, f.state, DATE_FORMAT(f.uploaded_at, '%Y-%m-%dT%H:%i:%s.%fZ') uploadedAt FROM purchase_order_files pof JOIN files f ON f.id=pof.file_id WHERE pof.purchase_order_id=? AND f.state='available' ORDER BY f.id`, [rows[0].id]);
       const row = rows[0];
       return { success: true, data: {
         id: row.id, acceptedQuotationId: row.acceptedQuotationId,
         acceptedQuotationReference: row.acceptedQuotationReference, reference: row.reference,
-        clientReference: row.clientReference, uploadedAt: row.uploadedAt,
-        receivedAt: row.receivedAt, clearedAt: row.clearedAt
+        clientReference: row.clientReference, uploadedAt: row.uploadedAt, status: row.poStatus ?? 'received', decisionReason: row.poDecisionReason ?? null,
+        receivedAt: row.receivedAt, clearedAt: row.clearedAt, files
       } };
     });
   }
@@ -295,15 +448,17 @@ export function createClientPortalService({ db }) {
           p.payment_type paymentType, p.submitted_amount submittedAmount,
           CASE WHEN p.verification_status='verified' THEN p.verified_amount ELSE NULL END verifiedAmount,
           p.method, p.reference_number referenceNumber,
+          p.note rejectionReason,
           DATE_FORMAT(p.paid_on, '%Y-%m-%d') paidOn, p.verification_status verificationStatus,
-          DATE_FORMAT(p.submitted_at, '%Y-%m-%dT%H:%i:%s.%fZ') submittedAt
-        FROM payments p
+          DATE_FORMAT(p.submitted_at, '%Y-%m-%dT%H:%i:%s.%fZ') submittedAt,
+          CAST(pf.file_id AS CHAR) proofFileId, f.original_filename proofFilename
+        FROM payments p LEFT JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment' LEFT JOIN files f ON f.id=pf.file_id AND f.state='available'
         WHERE p.order_id=? ORDER BY p.submitted_at DESC, p.id DESC`, [id]);
       return { success: true, data: rows.map(row => ({
         id: row.id, invoiceId: row.invoiceId, paymentType: row.paymentType,
         submittedAmount: row.submittedAmount, verifiedAmount: row.verifiedAmount,
         method: row.method, referenceNumber: row.referenceNumber, paidOn: row.paidOn,
-        verificationStatus: row.verificationStatus, submittedAt: row.submittedAt
+        verificationStatus: row.verificationStatus, rejectionReason: row.rejectionReason, proofFileId: row.proofFileId, proofFilename: row.proofFilename, submittedAt: row.submittedAt
       })) };
     });
   }
@@ -362,5 +517,5 @@ export function createClientPortalService({ db }) {
     });
   }
 
-  return { profile, listOrders, detailOrder, quotations, purchaseOrder, jobOrders, delivery, invoices, payments, dashboard };
+  return { profile, listOrders, detailOrder, quotations, decideQuotation, submitPurchaseOrder, requestQuotationRevision, purchaseOrder, jobOrders, delivery, invoices, payments, dashboard };
 }

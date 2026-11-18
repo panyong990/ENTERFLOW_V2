@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listSalesJobOrders, mapSalesJobOrder } from "../api/salesJobOrders.js";
+import { createSalesJobOrders, listSalesJobOrders, mapSalesJobOrder } from "../api/salesJobOrders.js";
 
 export interface SalesProductionEvent {
   id: string;
@@ -36,8 +36,24 @@ export function useSalesJobOrders(enabled: boolean, orderId: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
   const sequence = useRef(0);
   const refresh = useCallback(() => setVersion(value => value + 1), []);
+  const createJobOrders = useCallback(async (productionDueDate: string) => {
+    if (!orderId) return;
+    setCreateLoading(true);
+    setCreateError("");
+    try {
+      await createSalesJobOrders(orderId, { productionDueDate });
+      refresh();
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : "Unable to create the Job Order.");
+      throw cause;
+    } finally {
+      setCreateLoading(false);
+    }
+  }, [orderId, refresh]);
 
   useEffect(() => {
     if (!enabled || !orderId) {
@@ -67,5 +83,5 @@ export function useSalesJobOrders(enabled: boolean, orderId: string | null) {
     };
   }, [enabled, orderId, version]);
 
-  return { jobOrders, loading, error, refresh };
+  return { jobOrders, loading, error, refresh, createJobOrders, createLoading, createError };
 }

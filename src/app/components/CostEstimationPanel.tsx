@@ -45,11 +45,12 @@ const REFERENCE_NOTES: Partial<Record<PartCategory, string>> = {
 interface Props {
   inquiry: Inquiry;
   qty: number;
+  serverCosting?: boolean;
   /* Returns the final BOM + cost config + computed prices when user clicks "Apply to Quotation" */
   onApply: (data: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex: number }) => void;
 }
 
-export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
+export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = false }: Props) {
   const { rawMaterials, templates, findBOMTemplate } = useMaterials();
   const [activeProductIndex, setActiveProductIndex] = useState(0);
   const product = inquiry.products[activeProductIndex] ?? inquiry.products[0];
@@ -103,7 +104,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
       applyMarkup: true,
       applyVAT: true,
     });
-  }, [activeProductIndex, initial, inquiry.productsCostConfig, inquiry.costConfig]);
+  }, [activeProductIndex, serverCosting ? inquiry.id : initial, serverCosting ? undefined : inquiry.productsCostConfig, serverCosting ? undefined : inquiry.costConfig]);
 
   /* All materials referenced by the current BOM (for the left "Raw Materials" panel) */
   const bomMaterials = bom
@@ -146,6 +147,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
   /* Section I — handleSaveTemplate removed (Save Configuration as Template feature deprecated) */
 
   const handleApply = () => {
+    if (![cfg.laborCost, cfg.markupPct, cfg.vatRate, cfg.discountPct ?? 0].every(value => Number.isFinite(value) && value >= 0) || cfg.markupPct > 1000 || cfg.vatRate > 100 || (cfg.discountPct ?? 0) > 100) { toast.error("Enter valid non-negative costing inputs."); return; }
     onApply({
       bom,
       costConfig: cfg,
@@ -153,11 +155,12 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
       total: orderTotal,
       productIndex: activeProductIndex,
     });
-    toast.success("Cost configuration applied to quotation");
+    if (!serverCosting) toast.success("Cost configuration applied to quotation");
   };
 
   return (
     <div className="flex flex-col gap-4">
+      {serverCosting && <p className="font-dm text-xs text-slate-500">Material requirements and prices are calculated from saved records when the quotation is saved. Material edits are unavailable here; labor, markup, discount and VAT inputs apply to the quotation.</p>}
       {inquiry.products.length > 1 && (
         <div className="rounded-lg p-3 flex flex-wrap items-center gap-2" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
           <span className="font-dm mr-1" style={{ fontSize: 11, fontWeight: 800, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Product</span>
@@ -192,7 +195,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
 
       <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
         {/* ─────────── LEFT PANEL — Raw Materials in this BOM ─────────── */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
+        <fieldset disabled={serverCosting} className="min-w-0 rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
             <div className="flex items-center gap-2">
               <h4 className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Raw Materials</h4>
@@ -247,7 +250,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
                       {rawMaterials
                         .filter((mat) => mat.category === line.partCategory)
                         .map((mat) => (
-                          <option key={mat.id} value={mat.id}>{mat.name} (₱{mat.unitPrice}/{mat.unit})</option>
+                          <option key={mat.id} value={mat.id}>{mat.name} ({serverCosting ? "price calculated on save" : `₱${mat.unitPrice}/${mat.unit}`})</option>
                         ))}
                     </select>
                   </div>
@@ -284,13 +287,13 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
                         </>
                       ) : (
                         <>
-                          <span className="font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>₱{m.unitPrice}</span>
+                          <span className="font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>₱{serverCosting ? "—" : m.unitPrice}</span>
                           <button onClick={() => { setEditingPriceId(m.id); setEditPrice(m.unitPrice); }} className="text-slate-400 hover:text-slate-700"><Pencil size={10} /></button>
                         </>
                       )}
                     </div>
                     <div className="ml-auto font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#C8102E" }}>
-                      ₱{cost.toFixed(2)}
+                      ₱{serverCosting || !Number.isFinite(cost) ? "—" : cost.toFixed(2)}
                     </div>
                   </div>
                   {line.wastePct !== undefined && (
@@ -345,7 +348,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
 
           {/* Add Filter Part — only shows categories not yet added; falls back to custom input */}
           <AddPartFooter bom={bom} onAdd={addLine} />
-        </div>
+        </fieldset>
 
         {/* ─────────── RIGHT PANEL — Cost Estimation Setup ─────────── */}
         <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
@@ -359,13 +362,13 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Labor Cost / Unit</label>
                 <div className="flex items-center gap-1">
                   <span className="font-mono-jb" style={{ fontSize: 12, color: "#64748B" }}>₱</span>
-                  <input type="number" value={cfg.laborCost} onChange={(e) => setCfg({ ...cfg, laborCost: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input aria-label="Labor cost per unit" type="number" value={cfg.laborCost} onChange={(e) => setCfg({ ...cfg, laborCost: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                 </div>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Markup</label>
                 <div className="flex items-center gap-1">
-                  <input type="number" value={cfg.markupPct} onChange={(e) => setCfg({ ...cfg, markupPct: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input aria-label="Markup percentage" type="number" value={cfg.markupPct} onChange={(e) => setCfg({ ...cfg, markupPct: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                   <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>%</span>
                 </div>
               </div>
@@ -416,25 +419,25 @@ export function CostEstimationPanel({ inquiry, qty, onApply }: Props) {
             <div className="rounded-lg overflow-hidden" style={{ border: "1.5px solid #1A2B4A" }}>
               <div className="px-3 py-2 flex items-center justify-between font-dm" style={{ fontSize: 12, backgroundColor: "#F8FAFC" }}>
                 <span style={{ color: "#475569", fontWeight: 600 }}>Material</span>
-                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{computed.material.toFixed(2)}</span>
+                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{serverCosting || !Number.isFinite(computed.material) ? "—" : computed.material.toFixed(2)}</span>
               </div>
               <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 12 }}>
                 <span style={{ color: "#475569", fontWeight: 600 }}>Total Cost {cfg.applyMarkup ? "with markup" : ""}</span>
-                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{computed.withMarkup.toFixed(2)}</span>
+                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{serverCosting || !Number.isFinite(computed.withMarkup) ? "—" : computed.withMarkup.toFixed(2)}</span>
               </div>
               {(cfg.discountPct ?? 0) > 0 && (
                 <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 12 }}>
                   <span style={{ color: "#475569", fontWeight: 600 }}>After {cfg.discountPct}% discount</span>
-                  <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{computed.afterDiscount.toFixed(2)}</span>
+                  <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{serverCosting || !Number.isFinite(computed.afterDiscount) ? "—" : computed.afterDiscount.toFixed(2)}</span>
                 </div>
               )}
               <div className="px-3 py-2.5 flex items-center justify-between font-dm border-t border-slate-200" style={{ fontSize: 13, backgroundColor: "#FEF2F2" }}>
                 <span style={{ color: "#991B1B", fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", fontSize: 11 }}>With VAT</span>
-                <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#C8102E" }}>₱{computed.withVat.toFixed(2)}</span>
+                <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#C8102E" }}>₱{serverCosting || !Number.isFinite(computed.withVat) ? "—" : computed.withVat.toFixed(2)}</span>
               </div>
               <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 11, backgroundColor: "#1A2B4A", color: "white" }}>
                 <span style={{ opacity: 0.7 }}>× {selectedQty} pcs = Product Total</span>
-                <span className="font-syne" style={{ fontSize: 16, fontWeight: 800 }}>₱{orderTotal.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</span>
+                <span className="font-syne" style={{ fontSize: 16, fontWeight: 800 }}>₱{serverCosting || !Number.isFinite(orderTotal) ? "—" : orderTotal.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</span>
               </div>
             </div>
 

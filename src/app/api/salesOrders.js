@@ -12,6 +12,14 @@ export function getSalesOrder(id, signal) {
   return api(`/api/sales/orders/${encodeURIComponent(id)}`, { signal });
 }
 
+export function getSalesStockAvailability(id, signal) {
+  return api(`/api/sales/orders/${encodeURIComponent(id)}/stock-availability`, { signal });
+}
+
+export function createSalesQuotation(id, body, signal) {
+  return api(`/api/sales/orders/${encodeURIComponent(id)}/quotations`, { method: 'POST', body, signal });
+}
+
 export function mapSalesPayment(payment) {
   return {
     ...payment,

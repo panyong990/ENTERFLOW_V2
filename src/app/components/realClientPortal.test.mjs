@@ -16,8 +16,9 @@ test("authenticated Client routing selects the scoped original portal without ch
 
 test("Client business data has no Demo persistence and all unsupported commands fail closed", () => {
   assert.doesNotMatch(data, /localStorage|sessionStorage|indexedDB|createDemoInquiries|fetch\(/);
-  assert.doesNotMatch(portal, /toast\.success|DEMO_JO_DATA|B\.E\. Aerospace/);
+  assert.doesNotMatch(portal, /DEMO_JO_DATA|B\.E\. Aerospace/);
   assert.match(data, /throw new Error\(unavailableMessage\)/);
+  assert.match(data, /clientPortalApi\.createInquiry/);
   assert.match(data, /await clientPortalApi\.markNotificationRead/);
   assert.match(data, /controller\.abort\(\)/);
 });
@@ -34,8 +35,9 @@ test("Real Client Orders keeps the target layout and separates unavailable, empt
 
 test("Real Client Portal keeps populated sections while making unsupported writes explicit", () => {
   for (const marker of ["Order Status Tracker", "Delivery &amp; Tracking", "My Invoices", "Company Settings", "Transaction History"]) assert.match(portal, new RegExp(marker));
-  for (const marker of ["Order creation and reorder submission are unavailable", "Purchase-order submission is unavailable", "Quotation revision requests are unavailable", "Payment methods and bank instructions are unavailable", "Profile details are read-only in Real Mode", "Password change unavailable", "SIGNED DR SUBMISSION UNAVAILABLE"]) assert.match(portal, new RegExp(marker));
-  assert.match(portal, /Submission unavailable/);
+  for (const marker of ["Upload the actual PO document", "Your request will be recorded for Sales review", "Payment methods and bank instructions are unavailable", "Profile details are read-only in Real Mode", "Password change unavailable", "SIGNED DR SUBMISSION UNAVAILABLE"]) assert.match(portal, new RegExp(marker));
+  assert.match(portal, /Submit Inquiry/);
+  assert.doesNotMatch(portal, /Order creation and reorder submission are unavailable/);
 });
 
 test("Real Client Portal keeps unavailable notification mutations disabled and preserves Demo routing", async () => {

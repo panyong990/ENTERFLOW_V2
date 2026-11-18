@@ -5,7 +5,7 @@ import { createClientRouter } from './client.routes.js';
 
 const token = 'b'.repeat(64);
 
-async function harness(t, { accountType = 'client', roleCode = 'client', clientId = '21', userId = '9', allowed = true, service, notificationsService } = {}) {
+async function harness(t, { accountType = 'client', roleCode = 'client', clientId = '21', userId = '9', allowed = true, service, notificationsService, inquiryService } = {}) {
   const calls = [];
   const router = createClientRouter({
     service: service ?? {
@@ -16,6 +16,8 @@ async function harness(t, { accountType = 'client', roleCode = 'client', clientI
         return /^[1-9][0-9]{0,19}$/.test(id) ? { success: true, data: { id, items: [] } } : { success: false, code: 'VALIDATION_ERROR', errors: { id: 'Invalid order identifier.' } };
       },
       async quotations(client, id) { calls.push(['quotations', client, id]); return { success: true, data: [] }; },
+      async decideQuotation(client, user, orderId, quotationId, body) { calls.push(['decide-quotation', client, user, orderId, quotationId, body]); return { success: true, data: { quotationId, orderId, decision: body.decision } }; },
+      async submitPurchaseOrder(client, user, orderId, body) { calls.push(['submit-po', client, user, orderId, body]); return { success: true, data: { id: '77', orderId, reference: body.reference, status: 'received' } }; },
       async purchaseOrder(client, id) { calls.push(['purchase-order', client, id]); return { success: true, data: null }; },
       async jobOrders(client, id) { calls.push(['job-orders', client, id]); return { success: true, data: { orderId: id, jobOrders: [] } }; },
       async delivery(client, id) { calls.push(['delivery', client, id]); return { success: true, data: { orderId: id, shipments: [] } }; },
@@ -29,8 +31,9 @@ async function harness(t, { accountType = 'client', roleCode = 'client', clientI
     },
     validateSessionService: async value => value === token ? { userId, sessionId: '10', active: 1, accountType, roleCode, clientId, displayName: 'Client' } : null,
     updateSessionActivityService: async value => value === token,
+    inquiryService,
     permissionChecker: (role, resource, action) => allowed && role === 'client' &&
-      ((resource === 'dashboard' && action === 'read') || (resource === 'clients' && action === 'read') || (resource === 'orders' && action === 'read') || (resource === 'inquiries' && action === 'read') || (resource === 'quotations' && action === 'read') || (resource === 'invoices' && action === 'read') || (resource === 'payments' && action === 'read') || (resource === 'notifications' && (action === 'read' || action === 'update')))
+      ((resource === 'dashboard' && action === 'read') || (resource === 'clients' && action === 'read') || (resource === 'orders' && action === 'read') || (resource === 'inquiries' && (action === 'read' || action === 'create')) || (resource === 'quotations' && (action === 'read' || action === 'update')) || (resource === 'invoices' && action === 'read') || (resource === 'payments' && action === 'read') || (resource === 'notifications' && (action === 'read' || action === 'update')))
   });
   const app = express();
   app.use('/api/client', router);
@@ -48,6 +51,16 @@ test('client routes require an authenticated client account with a valid client 
   assert.equal((await (await harness(t, { accountType: 'client', roleCode: 'sales' })).request('/profile')).status, 403);
   assert.equal((await (await harness(t, { clientId: null })).request('/profile')).status, 403);
   assert.equal((await (await harness(t, { allowed: false })).request('/profile')).status, 403);
+});
+
+test('client inquiry submission uses authenticated client and user identities', async t => {
+  const calls = [];
+  const h = await harness(t, { inquiryService: { async createInquiry(clientId, userId, body) { calls.push({ clientId, userId, body }); return { success: true, data: { id: '91', reference: 'INQ-2026-000007' } }; } } });
+  const response = await h.request('/orders', true, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: '999', contactPerson: 'Client Contact' }) });
+  assert.equal(response.status, 201);
+  assert.deepEqual(calls[0], { clientId: '21', userId: '9', body: { clientId: '999', contactPerson: 'Client Contact' } });
+  const denied = await harness(t, { allowed: false, inquiryService: { async createInquiry() { throw new Error('must not call'); } } });
+  assert.equal((await denied.request('/orders', true, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
 });
 
 test('client dashboard requires authentication, client role, dashboard:read, and uses authenticated clientId', async t => {
@@ -101,6 +114,22 @@ test('quotation and purchase-order routes use authenticated ownership and existi
   const denied = await harness(t, { allowed: false });
   assert.equal((await denied.request('/orders/1/quotations')).status, 403);
   assert.equal((await denied.request('/orders/1/purchase-order')).status, 403);
+});
+
+test('client quotation decisions use authenticated client/user identities and quotation update permission', async t => {
+  const h = await harness(t);
+  const response = await h.request('/orders/91/quotations/301/decision', true, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:5173' }, body: JSON.stringify({ clientId: '999', decision: 'accepted' }) });
+  assert.equal(response.status, 200);
+  assert.deepEqual(h.calls.at(-1), ['decide-quotation', '21', '9', '91', '301', { clientId: '999', decision: 'accepted' }]);
+  const denied = await harness(t, { allowed: false });
+  assert.equal((await denied.request('/orders/91/quotations/301/decision', true, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'accepted' }) })).status, 403);
+});
+
+test('client purchase-order submission uses authenticated ownership and reference-only recording', async t => {
+  const h = await harness(t);
+  const response = await h.request('/orders/91/purchase-order', true, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:5173' }, body: JSON.stringify({ clientId: '999', reference: 'PO-CLIENT-1' }) });
+  assert.equal(response.status, 201);
+  assert.deepEqual(h.calls.at(-1), ['submit-po', '21', '9', '91', { clientId: '999', reference: 'PO-CLIENT-1' }]);
 });
 
 test('cross-client and nonexistent parents return equivalent public 404 responses', async t => {

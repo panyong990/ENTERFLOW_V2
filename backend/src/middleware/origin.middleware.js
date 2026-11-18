@@ -1,5 +1,6 @@
 ﻿export function createOriginMiddleware({
-  appOrigin = process.env.APP_ORIGIN
+  appOrigin = process.env.APP_ORIGIN,
+  allowMultipart = false
 } = {}) {
   return function requireSameOrigin(request, response, next) {
     if (!appOrigin) {
@@ -18,10 +19,10 @@
       });
     }
 
-    if (!request.is('application/json')) {
+    if (!request.is('application/json') && !(allowMultipart && request.is('multipart/form-data'))) {
       return response.status(415).json({
         success: false,
-        message: 'Content-Type must be application/json.'
+        message: allowMultipart ? 'Content-Type must be JSON or multipart form data.' : 'Content-Type must be application/json.'
       });
     }
 

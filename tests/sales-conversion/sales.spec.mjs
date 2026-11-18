@@ -63,6 +63,54 @@ async function pristine(page,state) {
   expect(await page.evaluate(()=>window.salesStorageAccess)).toEqual([]);
 }
 
+test('restored quotation uses the original inquiry cards and numbered workflow',async({page})=>{
+  await setup(page);
+  await pipeline(page);
+  await page.getByRole('button',{name:'REVIEW & SEND QUOTATION',exact:true}).first().click();
+  const dialog=page.getByRole('dialog',{name:/Review & Send Quotation/});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Client Submission',{exact:false})).toBeVisible();
+  await page.screenshot({path:'.vite/restored-quotation-inquiry.png',fullPage:true});
+  await page.getByRole('tab',{name:'2 · Cost & Material Estimation',exact:true}).click();
+  await expect(dialog.getByRole('spinbutton',{name:/Labor cost per unit/})).toBeVisible();
+  await page.screenshot({path:'.vite/restored-quotation-cost.png',fullPage:true});
+  await page.getByRole('tab',{name:'3 · Quotation',exact:true}).click();
+  await expect(dialog.getByRole('button',{name:/Send to Client/})).toBeVisible();
+  await page.screenshot({path:'.vite/restored-quotation-terms.png',fullPage:true});
+
+});
+
+test('restored quotation submits per-product inputs through the authenticated adapter and preserves server errors',async({page})=>{
+  await setup(page);
+  const submissions=[];
+  await page.route('**/api/sales/orders/*/quotations',async route=>{
+    if(route.request().method()!=='POST')return route.fallback();
+    submissions.push(route.request().postDataJSON());
+    await route.fulfill({status:503,json:{success:false,message:'Synthetic quotation service unavailable'}});
+  });
+  await pipeline(page);
+  await page.getByRole('button',{name:'REVIEW & SEND QUOTATION',exact:true}).first().click();
+  const dialog=page.getByRole('dialog',{name:/Review & Send Quotation/});
+  for(const [index,labor,markup] of [[1,'10','25'],[2,'15','30']]){
+    await page.getByRole('tab',{name:'2 · Cost & Material Estimation',exact:true}).click();
+    await dialog.getByRole('button',{name:new RegExp('^#'+index+' ')}).click();
+    await dialog.getByLabel('Labor cost per unit',{exact:true}).fill(labor);
+    await dialog.getByLabel('Markup percentage',{exact:true}).fill(markup);
+    await dialog.getByRole('button',{name:'Apply to Quotation →',exact:true}).click();
+  }
+  await dialog.getByLabel('Place of Delivery',{exact:true}).fill('Synthetic delivery location');
+  await dialog.getByRole('button',{name:'Save draft',exact:true}).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Synthetic quotation service unavailable');
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0].status).toBe('draft');
+  expect(submissions[0].downpaymentPercent).toBe(20);
+  expect(submissions[0].costing).toEqual([
+    {orderItemId:rows[0].id+'1',laborCost:10,markupPercent:25},
+    {orderItemId:rows[0].id+'2',laborCost:15,markupPercent:30}
+  ]);
+  await expect(dialog).toBeVisible();
+});
+
 test('authenticated Sales keeps original pipeline and navigation; live amounts and related records stay exact',async({page})=>{
   const state=await setup(page);
   await expect(page.getByRole('heading',{name:'Sales Dashboard'})).toBeVisible();

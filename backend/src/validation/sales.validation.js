@@ -89,3 +89,120 @@ export function validateSalesOrderId(id) {
     ? { success: true, data: id }
     : fail({ id: 'Invalid order identifier.' });
 }
+
+export function validateQuotationDecision(body) {
+  try {
+    const input = ownData(body, ['decision', 'reason']);
+    if (!input || !['accepted', 'rejected'].includes(input.decision)) {
+      return fail({ decision: 'A quotation decision must be accepted or rejected.' });
+    }
+    if (input.reason !== undefined && (typeof input.reason !== 'string' || input.reason.length > 1000 || !input.reason.isWellFormed())) {
+      return fail({ reason: 'The decision reason is invalid.' });
+    }
+    const reason = input.reason?.trim() || null;
+    if (input.decision === 'rejected' && !reason) return fail({ reason: 'A rejection reason is required.' });
+    return { success: true, data: { decision: input.decision, reason } };
+  } catch { return fail({ body: 'Invalid quotation decision request.' }); }
+}
+
+export function validatePurchaseOrderSubmission(body) {
+  try {
+    const input = ownData(body, ['reference']);
+    if (!input || typeof input.reference !== 'string' || !input.reference.trim() || input.reference.length > 60 || !input.reference.isWellFormed()) {
+      return fail({ reference: 'A valid purchase-order reference is required.' });
+    }
+    return { success: true, data: { reference: input.reference.trim() } };
+  } catch { return fail({ body: 'Invalid purchase-order submission.' }); }
+}
+
+export function validatePurchaseOrderDecision(body) {
+  try {
+    const input = ownData(body, ['decision', 'reason']);
+    if (!input || !['validated', 'rejected'].includes(input.decision)) return fail({ decision: 'A purchase-order decision must be validated or rejected.' });
+    if (input.reason !== undefined && (typeof input.reason !== 'string' || input.reason.length > 1000 || !input.reason.isWellFormed())) return fail({ reason: 'The purchase-order decision reason is invalid.' });
+    const reason = input.reason?.trim() || null;
+    if (input.decision === 'rejected' && !reason) return fail({ reason: 'A rejection reason is required.' });
+    return { success: true, data: { decision: input.decision, reason } };
+  } catch { return fail({ body: 'Invalid purchase-order decision.' }); }
+}
+
+export function validateJobOrderCreation(body) {
+  const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const allowed = ['productionDueDate'];
+  const errors = {};
+  for (const key of Object.keys(input)) if (!allowed.includes(key)) errors[key] = 'Unexpected field.';
+  const dueDate = typeof input.productionDueDate === 'string' ? input.productionDueDate.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) errors.productionDueDate = 'A production due date is required.';
+  else {
+    const date = new Date(`${dueDate}T00:00:00Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dueDate) errors.productionDueDate = 'Production due date is invalid.';
+  }
+  return Object.keys(errors).length ? { success: false, code: 'VALIDATION_ERROR', errors } : { success: true, data: { productionDueDate: dueDate } };
+}
+
+export function validateQuotationRevisionRequest(body) {
+  const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const errors = {};
+  for (const key of Object.keys(input)) if (key !== 'reason') errors[key] = 'Unexpected field.';
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  if (reason.length < 5 || reason.length > 2000) errors.reason = 'A revision reason between 5 and 2000 characters is required.';
+  return Object.keys(errors).length ? { success: false, code: 'VALIDATION_ERROR', errors } : { success: true, data: { reason } };
+}
+
+export function validateQuotationPreparation(body) {
+  try {
+    const input = ownData(body, ['status', 'reference', 'issuedOn', 'validUntil', 'paymentTermCode', 'timeOfDelivery', 'placeOfDelivery', 'note', 'noteHighlighted', 'downpaymentPercent', 'vatType', 'vatRate', 'includeLabor', 'applyMarkup', 'applyVat', 'discountPercent', 'costing']);
+    if (!input || !Array.isArray(input.costing) || input.costing.length === 0) return fail({ body: 'Quotation costing inputs are required.' });
+    const text = (value, field, max, required = true) => {
+      if (value === undefined && !required) return null;
+      if (typeof value !== 'string' || !value.trim() || value.length > max || !value.isWellFormed()) throw [field, `A valid ${field} is required.`];
+      return value.trim();
+    };
+    const decimal = (value, field, { min = 0, max = 1000000000 } = {}) => {
+      if (typeof value !== 'number' && typeof value !== 'string') throw [field, `A valid ${field} is required.`];
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      if (normalized === '' || !/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(String(normalized))) throw [field, `A valid ${field} is required.`];
+      const number = Number(normalized);
+      if (!Number.isFinite(number) || number < min || number > max) throw [field, `A valid ${field} is required.`];
+      return number;
+    };
+    const date = (value, field) => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw [field, `A valid ${field} date is required.`];
+      return value;
+    };
+    const status = input.status ?? 'draft';
+    if (!['draft', 'sent'].includes(status)) return fail({ status: 'Only draft or sent quotations can be prepared.' });
+    const reference = input.reference === undefined ? null : text(input.reference, 'reference', 60);
+    const issuedOn = date(input.issuedOn, 'issuedOn');
+    const validUntil = date(input.validUntil, 'validUntil');
+    if (validUntil < issuedOn) return fail({ validUntil: 'The validity date cannot precede the issue date.' });
+    if (!['NET15', 'NET30'].includes(input.paymentTermCode)) return fail({ paymentTermCode: 'A supported payment term is required.' });
+    const timeOfDelivery = text(input.timeOfDelivery, 'timeOfDelivery', 255);
+    const placeOfDelivery = text(input.placeOfDelivery, 'placeOfDelivery', 2000);
+    const note = input.note === undefined ? null : text(input.note, 'note', 4000, false);
+    const noteHighlighted = input.noteHighlighted === undefined ? false : input.noteHighlighted;
+    if (typeof noteHighlighted !== 'boolean') return fail({ noteHighlighted: 'The note highlight flag is invalid.' });
+    const downpaymentPercent = decimal(input.downpaymentPercent, 'downpaymentPercent', { max: 100 });
+    if (![20, 50].includes(downpaymentPercent)) return fail({ downpaymentPercent: 'Downpayment is mandatory and must be 20% or 50%.' });
+    const vatType = input.vatType;
+    if (!['Exclusive', 'Inclusive', 'Zero-Rated'].includes(vatType)) return fail({ vatType: 'A supported VAT type is required.' });
+    const vatRate = decimal(input.vatRate, 'vatRate', { max: 100 });
+    const boolean = (value, field) => { if (typeof value !== 'boolean') throw [field, `The ${field} flag is invalid.`]; return value; };
+    const includeLabor = boolean(input.includeLabor, 'includeLabor');
+    const applyMarkup = boolean(input.applyMarkup, 'applyMarkup');
+    const applyVat = boolean(input.applyVat, 'applyVat');
+    const discountPercent = input.discountPercent === undefined ? 0 : decimal(input.discountPercent, 'discountPercent', { max: 100 });
+    const costing = input.costing.map((row, index) => {
+      const item = ownData(row, ['orderItemId', 'laborCost', 'markupPercent']);
+      if (!item) throw ['costing', `Costing line ${index + 1} is invalid.`];
+      if (!validateSalesOrderId(item.orderItemId).success) throw ['costing', `Costing line ${index + 1} has an invalid order item.`];
+      return { orderItemId: item.orderItemId, laborCost: decimal(item.laborCost, `costing[${index}].laborCost`), markupPercent: decimal(item.markupPercent, `costing[${index}].markupPercent`, { max: 1000 }) };
+    });
+    const ids = costing.map(row => row.orderItemId);
+    if (new Set(ids).size !== ids.length) return fail({ costing: 'Each order item may appear only once.' });
+    return { success: true, data: { status, reference, issuedOn, validUntil, paymentTermCode: input.paymentTermCode, timeOfDelivery, placeOfDelivery, note, noteHighlighted, downpaymentPercent, vatType, vatRate, includeLabor, applyMarkup, applyVat, discountPercent, costing } };
+  } catch (error) {
+    if (Array.isArray(error) && error.length === 2) return fail({ [error[0]]: error[1] });
+    return fail({ body: 'Invalid quotation preparation request.' });
+  }
+}

@@ -20,11 +20,15 @@ function adapter() {
 }
 
 test('Job Order adapter constructs the exact order-scoped endpoint and preserves BIGINT order IDs', () => {
-  const { listSalesJobOrders } = adapter();
+  const { listSalesJobOrders, createSalesJobOrders } = adapter();
   const signal = new AbortController().signal;
   const result = listSalesJobOrders('18446744073709551615', signal);
   assert.equal(result.path, '/api/sales/orders/18446744073709551615/job-orders');
   assert.equal(result.options.signal, signal);
+  assert.deepEqual(createSalesJobOrders('18446744073709551615', { productionDueDate: '2026-12-31' }, signal), {
+    path: '/api/sales/orders/18446744073709551615/job-orders',
+    options: { method: 'POST', body: { productionDueDate: '2026-12-31' }, signal },
+  });
 });
 
 test('Job Order mapping keeps status, pause state, dates, BOM count, and IDs separate', () => {

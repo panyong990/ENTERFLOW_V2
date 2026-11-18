@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getSalesOrder, listSalesOrders, mapSalesOrder } from "../api/salesOrders.js";
+import { getSalesOrder, getSalesStockAvailability, listSalesOrders, mapSalesOrder } from "../api/salesOrders.js";
 
 export type SalesOrderStatus = "all" | "open" | "archived";
 export type SalesOrderStage = "all" | "inquiry" | "quotation" | "po" | "jo" | "in_production" | "quality_inspection" | "ready_for_dispatch" | "dispatched" | "delivered" | "paid" | "overdue";
@@ -106,6 +106,22 @@ export type SalesOrderDetail = SalesOrderRow & {
   requests: unknown[];
 };
 
+export interface SalesStockAssessment {
+  inventoryId: string | null; description: string; classification: "raw_material" | "finished_good";
+  categoryCode: string | null; requiredQuantity: number; availableQuantity: number | null;
+  shortageQuantity: number | null; unit: string | null; inventoryState: "recorded" | "zero_stock" | "inventory_unavailable";
+  status: "available" | "insufficient" | "inventory_unavailable"; source: "bom_template" | "finished_goods";
+  itemId: string; specificationId: string; filterTypeCode: string | null; filterName: string | null;
+  checkedAt: string; itemCode?: string; partNumber?: string; bufferMinimum?: number; demand?: string;
+}
+export interface SalesStockAvailability {
+  orderId: string; checkedAt: string;
+  overallStatus: "available" | "insufficient" | "partially_available" | "unavailable" | "unmapped";
+  assessments: SalesStockAssessment[];
+  unmappedItems: { itemId: string; specificationId: string; filterTypeCode: string | null; filterName: string | null; reason: string }[];
+  stockChanged: false;
+}
+
 export interface SalesOrderListResult {
   items: SalesOrderRow[];
   total: number;
@@ -194,4 +210,25 @@ export function useSalesOrderDetail(enabled: boolean, id: string | null) {
   }, [enabled, id, retry, version]);
 
   return { data, loading, error, retry };
+}
+
+export function useSalesStockAvailability(enabled: boolean, id: string | null) {
+  const [data, setData] = useState<SalesStockAvailability | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [version, setVersion] = useState(0);
+  const sequence = useRef(0);
+  const refresh = useCallback(() => setVersion(value => value + 1), []);
+  useEffect(() => {
+    if (!enabled || !id) { setData(null); setLoading(false); setError(""); return undefined; }
+    const token = ++sequence.current;
+    const controller = new AbortController();
+    setLoading(true); setError("");
+    getSalesStockAvailability(id, controller.signal)
+      .then(result => { if (token === sequence.current) setData(result as SalesStockAvailability); })
+      .catch(cause => { if (token === sequence.current && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Stock availability is unavailable."); })
+      .finally(() => { if (token === sequence.current && !controller.signal.aborted) setLoading(false); });
+    return () => { ++sequence.current; controller.abort(); };
+  }, [enabled, id, refresh, version]);
+  return { data, loading, error, refresh };
 }

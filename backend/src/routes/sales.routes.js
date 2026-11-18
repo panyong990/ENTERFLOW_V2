@@ -54,14 +54,25 @@ export function createSalesRouter({
       return res.status(status).json({success:false,code:'VALIDATION_ERROR',message:'Invalid rejection request body.'});
     });
   router.get('/clients/:id', permission('clients', 'read'), createSalesClientsController({ service })('detail'));
+  router.post('/orders/:id/quotations', permission('orders', 'read'), permission('orders', 'update'), permission('quotations', 'create'),
+    createOriginMiddleware(), json({ limit: '64kb' }), createSalesOrdersController({ service: ordersService })('createQuotation'),
+    (error, req, res, next) => {
+      if (res.headersSent) return next(error);
+      const status = error?.type === 'entity.too.large' ? 413 : ['charset.unsupported', 'encoding.unsupported'].includes(error?.type) ? 415 : 400;
+      return res.status(status).json({ success: false, code: 'VALIDATION_ERROR', message: 'Invalid quotation request body.' });
+    });
   router.get('/dashboard', permission('inquiries', 'read'), permission('quotations', 'read'), permission('orders', 'read'), permission('clients', 'read'), createSalesDashboardController({ service: dashboardService }));
   router.get('/notifications', permission('notifications', 'read'), createSalesNotificationsController({ service: notificationsService }));
   router.get('/orders', permission('orders', 'read'), createSalesOrdersController({ service: ordersService })('list'));
   router.get('/orders/:id', permission('orders', 'read'), createSalesOrdersController({ service: ordersService })('detail'));
   router.get('/orders/:id/quotations', permission('orders', 'read'), permission('quotations', 'read'), createSalesOrdersController({ service: ordersService })('quotations'));
   router.get('/orders/:id/purchase-order', permission('orders', 'read'), createSalesOrdersController({ service: ordersService })('purchaseOrder'));
+  router.post('/orders/:id/purchase-order/process', permission('orders', 'update'), createOriginMiddleware(), json({ limit: '16kb' }), createSalesOrdersController({ service: ordersService })('processPurchaseOrder'));
+  router.post('/orders/:id/invoice', permission('orders', 'update'), permission('invoices', 'create'), createOriginMiddleware(), createSalesOrdersController({ service: ordersService })('generateInvoice'));
+  router.post('/orders/:id/job-orders', permission('orders', 'update'), createOriginMiddleware(), json({ limit: '8kb' }), createSalesOrdersController({ service: ordersService })('createJobOrders'));
   router.get('/orders/:id/job-orders', permission('orders', 'read'), createSalesOrdersController({ service: ordersService })('jobOrders'));
   router.get('/orders/:id/delivery', permission('orders', 'read'), createSalesOrdersController({ service: ordersService })('delivery'));
+  router.get('/orders/:id/stock-availability', permission('orders', 'read'), permission('inventory', 'read'), createSalesOrdersController({ service: ordersService })('stockAvailability'));
   router.use((request, response) => response.status(404).json({ success: false, message: 'Sales endpoint was not found.' }));
   return router;
 }

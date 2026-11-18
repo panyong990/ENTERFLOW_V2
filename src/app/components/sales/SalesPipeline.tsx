@@ -4,13 +4,14 @@ import { Toaster, toast } from "sonner";
 import { useSalesOrders, type SalesOrderFilters, type SalesOrderRow, type SalesOrderDetail } from "../useSalesOrders";
 import { SalesRecordBrowser, OrderDetail } from "./SalesRecordBrowser";
 import { useSalesOrderDetail } from "../useSalesOrders";
-import { ReviewQuotationModal, GenerateJOModal } from "./OriginalSalesForms";
+import { GenerateJOModal } from "./OriginalSalesForms";
+import { RealQuotationPreparation } from "./RealQuotationPreparation";
 import { inquiryDraft, pendingIntegration } from "./drafts";
 import { pipelineColumn, moneyAtLeast } from "./pipelineModel.mjs";
 import { rejectSalesInquiry, sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
 import { usePipelineDetails } from "./usePipelineDetails";
 import { SalesInvoicePreparation } from "./SalesInvoicePreparation";
-import { SalesStockRequests } from "./SalesStockRequests";
+import { RealSalesStockRequests as SalesStockRequests } from "./RealSalesStockRequests";
 import { SalesNotificationBell } from "./SalesNotifications";
 
 const columns = [
@@ -39,6 +40,11 @@ export function SalesPipeline({ targetInquiryId }: { targetInquiryId?: string } 
   const [cancellationFilter, setCancellationFilter] = useState<(typeof cancellationFilters)[number][0]>("all");
   useEffect(() => { if (targetInquiryId) setSelected(targetInquiryId); }, [targetInquiryId]);
   const remote = useSalesOrders(!recordsView, filters);
+  useEffect(() => {
+    const onClientInquirySubmitted = () => remote.refresh();
+    window.addEventListener("enterflow:client-inquiry-submitted", onClientInquirySubmitted);
+    return () => window.removeEventListener("enterflow:client-inquiry-submitted", onClientInquirySubmitted);
+  }, [remote.refresh]);
   const details = usePipelineDetails(remote.data?.items, !recordsView && !remote.loading && !remote.error);
   const selectedDetail = useSalesOrderDetail(Boolean(selected), selected);
   const update = (patch: Partial<SalesOrderFilters>) => setFilters(current => ({ ...current, page: 1, ...patch }));
@@ -177,7 +183,7 @@ function PipelineCard({ row, detail, error, ready, onRecords, retry }: { row: Sa
       {eligible && <button onClick={() => { setReason('');setRejectionError('');setAction('reject-inquiry'); }} className="text-xs text-red-700">Reject inquiry</button>}
       <button onClick={() => pendingIntegration("Cancellation review")} className="text-xs text-slate-500">Review cancellation</button>
     </div>}
-    {draft && action === "quotation" && <ReviewQuotationModal inquiry={draft} onClose={() => setAction(null)} onSubmit={() => pendingIntegration("Quotation sending")} />}
+    {detail && action === "quotation" && <RealQuotationPreparation orderId={row.id} detail={detail} onClose={() => setAction(null)} onSaved={(savedStatus) => { setAction(null); retry(); toast.success(savedStatus === "sent" ? "Quotation sent and saved." : "Quotation draft saved."); }} />}
     {draft && action === "jo" && <GenerateJOModal inquiry={draft} onClose={() => setAction(null)} onConfirm={() => pendingIntegration("Job Order generation")} />}
     {draft && action === "invoice" && <SalesInvoicePreparation inquiry={draft} onClose={() => setAction(null)} />}
     {["approve", "reject", "reject-inquiry"].includes(action || "") && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><section role="dialog" aria-modal="true" aria-label="Sales review" className="w-full max-w-lg rounded-xl bg-white p-6"><h3 className="font-syne text-lg font-bold">{action === "approve" ? "Approve Purchase Order" : action === "reject" ? "Reject Purchase Order" : "Reject inquiry"}</h3><p className="my-3 text-sm">{action==='reject-inquiry'?'Reject and archive this inquiry, preserving its history. Pending cancellation requests will be completed. In-app notifications will be recorded.':'Backend integration pending. This review cannot be saved or sent. No client notification or resubmission request will be created.'}</p>{action==='reject-inquiry'&&rejectionError&&<p role="alert">{rejectionError}</p>}{action !== "approve" && <textarea disabled={rejecting} aria-label="Rejection reason" placeholder="Reason for rejection" value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded border p-3" />}<div className="mt-4 flex justify-end gap-3"><button disabled={rejecting} onClick={() => {setAction(null);setReason('');setRejectionError('');}}>Cancel</button><button disabled={rejecting || (action !== 'approve' && !reason.trim()) || (action==='reject-inquiry'&&!eligible)} onClick={() => action==='reject-inquiry'?void submitRejection():pendingIntegration(action === 'approve' ? 'PO approval' : 'Rejection')} className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-40">{rejecting?'Rejecting?':'Confirm review'}</button></div></section></div>}

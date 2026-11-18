@@ -5,6 +5,7 @@ import { useNotifications } from "../store/notifications";
 import { useSession } from "../store/session";
 import { NotificationBell } from "./NotificationBell";
 import { OfficialReceiptPreviewModal } from "./OfficialReceiptPreviewModal";
+import { RealPaymentProofQueue } from "./RealPaymentProofQueue";
 import { Toaster, toast } from "sonner";
 
 type Status = "paid" | "pending";
@@ -811,7 +812,8 @@ export function Accounting() {
         </div>
       </header>
 
-      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real financial records are unavailable. The complete Payments Ledger, invoice views, payment history, filters, detail panels, and document previews remain visible, but Demo financial records are excluded until authenticated invoice and payment APIs are connected.</div>}
+      {realMode && <div role="status" className="border-b border-blue-200 bg-blue-50 px-8 py-3 font-dm text-xs text-blue-950">Real invoice and payment-proof APIs are connected. Existing Demo financial rows remain excluded; invoice ledger data will appear when authenticated records are available.</div>}
+      {realMode && <div className="px-8"><RealPaymentProofQueue /></div>}
 
       <div className="px-8 py-8 flex flex-col gap-6">
         <div className="grid grid-cols-4 gap-6">

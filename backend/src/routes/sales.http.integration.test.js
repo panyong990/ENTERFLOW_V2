@@ -5,7 +5,7 @@ import { createSalesRouter } from './sales.routes.js';
 
 const token = 'a'.repeat(64);
 
-async function harness(t, { role = 'sales', accountType = 'employee', allowed = true, quotationAllowed = true, dashboardAllowed = true, notificationsAllowed = true, service, ordersService, dashboardService, notificationsService } = {}) {
+async function harness(t, { role = 'sales', accountType = 'employee', allowed = true, quotationAllowed = true, quotationCreateAllowed = true, ordersUpdateAllowed = true, dashboardAllowed = true, notificationsAllowed = true, inventoryAllowed = true, service, ordersService, dashboardService, notificationsService } = {}) {
   const calls = [];
   const router = createSalesRouter({
     service: service ?? {
@@ -18,7 +18,11 @@ async function harness(t, { role = 'sales', accountType = 'employee', allowed = 
       async quotations(id) { calls.push(['quotations', id]); return { success: true, data: [] }; },
       async purchaseOrder(id) { calls.push(['purchase-order', id]); return { success: true, data: null }; },
       async jobOrders(id) { calls.push(['job-orders', id]); return { success: true, data: { orderId: id, jobOrders: [] } }; },
-      async delivery(id) { calls.push(['delivery', id]); return { success: true, data: { orderId: id, shipments: [], waybills: [], deliveryReceipts: [] } }; }
+      async delivery(id) { calls.push(['delivery', id]); return { success: true, data: { orderId: id, shipments: [], waybills: [], deliveryReceipts: [] } }; },
+      async stockAvailability(id) { calls.push(['stock-availability', id]); return { success: true, data: { orderId: id, overallStatus: 'available', assessments: [], unmappedItems: [], stockChanged: false } }; }
+      , async createQuotation(id, body, actor) { calls.push(['create-quotation', id, body, actor]); return { success: true, data: { id: '101', orderId: id, status: body.status, totalAmount: '1.00' } }; }
+      , async processPurchaseOrder(id, actor, body) { calls.push(['process-po', id, actor, body]); return { success: true, data: { id: '77', orderId: id, status: body.decision } }; }
+      , async createJobOrders(id, actor, body) { calls.push(['create-job-orders', id, actor, body]); return { success: true, data: { orderId: id, jobOrders: [{ id: '88', reference: 'JO-2026-0001', status: 'jo' }] } }; }
     },
     dashboardService: dashboardService ?? {
       async dashboard() { calls.push(['dashboard']); return { success: true, data: { pendingInquiries: 0, quotationsSent: 0, purchaseOrdersReceived: 0, verifiedRevenue: '0', monthlyVerifiedRevenue: [] } }; }
@@ -32,7 +36,7 @@ async function harness(t, { role = 'sales', accountType = 'employee', allowed = 
     } : null,
     updateSessionActivityService: async value => value === token,
     permissionChecker: (roleCode, resource, action) => allowed && roleCode === 'sales' &&
-      ((resource === 'clients' && action === 'read') || (resource === 'orders' && action === 'read') || (resource === 'quotations' && action === 'read' && quotationAllowed) || (resource === 'inquiries' && action === 'read' && dashboardAllowed) || (resource === 'notifications' && action === 'read' && notificationsAllowed))
+      ((resource === 'clients' && action === 'read') || (resource === 'orders' && (action === 'read' || (action === 'update' && ordersUpdateAllowed))) || (resource === 'inventory' && action === 'read' && inventoryAllowed) || (resource === 'quotations' && ((action === 'read' && quotationAllowed) || (action === 'create' && quotationCreateAllowed))) || (resource === 'inquiries' && action === 'read' && dashboardAllowed) || (resource === 'notifications' && action === 'read' && notificationsAllowed))
   });
   const app = express();
   app.use('/api/sales', router);
@@ -42,8 +46,9 @@ async function harness(t, { role = 'sales', accountType = 'employee', allowed = 
   });
   t.after(() => new Promise(resolve => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}/api/sales`;
-  return { calls, request: (path, authenticated = true) => fetch(`${base}${path}`, {
-    headers: authenticated ? { Cookie: `enterflow_session=${token}` } : {}
+  return { calls, request: (path, authenticated = true, options = {}) => fetch(`${base}${path}`, {
+    ...options,
+    headers: { ...(options.headers ?? {}), ...(authenticated ? { Cookie: `enterflow_session=${token}` } : {}) }
   }) };
 }
 
@@ -107,6 +112,35 @@ test('Sales quotation and purchase-order routes enforce their existing permissio
   assert.equal((await quotationDenied.request('/orders/1/purchase-order')).status, 200);
 });
 
+test('Sales purchase-order processing is authenticated and permissioned', async t => {
+  const unauthenticated = await harness(t);
+  assert.equal((await unauthenticated.request('/orders/91/purchase-order/process', false, { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'validated' }) })).status, 401);
+  const denied = await harness(t, { ordersUpdateAllowed: false });
+  assert.equal((await denied.request('/orders/91/purchase-order/process', true, { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'validated' }) })).status, 403);
+  assert.equal(denied.calls.length, 0);
+  const h = await harness(t);
+  const response = await h.request('/orders/9007199254740993/purchase-order/process', true, { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'rejected', reason: 'Reference does not match the accepted quotation.' }) });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.status, 'rejected');
+  assert.equal(h.calls[0][0], 'process-po');
+  assert.equal(h.calls[0][1], '9007199254740993');
+  assert.equal(h.calls[0][3].decision, 'rejected');
+});
+
+test('Sales Job Order creation is authenticated and permissioned', async t => {
+  const unauthenticated = await harness(t);
+  const options = { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: JSON.stringify({ productionDueDate: '2026-12-31' }) };
+  assert.equal((await unauthenticated.request('/orders/91/job-orders', false, options)).status, 401);
+  const denied = await harness(t, { ordersUpdateAllowed: false });
+  assert.equal((await denied.request('/orders/91/job-orders', true, options)).status, 403);
+  assert.equal(denied.calls.length, 0);
+  const h = await harness(t);
+  const response = await h.request('/orders/9007199254740993/job-orders', true, options);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.jobOrders[0].status, 'jo');
+  assert.equal(h.calls[0][0], 'create-job-orders');
+});
+
 test('Sales dashboard requires all existing read permissions and uses the authenticated Sales employee scope', async t => {
   const denied = await harness(t, { allowed: false });
   assert.equal((await denied.request('/dashboard')).status, 403);
@@ -130,6 +164,34 @@ test('Sales job-order and delivery routes require orders:read and preserve compa
   assert.equal((await h.request('/orders/9007199254740993/job-orders')).status, 200);
   assert.equal((await h.request('/orders/9007199254740993/delivery')).status, 200);
   assert.deepEqual(h.calls.slice(0, 2), [['job-orders', '9007199254740993'], ['delivery', '9007199254740993']]);
+});
+
+test('Sales stock availability is authenticated, read-only, and inventory-permissioned', async t => {
+  assert.equal((await (await harness(t)).request('/orders/9007199254740993/stock-availability', false)).status, 401);
+  const wrongRole = await harness(t, { role: 'operations' });
+  assert.equal((await wrongRole.request('/orders/1/stock-availability')).status, 403);
+  const denied = await harness(t, { inventoryAllowed: false });
+  assert.equal((await denied.request('/orders/1/stock-availability')).status, 403);
+  assert.equal(denied.calls.length, 0);
+  const h = await harness(t);
+  const response = await h.request('/orders/9007199254740993/stock-availability');
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.stockChanged, false);
+  assert.deepEqual(h.calls, [['stock-availability', '9007199254740993']]);
+});
+
+test('Sales quotation preparation enforces authentication, create/update permissions, and trusted order ownership', async t => {
+  const unauthenticated = await harness(t);
+  assert.equal((await unauthenticated.request('/orders/91/quotations', false, { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
+  const deniedCreate = await harness(t, { quotationCreateAllowed: false });
+  assert.equal((await deniedCreate.request('/orders/91/quotations', true, { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
+  assert.equal(deniedCreate.calls.length, 0);
+  const h = await harness(t);
+  const response = await h.request('/orders/9007199254740993/quotations', true, { method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'draft', clientId: '999', totalAmount: '999999' }) });
+  assert.equal(response.status, 200);
+  assert.equal(h.calls[0][0], 'create-quotation');
+  assert.equal(h.calls[0][1], '9007199254740993');
+  assert.equal(h.calls[0][2].clientId, '999');
 });
 
 test('Sales notifications require authentication, employee Sales role, and notifications:read without mutation', async t => {

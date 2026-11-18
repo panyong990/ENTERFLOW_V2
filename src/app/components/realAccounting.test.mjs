@@ -12,7 +12,7 @@ test("Accounting preserves the full ledger and invoice UI while isolating Real M
   assert.match(source, /payment history/i);
   assert.match(source, /useSession/);
   assert.match(source, /mode === "real"/);
-  assert.match(source, /Real financial records are unavailable/);
+  assert.match(source, /Real invoice and payment-proof APIs are connected/);
   assert.match(source, /mode === "real" \? "—"/);
 });
 

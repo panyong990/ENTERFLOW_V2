@@ -8,6 +8,10 @@ export function listSalesJobOrders(orderId, signal) {
   return api(salesJobOrdersPath(orderId), { signal });
 }
 
+export function createSalesJobOrders(orderId, body, signal) {
+  return api(salesJobOrdersPath(orderId), { method: 'POST', body, signal });
+}
+
 function stringId(value) {
   return value == null ? value : String(value);
 }

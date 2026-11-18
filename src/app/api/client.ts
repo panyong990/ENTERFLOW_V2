@@ -9,9 +9,10 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   let response: Response;
   const timeout = AbortSignal.timeout(15000);
   try {
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
     response = await fetch(path, {method:options.method ?? 'GET',credentials:'same-origin',cache:'no-store',
-      headers:options.body===undefined ? {Accept:'application/json'} : {Accept:'application/json','Content-Type':'application/json'},
-      ...(options.body===undefined?{}:{body:JSON.stringify(options.body)}),signal: options.signal ? AbortSignal.any([timeout,options.signal]) : timeout});
+      headers:options.body===undefined || isFormData ? {Accept:'application/json'} : {Accept:'application/json','Content-Type':'application/json'},
+      ...(options.body===undefined?{}:{body:isFormData ? options.body as FormData : JSON.stringify(options.body)}),signal: options.signal ? AbortSignal.any([timeout,options.signal]) : timeout});
   } catch { throw new ApiError(0, 'The request could not be confirmed. Refresh before retrying any change.', 'NETWORK_ERROR'); }
   let result: {success?:boolean;data:T;message?:string;code?:string;errors?:Record<string,string>};
   try { result=await response.json(); } catch { throw new ApiError(response.status,'The service returned an invalid response. Refresh before retrying.','INVALID_RESPONSE'); }

@@ -211,11 +211,12 @@ test('client can read the client dashboard without changing other role permissio
   assert.equal(hasPermission('admin', 'dashboard', 'read'), false);
 });
 
-test('invoice read permission is limited to clients and existing accounting readers', () => {
+test('invoice permissions allow client viewing, Sales issuance, and Accounting review', () => {
   assert.equal(hasPermission('client', 'invoices', 'read'), true);
   assert.equal(hasPermission('admin', 'invoices', 'read'), false);
-  assert.equal(hasPermission('sales', 'invoices', 'read'), false);
-  assert.equal(hasPermission('accounting', 'invoices', 'read'), false);
+  assert.equal(hasPermission('sales', 'invoices', 'read'), true);
+  assert.equal(hasPermission('sales', 'invoices', 'create'), true);
+  assert.equal(hasPermission('accounting', 'invoices', 'read'), true);
 });
 
 test('notification update permission is limited to clients and does not alter other roles', () => {

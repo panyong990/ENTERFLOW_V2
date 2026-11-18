@@ -20,11 +20,15 @@ function adapter() {
 }
 
 test('quotation and purchase-order adapters construct exact order-scoped endpoints', () => {
-  const { listSalesQuotations, getSalesPurchaseOrder } = adapter();
+  const { listSalesQuotations, getSalesPurchaseOrder, processSalesPurchaseOrder } = adapter();
   const signal = new AbortController().signal;
   assert.equal(listSalesQuotations('18446744073709551615', signal).path, '/api/sales/orders/18446744073709551615/quotations');
   assert.equal(getSalesPurchaseOrder('18446744073709551615', signal).path, '/api/sales/orders/18446744073709551615/purchase-order');
   assert.equal(listSalesQuotations('1', signal).options.signal, signal);
+  assert.deepEqual(processSalesPurchaseOrder('18446744073709551615', { decision: 'validated' }, signal), {
+    path: '/api/sales/orders/18446744073709551615/purchase-order/process',
+    options: { method: 'POST', body: { decision: 'validated' }, signal },
+  });
 });
 
 test('quotation mapping preserves revision status and monetary strings', () => {

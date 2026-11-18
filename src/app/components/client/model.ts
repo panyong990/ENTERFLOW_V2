@@ -213,6 +213,8 @@ export interface PaymentRecord {
   verificationStatus: PaymentVerificationStatus;
   verifiedAt?: string;
   rejectionReason?: string;
+  proofFileId?: string;
+  proofFilename?: string;
   rejectedAt?: string;
   note?: string;
 }
@@ -286,6 +288,7 @@ export interface Inquiry {
   quotation?: Quotation;
   poUploaded?: boolean;
   poFileName?: string;
+  poFileId?: string;
   poNumber?: string;
   poFileDataUrl?: string;
   poUploadedAt?: string;
@@ -337,6 +340,11 @@ export interface Inquiry {
   quotedTotal?: number;
   /* — formal quotation document (Tab 3 output) — */
   quotationDoc?: QuotationDoc;
+  quotationId?: string;
+  quotationDecision?: "accepted" | "rejected" | null;
+  quotationDecisionReason?: string | null;
+  quotationDecidedAt?: string | null;
+  quotationDownpaymentValid?: boolean;
   /* — flag set when this JO's materials have been deducted during JO generation — */
   inventoryDeducted?: boolean;
   /* — production tracking — */

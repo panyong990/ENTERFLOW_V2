@@ -7,6 +7,7 @@ import { useNotifications } from "../store/notifications";
 import { NotificationBell } from "./NotificationBell";
 import { Toaster, toast } from "sonner";
 import { JOTemplateModal, type JOTemplateData } from "./JOTemplateModal";
+import { ProductionRealJobOrders } from "./ProductionRealJobOrders";
 import { PRODUCTION_STAGES, poNumberForDisplay, useOrders, type Stage, type Inquiry } from "../store/orders";
 import { useSession } from "../store/session";
 
@@ -278,6 +279,8 @@ export function ProductionFloor({ readOnly: requestedReadOnly = false }: { readO
     });
   }, [sortedJobs, stageFilter, joStatusFilter, dateFilter, searchQuery, productionInquiries]);
   const pausedJob = jobs.find((j) => j.paused);
+
+  if (realMode) return <ProductionRealJobOrders />;
 
   const advanceStage = (id: string) => {
     if (readOnly) return;

@@ -184,7 +184,19 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
       message: "Purchase order submitted — awaiting Sales review.",
     };
   }
+  if (inquiry.stage === "po" && inquiry.quotationDecision === "accepted") return {
+    id: "quotationAccepted", label: "QUOTATION ACCEPTED", bg: "#DCFCE7", fg: "#166534",
+    message: "Quotation accepted. Upload a purchase order separately when ready; no purchase order or production record has been created."
+  };
   if (inquiry.stage === "quotation") {
+    if (inquiry.quotationDecision === "accepted") return {
+      id: "quotationAccepted", label: "QUOTATION ACCEPTED", bg: "#DCFCE7", fg: "#166534",
+      message: "Quotation accepted. Upload a purchase order separately when ready; no purchase order or production record has been created."
+    };
+    if (inquiry.quotationDecision === "rejected") return {
+      id: "quotationRejected", label: "QUOTATION REJECTED", bg: "#FEE2E2", fg: "#991B1B",
+      message: "Quotation rejected. Sales can review the recorded decision before any further quotation is issued."
+    };
     if (hasPendingRevisionRequest(inquiry)) {
       return {
         id: "revisionRequested",
@@ -310,7 +322,7 @@ const FILTRATION_RATINGS = [
 ];
 
 function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: { clientName: string; onSubmitted: () => void; onPayInvoice: (inquiryId: string) => void; targetInquiryId?: string }) {
-  const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches } = useOrders();
+  const { uploadPO, requestCancellation, byClient, addInquiry, addInquiryWithProductSketches, submitPurchaseOrder } = useOrders();
   const { push: pushNotif } = useNotifications();
   /* Keep sent invoices available here after their order advances beyond the active stages. */
   const allOrders=byClient(clientName);
@@ -472,7 +484,6 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
               </div>
               <button onClick={() => setShowCreateOptions(false)} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="Close create order options"><X size={16} /></button>
             </div>
-            <div className="px-5 pt-4 sm:px-6"><RealModePending>Order creation and reorder submission are unavailable in Real Mode. You can review a draft, but nothing will be saved.</RealModePending></div>
             <div className="flex flex-col gap-3 p-5 sm:p-6">
               <button
                 onClick={() => { setShowCreateOptions(false); setShowWizard(true); }}
@@ -510,9 +521,13 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
 
       {poForId && (
         <POUploadOverlay
+          orderId={poForId}
           isResubmission={Boolean(poForInquiry && poReviewStatus(poForInquiry) === "Rejected")}
           onClose={() => setPoForId(null)}
-          onSubmit={() => unavailable()}
+          onSubmit={async ({ file, poNumber }) => {
+            try { await submitPurchaseOrder(poForId, poNumber, file); toast.success("Purchase order submitted", { description: "Sales will review the uploaded PO document." }); setPoForId(null); onSubmitted(); return true; }
+            catch (cause) { toast.error(cause instanceof Error ? cause.message : "Purchase-order submission failed."); return false; }
+          }}
 
         />
       )}
@@ -796,8 +811,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   onClose: () => void;
   onSubmitted: () => void;
 }) {
-  const { addInquiry, addInquiryWithProductSketches } = useOrders();
-  const { push: pushNotif } = useNotifications();
+  const { addInquiry } = useOrders();
 
   const [step, setStep] = useState(1);
   const [contactPerson, setContactPerson] = useState(reorderSource?.contactPerson ?? "");
@@ -891,7 +905,45 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   const submit = async () => {
     if (!contactPerson.trim()) { toast.error("Contact person required"); return; }
     if (products.some(p => !Number.isInteger(p.qty) || p.qty < 10)) { toast.error("Each product must have a whole-number quantity of at least 10"); return; }
-    unavailable();
+    if (Object.values(sketchFiles).some(Boolean)) {
+      toast.info("Sketch attachments are not yet connected to the authenticated service", { description: "Remove the sketch attachment before submitting this inquiry." });
+      return;
+    }
+    if (submissionStarted.current) return;
+    submissionStarted.current = true;
+    setIsSubmitting(true);
+    try {
+      const created = await addInquiry({
+        contactPerson: contactPerson.trim(),
+        paymentTermCode: paymentTerms === "30-Day Terms" ? "NET30" : "NET15",
+        requestedDeliveryDate: requestedDeliveryDate || null,
+        generalNotes: generalNotes.trim() || null,
+        products: products.map((product) => ({
+          type: product.type,
+          filterName: product.filterName?.trim() ?? "",
+          quantity: product.qty,
+          specifications: {
+            od1: product.od1, od2: product.od2, id1: product.id1, id2: product.id2,
+            height: product.height, overallHeight: product.overallHeight, length: product.length,
+            width: product.width, thickness: product.thickness, depth: product.depth,
+            pocketCount: product.pocketCount, diameter: product.diameter,
+            clothCuttingWidth: product.clothCuttingWidth, clothCuttingLength: product.clothCuttingLength,
+            springPlateCenterToCenter: product.springPlateCenterToCenter,
+            springPlateWidth: product.springPlateWidth, springPlateLength: product.springPlateLength,
+            padOd: product.padOd, padId: product.padId, media: product.media,
+            innerCore: product.innerCore, outerCore: product.outerCore, oring: product.oring,
+            gasket: product.gasket, oem: product.oem, filtrationRating: product.filtrationRating,
+            notes: product.notes,
+          },
+        })),
+      });
+      toast.success(`Inquiry ${created.reference} submitted`);
+      onSubmitted();
+      onClose();
+    } catch (error) {
+      submissionStarted.current = false;
+      toast.error(error instanceof Error ? error.message : "Inquiry submission failed. No inquiry was created.");
+    } finally { setIsSubmitting(false); }
   };
 
   const addAnotherFilter = () => {
@@ -1139,8 +1191,8 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
                 Next: {STEPS[step].label} →
               </button>
             ) : (
-              <button onClick={submit} disabled className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-                <ClipboardList size={15} strokeWidth={2.5} /> Submission unavailable
+              <button onClick={submit} disabled={isSubmitting || submissionStarted.current} className="font-dm flex items-center gap-2 px-5 py-2.5 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+                <ClipboardList size={15} strokeWidth={2.5} /> {isSubmitting ? "Submitting…" : "Submit Inquiry"}
               </button>
             )}
           </div>
@@ -1273,7 +1325,7 @@ function ProductCard({ index, product, isOpen, onToggle, onChange, onRemove }: {
 }
 
 function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inquiry: Inquiry; onUploadPO: () => void; onCancel: (reason: string) => void; onPayInvoice: (invoiceId?: string) => void }) {
-  const { updateInquiry } = useOrders();
+  const { updateInquiry, decideQuotation, requestQuotationRevision } = useOrders();
   const { push: pushNotif } = useNotifications();
   const [open, setOpen] = useState(inquiry.stage === "quotation" || poReviewStatus(inquiry) === "Rejected");
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -1283,6 +1335,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   /* Section C — revision request modal */
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [revisionNoteDraft, setRevisionNoteDraft] = useState("");
+  const [decisionReason, setDecisionReason] = useState("");
+  const [decisionError, setDecisionError] = useState("");
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false);
   const revisionSubmissionLock = useRef(false);
   /* View full quotation doc */
   const [showQuotationDoc, setShowQuotationDoc] = useState(false);
@@ -1303,9 +1358,30 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   const isInvoiceSent = Boolean(inquiry.invoiceNo && inquiry.invoiceSentAt);
   const quotationDocToView = historicalQuotationDoc ?? (showQuotationDoc ? inquiry.quotationDoc : undefined);
 
-  const submitRevision = () => {
+  const submitRevision = async () => {
     if (revisionNoteDraft.trim().length < 5) { toast.error("Please describe what you'd like changed (at least a few words)"); return; }
-    unavailable();
+    if (revisionSubmissionLock.current) return;
+    revisionSubmissionLock.current = true;
+    try {
+      await requestQuotationRevision((inquiry as ClientView).orderId, revisionNoteDraft.trim());
+      toast.success("Quotation revision requested", { description: "Sales will review your requested changes." });
+      setRevisionNoteDraft("");
+      setShowRevisionModal(false);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "The revision request could not be recorded.");
+    } finally { revisionSubmissionLock.current = false; }
+  };
+
+  const submitQuotationDecision = async (decision: "accepted" | "rejected") => {
+    if (!inquiry.quotationId || decisionSubmitting) return;
+    if (decision === "rejected" && decisionReason.trim().length < 5) { setDecisionError("Please provide a brief reason for rejecting this quotation."); return; }
+    setDecisionSubmitting(true); setDecisionError("");
+    try {
+      await decideQuotation((inquiry as ClientView).orderId, inquiry.quotationId, { decision, ...(decision === "rejected" ? { reason: decisionReason.trim() } : {}) });
+      toast.success(decision === "accepted" ? "Quotation accepted" : "Quotation rejected", { description: "The decision was recorded by the backend." });
+    } catch (cause) {
+      setDecisionError(cause instanceof Error ? cause.message : "The quotation decision could not be recorded.");
+    } finally { setDecisionSubmitting(false); }
   };
 
   return (
@@ -1469,22 +1545,50 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                 </div>
               )}
 
-              {inquiry.stage === "quotation" && (
+              {(inquiry.stage === "quotation" || inquiry.quotationDecision) && (
                 <>
-                  <div className="flex items-center gap-3">
-                    {!hasPendingRevisionRequest(inquiry) && (
+                  {inquiry.quotationDecision ? (
+                    <>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 font-dm text-xs text-slate-600">
+                      Client decision: <strong>{inquiry.quotationDecision === "accepted" ? "Accepted" : "Rejected"}</strong>
+                      {inquiry.quotationDecisionReason && <> · {inquiry.quotationDecisionReason}</>}
+                    </div>
+                    {inquiry.quotationDecision === "accepted" && !inquiry.poNumber && <button onClick={onUploadPO} className="flex w-full items-center justify-center gap-2 rounded-md bg-[#1A2B4A] py-3 font-dm text-sm font-bold text-white hover:opacity-90"><FileCheck size={15} /> RECORD PURCHASE ORDER REFERENCE</button>}
+                    </>
+                  ) : inquiry.quotationDownpaymentValid === false ? (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 font-dm text-xs text-red-800">
+                      This quotation cannot be accepted because its mandatory 20% or 50% downpayment is missing or invalid. Please wait for Sales to issue a corrected quotation.
+                    </div>
+                  ) : !hasPendingRevisionRequest(inquiry) ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 font-dm text-xs text-blue-900">
+                        Review this quotation and record your decision. Accepting does not create a purchase order or start production.
+                      </div>
+                      {decisionError && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 font-dm text-xs text-red-800">{decisionError}</div>}
+                      <textarea value={decisionReason} onChange={event => setDecisionReason(event.target.value)} placeholder="Reason required when rejecting" className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 font-dm text-xs outline-none focus:border-slate-400" />
+                      <div className="flex items-center gap-3">
+                        <button disabled={decisionSubmitting} onClick={() => void submitQuotationDecision("accepted")} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: "#166534", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+                          <FileCheck size={15} strokeWidth={2.5} /> {decisionSubmitting ? "SAVING..." : "ACCEPT QUOTATION"}
+                        </button>
+                        <button disabled={decisionSubmitting} onClick={() => void submitQuotationDecision("rejected")} className="rounded-md border-2 border-red-200 px-4 py-3 font-dm text-red-700 hover:bg-red-50 disabled:opacity-50" style={{ fontSize: 13, fontWeight: 700 }}>
+                          REJECT QUOTATION
+                        </button>
+                      </div>
+                    </div>
+                  ) : <>
+                    {false && (
                       <button onClick={onUploadPO} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#16A34A", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
                         <FileCheck size={15} strokeWidth={2.5} /> APPROVE &amp; UPLOAD PURCHASE ORDER
                       </button>
                     )}
-                    {!hasPendingRevisionRequest(inquiry) ? (
+                    {false ? (
                       <button onClick={() => { revisionSubmissionLock.current = false; setShowRevisionModal(true); }} className="px-4 py-3 rounded-md font-dm border-2 hover:bg-slate-50" style={{ borderColor: "#1A2B4A", color: "#1A2B4A", fontSize: 13, fontWeight: 700 }}>
                         Request Revision
                       </button>
                     ) : (
                       <span className="font-dm px-3 py-2 rounded-md" style={{ fontSize: 11, fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7" }}>Revision Requested · Awaiting Sales</span>
                     )}
-                  </div>
+                  </>}
                 </>
               )}
               {inquiry.stage === "po" && inquiry.poFileName && !isInvoiceSent && (
@@ -1497,9 +1601,9 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span><strong>{status.label}</strong> · {inquiry.poFileName}</span>
                     <span>Submitted {inquiry.poUploadedAt ? new Date(inquiry.poUploadedAt).toLocaleString() : "date unavailable"}</span>
-                    {inquiry.poFileDataUrl && (
+                    {inquiry.poFileId && (
                       <a
-                        href={inquiry.poFileDataUrl}
+                        href={`/api/documents/client/purchase-order-files/${encodeURIComponent(inquiry.poFileId)}?purchaseOrderId=${encodeURIComponent(inquiry.source.purchaseOrder?.id ?? "")}`}
                         target="_blank"
                         rel="noreferrer"
                         download={inquiry.poFileName}
@@ -1520,9 +1624,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
                         {poSubmissions.map((submission, index) => (
                           <div key={submission.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                             <span>#{index + 1}{index === poSubmissions.length - 1 ? " · Latest" : ""} · {submission.fileName} · {new Date(submission.submittedAt).toLocaleString()} · <strong>{submission.status}</strong></span>
-                            {submission.fileDataUrl && (
-                              <a href={submission.fileDataUrl} target="_blank" rel="noreferrer" download={submission.fileName} className="underline" style={{ fontWeight: 700 }}>View / Download</a>
-                            )}
+                            {inquiry.poFileId && <a href={`/api/documents/client/purchase-order-files/${encodeURIComponent(inquiry.poFileId)}?purchaseOrderId=${encodeURIComponent(inquiry.source.purchaseOrder?.id ?? "")}`} target="_blank" rel="noreferrer" download={submission.fileName} className="underline" style={{ fontWeight: 700 }}>View / Download</a>}
                             {submission.rejectionReason && <span className="w-full" style={{ color: "#991B1B" }}>Rejection reason: {submission.rejectionReason}</span>}
                           </div>
                         ))}
@@ -1713,7 +1815,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
               <button onClick={() => setShowRevisionModal(false)} className="ml-auto w-8 h-8 rounded-md hover:bg-amber-100 flex items-center justify-center"><X size={16} /></button>
             </div>
             <div className="p-5 overflow-auto flex flex-col gap-4">
-              <RealModePending>Quotation revision requests are unavailable in Real Mode. This draft will not be sent to Sales.</RealModePending>
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 font-dm text-xs text-blue-800">Your request will be recorded for Sales review. Quotation values remain controlled by Sales.</div>
               <div className="rounded-lg p-3" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                 <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Current Quotation</div>
                 <div className="flex items-baseline gap-2">
@@ -1734,8 +1836,8 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             </div>
             <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
               <button onClick={() => setShowRevisionModal(false)} className="font-dm px-4 py-2 rounded-md hover:bg-slate-100" style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Cancel</button>
-              <button disabled className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#C8102E" }}>
-                Revision submission unavailable
+              <button onClick={() => void submitRevision()} disabled={revisionSubmissionLock.current} className="font-dm px-4 py-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5" style={{ fontSize: 13, fontWeight: 700, backgroundColor: "#1A2B4A" }}>
+                {revisionSubmissionLock.current ? "Submitting…" : "Request revision"}
               </button>
             </div>
           </div>
@@ -1745,24 +1847,19 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   );
 }
 
-function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string }) => boolean; isResubmission: boolean }) {
+function POUploadOverlay({ onClose, onSubmit, isResubmission, orderId: _orderId }: { onClose: () => void; onSubmit: (po: { file: File; poNumber: string }) => Promise<boolean>; isResubmission: boolean; orderId: string }) {
   const { generatePONumber } = useOrders();
   const [file, setFile] = useState<File | null>(null);
-  const [fileDataUrl, setFileDataUrl] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [poReference, setPoReference] = useState("");
   /* Section J — auto-generated PO reference shown to the client; on submit, prefer the uploaded filename, but fall back to this reference. */
   const [autoRef] = useState(() => generatePONumber());
   const readPOFile = (nextFile: File) => {
     setFile(nextFile);
-    setFileDataUrl(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setFileDataUrl(reader.result);
-      else toast.error("Could not read purchase order file");
-    };
-    reader.onerror = () => toast.error("Could not read purchase order file");
-    reader.readAsDataURL(nextFile);
+    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(nextFile.type)) { toast.error("Only PDF, JPG, and PNG documents are supported."); return; }
+    if (nextFile.size > 10 * 1024 * 1024) { toast.error("The purchase order must be 10 MB or smaller."); return; }
+    setFile(nextFile);
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(15,23,42,0.5)" }} onClick={onClose}>
@@ -1772,7 +1869,8 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
         <div className="p-6 flex flex-col gap-4">
-          <RealModePending>Purchase-order submission is unavailable in Real Mode. You may review the selected file, but it will not be uploaded.</RealModePending>
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 font-dm text-xs text-blue-900">Upload the actual PO document for authenticated Sales review. The document is stored privately when document storage is configured.</div>
+          <label className="font-dm text-xs font-semibold text-slate-700">Client PO reference<input value={poReference} onChange={event => setPoReference(event.target.value)} placeholder="e.g. PO-2026-001" className="mt-1 w-full rounded border border-slate-200 p-2 text-sm" /></label>
           <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) readPOFile(f); }} className="flex flex-col items-center justify-center gap-2 py-10 rounded-lg cursor-pointer transition-colors" style={{ border: `2px dashed ${drag ? "#C8102E" : "#CBD5E1"}`, backgroundColor: drag ? "#FEF2F2" : "#F8FAFC" }}>
             <Upload size={28} style={{ color: file ? "#16A34A" : "#94A3B8" }} />
             <span className="font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{file ? file.name : "Drop your PO here or click to browse"}</span>
@@ -1784,8 +1882,8 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
             <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
           </div>
           {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
-          <button disabled className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm disabled:cursor-not-allowed disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-            Purchase-order submission unavailable
+          <button disabled={!poReference.trim()} onClick={() => setConfirmSubmit(true)} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm disabled:cursor-not-allowed disabled:opacity-40" style={{ backgroundColor: "#1A2B4A", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+            Submit purchase-order reference
           </button>
         </div>
       </div>
@@ -1794,15 +1892,15 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
           <AlertDialogHeader>
             <AlertDialogTitle className="font-syne text-[#1A2B4A]">{isResubmission ? "SUBMIT REVISED PURCHASE ORDER?" : "SUBMIT PURCHASE ORDER?"}</AlertDialogTitle>
             <AlertDialogDescription className="font-dm text-slate-600">
-              {file?.name} will be sent to Sales for review. {isResubmission ? "The rejected submission and its history will be preserved." : "You cannot replace this PO unless Sales rejects it."}
+              The PO reference will be recorded against the accepted quotation for Sales review. {isResubmission ? "The rejected submission and its history will be preserved." : "A second PO cannot be recorded for this order."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="font-dm">CANCEL</AlertDialogCancel>
             <AlertDialogAction className="font-dm bg-[#C8102E] hover:bg-[#A00D25]" onClick={(event) => {
               event.preventDefault();
-              if (!file || !fileDataUrl) return;
-              if (onSubmit({ fileName: file.name, fileDataUrl, poNumber: autoRef })) setConfirmSubmit(false);
+              if (!file) { toast.error("Attach a PO document first."); return; }
+              void onSubmit({ file, poNumber: poReference.trim() || autoRef }).then(success => { if (success) setConfirmSubmit(false); });
             }}>CONFIRM SUBMISSION</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2893,7 +2991,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
   const bank = settings.bankDetails;
   const { push: pushNotif } = useNotifications();
   const [prepareDraft, setPrepareDraft] = useState<Record<string, boolean>>({});
-  const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; reference: string; note: string; file: string; receiptDataUrl?: string; methodId?: string }>>({});
+  const [receiptForm, setReceiptForm] = useState<Record<string, { amount: string; reference: string; note: string; file: string; sourceFile?: File; receiptDataUrl?: string; methodId?: string }>>({});
   const submittingPayments = useRef(new Set<string>());
   const [view, setView] = useState<"active" | "history">("active");
   const [statusFilter, setStatusFilter] = useState<ClientInvoiceStatusFilter>("All");
@@ -2911,7 +3009,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
 
   const [openId, setOpenId] = useState<string | null>(focusInvoiceId ?? activeRows[0]?.id ?? null);
 
-  const submitReceipt = (rowId: string, invNo: string) => {
+  const submitReceipt = async (rowId: string, invNo: string) => {
     if (submittingPayments.current.has(rowId)) return;
     const currentInquiry = byClient(clientName).find((inquiry) => inquiry.id === rowId);
     const allowance = currentInquiry ? paymentSubmissionAllowance(currentInquiry) : null;
@@ -2931,7 +3029,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
       return;
     }
     const f = receiptForm[rowId];
-    if (!f?.file || !f.receiptDataUrl) { toast.error("Please attach a receipt file first"); return; }
+    if (!f?.file || !f.sourceFile) { toast.error("Please attach a receipt file first"); return; }
     const enteredAmount = Number(f.amount);
     const amountCents = toMoneyCents(enteredAmount);
     if (!Number.isFinite(enteredAmount) || amountCents <= 0) { toast.error("Please enter the amount paid"); return; }
@@ -2945,7 +3043,10 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
       });
       return;
     }
-    unavailable();
+    try {
+      await submitPayment(currentInquiry!.orderId, currentInquiry!.sourceInvoice?.id ?? rowId, { amount: enteredAmount, method: selectedMethod?.label, referenceNumber: f.reference, file: f.sourceFile });
+      toast.success("Payment proof submitted", { description: "Accounting will review the private receipt." });
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : "Payment proof submission failed."); }
   };
 
   const pill = (label: string, value: string, color = "#0F172A") => (
@@ -3194,8 +3295,8 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className="rounded-full px-2 py-1 font-dm text-[9px] font-extrabold" style={{ color: paymentStatus.color, backgroundColor: paymentStatus.bg }}>{paymentStatus.label}</span>
-                                          {payment.receiptDataUrl && (
-                                            <a href={payment.receiptDataUrl} target="_blank" rel="noreferrer" className="font-dm text-xs font-bold text-blue-700 underline">
+                                          {payment.proofFileId && (
+                                            <a href={`/api/documents/client/payment-files/${encodeURIComponent(payment.proofFileId)}?paymentId=${encodeURIComponent(payment.id)}`} target="_blank" rel="noreferrer" className="font-dm text-xs font-bold text-blue-700 underline">
                                               VIEW PROOF{payment.receiptFile ? ` · ${payment.receiptFile}` : ""}
                                             </a>
                                           )}
@@ -3256,16 +3357,9 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                     onChange={(e) => {
                                       const f = e.target.files?.[0];
                                       if (f) {
-                                        const reader = new FileReader();
-                                        reader.onload = () => {
-                                          if (typeof reader.result !== "string") {
-                                            toast.error("Could not read receipt file");
-                                            return;
-                                          }
-                                          setReceiptForm(p => ({ ...p, [r.id]: { ...rf, file: f.name, receiptDataUrl: reader.result as string } }));
-                                        };
-                                        reader.onerror = () => toast.error("Could not read receipt file");
-                                        reader.readAsDataURL(f);
+                                        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(f.type)) { toast.error("Only PDF, JPG, and PNG documents are supported."); return; }
+                                        if (f.size > 10 * 1024 * 1024) { toast.error("The payment receipt must be 10 MB or smaller."); return; }
+                                        setReceiptForm(p => ({ ...p, [r.id]: { ...rf, file: f.name, sourceFile: f, receiptDataUrl: undefined } }));
                                       }
                                       e.currentTarget.value = "";
                                     }}
@@ -3305,7 +3399,7 @@ function ClientAccountingTab({ clientName, focusInvoiceId }: { clientName: strin
                                 />
                               </div>
                               <button
-                                onClick={() => submitReceipt(r.id, r.inv)}
+                                onClick={() => { void submitReceipt(r.id, r.inv); }}
                                 disabled={!paymentMethodsAvailable || Number(rf.amount) > r.submissionAllowance.maxAmount || submittingPayments.current.has(r.id)}
                                 className="flex items-center justify-center gap-2 py-2.5 rounded-md text-white font-dm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                                 style={{ backgroundColor: "#1A2B4A", fontSize: 12, fontWeight: 700, letterSpacing: 0.3 }}

@@ -27,9 +27,11 @@ function harness({ profileRows = [], orderRows = [], itemRows = [], quotationRow
       if (/FROM clients/.test(sql)) return [profileRows];
       if (/FROM orders/.test(sql)) return [orderRows];
       if (/FROM order_items/.test(sql)) return [itemRows];
+      if (/FROM purchase_order_files/.test(sql)) return [[]];
+      if (/FROM purchase_orders/.test(sql)) return [purchaseOrderRows];
+      if (/FROM audit_events/.test(sql)) return [[]];
       if (/FROM quotation_lines/.test(sql)) return [quotationLineRows];
       if (/FROM quotations/.test(sql)) return [quotationRows];
-      if (/FROM purchase_orders/.test(sql)) return [purchaseOrderRows];
       if (/FROM job_orders/.test(sql)) return [jobOrderRows];
       if (/FROM shipments/.test(sql)) return [shipmentRows];
       if (/FROM invoices/.test(sql)) return [invoiceRows];
@@ -92,7 +94,7 @@ test('invalid client identity is rejected before database access', async () => {
 test('quotation history is client-scoped, excludes drafts, preserves IDs and decimal strings, and omits internal fields', async () => {
   const h = harness({
     orderRows: [{ id: '1' }],
-    quotationRows: [{ id: '9007199254740993', reference: 'Q-1', revisionNumber: '2', status: 'sent', totalAmount: '1234567890123.45', downpaymentAmount: '100.10', internalNote: 'private' }],
+    quotationRows: [{ id: '9007199254740993', reference: 'Q-1', revisionNumber: '2', status: 'sent', totalAmount: '1234567890123.45', downpaymentPercent: '20.0000', downpaymentAmount: '246913578024.69', internalNote: 'private' }],
     quotationLineRows: [{ id: '9007199254740994', quotationId: '9007199254740993', description: 'Filter', quantity: '2.00', unitPrice: '10.25', laborCost: 'private' }]
   });
   const result = await h.service.quotations('21', '1');
@@ -100,13 +102,14 @@ test('quotation history is client-scoped, excludes drafts, preserves IDs and dec
   assert.equal(result.data.length, 1);
   assert.equal(result.data[0].id, '9007199254740993');
   assert.equal(result.data[0].totalAmount, '1234567890123.45');
+  assert.equal(result.data[0].downpaymentValid, true);
   assert.equal(result.data[0].lines[0].id, '9007199254740994');
   assert.equal(result.data[0].lines[0].unitPrice, '10.25');
   assert.equal('internalNote' in result.data[0], false);
   assert.equal('laborCost' in result.data[0].lines[0], false);
   assert.match(h.calls[0].sql, /id=\? AND client_id=\?/);
   assert.match(h.calls[1].sql, /q\.status <> 'draft'/);
-  assert.match(h.calls[2].sql, /q\.status <> 'draft'/);
+  assert.match(h.calls.find(call => call.sql.includes('FROM quotation_lines')).sql, /q\.status <> 'draft'/);
 });
 
 test('quotation endpoint returns an empty array and purchase order returns null for an owned order without records', async () => {
@@ -118,7 +121,85 @@ test('quotation endpoint returns an empty array and purchase order returns null 
   assert.equal(purchaseOrder.data, null);
 });
 
-test('purchase order projection preserves BIGINT IDs and timestamps without status or storage metadata', async () => {
+test('client quotation decisions are ownership-scoped, latest-revision-only, audited, and do not create a PO', async () => {
+  const calls = []; let committed = false; let stage = 'quotation'; let quoteDownpayment = '20.00';
+  const connection = {
+    async beginTransaction() { calls.push('BEGIN'); },
+    async commit() { committed = true; calls.push('COMMIT'); },
+    async rollback() { calls.push('ROLLBACK'); },
+    async execute(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('FROM orders o WHERE')) return [[{ id: '91', clientId: '21', reference: 'INQ-91', stageCode: stage }]];
+      if (sql.includes('FROM quotations q WHERE q.id')) return [[{ id: '301', reference: 'Q-91', revisionNumber: '2', status: 'sent', totalAmount: '100.00', downpaymentPercent: quoteDownpayment === '20.00' ? '20.0000' : '0.0000', downpaymentAmount: quoteDownpayment }]];
+      if (sql.includes('FROM quotations WHERE order_id')) return [[{ id: '301', status: 'sent' }]];
+      if (sql.includes("kind='quotation_revision'")) return [[]];
+      if (sql.includes('FROM audit_events')) return [[]];
+      if (sql.startsWith('UPDATE orders')) { stage = 'po'; return [{ affectedRows: 1 }]; }
+      if (sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1 }];
+      if (sql.startsWith('SELECT CAST(id AS CHAR) id')) return [[{ id: '9' }]];
+      if (sql.startsWith('INSERT INTO notifications')) return [{ affectedRows: 1, insertId: '700' }];
+      if (sql.startsWith('INSERT INTO notification_recipients')) return [{ affectedRows: 1 }];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }, release() {}
+  };
+  const service = createClientPortalService({ db: { getConnection: async () => connection } });
+  quoteDownpayment = '0.00';
+  const invalid = await service.decideQuotation('21', '9', '91', '301', { decision: 'accepted' });
+  assert.equal(invalid.code, 'QUOTATION_NOT_ELIGIBLE');
+  quoteDownpayment = '20.00';
+  const result = await service.decideQuotation('21', '9', '91', '301', { decision: 'accepted' }, { requestId: '11111111-1111-4111-8111-111111111111' });
+  assert.equal(result.success, true); assert.equal(result.data.orderStage, 'po'); assert.equal(committed, true);
+  assert.equal(calls.some(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO purchase_orders')), false);
+  assert.equal(calls.some(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO audit_events')), true);
+});
+
+test('client quotation decisions reject invalid reasons before database access', async () => {
+  const h = harness();
+  const result = await h.service.decideQuotation('21', '9', '91', '301', { decision: 'rejected' });
+  assert.equal(result.code, 'VALIDATION_ERROR'); assert.equal(h.calls.length, 0);
+});
+
+test('client quotation revision request is owned, reasoned, audited, and duplicate-pending protected', async () => {
+  const calls = []; const connection = {
+    async beginTransaction() { calls.push('BEGIN'); }, async commit() { calls.push('COMMIT'); }, async rollback() { calls.push('ROLLBACK'); }, release() {},
+    async execute(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('FROM orders WHERE id=? AND client_id=?')) return [[{ id: '91', clientId: '21' }]];
+      if (sql.includes('FROM quotations WHERE order_id=?')) return [[{ id: '301', reference: 'Q-91', revisionNumber: '2', status: 'sent' }]];
+      if (sql.includes("kind='quotation_revision'")) return [[]];
+      if (sql.startsWith('INSERT INTO order_requests')) return [{ affectedRows: 1, insertId: '801' }];
+      if (sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1 }];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+  const service = createClientPortalService({ db: { getConnection: async () => connection } });
+  const result = await service.requestQuotationRevision('21', '9', '91', { reason: 'Please revise the delivery timeline.' }, { requestId: '11111111-1111-4111-8111-111111111111' });
+  assert.equal(result.success, true); assert.equal(result.data.status, 'pending'); assert.equal(result.data.reason, 'Please revise the delivery timeline.');
+  assert.equal(calls.some(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO order_requests')), true);
+  assert.equal(calls.some(call => typeof call === 'object' && call.sql.startsWith('INSERT INTO audit_events')), true);
+});
+
+test('client PO submission associates the latest accepted quotation, preserves downpayment terms, and writes no downstream records', async () => {
+  const calls = []; const connection = {
+    async beginTransaction() { calls.push('BEGIN'); }, async commit() { calls.push('COMMIT'); }, async rollback() { calls.push('ROLLBACK'); }, release() {},
+    async execute(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('FROM orders WHERE')) return [[{ id: '91', clientId: '21', reference: 'INQ-91' }]];
+      if (sql.includes('FROM quotations WHERE')) return [[{ id: '301', reference: 'Q-91', revisionNumber: '2', status: 'sent', totalAmount: '100.00', downpaymentPercent: '20.0000', downpaymentAmount: '20.00' }]];
+      if (sql.includes('FROM audit_events')) return [[{ action: 'quotation.accepted' }]];
+      if (sql.includes('FROM purchase_orders')) return [[]];
+      if (sql.startsWith('INSERT INTO purchase_orders')) return [{ affectedRows: 1, insertId: '701' }];
+      if (sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1 }];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+  const service = createClientPortalService({ db: { getConnection: async () => connection } });
+  const result = await service.submitPurchaseOrder('21', '9', '91', { reference: 'PO-CLIENT-1' });
+  assert.equal(result.success, true); assert.equal(result.data.acceptedQuotationId, '301'); assert.equal(result.data.downpaymentPercent, 20); assert.equal(result.data.status, 'received');
+  assert.equal(calls.some(call => typeof call === 'object' && /job_orders|inventory|payments/.test(call.sql)), false);
+});
+
+test('purchase order projection preserves BIGINT IDs, timestamps, and safe file metadata', async () => {
   const h = harness({
     orderRows: [{ id: '1' }],
     purchaseOrderRows: [{ id: '9007199254740995', acceptedQuotationId: '9007199254740993', acceptedQuotationReference: 'Q-2', reference: 'PO-1', clientReference: 'CLIENT-PO', uploadedAt: '2026-01-01T00:00:00.000000Z', receivedAt: null, clearedAt: null, status: 'invented', storagePath: 'private' }]
@@ -127,8 +208,9 @@ test('purchase order projection preserves BIGINT IDs and timestamps without stat
   assert.equal(result.success, true);
   assert.equal(result.data.id, '9007199254740995');
   assert.equal(result.data.acceptedQuotationId, '9007199254740993');
-  assert.equal('status' in result.data, false);
+  assert.equal(result.data.status, 'received');
   assert.equal('storagePath' in result.data, false);
+  assert.deepEqual(result.data.files, []);
   assert.equal(result.data.receivedAt, null);
 });
 

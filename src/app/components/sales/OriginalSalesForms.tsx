@@ -170,7 +170,7 @@ export function ReviewQuotationModal({ inquiry, onClose, onSubmit }: { inquiry: 
   );
 }
 
-function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNew: boolean; onStart: () => void }) {
+export function InquiryDetailsTab({ inquiry, isNew, onStart }: { inquiry: Inquiry; isNew: boolean; onStart: () => void }) {
   const totalQty = inquiry.products.reduce((s, p) => s + p.qty, 0);
   const [expandedSketches, setExpandedSketches] = useState<Record<string, boolean>>({});
 

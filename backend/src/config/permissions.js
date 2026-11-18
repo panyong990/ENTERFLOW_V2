@@ -45,7 +45,10 @@ const PERMISSIONS = Object.freeze({
     clients: ['read', 'create', 'update'],
     inquiries: ['read', 'update'],
     quotations: ['read', 'create', 'update', 'approve'],
+    invoices: ['read', 'create', 'update'],
+    stockRequests: ['read', 'create'],
     orders: ['read', 'create', 'update', 'approve'],
+    inventory: ['read'],
     notifications: ['read']
   },
 
@@ -58,6 +61,7 @@ const PERMISSIONS = Object.freeze({
   warehouse: {
     production: ['read'],
     inventory: ['read', 'update'],
+    stockRequests: ['read', 'update'],
     deliveries: ['read', 'update'],
     waybills: ['read', 'create', 'update']
   },
@@ -69,6 +73,7 @@ const PERMISSIONS = Object.freeze({
 
   accounting: {
     orders: ['read'],
+    invoices: ['read'],
     deliveries: ['read'],
     deliveryReceipts: ['read', 'create', 'update'],
     payments: ['read', 'create', 'update', 'verify'],
@@ -88,7 +93,7 @@ const PERMISSIONS = Object.freeze({
     dashboard: ['read'],
     clients: ['read'],
     inquiries: ['read', 'create'],
-    quotations: ['read'],
+    quotations: ['read', 'update'],
     orders: ['read'],
     invoices: ['read'],
     notifications: ['read', 'update'],

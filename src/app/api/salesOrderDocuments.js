@@ -16,6 +16,14 @@ export function getSalesPurchaseOrder(orderId, signal) {
   return api(salesPurchaseOrderPath(orderId), { signal });
 }
 
+export function processSalesPurchaseOrder(orderId, body, signal) {
+  return api(`/api/sales/orders/${encodeURIComponent(orderId)}/purchase-order/process`, { method: 'POST', body, signal });
+}
+
+export function generateSalesInvoice(orderId, signal) {
+  return api(`/api/sales/orders/${encodeURIComponent(orderId)}/invoice`, { method: 'POST', body: {}, signal });
+}
+
 function stringId(value) {
   return value == null ? value : String(value);
 }

@@ -2,11 +2,19 @@ const errors = {
   VALIDATION_ERROR: [400, 'Invalid request.'],
   NOT_FOUND: [404, 'Resource was not found.'],
   FORBIDDEN: [403, 'Client account access is required.'],
-  SERVICE_UNAVAILABLE: [503, 'Client portal service is temporarily unavailable.']
+  SERVICE_UNAVAILABLE: [503, 'Client portal service is temporarily unavailable.'],
+  CONFLICT: [409, 'The inquiry could not be created because it conflicts with an existing record.'],
+  QUOTATION_NOT_ELIGIBLE: [409, 'This quotation is no longer eligible for a client decision.'],
+  QUOTATION_ALREADY_DECIDED: [409, 'This quotation already has a recorded decision.'],
+  QUOTATION_CONFLICT: [409, 'The quotation changed before the decision was recorded.']
+  ,QUOTATION_NOT_ELIGIBLE: [409, 'This quotation is not eligible for purchase-order submission.']
+  ,QUOTATION_NOT_ACCEPTED: [409, 'The quotation must be accepted before purchase-order submission.']
+  ,PURCHASE_ORDER_ALREADY_EXISTS: [409, 'A purchase order already exists for this order.']
+  ,REVISION_ALREADY_PENDING: [409, 'A quotation revision request is already pending for this order.']
 };
 
-function respond(response, result) {
-  if (result?.success === true) return response.status(200).json({ success: true, data: result.data });
+function respond(response, result, successStatus = 200) {
+  if (result?.success === true) return response.status(successStatus).json({ success: true, data: result.data });
   const [status, message] = errors[result?.code] ?? errors.SERVICE_UNAVAILABLE;
   return response.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message,
     ...(result?.code === 'VALIDATION_ERROR' ? { errors: result.errors } : {}) });
@@ -14,6 +22,10 @@ function respond(response, result) {
 
 export function createClientPortalController({ service }) {
   return {
+    createInquiry: async (request, response) => {
+      try { return respond(response, await service.createInquiry(request.auth.clientId, request.auth.userId, request.body), 201); }
+      catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
+    },
     profile: async (request, response) => {
       try { return respond(response, await service.profile(request.auth.clientId)); }
       catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
@@ -28,6 +40,22 @@ export function createClientPortalController({ service }) {
     },
     quotations: async (request, response) => {
       try { return respond(response, await service.quotations(request.auth.clientId, request.params.id)); }
+      catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
+    },
+    decideQuotation: async (request, response) => {
+      try {
+        return respond(response, await service.decideQuotation(
+          request.auth.clientId, request.auth.userId, request.params.id, request.params.quotationId,
+          request.body, { requestId: request.requestId }
+        ));
+      } catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
+    },
+    submitPurchaseOrder: async (request, response) => {
+      try { return respond(response, await service.submitPurchaseOrder(request.auth.clientId, request.auth.userId, request.params.id, request.body, { requestId: request.requestId }), 201); }
+      catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
+    },
+    requestQuotationRevision: async (request, response) => {
+      try { return respond(response, await service.requestQuotationRevision(request.auth.clientId, request.auth.userId, request.params.id, request.body, { requestId: request.requestId }), 201); }
       catch { return respond(response, { success: false, code: 'SERVICE_UNAVAILABLE' }); }
     },
     purchaseOrder: async (request, response) => {

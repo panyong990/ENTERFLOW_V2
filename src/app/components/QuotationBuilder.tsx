@@ -8,7 +8,10 @@ import { QuotationPreviewModal } from "./QuotationPreviewModal";
 import { useSession } from "../store/session";
 import { DELIVERY_TRANSIT_ESTIMATE_NOTICE, formatDeliveryTransitEstimate, getDeliveryTransitEstimate } from "../store/productionDeadline";
 
+export type ServerQuotationPreparation = { busy: boolean; onPrepare: (status: "draft" | "sent", doc: QuotationDoc) => void };
+
 interface Props {
+  serverPreparation?: ServerQuotationPreparation;
   inquiry: Inquiry;
   productBoms?: (BOMLine[] | null)[];
   /* Manufacturing unit cost (locked from Tab 2) — used as fallback for single-product */
@@ -31,7 +34,7 @@ const SHIPPING_METHODS: { id: ShippingMethod; description: string }[] = [
   { id: "Client Pick-up", description: "Pick up from Enter-Fil warehouse" },
 ];
 
-export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onSendToClient }: Props) {
+export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, productsManufacturingUnitCosts, discounts = [], vatType, onSendToClient, serverPreparation }: Props) {
   const { rawMaterials } = useMaterials();
   const { requests: stockRequests } = useStockRequests();
   const { generateQuotationNumber } = useOrders();
@@ -83,7 +86,10 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   );
   const [placeOfDelivery, setPlaceOfDelivery] = useState(inquiry.quotationDoc?.placeOfDelivery ?? clientAddress(inquiry.clientName));
   const [validUntil, setValidUntil] = useState(inquiry.quotationDoc?.validUntil ?? defaultValidUntil);
-  const [downpaymentPercent, setDownpaymentPercent] = useState(inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent ?? 30);
+  const [downpaymentPercent, setDownpaymentPercent] = useState(() => {
+    const existing = inquiry.quotationDoc?.downpaymentPercent ?? inquiry.downpaymentPercent;
+    return serverPreparation ? (existing === 20 || existing === 50 ? existing : 20) : existing ?? 30;
+  });
 
   const [showPreview, setShowPreview] = useState(false);
 
@@ -142,7 +148,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   const separateAddons =
     (packagingOpen && !packagingInUnit ? packagingCostPerOrder : 0) +
     (shippingOpen && !shippingInUnit ? shippingCost : 0);
-  const grandTotal = lineSubtotal + separateAddons;
+  const grandTotal = serverPreparation ? Number.NaN : lineSubtotal + separateAddons;
   const discountRates = [...new Set(discounts.filter((discount) => discount.percent > 0).map((discount) => discount.percent))];
   const quotationDiscounts = discountRates.length === 1
     ? [{ label: "Discount", percent: discountRates[0] }]
@@ -160,7 +166,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   };
 
   const buildDoc = (): QuotationDoc => ({
-    quotationNo: inquiry.quotationDoc?.quotationNo ?? generateQuotationNumber(),
+    quotationNo: inquiry.quotationDoc?.quotationNo ?? (serverPreparation ? "UNSAVED" : generateQuotationNumber()),
     date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     validUntil,
     lineItems: adjustedItems.map((lineItem, productIndex) => ({
@@ -213,11 +219,13 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   });
 
   const handlePreview = () => {
+    if (serverPreparation) { toast.info("Save a draft, then open its saved document from quotation history."); return; }
     if (!validateBeforeSend()) return;
     setShowPreview(true);
   };
 
   const handleSend = () => {
+    if (serverPreparation) { serverPreparation.onPrepare("sent", buildDoc()); return; }
     if (!validateBeforeSend()) return;
     const doc = { ...buildDoc(), sentAt: new Date().toISOString(), sentBy: session.name };
     onSendToClient(doc, grandTotal, defaultLeadDays);
@@ -240,6 +248,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
 
   return (
     <div className="flex flex-col gap-4">
+      {serverPreparation && <p className="font-dm text-xs text-slate-500">Order lines are read-only. Save a draft to calculate prices and view the saved quotation in document history. Packaging and freight charges cannot currently be saved.</p>}
       {/* ── Quotation builder ── */}
       <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
@@ -272,25 +281,25 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
                 return (
                   <tr key={idx} style={{ borderBottom: "1px solid #E2E8F0" }}>
                     <td className="px-2 py-2 font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A", textAlign: "center" }}>{li.no}</td>
-                    <td className="px-2 py-2"><input type="number" min={1} value={li.qty} onChange={(e) => updateLineItem(idx, { qty: Number(e.target.value) })} className="font-mono-jb w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400 text-center" style={{ fontSize: 12 }} /></td>
-                    <td className="px-2 py-2"><input value={li.unit} onChange={(e) => updateLineItem(idx, { unit: e.target.value })} className="font-dm w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400 text-center" style={{ fontSize: 12 }} /></td>
+                    <td className="px-2 py-2"><input type="number" min={1} readOnly={!!serverPreparation} value={li.qty} onChange={(e) => updateLineItem(idx, { qty: Number(e.target.value) })} className="font-mono-jb w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400 text-center" style={{ fontSize: 12 }} /></td>
+                    <td className="px-2 py-2"><input readOnly={!!serverPreparation} value={li.unit} onChange={(e) => updateLineItem(idx, { unit: e.target.value })} className="font-dm w-full px-2 py-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400 text-center" style={{ fontSize: 12 }} /></td>
                     <td className="px-2 py-2">
                       <input value={li.description} readOnly aria-label="Product description from order" title="Product description is taken from the order" className="font-dm w-full px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-700 cursor-not-allowed" style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase" }} />
-                      <input value={li.subDescription ?? ""} onChange={(e) => updateLineItem(idx, { subDescription: e.target.value })} placeholder="Sub-line · e.g. SIZE : 135mm × 99 INCHES" className="font-dm w-full px-2 py-1 mt-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 11, color: "#475569", marginLeft: 8, width: "calc(100% - 8px)" }} />
+                      <input readOnly={!!serverPreparation} value={li.subDescription ?? ""} onChange={(e) => updateLineItem(idx, { subDescription: e.target.value })} placeholder="Sub-line · e.g. SIZE : 135mm × 99 INCHES" className="font-dm w-full px-2 py-1 mt-1 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 11, color: "#475569", marginLeft: 8, width: "calc(100% - 8px)" }} />
                     </td>
                     <td className="px-2 py-2">
                       <div className="flex flex-col items-end">
-                        <input type="number" step="0.01" value={li.unitPrice} readOnly aria-label="Unit price from Cost & Material Estimation" title="Unit price is taken from Cost & Material Estimation" className="font-mono-jb w-full px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-500 text-right cursor-not-allowed" style={{ fontSize: 12 }} />
+                        <input type="number" step="0.01" value={Number.isFinite(li.unitPrice) ? li.unitPrice : ""} readOnly aria-label="Unit price from Cost & Material Estimation" title="Unit price is taken from Cost & Material Estimation" className="font-mono-jb w-full px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-500 text-right cursor-not-allowed" style={{ fontSize: 12 }} />
                         {inclusivePerUnit > 0 && (
                           <span className="font-mono-jb mt-0.5" style={{ fontSize: 10, color: "#16A34A" }}>+ ₱{inclusivePerUnit.toFixed(2)} add-ons</span>
                         )}
-                        <span className="font-mono-jb mt-0.5" style={{ fontSize: 11, color: "#475569" }}>= ₱{finalUnit.toFixed(2)}</span>
+                        <span className="font-mono-jb mt-0.5" style={{ fontSize: 11, color: "#475569" }}>= ₱{(Number.isFinite(finalUnit) ? finalUnit.toFixed(2) : "—")}</span>
                       </div>
                     </td>
                     <td className="px-2 py-2 font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", textAlign: "right" }}>
-                      ₱{finalTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₱{(Number.isFinite(finalTotal) ? finalTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—")}
                       {inclusivePerUnit > 0 && (
-                        <div className="font-mono-jb" style={{ fontSize: 10, color: "#94A3B8" }}>(base ₱{total.toFixed(2)})</div>
+                        <div className="font-mono-jb" style={{ fontSize: 10, color: "#94A3B8" }}>(base ₱{(Number.isFinite(total) ? total.toFixed(2) : "—")})</div>
                       )}
                     </td>
                   </tr>
@@ -329,7 +338,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
           {/* Packaging */}
           <AddonRow
             open={packagingOpen}
-            onToggle={() => setPackagingOpen((v) => !v)}
+            onToggle={() => { if (serverPreparation) { toast.info("Packaging charges cannot be saved by the current quotation service."); return; } setPackagingOpen(v => !v); }}
             label="📦 Add packaging cost"
             color="#1A2B4A"
           >
@@ -353,7 +362,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
           {/* Shipping */}
           <AddonRow
             open={shippingOpen}
-            onToggle={() => setShippingOpen((v) => !v)}
+            onToggle={() => { if (serverPreparation) { toast.info("Freight charges cannot be saved by the current quotation service."); return; } setShippingOpen(v => !v); }}
             label="🚚 Add shipping / freight cost"
             color="#7C3AED"
           >
@@ -398,7 +407,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
             <div className="font-dm mb-3" style={{ fontSize: 11, fontWeight: 800, color: "#0F172A", letterSpacing: 0.5, textTransform: "uppercase", borderBottom: "1.5px solid #0F172A", paddingBottom: 4 }}>Terms and Conditions</div>
             <div className="flex flex-col gap-2.5">
               <Field label="Terms of Payment">
-                <select value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value as any)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
+                <select disabled={!!serverPreparation} value={termsOfPayment} onChange={(e) => setTermsOfPayment(e.target.value as any)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
                   <option value="15-Day Terms">15 Days</option>
                   <option value="30-Day Terms">30 Days</option>
                 </select>
@@ -410,7 +419,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
                 </select>
               </Field>
               <Field label="Place of Delivery *">
-                <input value={placeOfDelivery} onChange={(e) => setPlaceOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
+                <input aria-label="Place of Delivery" value={placeOfDelivery} onChange={(e) => setPlaceOfDelivery(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
               </Field>
               <Field label="Validity">
                 <input value={validUntil} onChange={(e) => setValidUntil(e.target.value)} placeholder="e.g. 30 days · May 26, 2026" className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }} />
@@ -422,7 +431,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
           <div className="rounded-lg overflow-hidden" style={{ border: "1.5px solid #1A2B4A" }}>
             <div className="px-5 py-4 flex flex-col items-end gap-1.5" style={{ backgroundColor: "#1A2B4A", color: "white" }}>
               <span className="font-dm" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", opacity: 0.7 }}>Total</span>
-              <span className="font-syne" style={{ fontSize: 26, lineHeight: 1.15, fontWeight: 800 }}>₱ {grandTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="font-syne" style={{ fontSize: 26, lineHeight: 1.15, fontWeight: 800 }}>₱ {(Number.isFinite(grandTotal) ? grandTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—")}</span>
               {quotationDiscounts.map((discount) => (
                 <span key={`${discount.label}-${discount.percent}`} className="font-dm mt-1 pt-2" style={{ fontSize: 11, fontWeight: 600, color: "#BBF7D0", borderTop: "1px solid rgba(187,247,208,0.25)" }}>
                   {discount.label === "Discount" ? "Discount applied" : `${discount.label} discount`}: {discount.percent}%
@@ -435,7 +444,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
             <div className="px-4 py-3 flex flex-col gap-1 text-right" style={{ backgroundColor: "white", borderTop: "1px solid #E2E8F0" }}>
               <div className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#64748B" }}>
                 <span>Line items subtotal</span>
-                <span className="font-mono-jb">₱{lineSubtotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="font-mono-jb">₱{Number.isFinite(lineSubtotal) ? lineSubtotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}</span>
               </div>
               {separateAddons > 0 && (
                 <div className="font-dm flex items-center justify-between" style={{ fontSize: 11, color: "#64748B" }}>
@@ -474,13 +483,13 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-blue-200 pt-2">
           <span className="font-dm" style={{ fontSize: 12, color: "#1E3A8A", fontWeight: 600 }}>Amount due before production ({downpaymentPercent}%)</span>
           <span className="font-mono-jb" style={{ fontSize: 16, color: "#1D4ED8", fontWeight: 800 }}>
-            ₱{(grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ₱{(Number.isFinite((grandTotal * (downpaymentPercent / 100))) ? (grandTotal * (downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—")}
           </span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <span className="font-dm" style={{ fontSize: 11, color: "#3B82F6" }}>Balance upon delivery</span>
           <span className="font-mono-jb" style={{ fontSize: 12, color: "#1E3A8A", fontWeight: 700 }}>
-            ₱{(grandTotal * (1 - downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ₱{(Number.isFinite((grandTotal * (1 - downpaymentPercent / 100))) ? (grandTotal * (1 - downpaymentPercent / 100)).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—")}
           </span>
         </div>
         <div className="font-dm" style={{ fontSize: 10, color: "#3B82F6", lineHeight: 1.4 }}>
@@ -518,7 +527,8 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
         <button onClick={handlePreview} className="flex items-center gap-2 px-5 py-2.5 rounded-md font-dm hover:bg-slate-50" style={{ fontSize: 13, fontWeight: 700, color: "#1A2B4A", border: "2px solid #1A2B4A", letterSpacing: 0.4 }}>
           <Eye size={14} /> Preview Quotation
         </button>
-        <button onClick={handleSend} className="flex items-center gap-2 px-5 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
+        {serverPreparation && <button type="button" disabled={serverPreparation.busy} onClick={() => serverPreparation.onPrepare("draft", buildDoc())} className="font-dm rounded-md border-2 border-[#1A2B4A] px-5 py-2.5 text-sm font-bold text-[#1A2B4A]">Save draft</button>}
+        <button disabled={serverPreparation?.busy} onClick={handleSend} className="flex items-center gap-2 px-5 py-2.5 rounded-md text-white font-dm hover:opacity-90" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>
           <Send size={14} /> Send to Client →
         </button>
       </div>

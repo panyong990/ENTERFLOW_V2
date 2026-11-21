@@ -22,3 +22,7 @@ node_modules
 # Environment-specific local MySQL public CA certificates
 /backend/certs/local/
 /backend/scripts/provision-initial-admin.local.mjs
+
+# Task 002 isolated integration-test identities, approvals, evidence and journals
+/backend/test/local/task-002/
+/backend/certs/local/task-002/

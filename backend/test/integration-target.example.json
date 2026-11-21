@@ -1,0 +1,32 @@
+{
+  "scope": "enterflow-task-002-inventory-auth",
+  "runId": "0123456789abcdef",
+  "targetMode": "existing-owned",
+  "host": "127.0.0.1",
+  "port": 53123,
+  "database": "enterflow_it_0123456789abcdef",
+  "serverVersion": "8.4.13",
+  "serverUuid": "123e4567-e89b-42d3-a456-426614174000",
+  "serverName": "MySQL_Server_8.4.13_Auto_Generated_Server_Certificate",
+  "caSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "certificateSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "lowerCaseTableNames": 0,
+  "sqlMode": [
+    "IGNORE_SPACE",
+    "ONLY_FULL_GROUP_BY",
+    "STRICT_TRANS_TABLES",
+    "NO_ZERO_IN_DATE",
+    "NO_ZERO_DATE",
+    "ERROR_FOR_DIVISION_BY_ZERO",
+    "NO_ENGINE_SUBSTITUTION"
+  ],
+  "container": {
+    "id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "name": "enterflow-it-0123456789abcdef",
+    "labelKey": "enterflow.task002",
+    "labelValue": "0123456789abcdef",
+    "image": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+    "tmpfsDataDirectory": true,
+    "allowRemoval": false
+  }
+}

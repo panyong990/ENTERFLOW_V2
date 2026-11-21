@@ -1,0 +1,424 @@
+{
+  "status": "proposed-not-approved",
+  "capturedAt": "2026-11-19T09:45:53.124Z",
+  "source": {
+    "databaseName": "enterflow_db",
+    "version": "8.4.13",
+    "sqlMode": "IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "timeZone": "SYSTEM",
+    "lowerCaseTableNames": 0
+  },
+  "scope": "POST /api/auth/login and authenticated GET /api/inventory; no inventory mutations",
+  "snapshotDigestContract": {
+    "input": "inventory-auth.schema.proposed.sql",
+    "byteSource": "Entire file exactly as stored on disk",
+    "encoding": "UTF-8 without BOM",
+    "lineEndings": "LF bytes only; no conversion before hashing",
+    "whitespace": "Preserve every byte",
+    "trailingNewline": "Exactly one final LF byte, included in the digest",
+    "normalizationBeforeHash": false,
+    "algorithm": "SHA-256",
+    "hexEncoding": "lowercase",
+    "expectedSha256": "20675e7330b692f4fa20ac6f8a8d476d9e042f8a09c00ae96e2e08cfc9391caf"
+  },
+  "perTableDigestContract": {
+    "input": "One MySQL 8.4.13 SHOW CREATE TABLE Create Table value, from CREATE TABLE through the final table option, without a semicolon",
+    "normalization": "Count table-option matches of ') ENGINE=InnoDB AUTO_INCREMENT=<positive decimal> DEFAULT CHARSET='. If zero, leave input unchanged; if one, delete only ' AUTO_INCREMENT=<positive decimal>'; if more than one or any unmatched table-option AUTO_INCREMENT= remains, reject. Preserve column AUTO_INCREMENT and every other character.",
+    "encoding": "UTF-8 without BOM",
+    "lineEndings": "LF only",
+    "whitespace": "No trimming, reindentation, case folding, quote changes, or other normalization",
+    "algorithm": "SHA-256",
+    "hexEncoding": "lowercase",
+    "requiredEnvironment": "MySQL 8.4.13, lower_case_table_names=0, and the manifest source SQL mode/charset/collation"
+  },
+  "fixtureContract": {
+    "mode": "Direct isolated setup; never Admin employee creation",
+    "runId": "Generate once per approved run as 16 lowercase hexadecimal characters from 8 cryptographically random bytes",
+    "loginIdentifier": "warehouse.<runId>@example.invalid",
+    "displayName": "Task 002 Warehouse <runId>",
+    "username": "ef_it_warehouse_<runId>",
+    "password": "Generate 32 cryptographically random bytes and encode base64url; keep only in runner memory",
+    "passwordHash": "Call backend/src/services/password.service.js hashPassword on the generated password; require a nonempty string of at most 255 characters",
+    "roleCode": "warehouse",
+    "accountType": "employee",
+    "clientId": null,
+    "active": 1
+  },
+  "snapshotSha256": "20675e7330b692f4fa20ac6f8a8d476d9e042f8a09c00ae96e2e08cfc9391caf",
+  "tableOrder": [
+    "roles",
+    "payment_terms",
+    "material_categories",
+    "units",
+    "filter_types",
+    "clients",
+    "users",
+    "user_sessions",
+    "product_specifications",
+    "materials",
+    "finished_goods"
+  ],
+  "tables": [
+    {
+      "table": "roles",
+      "sha256": "c6e874e5c748218e897804a60e4e2f9449454a5d88c063f148f4070b66d18b2f",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "table": "payment_terms",
+      "sha256": "2a5e9dad2c1acd0b4df6e4a4e7fa51a70f4a1baa97c17bc0b8f9a621a98a92e4",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "table": "material_categories",
+      "sha256": "7f75aa4ccc1f08aec3fe98759501e9782b021abe0575532654a7e2c5545c34ab",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "table": "units",
+      "sha256": "1a891398e304a40c00314eb6d50665653788d409fb2cdb1189636210c82499df",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "table": "filter_types",
+      "sha256": "af13cdbb453c9cbea9da711e2c8a7d666fb085ffbf9746ae391309e21895766c",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "table": "clients",
+      "sha256": "2ac5bfcc91ba24d5738a6e963cea197100dfdbd61c8866293f2eb128943afc28",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "clients_ibfk_1",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_client_company",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "CONSTRAINT_NAME": "clients_ibfk_1",
+          "COLUMN_NAME": "payment_term_code",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "payment_terms",
+          "REFERENCED_COLUMN_NAME": "code"
+        }
+      ]
+    },
+    {
+      "table": "users",
+      "sha256": "9bc370c3220dbc4b5b12374e7e5ff4f8e7afd0f21e0499e80938cf9b85a2acbf",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "ck_user_identity",
+          "CONSTRAINT_TYPE": "CHECK",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_employee_number",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_user_client_account",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_user_email",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_user_username",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "users_ibfk_1",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "users_ibfk_2",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "CONSTRAINT_NAME": "users_ibfk_1",
+          "COLUMN_NAME": "role_code",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "roles",
+          "REFERENCED_COLUMN_NAME": "code"
+        },
+        {
+          "CONSTRAINT_NAME": "users_ibfk_2",
+          "COLUMN_NAME": "client_id",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "clients",
+          "REFERENCED_COLUMN_NAME": "id"
+        }
+      ]
+    },
+    {
+      "table": "user_sessions",
+      "sha256": "4e9d65cf5fd1b254bbf7f8d03e8e18b1487bb0a2962e2c5857c8acb0488ca769",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "fk_user_sessions_user",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_user_sessions_token_hash",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "CONSTRAINT_NAME": "fk_user_sessions_user",
+          "COLUMN_NAME": "user_id",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "users",
+          "REFERENCED_COLUMN_NAME": "id"
+        }
+      ]
+    },
+    {
+      "table": "product_specifications",
+      "sha256": "23272e3bb36d8344739728f5f94d7805038e725188f84ec44803161c37cc39e3",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "product_specifications_ibfk_1",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "product_specifications_ibfk_2",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_spec_client",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "CONSTRAINT_NAME": "product_specifications_ibfk_1",
+          "COLUMN_NAME": "client_id",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "clients",
+          "REFERENCED_COLUMN_NAME": "id"
+        },
+        {
+          "CONSTRAINT_NAME": "product_specifications_ibfk_2",
+          "COLUMN_NAME": "filter_type_code",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "filter_types",
+          "REFERENCED_COLUMN_NAME": "code"
+        }
+      ]
+    },
+    {
+      "table": "materials",
+      "sha256": "621d5bf9c17e4a757eb1591ac9f5bb6f74033a7c6aa1ef4663e08f7164e0da52",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "ck_material_stock_provenance",
+          "CONSTRAINT_TYPE": "CHECK",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "ck_material_values",
+          "CONSTRAINT_TYPE": "CHECK",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "fk_material_costing_price_approver",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "materials_ibfk_1",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "materials_ibfk_2",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_material_item_code",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_material_source_row",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "CONSTRAINT_NAME": "fk_material_costing_price_approver",
+          "COLUMN_NAME": "costing_price_approved_by",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "users",
+          "REFERENCED_COLUMN_NAME": "id"
+        },
+        {
+          "CONSTRAINT_NAME": "materials_ibfk_1",
+          "COLUMN_NAME": "category_code",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "material_categories",
+          "REFERENCED_COLUMN_NAME": "code"
+        },
+        {
+          "CONSTRAINT_NAME": "materials_ibfk_2",
+          "COLUMN_NAME": "unit_code",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "units",
+          "REFERENCED_COLUMN_NAME": "code"
+        }
+      ]
+    },
+    {
+      "table": "finished_goods",
+      "sha256": "33eab5d064b19e6549dcf45d1509946e1452d77bcd12ce126b257bb9d16ad130",
+      "constraints": [
+        {
+          "CONSTRAINT_NAME": "finished_goods_ibfk_1",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "finished_goods_ibfk_2",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "finished_goods_ibfk_3",
+          "CONSTRAINT_TYPE": "FOREIGN KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "PRIMARY",
+          "CONSTRAINT_TYPE": "PRIMARY KEY",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_finished_client_pair",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        },
+        {
+          "CONSTRAINT_NAME": "uq_finished_item_code",
+          "CONSTRAINT_TYPE": "UNIQUE",
+          "ENFORCED": "YES"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "CONSTRAINT_NAME": "finished_goods_ibfk_1",
+          "COLUMN_NAME": "client_id",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "clients",
+          "REFERENCED_COLUMN_NAME": "id"
+        },
+        {
+          "CONSTRAINT_NAME": "finished_goods_ibfk_2",
+          "COLUMN_NAME": "specification_id",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "product_specifications",
+          "REFERENCED_COLUMN_NAME": "id"
+        },
+        {
+          "CONSTRAINT_NAME": "finished_goods_ibfk_2",
+          "COLUMN_NAME": "client_id",
+          "ORDINAL_POSITION": 2,
+          "REFERENCED_TABLE_NAME": "product_specifications",
+          "REFERENCED_COLUMN_NAME": "client_id"
+        },
+        {
+          "CONSTRAINT_NAME": "finished_goods_ibfk_3",
+          "COLUMN_NAME": "updated_by",
+          "ORDINAL_POSITION": 1,
+          "REFERENCED_TABLE_NAME": "users",
+          "REFERENCED_COLUMN_NAME": "id"
+        }
+      ]
+    }
+  ],
+  "excluded": "All table records; migration sources/history/checksums; credentials/grants; unrelated tables; routines/events; Docker resources",
+  "triggerCheck": "No triggers visible for allowlisted tables; visibility is limited by source account privileges."
+}

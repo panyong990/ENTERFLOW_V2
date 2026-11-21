@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   resolveServerBinding,
+  loadRuntimeEnvironment,
   validateRuntimeConfig,
   validateSessionTimeouts
 } from './runtime-config.js';
@@ -21,6 +22,27 @@ function validEnvironment(overrides = {}) {
     NODE_ENV: 'development',
     ...overrides
   };
+}
+
+function integrationEnvironment(overrides = {}) {
+  return validEnvironment({
+    DB_PORT: '53123',
+    DB_NAME: 'enterflow_it_0123456789abcdef',
+    DB_USER: 'ef_it_api_0123456789abcdef',
+    APP_ORIGIN: 'http://127.0.0.1:43123',
+    HOST: '127.0.0.1',
+    PORT: '43123',
+    NODE_ENV: 'test',
+    DB_SSL_CA_PATH: 'backend/certs/local/task002-ca.pem',
+    DB_SSL_SERVER_NAME: 'MySQL_Server_8.4.13_Auto_Generated_Server_Certificate',
+    INTEGRATION_TEST_RUNTIME: '1',
+    INTEGRATION_TEST_TARGET_VERIFIED: '1',
+    INTEGRATION_TEST_RUN_ID: '0123456789abcdef',
+    INTEGRATION_TEST_SERVER_UUID: '123e4567-e89b-42d3-a456-426614174000',
+    INTEGRATION_TEST_CERT_SHA256: 'a'.repeat(64),
+    INTEGRATION_TEST_SQL_MODE: 'IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION',
+    ...overrides
+  });
 }
 
 test('validates local runtime configuration without exposing secret values', () => {
@@ -82,4 +104,34 @@ test('resolves local host and default port without exposing the service', () => 
   assert.deepEqual(resolveServerBinding({ HOST: '127.0.0.1', PORT: '3001' }), { host: '127.0.0.1', port: 3001 });
   assert.throws(() => resolveServerBinding({ HOST: 'bad host', PORT: '3000' }), /HOST/);
   assert.throws(() => resolveServerBinding({ PORT: '70000' }), /PORT/);
+});
+
+test('accepts a fully pinned integration runtime and skips development dotenv loading', () => {
+  const environment = integrationEnvironment();
+  const config = validateRuntimeConfig(environment);
+  assert.deepEqual(config.integration, {
+    runId: '0123456789abcdef',
+    serverUuid: '123e4567-e89b-42d3-a456-426614174000',
+    certificateSha256: 'a'.repeat(64),
+    sqlMode: ['IGNORE_SPACE', 'ONLY_FULL_GROUP_BY', 'STRICT_TRANS_TABLES', 'NO_ZERO_IN_DATE', 'NO_ZERO_DATE', 'ERROR_FOR_DIVISION_BY_ZERO', 'NO_ENGINE_SUBSTITUTION']
+  });
+  assert.deepEqual(loadRuntimeEnvironment(environment), { error: null });
+});
+
+test('integration runtime rejects development fallback and incomplete identity pins', () => {
+  for (const overrides of [
+    { DB_NAME: 'enterflow_db' },
+    { DB_PORT: '3308' },
+    { DB_HOST: 'localhost' },
+    { HOST: '0.0.0.0' },
+    { APP_ORIGIN: 'http://localhost:43123' },
+    { NODE_ENV: 'development' },
+    { INTEGRATION_TEST_TARGET_VERIFIED: '0' },
+    { INTEGRATION_TEST_SERVER_UUID: '' },
+    { INTEGRATION_TEST_CERT_SHA256: 'bad' },
+    { INTEGRATION_TEST_SQL_MODE: '' },
+    { BROWSER_TEST_RUNTIME: '1' }
+  ]) {
+    assert.throws(() => validateRuntimeConfig(integrationEnvironment(overrides)));
+  }
 });

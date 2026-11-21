@@ -14,6 +14,7 @@
     "db:test": "node --test database/migration-core.test.mjs",
     "db:provision-employees": "node database/provision-employees.mjs",
     "server": "node backend/src/server.js",
+    "test:mysql:inventory-auth": "node backend/test/inventory-auth.mysql.integration.mjs",
     "test:browser:smoke": "playwright test --config=playwright.config.mjs tests/browser/environment.smoke.spec.mjs",
     "test:browser:admin:smoke": "playwright test --config=playwright.admin.config.mjs",
     "test:browser": "playwright test --config=playwright.config.mjs"

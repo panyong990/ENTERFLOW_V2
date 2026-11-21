@@ -27,3 +27,20 @@
 - Run focused tests during development and broader regressions at suitable milestones. Prefer genuine authenticated API-to-MySQL persistence/read-back evidence; mocks and source checks do not prove live behavior.
 - Stop dependent work when authoritative business data or explicit approval is missing. Continue only independently authorized work.
 - Keep completion records concise: changed files, completed work, evidence, limitations/blockers, pending approvals, and the Database Change Report when applicable. Do not start the next task automatically.
+
+
+<!-- TASK_002_RUNTIME_CLOSED_2026_11_21 -->
+## Task 002 — Completed (2026-11-21)
+
+- Status: COMPLETE for approved isolated runtime testing and guarded cleanup.
+- First and second isolated integration runs recorded as PASS.
+- Second run ID: 2f07518b9819d0c1.
+- Login and Inventory APIs: HTTP 200.
+- Runtime grants, attestation, and schema verification: PASS.
+- Guarded cleanup: 1 session, 1 material, and 1 user deleted.
+- Final ownership journal: cleaned; cleanupStatus=complete.
+- Report: docs/TASK_002_FINAL_RUNTIME_COMPLETION_REPORT_2026-11-21.md.
+- Full handoff: maintained separately in Google Docs.
+- Preserve all existing security, RBAC, business rules, database approval/reporting, and Git safeguards.
+- No Task 002 reruns, migrations, or test infrastructure teardown without separate approval.
+- Task 003 is not automatically authorized.

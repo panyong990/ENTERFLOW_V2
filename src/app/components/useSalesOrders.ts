@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { normalizeOperationalAvailability } from "../store/inventoryModel.js";
 import { getSalesOrder, getSalesStockAvailability, listSalesOrders, mapSalesOrder } from "../api/salesOrders.js";
 
 export type SalesOrderStatus = "all" | "open" | "archived";
@@ -108,6 +109,7 @@ export type SalesOrderDetail = SalesOrderRow & {
 };
 
 export interface SalesStockAssessment {
+  quantityStatus?: "unknown" | "provisional_sample" | "verified";
   inventoryId: string | null; description: string; classification: "raw_material" | "finished_good";
   categoryCode: string | null; requiredQuantity: number | null; availableQuantity: number | null;
   shortageQuantity: number | null; unit: string | null; inventoryState: "recorded" | "zero_stock" | "inventory_unavailable";
@@ -226,7 +228,7 @@ export function useSalesStockAvailability(enabled: boolean, id: string | null) {
     const controller = new AbortController();
     setLoading(true); setError("");
     getSalesStockAvailability(id, controller.signal)
-      .then(result => { if (token === sequence.current) setData(result as SalesStockAvailability); })
+      .then(result => { if (token === sequence.current) setData(normalizeOperationalAvailability(result) as SalesStockAvailability); })
       .catch(cause => { if (token === sequence.current && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Stock availability is unavailable."); })
       .finally(() => { if (token === sequence.current && !controller.signal.aborted) setLoading(false); });
     return () => { ++sequence.current; controller.abort(); };

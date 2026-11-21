@@ -78,6 +78,35 @@ test('Real Production uses authenticated Job Order retrieval while keeping the e
   assert.match(operationsProduction, /Job Orders are loaded from the authenticated Production API/);
 });
 
+test('Q02 Warehouse observes only edited fields and keeps raw sample indicators', () => {
+  assert.match(inventory, /const \[quantityObserved, setQuantityObserved\] = useState\(false\)/);
+  assert.match(inventory, /const \[thresholdObserved, setThresholdObserved\] = useState\(false\)/);
+  assert.match(inventory, /materialObservationFields\(\{/);
+  assert.match(inventory, /onChange=\{[^\n]*setQuantityObserved\(true\)/);
+  assert.match(inventory, /onChange=\{[^\n]*setThresholdObserved\(true\)/);
+  assert.match(inventory, /quantityStatus === "provisional_sample"/);
+  assert.match(inventory, /thresholdStatus === "provisional_sample"/);
+  assert.match(materials, /operationalInventoryNumber\(material.qtyInStock, material.quantityStatus\)/);
+  assert.match(materials, /operationalInventoryNumber\(material.threshold, material.thresholdStatus\)/);
+});
+
+test('Q02 Stock Request history does not infer current stock status from unversioned request snapshots', async () => {
+  const modal = await readFile(new URL('./StockRequestsModal.tsx', import.meta.url), 'utf8');
+  assert.match(modal, /Verification provenance for request-time snapshots is not recorded/);
+  assert.match(modal, /Current stock status uses Warehouse observations/);
+  assert.match(modal, /: !apiMode && "shortageAtRequest" in material/);
+  assert.match(modal, /material.stockAtRequest == null \? "Not recorded"/);
+  assert.match(modal, /material.shortageAtRequest == null \? "Not recorded"/);
+  assert.match(modal, /response.status === "sufficient" \? "SUFFICIENT" : "SHORTAGE"/);
+});
+
+test('Q02 future source imports retain sample provenance and do not approve reference prices', async () => {
+  const importer = await readFile(new URL('../../../database/material-master-source-import.mjs', import.meta.url), 'utf8');
+  assert.match(importer, /approved_costing_price,quantity_on_hand,reorder_threshold/);
+  assert.match(importer, /NULL,10,2,NULL,TRUE,'provisional_sample','provisional_sample'/);
+  // Reads source text only; never imports or invokes the importer module.
+});
+
 test('Real role routing continues to use the existing Inventory and Production components', () => {
   assert.match(workspace, /route === "production"/);
   assert.match(workspace, /route === "inventory" \|\| route === "inventory-finished"/);

@@ -2,6 +2,103 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInventoryService } from './inventory.service.js';
 
+function observationHarness({ current = {}, failAudit = false } = {}) {
+  const calls = [], audits = [];
+  const persisted = { id: '61', itemCode: 'RM-TEST-1', name: 'Media', category: null,
+    unitCode: 'pcs', sourceUnit: 'pc', quantityOnHand: '10.0000', quantityStatus: 'provisional_sample',
+    threshold: '2.0000', thresholdStatus: 'provisional_sample', supplier: null, ...current };
+  let staged, stagedAudit;
+  const fields = { quantity_on_hand: 'quantityOnHand', quantity_status: 'quantityStatus', reorder_threshold: 'threshold', threshold_status: 'thresholdStatus', name: 'name' };
+  const connection = {
+    async beginTransaction() { calls.push('BEGIN'); staged = { ...persisted }; },
+    async execute(sql, params) {
+      calls.push({ sql, params });
+      if (sql.startsWith('SELECT CAST(id AS CHAR)')) return [[{ ...staged }]];
+      if (sql.startsWith('UPDATE materials')) {
+        const assignments = sql.slice(sql.indexOf(' SET ') + 5, sql.indexOf(',updated_at=' )).split(',');
+        assignments.forEach((assignment, index) => {
+          assert.match(assignment, /^[a-z_]+=\?$/);
+          const field = fields[assignment.slice(0, -2)];
+          assert.ok(field, `Unexpected observation field ${assignment}`);
+          staged[field] = params[index];
+        });
+        assert.equal(params.at(-1), '61');
+        return [{ affectedRows: 1 }];
+      }
+      if (sql.startsWith('INSERT INTO audit_events')) {
+        if (failAudit) throw new Error('Synthetic audit failure');
+        stagedAudit = { before: JSON.parse(params[4]), after: JSON.parse(params[5]) };
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`Unexpected SQL in observation fixture: ${sql}`);
+    },
+    async commit() { calls.push('COMMIT'); Object.assign(persisted, staged); if (stagedAudit) audits.push(stagedAudit); },
+    async rollback() { calls.push('ROLLBACK'); staged = undefined; stagedAudit = undefined; }, release() {},
+  };
+  return { service: createInventoryService({ db: { async getConnection() { calls.push('CONNECT_DOUBLE'); return connection; } } }), calls, persisted, audits };
+}
+
+for (const scenario of [
+  { name: 'changed sample quantity', body: { quantityOnHand: '15' }, expected: { quantityOnHand: '15', quantityStatus: 'verified', thresholdStatus: 'provisional_sample' } },
+  { name: 'same sample quantity', body: { quantityOnHand: '10' }, expected: { quantityStatus: 'verified', thresholdStatus: 'provisional_sample' } },
+  { name: 'same sample threshold', body: { threshold: '2' }, expected: { quantityStatus: 'provisional_sample', thresholdStatus: 'verified' } },
+  { name: 'same sample quantity and threshold', body: { quantityOnHand: '10.0000', threshold: '2.0000' }, expected: { quantityStatus: 'verified', thresholdStatus: 'verified' } },
+  { name: 'same sample zero is verified', current: { quantityOnHand: '0.0000' }, body: { quantityOnHand: '0' }, expected: { quantityOnHand: '0', quantityStatus: 'verified', thresholdStatus: 'provisional_sample' } },
+  { name: 'sample cleared to unknown', body: { quantityOnHand: null }, expected: { quantityOnHand: null, quantityStatus: 'unknown', thresholdStatus: 'provisional_sample' } },
+  { name: 'threshold cleared independently', body: { threshold: null }, expected: { quantityStatus: 'provisional_sample', threshold: null, thresholdStatus: 'unknown' } },
+  { name: 'details edit does not verify observations', body: { name: 'Renamed media' }, expected: { name: 'Renamed media', quantityStatus: 'provisional_sample', thresholdStatus: 'provisional_sample' } },
+  { name: 'verified unchanged quantity is a no-op', current: { quantityStatus: 'verified' }, body: { quantityOnHand: '10' }, noOp: true },
+  { name: 'verified unchanged threshold is a no-op', current: { thresholdStatus: 'verified' }, body: { threshold: '2.0000' }, noOp: true },
+  { name: 'unchanged unknown remains unknown', current: { quantityOnHand: null, quantityStatus: 'unknown' }, body: { quantityOnHand: null }, noOp: true },
+]) {
+  test(`Q02 explicit observation: ${scenario.name}`, async () => {
+    const h = observationHarness({ current: scenario.current });
+    const before = { ...h.persisted };
+    const result = await h.service.update({ userId: '9', accountType: 'employee', roleCode: 'warehouse' }, '61', scenario.body);
+    assert.equal(result.success, true);
+    assert.ok(h.calls.includes('COMMIT'));
+    if (scenario.noOp) {
+      assert.deepEqual(h.persisted, before);
+      assert.equal(h.calls.some(call => /^(UPDATE|INSERT)/.test(call.sql ?? '')), false);
+      assert.equal(h.audits.length, 0);
+    } else {
+      for (const [key, value] of Object.entries(scenario.expected)) {
+        assert.equal(result.data[key], value);
+        assert.equal(h.persisted[key], value);
+      }
+      assert.equal(h.audits.length, 1);
+      assert.equal(h.audits[0].before.quantityStatus, before.quantityStatus);
+      assert.equal(h.audits[0].before.thresholdStatus, before.thresholdStatus);
+      assert.equal(h.audits[0].after.quantityStatus, h.persisted.quantityStatus);
+      assert.equal(h.audits[0].after.thresholdStatus, h.persisted.thresholdStatus);
+    }
+    assert.equal(h.calls.some(call => /approved_costing_price|material_movements/.test(call.sql ?? '')), false);
+  });
+}
+
+test('Q02 audit failure rolls back a provenance-only observation in the transaction double', async () => {
+  const h = observationHarness({ failAudit: true });
+  const before = { ...h.persisted };
+  await assert.rejects(h.service.update({ userId: '9', accountType: 'employee', roleCode: 'admin' }, '61', { quantityOnHand: '10', threshold: '2' }), /Synthetic audit failure/);
+  assert.ok(h.calls.some(call => call.sql?.startsWith('UPDATE materials')));
+  assert.ok(h.calls.includes('ROLLBACK'));
+  assert.equal(h.calls.includes('COMMIT'), false);
+  assert.deepEqual(h.persisted, before);
+  assert.deepEqual(h.audits, []);
+});
+
+test('Q02 only authorized maintenance actors can establish an observation; provenance cannot be forged directly', async () => {
+  for (const actor of [{ userId: '9', accountType: 'employee', roleCode: 'sales' }, { userId: '9', accountType: 'client', roleCode: 'warehouse' }]) {
+    const h = observationHarness();
+    assert.equal((await h.service.update(actor, '61', { quantityOnHand: '10' })).code, 'FORBIDDEN');
+    assert.equal(h.calls.length, 0);
+  }
+  const h = observationHarness();
+  assert.equal((await h.service.update({ userId: '9', accountType: 'employee', roleCode: 'admin' }, '61', { quantityStatus: 'verified' })).code, 'VALIDATION_ERROR');
+  assert.equal(h.calls.length, 0);
+  assert.equal((await h.service.update({ userId: '9', accountType: 'employee', roleCode: 'admin' }, '61', { quantityOnHand: '10' })).data.quantityStatus, 'verified');
+});
+
 const materialRows = [
   {
     id: '61', itemCode: 'RM-TEST-1', name: 'Media', category: null, unit: 'pc',
@@ -103,6 +200,14 @@ test('Warehouse material creation starts with unknown stock, threshold, and cost
   assert.match(insert.sql, /VALUES \(\?,\?,\?,\?,\?,0,NULL,NULL,NULL,\?,\?,TRUE,'unknown',\?\)/);
   assert.deepEqual(insert.params, ['RM-NEW-1', 'New material', null, 'pcs', 'BUNDLE', null, null, 'unknown']);
   assert.equal(calls.find(call => call.sql.startsWith('INSERT INTO audit_events')).params[1], 'inventory.material.created');
+  const observedThreshold = await service.create(
+    { userId: '9', accountType: 'employee', roleCode: 'warehouse' },
+    { name: 'Threshold observation', unit: 'pcs', threshold: '2' },
+  );
+  assert.equal(observedThreshold.data.thresholdStatus, 'verified');
+  assert.equal(observedThreshold.data.quantityStatus, 'unknown');
+  const audit = calls.filter(call => call.sql.startsWith('INSERT INTO audit_events')).at(-1);
+  assert.equal(JSON.parse(audit.params[4]).thresholdStatus, 'verified');
 });
 
 test('Warehouse detail edits can set a threshold to zero but cannot update stock or prices', async () => {

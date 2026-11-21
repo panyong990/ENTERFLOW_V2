@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeInventoryCatalog, assessMaterialStock } from './inventoryModel.js';
+import { mergeInventoryCatalog, assessMaterialStock, operationalInventoryNumber, materialObservationFields, normalizeOperationalAvailability, stockAvailabilityQuantityLabel } from './inventoryModel.js';
 import { stockRequestReady } from '../components/sales/stockRequestInput.mjs';
 const reference={id:'BUSINESS-CODE',name:'Verified business material',category:'filter_media',unit:'kg',unitPrice:10,threshold:3};
 const row={id:'9007199254740993',itemCode:reference.id,name:reference.name,category:reference.category,unit:reference.unit,referenceUnitPrice:'10.0000',approvedCostingPrice:null,threshold:'3.0000',qtyInStock:null};
@@ -55,4 +55,55 @@ test('finished-good names are not fabricated from item codes when the API omits 
 });
 test('malformed inventory contracts, duplicate codes and unsafe material IDs are rejected',()=>{
   for(const payload of [{},{materials:null,finishedGoods:[]},{materials:[row,row],finishedGoods:[]},{materials:[row,{...row,id:'62'}],finishedGoods:[]},{materials:[{...row,id:9007199254740993}],finishedGoods:[]},{materials:[{...row,qtyInStock:true}],finishedGoods:[]}]) assert.throws(()=>mergeInventoryCatalog([reference],payload));
+});
+
+test('Q02 raw samples remain editable while operational quantity and threshold are independent', () => {
+  const material = { ...row, qtyInStock: '10.0000', threshold: '2.0000', quantityStatus: 'provisional_sample', thresholdStatus: 'provisional_sample' };
+  const mapped = mergeInventoryCatalog([], { materials: [material], finishedGoods: [] }).materials[0];
+  assert.equal(mapped.qtyInStock, 10);
+  assert.equal(mapped.threshold, 2);
+  assert.equal(mapped.quantityStatus, 'provisional_sample');
+  assert.equal(mapped.thresholdStatus, 'provisional_sample');
+  assert.ok(Number.isNaN(operationalInventoryNumber(mapped.qtyInStock, mapped.quantityStatus)));
+  assert.ok(Number.isNaN(operationalInventoryNumber(mapped.threshold, mapped.thresholdStatus)));
+  assert.equal(operationalInventoryNumber(mapped.qtyInStock, 'verified'), 10);
+  assert.ok(Number.isNaN(operationalInventoryNumber(mapped.threshold, mapped.thresholdStatus)));
+  assert.equal(operationalInventoryNumber('0.0000', 'verified'), 0);
+  for (const status of [undefined, null, 'unknown', 'invalid', 'provisional_sample']) {
+    assert.ok(Number.isNaN(operationalInventoryNumber(10, status)));
+  }
+});
+
+test('Q02 form observations include only explicitly edited fields, including same values and zero', () => {
+  const fields = { quantity: '10', threshold: '2', quantityObserved: false, thresholdObserved: false };
+  assert.deepEqual(materialObservationFields(fields), {});
+  assert.deepEqual(materialObservationFields({ ...fields, quantityObserved: true }), { quantityOnHand: '10' });
+  assert.deepEqual(materialObservationFields({ ...fields, thresholdObserved: true }), { threshold: '2' });
+  assert.deepEqual(materialObservationFields({ ...fields, quantity: '0', quantityObserved: true }), { quantityOnHand: '0' });
+  assert.deepEqual(materialObservationFields({ ...fields, quantity: '', quantityObserved: true }), { quantityOnHand: null });
+  assert.deepEqual(materialObservationFields({ ...fields, threshold: '', thresholdObserved: true }), { threshold: null });
+});
+
+test('Q02 Sales adapter cannot show legacy, sample, unknown or contradictory availability as operational', () => {
+  const base = { stockChanged: false, overallStatus: 'available', unmappedItems: [], assessments: [
+    { classification: 'raw_material', quantityStatus: 'verified', availableQuantity: 10, requiredQuantity: 5, shortageQuantity: 0, inventoryState: 'recorded', status: 'available' },
+  ] };
+  for (const quantityStatus of ['unknown', 'provisional_sample', 'invalid', null, undefined]) {
+    const result = normalizeOperationalAvailability({ ...base, assessments: [{ ...base.assessments[0], quantityStatus }] });
+    assert.equal(result.overallStatus, 'unavailable');
+    assert.equal(result.assessments[0].availableQuantity, null);
+    assert.equal(result.assessments[0].shortageQuantity, null);
+    assert.equal(result.assessments[0].status, 'inventory_unavailable');
+    assert.equal(stockAvailabilityQuantityLabel(result.assessments[0]), quantityStatus === 'provisional_sample' ? 'Sample · Quantity unavailable' : 'Quantity unavailable');
+  }
+  const unknown = normalizeOperationalAvailability({ ...base, assessments: [{ ...base.assessments[0], availableQuantity: null }] });
+  assert.equal(unknown.overallStatus, 'unavailable');
+  assert.equal(stockAvailabilityQuantityLabel({ ...base.assessments[0], quantityStatus: 'unknown' }), 'Quantity unavailable');
+  const zero = normalizeOperationalAvailability({ ...base, assessments: [{ ...base.assessments[0], availableQuantity: 0 }] });
+  assert.equal(zero.overallStatus, 'insufficient');
+  assert.equal(zero.assessments[0].shortageQuantity, 5);
+  assert.equal(stockAvailabilityQuantityLabel(zero.assessments[0]), 'Recorded 0');
+  assert.equal(normalizeOperationalAvailability(base).overallStatus, 'available');
+  assert.equal(normalizeOperationalAvailability({ ...base, unmappedItems: [{ itemId: '1' }] }).overallStatus, 'unmapped');
+  assert.equal(base.assessments[0].availableQuantity, 10);
 });

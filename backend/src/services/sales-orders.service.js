@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { operationalStockQuantity } from './stock-provenance.js';
 import { auditRequestId } from './audit-request-id.js';
 import { recordInquiryRejectionNotification } from './sales-notifications.service.js';
 import { validateInquiryRejection, validateJobOrderCreation, validateQuotationPreparation, validatePurchaseOrderDecision, validateSalesOrderId, validateSalesOrderListQuery } from '../validation/sales.validation.js';
@@ -375,9 +376,11 @@ export function createSalesOrdersService({ db }) {
         if (!quoteDecisions.length || quoteDecisions[0].action !== 'quotation.accepted') { await connection.rollback(); return { success: false, code: 'QUOTATION_NOT_ACCEPTED' }; }
         const [invoices] = await connection.execute(`SELECT id FROM invoices WHERE order_id=? AND sent_at IS NOT NULL AND amount=? AND required_downpayment=? FOR UPDATE`, [id, quote.totalAmount, quote.downpaymentAmount]);
         if (!invoices.length) { await connection.rollback(); return { success: false, code: 'INVOICE_NOT_ISSUED' }; }
+        // Preserve attachment eligibility without multiplying a payment by its links.
         const [verifiedPayments] = await connection.execute(`SELECT COALESCE(SUM(p.verified_amount),0) verifiedAmount
-          FROM payments p JOIN payment_files pf ON pf.payment_id=p.id JOIN users u ON u.id=p.submitted_by AND u.account_type='client' AND u.client_id=?
-          WHERE p.order_id=? AND p.invoice_id=? AND p.payment_type='DOWNPAYMENT' AND p.verification_status='verified'`, [order.clientId, id, invoices[0].id]);
+          FROM payments p JOIN users u ON u.id=p.submitted_by AND u.account_type='client' AND u.client_id=?
+          WHERE p.order_id=? AND p.invoice_id=? AND p.payment_type='DOWNPAYMENT' AND p.verification_status='verified'
+            AND EXISTS (SELECT 1 FROM payment_files pf WHERE pf.payment_id=p.id)`, [order.clientId, id, invoices[0].id]);
         if (Number(verifiedPayments[0]?.verifiedAmount ?? 0) + 0.001 < Number(quote.downpaymentAmount)) { await connection.rollback(); return { success: false, code: 'DOWNPAYMENT_NOT_VERIFIED' }; }
         const [existing] = await connection.execute(`SELECT CAST(id AS CHAR) id, reference FROM job_orders WHERE order_id=? FOR UPDATE`, [id]);
         if (existing.length) { await connection.rollback(); return { success: false, code: 'JOB_ORDER_ALREADY_EXISTS' }; }
@@ -526,7 +529,7 @@ export function createSalesOrdersService({ db }) {
   }
 
   function materialAssessment(row, requiredQuantity, checkedAt) {
-    const availableQuantity = row.inventoryId === null ? null : inventoryQuantity(row.availableQuantity);
+    const availableQuantity = row.inventoryId === null ? null : operationalStockQuantity(row.availableQuantity, row.quantityStatus);
     const required = Number(requiredQuantity);
     const validAvailable = availableQuantity !== null;
     const validRequired = Number.isFinite(required) && required > 0;
@@ -535,6 +538,7 @@ export function createSalesOrdersService({ db }) {
       inventoryId: row.inventoryId,
       description: row.inventoryName ?? `Material ${row.materialId}`,
       classification: 'raw_material', categoryCode: row.categoryCode ?? null,
+      quantityStatus: ['unknown', 'provisional_sample', 'verified'].includes(row.quantityStatus) ? row.quantityStatus : 'unknown',
       requiredQuantity: validRequired ? required : null, availableQuantity: validAvailable ? availableQuantity : null,
       shortageQuantity, unit: row.unitCode ?? null,
       inventoryState: !validAvailable ? 'inventory_unavailable' : availableQuantity === 0 ? 'zero_stock' : 'recorded',
@@ -562,7 +566,7 @@ export function createSalesOrdersService({ db }) {
         const [bomRows] = await connection.execute(`SELECT CAST(bt.id AS CHAR) templateId, bt.size_label sizeLabel,
           CAST(btl.material_id AS CHAR) materialId, btl.quantity_per_filter quantityPerFilter,
           m.name inventoryName, m.category_code categoryCode, u.code unitCode,
-          CAST(m.id AS CHAR) inventoryId, m.quantity_on_hand availableQuantity
+          CAST(m.id AS CHAR) inventoryId, m.quantity_on_hand availableQuantity, m.quantity_status quantityStatus
           FROM bom_templates bt JOIN bom_template_lines btl ON btl.template_id=bt.id
           LEFT JOIN materials m ON m.id=btl.material_id AND m.active=TRUE
           LEFT JOIN units u ON u.code=m.unit_code

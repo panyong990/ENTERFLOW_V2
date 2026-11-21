@@ -1,4 +1,5 @@
 import { validateApplicationId } from '../validation/client-applications.validation.js';
+import { operationalStockQuantity } from './stock-provenance.js';
 
 function invalid(errors) { return { success: false, code: 'VALIDATION_ERROR', errors }; }
 function validId(value) { return validateApplicationId(String(value ?? '')).success; }
@@ -23,7 +24,7 @@ export function createStockRequestsService({ db }) {
       const [orders] = await connection.execute(`SELECT CAST(id AS CHAR) id, CAST(client_id AS CHAR) clientId FROM orders WHERE id=? FOR UPDATE`, [input.orderId]);
       if (!orders.length) { await connection.rollback(); return { success: false, code: 'NOT_FOUND' }; }
       const placeholders = lines.map(() => '?').join(',');
-      const [materials] = await connection.execute(`SELECT CAST(id AS CHAR) id, name, COALESCE(source_unit,unit_code) unitCode, quantity_on_hand quantityOnHand FROM materials WHERE active=TRUE AND id IN (${placeholders}) FOR SHARE`, lines.map(line => line.materialId));
+      const [materials] = await connection.execute(`SELECT CAST(id AS CHAR) id, name, COALESCE(source_unit,unit_code) unitCode, quantity_on_hand quantityOnHand, quantity_status quantityStatus FROM materials WHERE active=TRUE AND id IN (${placeholders}) FOR SHARE`, lines.map(line => line.materialId));
       const materialMap = new Map(materials.map(row => [String(row.id), row]));
       if (materials.length !== lines.length) { await connection.rollback(); return { success: false, code: 'MATERIAL_NOT_FOUND' }; }
       if (materials.some(material => material.quantityOnHand !== null && !validObservedQuantity(material.quantityOnHand))) {
@@ -41,7 +42,7 @@ export function createStockRequestsService({ db }) {
       if (request.affectedRows !== 1 || request.insertId == null) throw new Error('Stock request write failed.');
       const requestId = String(request.insertId);
       for (const line of lines) {
-        const material = materialMap.get(line.materialId); const available = material.quantityOnHand === null ? null : Number(material.quantityOnHand);
+        const material = materialMap.get(line.materialId); const available = operationalStockQuantity(material.quantityOnHand, material.quantityStatus);
         await connection.execute(`INSERT INTO stock_request_lines (stock_request_id,material_id,material_name_snapshot,unit_snapshot,required_quantity,stock_at_request,shortage_at_request) VALUES (?,?,?,?,?,?,?)`, [requestId, line.materialId, material.name, material.unitCode, line.quantity, available, available===null?null:Math.max(0, line.quantity - available)]);
       }
       await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at) VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [actor.userId, 'stock_request.created', 'stock_request', requestId, JSON.stringify({ orderId: String(input.orderId), quotationId: input.quotationId ?? null, reference, lineCount: lines.length }), context.requestId ?? null]);

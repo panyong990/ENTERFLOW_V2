@@ -82,7 +82,26 @@ export function createDocumentWorkflowsService({ db, storage } = {}) {
     });
   }
 
-  async function paymentQueue() { return withConnection(db, async connection => { const [rows] = await connection.execute(`SELECT CAST(p.id AS CHAR) id, CAST(p.order_id AS CHAR) orderId, CAST(p.invoice_id AS CHAR) invoiceId, CAST(pf.file_id AS CHAR) fileId, o.reference orderReference, c.company_name companyName, i.reference invoiceReference, p.submitted_amount submittedAmount, p.method, p.reference_number referenceNumber, p.note rejectionReason, DATE_FORMAT(p.submitted_at,'%Y-%m-%dT%H:%i:%s.%fZ') submittedAt, p.verification_status verificationStatus FROM payments p JOIN orders o ON o.id=p.order_id JOIN clients c ON c.id=o.client_id JOIN invoices i ON i.id=p.invoice_id JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment' WHERE p.payment_type='DOWNPAYMENT' ORDER BY p.submitted_at DESC`); return { success: true, data: rows }; }); }
+  async function paymentQueue() {
+    return withConnection(db, async connection => {
+      // The existing queue has one row/file field per payment. Keep all links;
+      // choose the lowest numeric proof ID only as its stable representative.
+      const [rows] = await connection.execute(`SELECT CAST(p.id AS CHAR) id,
+        CAST(p.order_id AS CHAR) orderId, CAST(p.invoice_id AS CHAR) invoiceId,
+        CAST(pf.file_id AS CHAR) fileId, o.reference orderReference,
+        c.company_name companyName, i.reference invoiceReference,
+        p.submitted_amount submittedAmount, p.method, p.reference_number referenceNumber,
+        p.note rejectionReason, DATE_FORMAT(p.submitted_at,'%Y-%m-%dT%H:%i:%s.%fZ') submittedAt,
+        p.verification_status verificationStatus
+        FROM payments p JOIN orders o ON o.id=p.order_id JOIN clients c ON c.id=o.client_id
+        JOIN invoices i ON i.id=p.invoice_id
+        JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment'
+          AND pf.file_id=(SELECT MIN(proof.file_id) FROM payment_files proof
+            WHERE proof.payment_id=p.id AND proof.purpose='proof_of_payment')
+        WHERE p.payment_type='DOWNPAYMENT' ORDER BY p.submitted_at DESC, p.id DESC`);
+      return { success: true, data: rows };
+    });
+  }
 
   async function reviewPayment({ paymentId, actorId, decision, reason, context = {} }) { if (!['verified', 'rejected'].includes(decision) || (decision === 'rejected' && (!reason || !String(reason).trim()))) return fail('VALIDATION_ERROR'); return withConnection(db, async connection => { let transaction = false; try { await connection.beginTransaction(); transaction = true; const [rows] = await connection.execute(`SELECT CAST(p.id AS CHAR) id,p.verification_status verificationStatus,p.submitted_amount submittedAmount,i.required_downpayment requiredDownpayment FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE p.id=? AND p.payment_type='DOWNPAYMENT' FOR UPDATE`, [paymentId]); if (!rows.length) { await connection.rollback(); return fail('NOT_FOUND'); } if (rows[0].verificationStatus !== 'pending') { await connection.rollback(); return fail('PAYMENT_ALREADY_DECIDED'); } if (decision === 'verified' && Math.abs(Number(rows[0].submittedAmount) - Number(rows[0].requiredDownpayment)) > 0.001) { await connection.rollback(); return fail('DOWNPAYMENT_AMOUNT_MISMATCH'); } const [updated] = await connection.execute(`UPDATE payments SET verification_status=?, verified_amount=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP(3), note=? WHERE id=? AND verification_status='pending'`, [decision, decision === 'verified' ? rows[0].submittedAmount : null, actorId, reason ?? null, paymentId]); if (updated.affectedRows !== 1) throw new Error('Payment review could not be saved.'); await connection.execute(`INSERT INTO audit_events (actor_id,action,subject_type,subject_identifier,new_value,reason,request_id,occurred_at) VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`, [actorId, `payment.proof_${decision}`, 'payment', paymentId, JSON.stringify({ decision }), reason ?? null, auditRequestId(context)]); await connection.commit(); transaction = false; return { success: true, data: { paymentId: String(paymentId), verificationStatus: decision, verifiedAmount: decision === 'verified' ? String(rows[0].submittedAmount) : null, reason: reason ?? null } }; } catch (error) { if (transaction) { try { await connection.rollback(); } catch {} } throw error; } }); }
 

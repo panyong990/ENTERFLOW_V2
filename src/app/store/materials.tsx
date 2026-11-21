@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createRealReadOnlyProvider } from "./realMode.js";
 import { getInventory } from "../api/inventory";
-import { mergeInventoryCatalog } from "./inventoryModel.js";
+import { mergeInventoryCatalog, operationalInventoryNumber } from "./inventoryModel.js";
 import materialIdentities from "../../../config/material-catalog-ids.json";
 
 /* ─────────── Types ─────────── */
@@ -73,11 +73,15 @@ export interface RawMaterialStockStatus {
 }
 
 export function getRawMaterialStockStatus(material: RawMaterial): RawMaterialStockStatus {
-  if (!Number.isFinite(material.qtyInStock)) {
+  const persisted = material.source === "database" || material.source === "catalog_reference";
+  if (!Number.isFinite(material.qtyInStock) || (persisted && !Number.isFinite(operationalInventoryNumber(material.qtyInStock, material.quantityStatus)))) {
     return { key: "unavailable", label: "Not recorded", bg: "#F1F5F9", fg: "#64748B" };
   }
   if (material.qtyInStock <= 0) {
     return { key: "out-of-stock", label: "🔴 Out of Stock", bg: "#FEE2E2", fg: "#991B1B" };
+  }
+  if (persisted && !Number.isFinite(operationalInventoryNumber(material.threshold, material.thresholdStatus))) {
+    return { key: "unavailable", label: "Not recorded", bg: "#F1F5F9", fg: "#64748B" };
   }
   if (material.qtyInStock <= material.threshold) {
     return { key: "low-stock", label: "🟠 Low Stock", bg: "#FFEDD5", fg: "#C2410C" };
@@ -497,8 +501,11 @@ function deriveLegacy(rm: RawMaterial[]): Material[] {
   return (Object.keys(byId) as MaterialKey[]).map((k) => {
     const m = rm.find((x) => x.id === byId[k]);
     /* A missing representative must remain unknown rather than becoming verified zero stock. */
-    if (!m) return { key: k, label: meta[k].label, unit: "pcs", available: Number.NaN, threshold: 0, leadTime: meta[k].leadTime };
-    return { key: k, label: meta[k].label, unit: m.unit, available: Math.floor(m.qtyInStock), threshold: m.threshold, leadTime: meta[k].leadTime };
+    if (!m) return { key: k, label: meta[k].label, unit: "pcs", available: Number.NaN, threshold: Number.NaN, leadTime: meta[k].leadTime };
+    const persisted = m.source === "database" || m.source === "catalog_reference";
+    return { key: k, label: meta[k].label, unit: m.unit,
+      available: Math.floor(persisted ? operationalInventoryNumber(m.qtyInStock, m.quantityStatus) : m.qtyInStock),
+      threshold: persisted ? operationalInventoryNumber(m.threshold, m.thresholdStatus) : m.threshold, leadTime: meta[k].leadTime };
   });
 }
 

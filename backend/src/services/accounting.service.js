@@ -108,9 +108,9 @@ export function createAccountingService({ db }) {
           DATE_FORMAT(p.paid_on,'%Y-%m-%d') paidOn,
           DATE_FORMAT(p.submitted_at,'%Y-%m-%dT%H:%i:%s.%fZ') submittedAt,
           DATE_FORMAT(p.reviewed_at,'%Y-%m-%dT%H:%i:%s.%fZ') reviewedAt,
-          CAST(pf.file_id AS CHAR) proofFileId
+          (SELECT CAST(MIN(pf.file_id) AS CHAR) FROM payment_files pf
+            WHERE pf.payment_id=p.id AND pf.purpose='proof_of_payment') proofFileId
         FROM payments p
-        LEFT JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment'
         ${filters.length ? `WHERE ${filters.join(' AND ')}` : ''}
         ORDER BY p.submitted_at DESC, p.id DESC
         LIMIT ?`, params);
@@ -135,9 +135,9 @@ export function createAccountingService({ db }) {
           DATE_FORMAT(p.paid_on,'%Y-%m-%d') paidOn,
           DATE_FORMAT(p.submitted_at,'%Y-%m-%dT%H:%i:%s.%fZ') submittedAt,
           DATE_FORMAT(p.reviewed_at,'%Y-%m-%dT%H:%i:%s.%fZ') reviewedAt,
-          CAST(pf.file_id AS CHAR) proofFileId
+          (SELECT CAST(MIN(pf.file_id) AS CHAR) FROM payment_files pf
+            WHERE pf.payment_id=p.id AND pf.purpose='proof_of_payment') proofFileId
         FROM payments p
-        LEFT JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment'
         WHERE p.id=?`, [id]);
       return rows.length
         ? { success: true, data: rows[0] }

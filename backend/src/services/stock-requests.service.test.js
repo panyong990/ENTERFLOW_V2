@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStockRequestsService } from './stock-requests.service.js';
 
-function harness({ quantityOnHand = '2' } = {}) {
+function harness({ quantityOnHand = '2', quantityStatus = 'verified' } = {}) {
   const calls = [];
   const connection = {
     async beginTransaction() { calls.push('BEGIN'); }, async commit() { calls.push('COMMIT'); }, async rollback() { calls.push('ROLLBACK'); }, release() {},
@@ -10,7 +10,7 @@ function harness({ quantityOnHand = '2' } = {}) {
       calls.push({ sql, params });
       if (sql.includes('FROM orders')) return [[{ id: '91', clientId: '7' }]];
       if (sql.includes('FROM quotations')) return [[{ id: '201', reference: 'QT-91-R2' }]];
-      if (sql.includes('FROM materials') && sql.includes('active=TRUE')) return [[{ id: '61', name: 'Media', unitCode: 'pcs', quantityOnHand }]];
+      if (sql.includes('FROM materials') && sql.includes('active=TRUE')) return [[{ id: '61', name: 'Media', unitCode: 'pcs', quantityOnHand, quantityStatus }]];
       if (sql.startsWith('INSERT INTO stock_requests')) return [{ affectedRows: 1, insertId: 501 }];
       if (sql.startsWith('INSERT INTO stock_request_lines')) return [{ affectedRows: 1 }];
       if (sql.startsWith('INSERT INTO audit_events')) return [{ affectedRows: 1 }];
@@ -55,6 +55,26 @@ test('Stock request creation rejects unauthorized roles and invalid quantities b
   assert.equal((await h.service.create({ accountType: 'employee', roleCode: 'sales', userId: '8' }, { orderId: '91', lines: [{ materialId: '61', quantity: 0 }] })).code, 'VALIDATION_ERROR');
   assert.equal(h.calls.length, 0);
 });
+
+for (const [quantityStatus, quantityOnHand, expectedStock, expectedShortage] of [
+  ['verified', '2.0000', 2, 3], ['verified', '0.0000', 0, 5], ['verified', '8.0000', 8, 0],
+  ['unknown', null, null, null], ['unknown', '10.0000', null, null],
+  ['provisional_sample', '10.0000', null, null], ['provisional_sample', '0.0000', null, null],
+  ['verified', null, null, null], ['invalid', '10.0000', null, null], [null, '10.0000', null, null],
+]) {
+  test(`Q02 Stock Request snapshots ${quantityStatus} ${quantityOnHand} without claiming unverified stock`, async () => {
+    const h = harness({ quantityStatus, quantityOnHand });
+    const result = await h.service.create({ accountType: 'employee', roleCode: 'sales', userId: '8' }, { orderId: '91', lines: [{ materialId: '61', quantity: 5 }] });
+    assert.equal(result.success, true);
+    const materialRead = h.calls.find(call => call.sql?.includes('FROM materials'));
+    assert.match(materialRead.sql, /quantity_status quantityStatus/);
+    assert.deepEqual(materialRead.params, ['61']);
+    const snapshot = h.calls.find(call => call.sql?.startsWith('INSERT INTO stock_request_lines'));
+    assert.deepEqual(snapshot.params.slice(5), [expectedStock, expectedShortage]);
+    assert.equal(h.calls.some(call => /^(UPDATE|DELETE)/i.test(call.sql ?? '')), false);
+    assert.ok(h.calls.includes('COMMIT'));
+  });
+}
 
 function processingHarness({ materialFound = true } = {}) {
   const calls=[];

@@ -424,6 +424,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
                   <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 800, color: selectedRequest.status === "update_requested" ? "#B45309" : selectedRequest.status === "pending" ? "#1D4ED8" : "#15803D" }}>{statusLabel[selectedRequest.status]}</div>
                 </div>
 
+                {apiMode && <p className="px-4 pt-3 font-dm text-xs text-slate-500">Verification provenance for request-time snapshots is not recorded. Current stock status uses Warehouse observations.</p>}
                 <div className="p-4 overflow-x-auto">
                   <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 800, color: "#1A2B4A" }}>
                     {selectedRequest.status === "updated" ? "LATEST UPDATED STOCK REPORT" : selectedRequest.latestResponse ? "LATEST STOCK REPORT" : "STOCK SHORTAGE REQUEST"}
@@ -449,11 +450,11 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
                               {response ? `${quantity(response.currentQuantity)} ${response.unit}` : !apiMode && "stockAtRequest" in material && material.stockAtRequest !== undefined ? `${quantity(material.stockAtRequest)} ${material.unit}` : "Not recorded"}
                             </td>
                             {mode === "warehouse" && adapter?.respond && <td className="px-3 py-2"><input aria-label={`Current quantity for ${material.materialName}`} type="number" min="0" max="1000000000" step="0.0001" disabled={writesUnavailable || confirmingInventory} value={observedQuantities[material.materialId] ?? ""} onChange={(event) => { setCommandError(""); setObservedQuantities((current) => ({ ...current, [material.materialId]: event.target.value })); }} className="w-32 rounded border border-slate-300 px-2 py-1 font-dm text-xs" /></td>}
-                            <td className="px-3 py-2 font-dm" style={{ fontSize: 11, fontWeight: 800, color: response ? response.status === "sufficient" ? "#15803D" : "#B45309" : "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? "#B45309" : "#64748B" }}>
-                              {response ? response.status === "sufficient" ? "SUFFICIENT" : "SHORTAGE" : "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? "SHORTAGE" : "—"}
+                            <td className="px-3 py-2 font-dm" style={{ fontSize: 11, fontWeight: 800, color: response ? response.status === "sufficient" ? "#15803D" : "#B45309" : !apiMode && "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? "#B45309" : "#64748B" }}>
+                              {response ? response.status === "sufficient" ? "SUFFICIENT" : "SHORTAGE" : !apiMode && "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? "SHORTAGE" : "—"}
                             </td>
                             <td className="px-3 py-2 font-mono-jb" style={{ fontSize: 11 }}>
-                              {response?.status === "shortage" ? `${quantity(response.shortageQuantity ?? 0)} ${response.unit}` : !response && "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? `${quantity(material.shortageAtRequest)} ${material.unit}` : "—"}
+                              {response?.status === "shortage" ? `${quantity(response.shortageQuantity ?? 0)} ${response.unit}` : !apiMode && !response && "shortageAtRequest" in material && material.shortageAtRequest !== undefined ? `${quantity(material.shortageAtRequest)} ${material.unit}` : "—"}
                             </td>
                           </tr>
                         );

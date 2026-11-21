@@ -169,7 +169,8 @@ export function createInventoryService({ db }) {
         input.threshold == null ? 'unknown' : 'verified']);
       if (inserted.affectedRows !== 1 || inserted.insertId == null) throw new Error('Material insert was not confirmed.');
       const id = String(inserted.insertId);
-      const value = auditValue({ ...input, sourceUnit: input.unit, unitCode: input.unitCode });
+      const value = auditValue({ ...input, sourceUnit: input.unit, unitCode: input.unitCode,
+        thresholdStatus: input.threshold == null ? 'unknown' : 'verified' });
       const [audit] = await connection.execute(`INSERT INTO audit_events
         (actor_id,action,subject_type,subject_identifier,new_value,request_id,occurred_at)
         VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP(3))`,
@@ -224,17 +225,19 @@ export function createInventoryService({ db }) {
         sets.push('unit_code=?', 'source_unit=?'); values.push(input.unitCode, input.unit); nextValue.unit = input.unit;
       }
       if (Object.hasOwn(input, 'threshold')
-        && (input.threshold == null
+        && ((input.threshold == null
           ? current.threshold != null
-          : current.threshold == null || Number(input.threshold) !== Number(current.threshold))) {
+          : current.threshold == null || Number(input.threshold) !== Number(current.threshold))
+          || current.thresholdStatus !== (input.threshold == null ? 'unknown' : 'verified'))) {
         sets.push('reorder_threshold=?'); values.push(input.threshold); nextValue.threshold = input.threshold;
         sets.push('threshold_status=?'); values.push(input.threshold == null ? 'unknown' : 'verified');
         nextValue.thresholdStatus = input.threshold == null ? 'unknown' : 'verified';
       }
       if (Object.hasOwn(input, 'quantityOnHand')
-        && (input.quantityOnHand == null
+        && ((input.quantityOnHand == null
           ? current.quantityOnHand != null
-          : current.quantityOnHand == null || Number(input.quantityOnHand) !== Number(current.quantityOnHand))) {
+          : current.quantityOnHand == null || Number(input.quantityOnHand) !== Number(current.quantityOnHand))
+          || current.quantityStatus !== (input.quantityOnHand == null ? 'unknown' : 'verified'))) {
         sets.push('quantity_on_hand=?'); values.push(input.quantityOnHand);
         sets.push('quantity_status=?'); values.push(input.quantityOnHand == null ? 'unknown' : 'verified');
         nextValue.quantityOnHand = input.quantityOnHand;

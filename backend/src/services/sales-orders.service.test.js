@@ -105,14 +105,14 @@ test('Sales order list rejects unsupported query fields', async () => {
   assert.equal(h.calls.length, 0);
 });
 
-function stockDatabase({ unmapped = false, missingInventoryMapping = false, noFinishedGoods = false, materialQuantity = 4, finishedGoodQuantity = 1, bomQuantity = 3 } = {}) {
+function stockDatabase({ unmapped = false, missingInventoryMapping = false, noFinishedGoods = false, materialQuantity = 4, quantityStatus = 'verified', finishedGoodQuantity = 1, bomQuantity = 3 } = {}) {
   const calls = [];
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
       if (sql.includes('FROM orders o WHERE o.id')) return [[{ id: '9007199254740993', clientId: '7' }]];
       if (sql.includes('FROM order_items')) return [[{ itemId: '11', quantity: 2, specificationId: '22', filterTypeCode: 'OILSEP', filterName: 'Oil separator', height: 300, oemPartNumber: 'OEM-1' }]];
-      if (sql.includes('FROM bom_templates')) return [unmapped ? [] : [{ templateId: '51', sizeLabel: 'Medium', materialId: '61', quantityPerFilter: bomQuantity, inventoryName: missingInventoryMapping ? null : 'Media', categoryCode: 'media', unitCode: 'pcs', inventoryId: missingInventoryMapping ? null : '61', availableQuantity: materialQuantity }]];
+      if (sql.includes('FROM bom_templates')) return [unmapped ? [] : [{ templateId: '51', sizeLabel: 'Medium', materialId: '61', quantityPerFilter: bomQuantity, inventoryName: missingInventoryMapping ? null : 'Media', categoryCode: 'media', unitCode: 'pcs', inventoryId: missingInventoryMapping ? null : '61', availableQuantity: materialQuantity, quantityStatus }]];
       if (sql.includes('FROM finished_goods')) return noFinishedGoods ? [[]] : [[{ inventoryId: '71', itemCode: 'FG-1', partNumber: 'OEM-1', availableQuantity: finishedGoodQuantity, bufferMinimum: 1, unitCode: 'pcs', demand: '2' }]];
       throw new Error(`Unexpected SQL in stock test: ${sql}`);
     },
@@ -403,7 +403,7 @@ test('Sales quotation preparation requires a mandatory 20% or 50% downpayment', 
   }
 });
 
-function jobOrderDatabase({ poDecision = 'purchase_order.validated', existingJobs = [], verifiedAmount = '20.00', invoiceRows = [{ id: '601' }] } = {}) {
+function jobOrderDatabase({ poDecision = 'purchase_order.validated', existingJobs = [], verifiedAmount = '20.00', invoiceRows = [{ id: '601' }], paymentRows, paymentFiles = [] } = {}) {
   const calls = [];
   let insertId = 501;
   const connection = {
@@ -419,7 +419,27 @@ function jobOrderDatabase({ poDecision = 'purchase_order.validated', existingJob
       if (sql.includes('FROM quotations WHERE order_id=?')) return [[{ id: '31' }]];
       if (sql.includes("subject_type='quotation'")) return [[{ action: 'quotation.accepted' }]];
       if (sql.includes('FROM invoices WHERE order_id=?')) return [invoiceRows];
-      if (sql.includes('FROM payments p JOIN payment_files') || sql.includes('FROM payments WHERE order_id=?')) return [[{ verifiedAmount }]];
+      if (sql.includes('FROM payments p JOIN users u')) {
+        assert.match(sql, /SUM\(p\.verified_amount\)/);
+        assert.doesNotMatch(sql, /SUM\(DISTINCT|JOIN\s+payment_files/i);
+        assert.match(sql, /EXISTS\s*\(SELECT 1 FROM payment_files pf WHERE pf.payment_id=p.id\)/);
+        assert.match(sql, /u.id=p.submitted_by AND u.account_type='client' AND u.client_id=\?/);
+        assert.match(sql, /p.order_id=\? AND p.invoice_id=\? AND p.payment_type='DOWNPAYMENT' AND p.verification_status='verified'/);
+        assert.deepEqual(params, ['7', '91', '601']);
+        if (paymentRows === undefined) return [[{ verifiedAmount }]];
+        // Relational fixture, not a SQL engine: SQL contract assertions above
+        // independently require a semijoin and the original eligibility filters.
+        const users = new Map([['71', { accountType: 'client', clientId: '7' }], ['72', { accountType: 'client', clientId: '8' }], ['73', { accountType: 'employee', clientId: null }]]);
+        const cents = paymentRows.filter(payment => {
+          const user = users.get(payment.submittedBy);
+          return user?.accountType === 'client' && user.clientId === params[0]
+            && payment.orderId === params[1] && payment.invoiceId === params[2]
+            && payment.paymentType === 'DOWNPAYMENT' && payment.verificationStatus === 'verified'
+            && paymentFiles.some(file => file.paymentId === payment.id);
+        }).reduce((sum, payment) => sum + BigInt(payment.verifiedAmount.replace('.', '')), 0n);
+        return [[{ verifiedAmount: `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}` }]];
+      }
+      if (sql.includes('FROM payments WHERE order_id=?')) return [[{ verifiedAmount }]];
       if (sql.includes('FROM job_orders WHERE order_id=?')) return [existingJobs];
       if (sql.includes('FROM order_items oi')) return [[{ orderItemId: '11', specificationId: '22', inquiryQuantity: 10, quotationQuantity: 10, costingId: '61' }]];
       if (sql.includes('FROM job_orders WHERE reference LIKE')) return [[]];
@@ -464,4 +484,78 @@ test('Job Order creation requires an issued invoice before payment verification 
   const result = await createSalesOrdersService(missingInvoice).createJobOrders('91', { userId: '8', roleCode: 'sales', accountType: 'employee' }, { productionDueDate: '2026-12-31' });
   assert.equal(result.code, 'INVOICE_NOT_ISSUED');
   assert.equal(missingInvoice.calls.some(call => /^INSERT/i.test(call.sql)), false);
+});
+
+for (const [quantityStatus, materialQuantity, expectedStatus, expectedQuantity] of [
+  ['unknown', null, 'inventory_unavailable', null],
+  ['unknown', '10.0000', 'inventory_unavailable', null],
+  ['provisional_sample', '10.0000', 'inventory_unavailable', null],
+  ['provisional_sample', '0.0000', 'inventory_unavailable', null],
+  ['verified', null, 'inventory_unavailable', null],
+  ['verified', '0.0000', 'insufficient', 0],
+  ['verified', '10.0000', 'available', 10],
+  ['verified', '-1', 'inventory_unavailable', null],
+  ['invalid', '10.0000', 'inventory_unavailable', null],
+  [null, '10.0000', 'inventory_unavailable', null],
+]) {
+  test(`Q02 Sales availability uses provenance ${quantityStatus} with ${materialQuantity}`, async () => {
+    const h = stockDatabase({ quantityStatus, materialQuantity, noFinishedGoods: true });
+    const result = await createSalesOrdersService(h).stockAvailability('9007199254740993');
+    const assessment = result.data.assessments[0];
+    assert.equal(assessment.status, expectedStatus);
+    assert.equal(assessment.availableQuantity, expectedQuantity);
+    assert.equal(assessment.shortageQuantity, expectedQuantity === null ? null : Math.max(0, 6 - expectedQuantity));
+    assert.equal(result.data.overallStatus, expectedStatus === 'inventory_unavailable' ? 'unavailable' : expectedStatus);
+    assert.equal(assessment.quantityStatus, ['unknown', 'provisional_sample', 'verified'].includes(quantityStatus) ? quantityStatus : 'unknown');
+    assert.match(h.calls.find(call => call.sql.includes('FROM bom_templates')).sql, /m.quantity_status quantityStatus/);
+    assert.equal(result.data.stockChanged, false);
+    assert.equal(h.calls.some(call => /\b(UPDATE|INSERT|DELETE|REPLACE)\b/i.test(call.sql)), false);
+  });
+}
+
+const d07Payment = (id, amount, overrides = {}) => ({
+  id, orderId: '91', invoiceId: '601', submittedBy: '71', paymentType: 'DOWNPAYMENT',
+  verificationStatus: 'verified', verifiedAmount: amount, ...overrides,
+});
+const d07Links = (paymentId, purposes) => purposes.map((purpose, index) => ({ paymentId, fileId: String(index + 1), purpose }));
+
+for (const scenario of [
+  { name: 'zero attachments remain ineligible', rows: [d07Payment('1', '20.00')], links: [], eligible: false },
+  { name: 'one proof qualifies once', rows: [d07Payment('1', '20.00')], links: d07Links('1', ['proof_of_payment']), eligible: true },
+  { name: 'many proofs and a receipt cannot multiply a short payment', rows: [d07Payment('1', '7.00')], links: d07Links('1', ['proof_of_payment', 'proof_of_payment', 'receipt']), eligible: false },
+  { name: 'separate different amounts both contribute once', rows: [d07Payment('1', '7.00'), d07Payment('2', '13.00')], links: [...d07Links('1', ['proof_of_payment', 'receipt']), ...d07Links('2', ['proof_of_payment'])], eligible: true },
+  { name: 'separate equal amounts must not collapse', rows: [d07Payment('1', '10.00'), d07Payment('2', '10.00')], links: [...d07Links('1', ['proof_of_payment', 'receipt']), ...d07Links('2', ['proof_of_payment', 'proof_of_payment'])], eligible: true },
+  { name: 'receipt-only attachment keeps the existing JO prerequisite', rows: [d07Payment('1', '20.00')], links: d07Links('1', ['receipt']), eligible: true },
+  { name: 'pending and rejected amounts do not qualify', rows: [d07Payment('1', null, { verificationStatus: 'pending' }), d07Payment('2', null, { verificationStatus: 'rejected' })], links: [...d07Links('1', ['proof_of_payment']), ...d07Links('2', ['proof_of_payment'])], eligible: false },
+  { name: 'another client cannot fund this JO', rows: [d07Payment('1', '20.00', { submittedBy: '72' })], links: d07Links('1', ['proof_of_payment']), eligible: false },
+  { name: 'employee submissions do not replace client ownership', rows: [d07Payment('1', '20.00', { submittedBy: '73' })], links: d07Links('1', ['proof_of_payment']), eligible: false },
+  { name: 'another invoice cannot fund this JO', rows: [d07Payment('1', '20.00', { invoiceId: '602' })], links: d07Links('1', ['proof_of_payment']), eligible: false },
+  { name: 'another order cannot fund this JO', rows: [d07Payment('1', '20.00', { orderId: '92' })], links: d07Links('1', ['proof_of_payment']), eligible: false },
+  { name: 'balance payments do not replace the downpayment prerequisite', rows: [d07Payment('1', '20.00', { paymentType: 'BALANCE_PAYMENT' })], links: d07Links('1', ['proof_of_payment']), eligible: false },
+]) {
+  test(`D07 JO aggregation: ${scenario.name}`, async () => {
+    const h = jobOrderDatabase({ paymentRows: scenario.rows, paymentFiles: scenario.links });
+    const result = await createSalesOrdersService(h).createJobOrders('91', { userId: '8', roleCode: 'sales', accountType: 'employee' }, { productionDueDate: '2026-12-31' });
+    if (scenario.eligible) {
+      assert.equal(result.success, true);
+      assert.equal(result.data.jobOrders[0].status, 'jo');
+      assert.equal(h.calls.some(call => call.sql === 'COMMIT'), true);
+    } else {
+      assert.equal(result.code, 'DOWNPAYMENT_NOT_VERIFIED');
+      assert.equal(h.calls.some(call => /^INSERT/i.test(call.sql)), false);
+      assert.equal(h.calls.some(call => call.sql === 'ROLLBACK'), true);
+    }
+    assert.equal(h.calls.some(call => /^(UPDATE|INSERT INTO)\s+(materials|payments|invoices|orders)\b/i.test(call.sql)), false);
+    assert.equal(h.calls.some(call => /material_movements|production_events/i.test(call.sql)), false);
+  });
+}
+
+test('D07 Sales summaries retain independent verified totals and do not mark a downpayment fully paid', async () => {
+  const h = database({ rows: [{ ...order, stageCode: 'po', invoiceAmount: '100.00', verifiedPaymentAmount: '20.00' }] });
+  const result = await createSalesOrdersService(h).list({});
+  assert.equal(result.data.items[0].verifiedPaymentAmount, '20.00');
+  assert.equal(result.data.items[0].invoiceAmount, '100.00');
+  assert.equal(result.data.items[0].stageCode, 'po');
+  assert.match(h.calls[1].sql, /\(SELECT COALESCE\(SUM\(p\.verified_amount\), 0\) FROM payments p WHERE p.order_id=o.id AND p.verification_status='verified'\) verifiedPaymentAmount/);
+  assert.doesNotMatch(h.calls[1].sql, /payment_files|SUM\(DISTINCT/i);
 });

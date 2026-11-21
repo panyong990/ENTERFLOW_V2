@@ -10,6 +10,15 @@ const costing = readFileSync(new URL('../CostEstimationPanel.tsx', import.meta.u
 const specifications = readFileSync(new URL('./OriginalSalesForms.tsx', import.meta.url), 'utf8');
 const drafts = readFileSync(new URL('./drafts.ts', import.meta.url), 'utf8');
 
+test('Q02 quotation presentation uses the provenance-aware Sales adapter and retains sample and zero distinctions', () => {
+  const hook = readFileSync(new URL('../useSalesOrders.ts', import.meta.url), 'utf8');
+  const sections = readFileSync(new URL('./SalesDocumentSections.tsx', import.meta.url), 'utf8');
+  assert.match(hook, /normalizeOperationalAvailability\(result\)/);
+  assert.match(source, /stockAvailabilityQuantityLabel\(assessment\)/);
+  assert.match(sections, /item.quantityStatus === "provisional_sample" \? "Raw material · Sample"/);
+  assert.doesNotMatch(source, /assessment.availableQuantity \?\? 0/);
+});
+
 test('uncertain quotation writes preserve edits and require history reconciliation without automatic retry', () => {
   assert.match(source, /lock.current \|\| uncertain/);
   assert.match(source, /uncertainWrite\(cause\)/);

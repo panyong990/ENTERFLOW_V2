@@ -548,7 +548,9 @@ export function createClientPortalService({ db }) {
           DATE_FORMAT(p.paid_on, '%Y-%m-%d') paidOn, p.verification_status verificationStatus,
           DATE_FORMAT(p.submitted_at, '%Y-%m-%dT%H:%i:%s.%fZ') submittedAt,
           CAST(pf.file_id AS CHAR) proofFileId, f.original_filename proofFilename
-        FROM payments p LEFT JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment' LEFT JOIN files f ON f.id=pf.file_id AND f.state='available'
+        FROM payments p LEFT JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment'
+          AND pf.file_id=(SELECT MIN(proof.file_id) FROM payment_files proof WHERE proof.payment_id=p.id AND proof.purpose='proof_of_payment')
+          LEFT JOIN files f ON f.id=pf.file_id AND f.state='available'
         WHERE p.order_id=? ORDER BY p.submitted_at DESC, p.id DESC`, [id]);
       return { success: true, data: rows.map(row => ({
         id: row.id, invoiceId: row.invoiceId, paymentType: row.paymentType,

@@ -12,6 +12,46 @@ export function assessMaterialStock(required, available) {
   const shortage = Math.max(0, required - available);
   return { status: shortage > 0 ? 'insufficient' : 'available', shortage };
 }
+export function operationalInventoryNumber(value, status) {
+  if (status !== 'verified' || !['number', 'string'].includes(typeof value)
+    || !/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(String(value))) return Number.NaN;
+  return inventoryNumber(value);
+}
+export function materialObservationFields({ quantity, threshold, quantityObserved, thresholdObserved }) {
+  return {
+    ...(quantityObserved ? { quantityOnHand: quantity === '' ? null : quantity } : {}),
+    ...(thresholdObserved ? { threshold: threshold === '' ? null : threshold } : {}),
+  };
+}
+export function normalizeOperationalAvailability(response) {
+  if (!response || !Array.isArray(response.assessments) || !Array.isArray(response.unmappedItems)) {
+    throw new Error('Stock availability is unavailable.');
+  }
+  const assessments = response.assessments.map(item => {
+    if (item.classification !== 'raw_material') return item;
+    const available = operationalInventoryNumber(item.availableQuantity, item.quantityStatus);
+    const required = inventoryNumber(item.requiredQuantity);
+    if (!Number.isFinite(available) || !Number.isFinite(required) || required <= 0) {
+      return { ...item, availableQuantity: null, shortageQuantity: null, inventoryState: 'inventory_unavailable', status: 'inventory_unavailable' };
+    }
+    const shortage = Math.max(0, required - available);
+    return { ...item, availableQuantity: available, shortageQuantity: shortage,
+      inventoryState: available === 0 ? 'zero_stock' : 'recorded', status: shortage > 0 ? 'insufficient' : 'available' };
+  });
+  const available = assessments.some(item => item.status === 'available');
+  const insufficient = assessments.some(item => item.status === 'insufficient');
+  const overallStatus = response.unmappedItems.length ? 'unmapped'
+    : !assessments.length || assessments.some(item => item.status === 'inventory_unavailable') ? 'unavailable'
+    : insufficient ? available ? 'partially_available' : 'insufficient' : 'available';
+  return { ...response, assessments, overallStatus };
+}
+export function stockAvailabilityQuantityLabel(assessment) {
+  if (assessment.quantityStatus === 'provisional_sample') return 'Sample · Quantity unavailable';
+  if (assessment.classification === 'raw_material'
+    && !Number.isFinite(operationalInventoryNumber(assessment.availableQuantity, assessment.quantityStatus))) return 'Quantity unavailable';
+  return ['recorded', 'zero_stock'].includes(assessment.inventoryState) && assessment.availableQuantity != null
+    ? `Recorded ${assessment.availableQuantity}` : 'Quantity unavailable';
+}
 export function mergeInventoryCatalog(catalog, response, identities = {}) {
   if (!response || !Array.isArray(response.materials) || !Array.isArray(response.finishedGoods)) throw new Error('Inventory returned an invalid response. Refresh before retrying.');
   const seen = new Set(); const seenCodes = new Set();

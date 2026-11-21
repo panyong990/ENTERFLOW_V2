@@ -12,6 +12,7 @@ import { useOrders } from "../store/orders";
 import { RealWarehouseStockRequests } from "./RealWarehouseStockRequests";
 import { RealWarehouseShipments } from "./RealWarehouseShipments";
 import { createInventoryMaterial as createInventoryMaterialRequest, updateInventoryMaterial as updateInventoryMaterialRequest } from "../api/inventory";
+import { materialObservationFields } from "../store/inventoryModel.js";
 
 const STOCK_REASONS = [
   "Restocked from supplier",
@@ -424,7 +425,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                       <tbody>
                         {items.map((m) => {
                           const s = getRawMaterialStockStatus(m);
-                          const quantity = Number.isFinite(m.qtyInStock)
+                          const quantity = Number.isFinite(m.qtyInStock) && (!realMode || m.quantityStatus === "verified" || m.quantityStatus === "provisional_sample")
                             ? `${m.qtyInStock.toFixed(2)} ${m.unit}${m.quantityStatus === "provisional_sample" ? " · sample" : ""}`
                             : "Not recorded";
                           const priceValue = realMode ? m.approvedCostingPrice : m.unitPrice;
@@ -580,7 +581,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
     ? [
       ["Item code", selection.item.itemCode ?? selection.item.catalogCode ?? "Not recorded"],
       ["Category", selection.item.category ? partCategoryMeta[selection.item.category].label : "Uncategorized"],
-      ["Quantity on hand", Number.isFinite(selection.item.qtyInStock) ? `${selection.item.qtyInStock.toFixed(2)} ${selection.item.unit}` : "Not recorded"],
+      ["Quantity on hand", Number.isFinite(selection.item.qtyInStock) ? `${selection.item.qtyInStock.toFixed(2)} ${selection.item.unit}${realMode && selection.item.quantityStatus === "provisional_sample" ? " · sample" : ""}` : "Not recorded"],
       ["Unit", selection.item.unit],
       [realMode ? "Approved costing price" : "Unit price", Number.isFinite(realMode ? selection.item.approvedCostingPrice : selection.item.unitPrice)
         ? `₱${(realMode ? selection.item.approvedCostingPrice : selection.item.unitPrice)!.toLocaleString("en-PH")}`
@@ -588,7 +589,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
       ...(realMode ? [["Source reference price (not approved)", selection.item.referencePriceText
         ?? (Number.isFinite(selection.item.referenceUnitPrice) ? `₱${selection.item.referenceUnitPrice!.toLocaleString("en-PH")}` : "Not listed")]] : []),
       ...(realMode && selection.item.referencePriceSource ? [["Reference price source", selection.item.referencePriceSource]] : []),
-      ["Low-stock threshold", Number.isFinite(selection.item.threshold) ? `${selection.item.threshold} ${selection.item.unit}` : "Not recorded"],
+      ["Low-stock threshold", Number.isFinite(selection.item.threshold) ? `${selection.item.threshold} ${selection.item.unit}${realMode && selection.item.thresholdStatus === "provisional_sample" ? " · sample" : ""}` : "Not recorded"],
       ...(realMode && selection.item.referencePriceStatus ? [["Reference price review", selection.item.referencePriceStatus]] : []),
       ...(selection.item.supplier ? [["Supplier", selection.item.supplier]] : []),
     ]
@@ -716,8 +717,10 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
   const [unitPrice, setUnitPrice] = useState(m.unitPrice);
   const [qtyInStock, setQtyInStock] = useState(m.qtyInStock);
   const [realQtyInStock, setRealQtyInStock] = useState(Number.isFinite(m.qtyInStock) ? String(m.qtyInStock) : "");
+  const [quantityObserved, setQuantityObserved] = useState(false);
   const [threshold, setThreshold] = useState(m.threshold);
   const [realThreshold, setRealThreshold] = useState(Number.isFinite(m.threshold) ? String(m.threshold) : "");
+  const [thresholdObserved, setThresholdObserved] = useState(false);
   const [supplier, setSupplier] = useState(m.supplier ?? "");
   const [reason, setReason] = useState(STOCK_REASONS[0]);
   const [ref, setRef] = useState("");
@@ -738,14 +741,12 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
         toast.error("Threshold must be blank or a non-negative number with at most four decimals");
         return;
       }
-      const updates: RealMaterialUpdate = {};
+      const updates: RealMaterialUpdate = materialObservationFields({
+        quantity: realQtyInStock, threshold: realThreshold, quantityObserved, thresholdObserved,
+      });
       if (name.trim() !== m.name) updates.name = name.trim();
       if (category !== m.category) updates.category = category;
       if (unit !== m.unit) updates.unit = unit;
-      const oldQuantity = Number.isFinite(m.qtyInStock) ? String(m.qtyInStock) : "";
-      if (realQtyInStock !== oldQuantity) updates.quantityOnHand = realQtyInStock || null;
-      const oldThreshold = Number.isFinite(m.threshold) ? String(m.threshold) : "";
-      if (realThreshold !== oldThreshold) updates.threshold = realThreshold || null;
       const normalizedSupplier = supplier.trim() || null;
       if (normalizedSupplier !== (m.supplier ?? null)) updates.supplier = normalizedSupplier;
       if (Object.keys(updates).length === 0) {
@@ -839,7 +840,7 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Low Stock Threshold</label>
-                  <input type="number" min="0" max="1000000000" step="0.0001" value={realMode ? realThreshold : threshold} onChange={(e) => realMode ? setRealThreshold(e.target.value) : setThreshold(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input type="number" min="0" max="1000000000" step="0.0001" value={realMode ? realThreshold : threshold} onChange={(e) => { if (realMode) { setRealThreshold(e.target.value); setThresholdObserved(true); } else setThreshold(Number(e.target.value)); }} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                 </div>
               </div>
             </div>
@@ -848,7 +849,7 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
             {!editingDetails && (
               <div className="col-span-2 flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Stock Quantity</label>
-                <input type="number" min="0" max="1000000000" step="0.0001" value={realMode ? realQtyInStock : qtyInStock} disabled={saving} onChange={(e) => realMode ? setRealQtyInStock(e.target.value) : setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 15, fontWeight: 700 }} placeholder={realMode ? "Not recorded" : undefined} />
+                <input type="number" min="0" max="1000000000" step="0.0001" value={realMode ? realQtyInStock : qtyInStock} disabled={saving} onChange={(e) => { if (realMode) { setRealQtyInStock(e.target.value); setQuantityObserved(true); } else setQtyInStock(Number(e.target.value)); }} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 15, fontWeight: 700 }} placeholder={realMode ? "Not recorded" : undefined} />
               </div>
             )}
             <div className="col-span-2 flex flex-col gap-1.5">

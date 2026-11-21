@@ -2,6 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClientPortalService } from './client-portal.service.js';
 
+test('D07 Client payments use one deterministic proof and preserve ownership and amount masking', async () => {
+  const h = harness({ orderRows: [{ id: '91' }], paymentRows: [
+    { id: '9007199254740993', invoiceId: '601', paymentType: 'DOWNPAYMENT', submittedAmount: '10.00', verifiedAmount: '10.00', verificationStatus: 'verified', proofFileId: '2', proofFilename: 'proof.pdf' },
+    { id: '9007199254740994', invoiceId: '601', paymentType: 'DOWNPAYMENT', submittedAmount: '10.00', verifiedAmount: null, verificationStatus: 'pending', proofFileId: null, proofFilename: null },
+  ] });
+  const result = await h.service.payments('7', '91');
+  assert.equal(result.data.length, 2);
+  assert.equal(result.data[0].verifiedAmount, '10.00');
+  assert.equal(result.data[1].verifiedAmount, null);
+  assert.deepEqual(result.data.map(row => row.proofFileId), ['2', null]);
+  const call = h.calls.find(entry => entry.sql.includes('FROM payments p'));
+  assert.match(call.sql, /pf.file_id=\(SELECT MIN\(proof.file_id\) FROM payment_files proof WHERE proof.payment_id=p.id AND proof.purpose='proof_of_payment'\)/);
+  assert.match(call.sql, /pf.payment_id=p.id AND pf.purpose='proof_of_payment'/);
+  assert.match(call.sql, /f.id=pf.file_id AND f.state='available'/);
+  assert.match(call.sql, /CASE WHEN p.verification_status='verified' THEN p.verified_amount ELSE NULL END verifiedAmount/);
+  assert.deepEqual(call.params, ['91']);
+  assert.deepEqual(h.calls[0].params, ['91', '7']);
+
+  const denied = harness({ orderRows: [] });
+  assert.deepEqual(await denied.service.payments('8', '91'), { success: false, code: 'NOT_FOUND' });
+  assert.equal(denied.calls.some(entry => entry.sql.includes('FROM payments p')), false);
+});
+
 test('owned rejection history exposes approved narrative and date without archival actor or audit data',async()=>{
   const row={id:'91',reference:'INQ-91',stageLabel:'Inquiry',archiveReason:'rejected',archiveNote:'Synthetic reason',archivedAt:'2026-11-17T00:00:00Z',archivedBy:'7',audit:'private',itemCount:0};
   const h=harness({orderRows:[row]});const result=await h.service.detailOrder('2','91');

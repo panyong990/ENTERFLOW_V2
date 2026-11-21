@@ -44,3 +44,70 @@ test('Accounting read service rejects unsupported filters and excessive limits',
   assert.deepEqual(await service.listPayments(actor, { status: 'cancelled' }), { success: false, code: 'VALIDATION_ERROR' });
   assert.deepEqual(await service.listInvoices(actor, { limit: '101' }), { success: false, code: 'VALIDATION_ERROR' });
 });
+
+function proofProjectionHarness(paymentRows) {
+  const calls = [];
+  const db = { async getConnection() { return {
+    async execute(sql, params) {
+      calls.push({ sql, params });
+      // Source contract + relational fixture, not execution of SQL against MySQL.
+      assert.match(sql, /SELECT CAST\(MIN\(pf.file_id\) AS CHAR\) FROM payment_files pf\s+WHERE pf.payment_id=p.id AND pf.purpose='proof_of_payment'/);
+      assert.doesNotMatch(sql, /JOIN\s+payment_files|SUM\(DISTINCT/i);
+      assert.match(sql, /CASE WHEN p.verification_status='verified' THEN p.verified_amount ELSE NULL END verifiedAmount/);
+      const rows = sql.includes('WHERE p.id=?') ? paymentRows.filter(row => row.id === params[0]) : paymentRows.slice(0, params.at(-1));
+      return [rows.map(({ attachments, ...payment }) => {
+        const proofs = attachments.filter(file => file.purpose === 'proof_of_payment')
+          .toSorted((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0);
+        return { ...payment, verifiedAmount: payment.verificationStatus === 'verified' ? payment.verifiedAmount : null, proofFileId: proofs[0]?.id ?? null };
+      })];
+    }, release() {},
+  }; } };
+  return { service: createAccountingService({ db }), calls };
+}
+
+for (const attachments of [
+  [],
+  [{ id: '10', purpose: 'proof_of_payment' }],
+  [{ id: '10', purpose: 'proof_of_payment' }, { id: '1', purpose: 'receipt' }, { id: '2', purpose: 'proof_of_payment' }],
+  [{ id: '1', purpose: 'receipt' }],
+]) {
+  test(`D07 Accounting list/detail preserve one payment with ${attachments.length} attachments`, async () => {
+    const payment = { id: '9007199254740993', orderId: '91', invoiceId: '601', paymentType: 'DOWNPAYMENT', submittedAmount: '20.00', verifiedAmount: '20.00', verificationStatus: 'verified', attachments };
+    const h = proofProjectionHarness([payment]);
+    const listed = await h.service.listPayments(actor);
+    const detail = await h.service.getPayment(actor, payment.id);
+    assert.equal(listed.data.length, 1);
+    assert.deepEqual(detail.data, listed.data[0]);
+    assert.equal(detail.data.id, payment.id);
+    assert.equal(detail.data.verifiedAmount, '20.00');
+    assert.equal(detail.data.proofFileId, attachments.length === 3 ? '2' : attachments.some(file => file.purpose === 'proof_of_payment') ? '10' : null);
+  });
+}
+
+test('D07 Accounting preserves equal-value payments, status masking and payment-level limits', async () => {
+  const rows = ['verified', 'verified', 'pending', 'rejected'].map((verificationStatus, index) => ({
+    id: String(9007199254740993n + BigInt(index)), orderId: '91', invoiceId: '601',
+    submittedAmount: '10.00', verifiedAmount: verificationStatus === 'verified' ? '10.00' : null,
+    verificationStatus, attachments: [{ id: '2', purpose: 'proof_of_payment' }, { id: '10', purpose: 'proof_of_payment' }],
+  }));
+  const h = proofProjectionHarness(rows);
+  const listed = await h.service.listPayments(actor);
+  assert.equal(listed.data.length, 4);
+  assert.deepEqual(listed.data.map(row => row.verifiedAmount), ['10.00', '10.00', null, null]);
+  assert.equal(new Set(listed.data.map(row => row.id)).size, 4);
+  assert.equal((await h.service.listPayments(actor, { limit: '1' })).data.length, 1);
+  assert.equal((await h.service.getPayment(actor, '999')).code, 'NOT_FOUND');
+});
+
+test('D07 invoice list/detail keep the payment-only verified sum and exact totals', async () => {
+  const row = { id: '601', orderId: '91', amount: '100.00', requiredDownpayment: '20.00', verifiedAmount: '20.00' };
+  const h = harness([row]);
+  const listed = await h.service.listInvoices(actor);
+  const detail = await h.service.getInvoice(actor, row.id);
+  assert.deepEqual(listed.data[0], row);
+  assert.deepEqual(detail.data, row);
+  for (const { sql } of h.calls) {
+    assert.match(sql, /SELECT SUM\(p.verified_amount\) FROM payments p\s+WHERE p.invoice_id=i.id AND p.verification_status='verified'/);
+    assert.doesNotMatch(sql, /payment_files|SUM\(DISTINCT/i);
+  }
+});

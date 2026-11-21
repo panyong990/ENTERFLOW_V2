@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import mysql from 'mysql2/promise';
+import { isIP } from 'node:net';
 
 import { createDatabaseTlsOptions } from '../../src/config/database-tls.js';
 
@@ -34,7 +35,8 @@ export async function readJsonArtifact(path) {
 }
 
 export function validateApprovalEnvelope(raw, { phase, now = Date.now() } = {}) {
-  exactKeys(raw, new Set(['scope', 'approvalId', 'approved', 'runId', 'phases', 'expiresAt', 'accounts']), 'approval envelope');
+  exactKeys(raw, new Set(['scope', 'approvalId', 'approved', 'runId', 'phases', 'expiresAt', 'accounts', 'provisioningMode', 'administratorAccount']), 'approval envelope');
+  if (raw.provisioningMode !== undefined && !['delegated', 'administrator-managed'].includes(raw.provisioningMode)) throw new Error('Unknown provisioning mode.');
   if (raw.scope !== TASK_002_SCOPE || raw.approved !== true) throw new Error('Task 002 approval is missing.');
   const approvalId = requiredString(raw.approvalId, 'approvalId');
   const runId = requiredString(raw.runId, 'runId');
@@ -103,7 +105,7 @@ export function verifyContainerInspection(identity, artifact, { now = Date.now()
 
 const grantAccountPattern = /\s+TO\s+(`[^`]+`@`[^`]+`)\s*(WITH GRANT OPTION)?$/iu;
 
-export function parseGrantStatement(statement) {
+export function parseGrantStatement(statement, { partialRevokes } = {}) {
   const normalized = requiredString(statement, 'grant statement').trim().replace(/\s+/gu, ' ');
   const accountMatch = normalized.match(grantAccountPattern);
   if (!accountMatch || !normalized.toUpperCase().startsWith('GRANT ')) throw new Error('Unexpected grant statement.');
@@ -111,7 +113,14 @@ export function parseGrantStatement(statement) {
   const onIndex = prefix.toUpperCase().lastIndexOf(' ON ');
   if (onIndex < 0) throw new Error('Roles and non-object grants are forbidden.');
   const privileges = prefix.slice(0, onIndex).split(',').map(value => value.trim().toUpperCase()).sort();
-  const scope = prefix.slice(onIndex + 4).replaceAll('`', '').toLowerCase();
+  let scope = prefix.slice(onIndex + 4).replaceAll('`', '').toLowerCase();
+  if (scope.endsWith('.*') && scope !== '*.*') {
+    const database = scope.slice(0, -2);
+    if (partialRevokes === true && database.includes('\\')) throw new Error('Ambiguous literal database grant.');
+    if (partialRevokes === false && /(?<!\\)[_%]/u.test(database)) throw new Error('Wildcard database grant is forbidden.');
+    if (/\\(?![_%])/u.test(database)) throw new Error('Unsupported database grant escape.');
+    scope = `${database.replace(/\\([_%])/gu, '$1')}.*`;
+  }
   return Object.freeze({ account: accountMatch[1].toLowerCase(), privileges, scope, grantOption: Boolean(accountMatch[2]) });
 }
 
@@ -119,9 +128,9 @@ function grantKey(grant) {
   return `${grant.scope}|${grant.privileges.join(',')}|${grant.grantOption ? 'grant' : 'plain'}`;
 }
 
-export function assertExactGrantSet(statements, { account, expected }) {
+export function assertExactGrantSet(statements, { account, expected, partialRevokes }) {
   if (!Array.isArray(statements) || !Array.isArray(expected)) throw new Error('Grant sets must be arrays.');
-  const parsed = statements.map(parseGrantStatement);
+  const parsed = statements.map(statement => parseGrantStatement(statement, { partialRevokes }));
   const normalizedAccount = account.toLowerCase();
   if (parsed.some(grant => grant.account !== normalizedAccount)) throw new Error('Grant account mismatch.');
   const actual = parsed.filter(grant => !(grant.scope === '*.*' && grant.privileges.length === 1 && grant.privileges[0] === 'USAGE')).map(grantKey).sort();
@@ -173,6 +182,56 @@ export function validateProvisionerRuntimeAttestation(raw, identity, now = Date.
   assertExactGrantSet(raw.grants, { account: requiredString(raw.account, 'provisioner account'), expected: expectedProvisionerGrants(identity.database, 'runtime') });
   const reviewed = Date.parse(raw.reviewedAt);
   if (raw.identityDigest !== identityDigest(identity) || !Number.isFinite(reviewed) || reviewed > now + 60000 || now - reviewed > 900000) throw new Error('Stale or foreign provisioner attestation.');
+  return true;
+}
+
+export function exactConnectorHost(host) {
+  if (typeof host !== 'string' || isIP(host) === 0 || host.includes('%')) throw new Error('A verified literal connector IP is required.');
+  return host;
+}
+
+export function administratorManagedAccounts(identity, host) {
+  exactConnectorHost(host);
+  return Object.freeze(Object.fromEntries(['initializer', 'fixture', 'api', 'cleanup'].map(role =>
+    [role, `\`it_${identity.runId}_${role === 'initializer' ? 'init' : role}\`@\`${host}\``])));
+}
+
+export function assertAdministratorCredentialExclusion(env, approval, identity) {
+  if (approval.provisioningMode !== 'administrator-managed') return;
+  const host = approval.accounts?.api?.match(/@`([^`]+)`$/u)?.[1];
+  const accounts = administratorManagedAccounts(identity, host);
+  if (JSON.stringify(Object.keys(approval.accounts ?? {}).sort()) !== JSON.stringify(Object.keys(accounts).sort())) throw new Error('Unexpected managed accounts.');
+  for (const [role, account] of Object.entries(accounts)) {
+    if (approval.accounts?.[role] !== account || env[`ENTERFLOW_IT_${role.toUpperCase()}_USER`] !== account.match(/^`([^`]+)`/u)[1]) throw new Error('Managed role credential mismatch.');
+  }
+  // This exact input is non-secret metadata, not a provisioner credential.
+  // Its JSON contents still pass the separate target-bound, expiring runtime
+  // attestation validator. No other ADMIN_/PROVISIONER_ input is exempted.
+  const attestationKey = 'ENTERFLOW_IT_PROVISIONER_ATTESTATION_FILE';
+  if (Object.hasOwn(env, attestationKey)) {
+    const file = requiredString(env[attestationKey], 'runtime attestation file');
+    if (file !== file.trim() || /[\u0000\r\n]/u.test(file) || file.includes('://') || !file.endsWith('.json')) {
+      throw new Error('Runtime attestation must be a local JSON file path.');
+    }
+  }
+  if (Object.keys(env).some(key => key !== attestationKey &&
+      /^(?:ENTERFLOW_IT_(?:ADMIN|PROVISIONER)_|EF_RECOVERY_SECRET$)/iu.test(key))) throw new Error('Administrator credentials are forbidden in the scenario.');
+}
+
+export function validateRuntimeProvisioningAttestation(raw, identity, approval, now = Date.now()) {
+  if (approval.provisioningMode !== 'administrator-managed') return validateProvisionerRuntimeAttestation(raw, identity, now);
+  exactKeys(raw, new Set(['mode', 'runId', 'database', 'phase', 'identityDigest', 'reviewedAt', 'administratorAccount',
+    'accounts', 'delegatedProvisionerCreated', 'administratorCredentialsExcluded']), 'administrator-managed attestation');
+  const reviewed = Date.parse(raw.reviewedAt);
+  const host = approval.accounts?.api?.match(/@`([^`]+)`$/u)?.[1];
+  const accounts = administratorManagedAccounts(identity, host);
+  if (raw.mode !== 'administrator-managed' || raw.runId !== identity.runId || raw.database !== identity.database || raw.phase !== 'runtime' ||
+      raw.identityDigest !== identityDigest(identity) || !Number.isFinite(reviewed) || reviewed > now + 60000 || now - reviewed > 900000 ||
+      raw.delegatedProvisionerCreated !== false || raw.administratorCredentialsExcluded !== true ||
+      !/^`root`@`[^`]+`$/u.test(approval.administratorAccount ?? '') || raw.administratorAccount !== approval.administratorAccount) throw new Error('Stale, foreign, or invalid administrator-managed attestation.');
+  for (const source of [raw.accounts, approval.accounts]) {
+    if (!source || Object.keys(source).length !== 4 || Object.entries(accounts).some(([role, value]) => source[role] !== value)) throw new Error('Managed account binding mismatch.');
+  }
   return true;
 }
 

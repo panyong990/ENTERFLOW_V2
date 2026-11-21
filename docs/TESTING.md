@@ -1,5 +1,192 @@
 # ENTER-FLOW test procedures
 
+> Task 002 runtime update, 2026-11-21: the authorized single Warehouse scenario
+> and guarded cleanup **PASSED**; all 11 schema hashes matched. The documented
+> second fresh-run criterion remains pending, so overall acceptance is
+> **INCOMPLETE**. See the [runtime acceptance report](TASK_002_RUNTIME_ACCEPTANCE_REPORT_2026-11-21.md).
+> Implementation-only and earlier runtime-pending statements below are historical;
+> none of this documentation authorizes another run or resource teardown.
+
+## Task 002 second-run configuration (offline preparation, 2026-11-21)
+
+The second registered descriptor is `2f07518b9819d0c1`, generated with
+`crypto.randomBytes(8)`, targeting only `enterflow_it_2f07518b9819d0c1`.
+`backend/test/support/task002-run-descriptors.mjs` registers the two exact runs;
+unknown IDs, edited descriptors, and cross-run database/path bindings fail closed.
+The original default remains run `3904feeb1f295fdd`. Its completed evidence,
+credentials, journal, and retained reference records were not changed.
+
+Second-run local configuration is under
+`backend/test/local/task-002/runs/2f07518b9819d0c1/`: `descriptor.json`,
+`identity.reviewed.json`, and `evidence/packet.config.json`. These are configuration,
+not fresh identity evidence or execution approval. The container/TLS pins are
+unchanged and must be freshly revalidated before any authorized live operation.
+The exact account host remains `172.17.0.1`.
+
+Reserved paths below that directory are:
+
+- Protected credentials: `administrator-managed-credentials/accounts.credentials.dpapi`.
+- Journal: `evidence/ownership.journal.local.json`.
+- Runtime attestation: `evidence/administrator-runtime.attestation.local.json`.
+- Separate execution approval: `evidence/execution.approved.json`.
+
+No credentials, journal, attestation, approval, database, or accounts were created.
+The future provisioning entry point creates the credential directory with the
+existing owner/SYSTEM ACL and DPAPI protections; it refuses existing paths.
+Only the existing protected administrator source is reused, in memory.
+
+After separately approved host verification and initial provisioning, invocation
+uses `node backend/test/administrator-provisioning.mjs` with
+`--descriptor-run-id=2f07518b9819d0c1`, the separately approved `--phase`, and an
+`--approval-file` directly inside the second-run directory. Every phase retains
+the exact target pins, fresh approval/host binding, collision checks, and grants.
+
+After separately approved schema initialization, account activation, and fresh
+runtime packet preparation, the future scenario launcher is:
+
+```text
+node backend/test/execute-prepared-scenario.mjs --descriptor-run-id=2f07518b9819d0c1
+```
+
+It requires the selected descriptor's approved envelope, fresh evidence, matching
+protected role credentials, unused journal, and free loopback port. Port `43123`
+is proposed only; availability has not been checked. The original combined runner
+and cleanup implementation are reused; no persistent Warehouse password or
+standalone fixture phase is introduced. Cleanup remains separately approved.
+
+Focused offline verification: `node --test --test-reporter=dot
+backend/test/support/task002-second-run.test.mjs
+backend/test/support/administrator-provisioning.test.mjs` passed **24/24**.
+These checks use injected connections, not MySQL. No live target or native
+DPAPI/ACL behavior was tested. The separate 16-page handoff remains unavailable
+as recorded in the runtime acceptance report; no additional requirements are
+inferred. Overall acceptance remains **INCOMPLETE** until the second successful
+scenario and guarded cleanup are evidenced.
+
+Database Change Report: no live tables reviewed; proposed second-run database
+and four restricted accounts remain unprovisioned. No schema/data/account/grant
+changes or migrations were performed. Migration 007 and approved schema artifacts
+were untouched. Next approval: fresh identity/host preflight and initial
+administrator-managed provisioning for this exact second-run descriptor.
+
+## Second-run empty inventory preparation (2026-11-21)
+
+The administrator CLI now supports the read-only `inventory-empty` subphase only
+with the explicit second-run descriptor. It validates the existing
+`schema-initialization.approved.json` envelope before Docker access or DPAPI:
+exact run, administrator, four account/host identities, administrator-managed
+mode, only `initialize-schema`, and live expiry. This is a prerequisite collector;
+it cannot initialize tables, provision accounts, or execute the scenario.
+
+After separate execution authorization and resolution of the approval blocker:
+
+```text
+node backend/test/administrator-provisioning.mjs --descriptor-run-id=2f07518b9819d0c1 --phase=inventory-empty --approval-file=backend/test/local/task-002/runs/2f07518b9819d0c1/schema-initialization.approved.json
+```
+
+It reuses Docker/TLS/UUID/version/SQL-mode/session-UTC validation, fixed protected
+administrator DPAPI source, and fresh live administrator/connector-host checks.
+Only parameterized, exact-schema metadata queries collect database existence,
+base tables, views, triggers, routines, and events. Zero table/view objects proves
+migration-ledger absence without reading a ledger or any application records.
+Any unexpected object rejects empty-inventory acceptance. Success exclusively
+creates `inventory-empty.observed.local.json` in the second-run directory, using
+the existing administrator-inventory format; existing output is never replaced.
+
+Preparation found the existing approval malformed: UTF-8 BOM rejected by
+`readJsonArtifact`, plus triple backticks in the administrator and all four account
+identities instead of exact single-backtick bindings. At
+`2026-11-21T08:58:09.896Z`, its expiry `2026-11-21T09:18:29.4982196Z` was still
+future. The file was preserved unchanged; no approval was replaced or renewed.
+Execution remains blocked pending separately authorized correction/reissue and
+read-only execution. No actual inventory or emptiness claim has been produced.
+
+Focused offline command: `node --test --test-reporter=dot
+backend/test/support/administrator-inventory.test.mjs
+backend/test/support/administrator-provisioning.test.mjs
+backend/test/support/task002-second-run.test.mjs` — **31/31 passed**. Coverage
+includes exact schema filters, all object categories, ledger-object rejection,
+malformed/expired/cross-run approvals, host mismatch, and mid-collection expiry.
+Syntax check passed. Injected connections only; no Docker, DPAPI, or MySQL action.
+
+Database Change Report: no live tables reviewed or database connections made;
+no schema, data, account, grant, or migration changes proposed/performed.
+Migration 007, approved artifacts, and first-run resources were untouched.
+The separate 16-page handoff remains unavailable as recorded above.
+
+## Task 002 administrator-managed provisioning (implementation only, 2026-11-21)
+
+`backend/test/administrator-provisioning.mjs` is a separate guarded entry point
+for run `3904feeb1f295fdd` / `enterflow_it_3904feeb1f295fdd`. No runtime approval
+is created by its implementation. It never imports development configuration,
+the application server, schema snapshots, fixtures, or migration code. No action
+occurs on import; no phase/approval means rejection before target access.
+
+After separate approval only, its invocation shape is:
+
+```text
+node backend/test/administrator-provisioning.mjs --phase=<approved-phase> --approval-file=backend/test/local/task-002/<reviewed-approval>.json
+```
+
+Phases are `verify-host` (read-only), `provision-accounts` (database/four accounts
+only), and `attest-runtime` (read-only, for a later separately approved grant
+phase). The approval object has exactly `scope`, `mode`, `runId`, `database`,
+`identityDigest`, `phase`, `approvalId`, `approved`, `expiresAt`, and
+`administratorAccount`; provisioning/attestation also require `accountHost` and
+`hostEvidenceSha256`. Scope is `enterflow-task-002-inventory-auth`, mode is
+`administrator-managed`. Identity digest is computed by the existing
+`identityDigest` helper from the reviewed identity. Administrator account is the
+exact pre-existing root account, never a new delegated account.
+
+`verify-host` uses authenticated `USER()` on the verified TLS connection and
+exclusively creates ignored `host.observed.local.json`. Only a literal IPv4/IPv6
+origin is accepted. The owner must review that host and bind its evidence digest
+(`hostEvidenceDigest`) into the next phase's approval. Evidence expires after
+15 minutes; expired records must be preserved/archived by an explicitly scoped
+operator action before capturing replacements. No automatic overwrite occurs.
+
+The administrator credential comes only from the existing fixed Task 29 DPAPI
+file, decrypted in memory under Stephanie's Windows SID. Four independent random
+passwords are DPAPI-encrypted into a new ACL-restricted ignored
+`administrator-managed-credentials/accounts.credentials.dpapi` before DDL.
+Credential overrides, plaintext credential files, and raw SQL/error output are
+forbidden. Success/failure output contains status codes only. DDL is not atomic:
+any failure retains encrypted credentials and partial state for review; there is
+no automatic retry, rollback, account alteration, or destructive recovery.
+
+Initial provisioning grants only `CREATE, REFERENCES` on the exact run database
+to `it_3904feeb1f295fdd_init` and unlocks it. The `_fixture`, `_api`, and `_cleanup`
+accounts remain TLS-required, locked, and privilege-free. Existing database or
+any account containing this run ID is a collision. No account receives global
+privileges or `GRANT OPTION`. Database underscores are escaped when
+`partial_revokes=OFF` and literal when ON; the setting is never changed.
+
+For the later scenario, set `provisioningMode: "administrator-managed"` and the
+exact `administratorAccount` plus four account/host bindings in its separately
+approved envelope. The existing `ENTERFLOW_IT_PROVISIONER_ATTESTATION_FILE`
+variable accepts a managed attestation from `attest-runtime`; it checks the four
+unlocked accounts' exact grants and rejects extra run accounts. The managed
+artifact contains `mode`, `runId`, `database`, `phase: "runtime"`, `identityDigest`,
+`reviewedAt`, `administratorAccount`, `accounts`, `delegatedProvisionerCreated:
+false`, and `administratorCredentialsExcluded: true`. It expires after 15 minutes
+and is a trusted operator artifact, not independent proof of process isolation.
+The scenario rejects administrator/provisioner credential inputs and mismatched
+role usernames before opening its role connections; its API child still receives
+only API credentials. Existing delegated attestations require their original
+approval mode and validation. No fifth account is invented for managed mode.
+
+Remaining runtime gates: read-only host observation/approval, native DPAPI/ACL
+verification, approved provisioning, separate snapshot initialization and
+post-schema table-grant approval, fresh evidence, and scenario execution approval.
+No runtime operation is authorized by this documentation.
+
+Implementation verification: 20 focused offline checks passed (administrator
+safeguards, affected target helpers, and role-grant binding). No live transport,
+DPAPI, or ACL operation was tested. Database Change Report: source workflows for
+the four accounts and six future runtime tables reviewed; no live tables
+accessed, schema/data/account/grant changes performed, or migrations created or
+applied. Migration 007 and the approved snapshot/manifest were untouched.
+
 ## Task 002 isolated Inventory API/MySQL runner (implementation only)
 
 The guarded command is:

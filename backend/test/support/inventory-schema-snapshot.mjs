@@ -11,6 +11,74 @@ export const APPROVED_TABLE_ORDER = Object.freeze([
 ]);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 
+// Only live-observed, explicitly approved charset expansions. Tuples pin
+// column, type (numeric shorthand means varchar length), and exact suffix.
+// Each rule also pins the entire unchanged approved table definition.
+const VERIFIED_CHARSET_EXPANSIONS = new Map([
+  ['roles', { sha256: 'c6e874e5c748218e897804a60e4e2f9449454a5d88c063f148f4070b66d18b2f',
+    columns: [['code', 24], ['label', 80]] }],
+  ['payment_terms', { sha256: '2a5e9dad2c1acd0b4df6e4a4e7fa51a70f4a1baa97c17bc0b8f9a621a98a92e4',
+    columns: [['code', 24], ['label', 80]] }],
+  ['material_categories', { sha256: '7f75aa4ccc1f08aec3fe98759501e9782b021abe0575532654a7e2c5545c34ab',
+    columns: [['code', 32], ['label', 80]] }],
+  ['units', { sha256: '1a891398e304a40c00314eb6d50665653788d409fb2cdb1189636210c82499df',
+    columns: [['code', 16], ['label', 40]] }],
+  ['filter_types', { sha256: 'af13cdbb453c9cbea9da711e2c8a7d666fb085ffbf9746ae391309e21895766c',
+    columns: [
+      ['code', 'varchar(24)'], ['label', 'varchar(100)'], ['template_group', 'varchar(24)']
+    ] }],
+  ['clients', { sha256: '2ac5bfcc91ba24d5738a6e963cea197100dfdbd61c8866293f2eb128943afc28',
+    columns: [
+      ['company_name', 'varchar(200)'], ['industry', 'varchar(120)', ' DEFAULT NULL,'],
+      ['contact_person', 'varchar(160)', ' DEFAULT NULL,'], ['email', 'varchar(254)', ' DEFAULT NULL,'],
+      ['phone', 'varchar(40)', ' DEFAULT NULL,'], ['address_line1', 'varchar(255)', ' DEFAULT NULL,'],
+      ['address_line2', 'varchar(255)', ' DEFAULT NULL,'], ['city_province', 'varchar(160)', ' DEFAULT NULL,'],
+      ['postal_code', 'varchar(20)', ' DEFAULT NULL,'], ['payment_term_code', 'varchar(24)', ' DEFAULT NULL,'],
+      ['internal_notes', 'text', ',']
+    ] }],
+  ['users', { sha256: '9bc370c3220dbc4b5b12374e7e5ff4f8e7afd0f21e0499e80938cf9b85a2acbf',
+    columns: [
+      ['role_code', 'varchar(24)'], ['account_type', "enum('employee','client')"],
+      ['display_name', 'varchar(160)'], ['email', 'varchar(254)'], ['username', 'varchar(100)'],
+      ['phone', 'varchar(40)', ' DEFAULT NULL,'], ['password_hash', 'varchar(255)'],
+      ['employee_number', 'varchar(80)', ' DEFAULT NULL,'], ['department', 'varchar(120)', ' DEFAULT NULL,'],
+      ['job_title', 'varchar(120)', ' DEFAULT NULL,']
+    ] }],
+  ['product_specifications', { sha256: '23272e3bb36d8344739728f5f94d7805038e725188f84ec44803161c37cc39e3',
+    columns: [
+      ['filter_type_code', 'varchar(24)'], ['filter_name', 'varchar(200)'],
+      ['od1', 'varchar(100)', ' DEFAULT NULL,'], ['od2', 'varchar(100)', ' DEFAULT NULL,'],
+      ['id1', 'varchar(100)', ' DEFAULT NULL,'], ['id2', 'varchar(100)', ' DEFAULT NULL,'],
+      ['height', 'varchar(100)', ' DEFAULT NULL,'], ['overall_height', 'varchar(100)', ' DEFAULT NULL,'],
+      ['length', 'varchar(100)', ' DEFAULT NULL,'], ['width', 'varchar(100)', ' DEFAULT NULL,'],
+      ['thickness', 'varchar(100)', ' DEFAULT NULL,'], ['depth', 'varchar(100)', ' DEFAULT NULL,'],
+      ['pocket_count', 'varchar(100)', ' DEFAULT NULL,'], ['diameter', 'varchar(100)', ' DEFAULT NULL,'],
+      ['cloth_cutting_width', 'varchar(100)', ' DEFAULT NULL,'], ['cloth_cutting_length', 'varchar(100)', ' DEFAULT NULL,'],
+      ['spring_plate_center_to_center', 'varchar(100)', ' DEFAULT NULL,'], ['spring_plate_width', 'varchar(100)', ' DEFAULT NULL,'],
+      ['spring_plate_length', 'varchar(100)', ' DEFAULT NULL,'], ['pad_od', 'varchar(100)', ' DEFAULT NULL,'],
+      ['pad_id', 'varchar(100)', ' DEFAULT NULL,'], ['media', 'varchar(255)', ' DEFAULT NULL,'],
+      ['inner_core', 'varchar(255)', ' DEFAULT NULL,'], ['outer_core', 'varchar(255)', ' DEFAULT NULL,'],
+      ['oring', 'varchar(255)', ' DEFAULT NULL,'], ['gasket', 'varchar(255)', ' DEFAULT NULL,'],
+      ['end_cap', 'varchar(255)', ' DEFAULT NULL,'], ['oem_part_number', 'varchar(160)', ' DEFAULT NULL,'],
+      ['brand', 'varchar(160)', ' DEFAULT NULL,'], ['filtration_rating', 'varchar(120)', ' DEFAULT NULL,'],
+      ['others', 'text', ','], ['notes', 'text', ',']
+    ] }],
+  ['materials', { sha256: '621d5bf9c17e4a757eb1591ac9f5bb6f74033a7c6aa1ef4663e08f7164e0da52',
+    columns: [
+      ['name', 'varchar(200)'], ['category_code', 'varchar(32)', ' DEFAULT NULL,'], ['unit_code', 'varchar(16)'],
+      ['reference_price_text', 'varchar(32)', ' DEFAULT NULL,'], ['reference_price_source', 'varchar(255)', ' DEFAULT NULL,'],
+      ['reference_price_status', "enum('unreviewed','needs_review','reviewed')", " NOT NULL DEFAULT 'unreviewed',"],
+      ['quantity_status', "enum('unknown','provisional_sample','verified')", " NOT NULL DEFAULT 'unknown',"],
+      ['threshold_status', "enum('unknown','provisional_sample','verified')", " NOT NULL DEFAULT 'unknown',"],
+      ['supplier_name', 'varchar(200)', ' DEFAULT NULL,']
+    ] }],
+  ['finished_goods', { sha256: '33eab5d064b19e6549dcf45d1509946e1452d77bcd12ce126b257bb9d16ad130',
+    columns: [
+      ['item_code', 'varchar(80)'], ['enterfil_part_number', 'varchar(160)'],
+      ['demand', "enum('HIGH DEMAND','MONITOR','STABLE')", " NOT NULL DEFAULT 'STABLE',"]
+    ] }]
+]);
+
 export const sha256 = value => createHash('sha256').update(value).digest('hex');
 
 function decodeApprovedSql(bytes) {
@@ -103,6 +171,24 @@ export function canonicalizeShowCreate(value) {
   if (matches.length === 1) normalized = `${value.slice(0, matches[0].index)}${matches[0][0].replace(/ AUTO_INCREMENT=[1-9]\d*/u, '')}${value.slice(matches[0].index + matches[0][0].length)}`;
   const tableOptions = normalized.slice(normalized.lastIndexOf(') ENGINE='));
   if (/AUTO_INCREMENT=/u.test(tableOptions)) throw new Error('Unmatched table AUTO_INCREMENT option.');
+  // MySQL 8.4.13 can expand the allowlisted columns' COLLATE clauses
+  // with their implied CHARACTER SET. Match only these exact column lines.
+  // Accept the candidate only if the entire table still matches the existing
+  // approved table hash (including column sizes, PK, engine and table defaults).
+  // Any other difference leaves the input intact for the normal mismatch gate.
+  const table = normalized.match(/^CREATE TABLE `([a-z_]+)` \(\n/u)?.[1];
+  const rule = VERIFIED_CHARSET_EXPANSIONS.get(table);
+  if (rule) {
+    const equivalentColumns = new Map(rule.columns.map(([column, type, suffix = ' NOT NULL,']) => {
+      const dataType = typeof type === 'number' ? `varchar(${type})` : type;
+      return [
+        `  \`${column}\` ${dataType} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci${suffix}`,
+        `  \`${column}\` ${dataType} COLLATE utf8mb4_unicode_ci${suffix}`
+      ];
+    }));
+    const candidate = normalized.split('\n').map(line => equivalentColumns.get(line) ?? line).join('\n');
+    if (candidate !== normalized && sha256(Buffer.from(candidate, 'utf8')) === rule.sha256) normalized = candidate;
+  }
   return normalized;
 }
 

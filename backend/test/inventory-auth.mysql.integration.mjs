@@ -14,7 +14,8 @@ import {
   identityDigest,
   readJsonArtifact,
   validateApprovalEnvelope,
-  validateProvisionerRuntimeAttestation,
+  validateRuntimeProvisioningAttestation,
+  assertAdministratorCredentialExclusion,
   validateTargetIdentity,
   verifyContainerInspection
 } from './support/integration-target.mjs';
@@ -58,9 +59,9 @@ export function assertLogin(body, cookies, fixture, userId) {
   return token;
 }
 
-export function assertApprovedRoleGrants(statements, { approvedAccount, expected }) {
+export function assertApprovedRoleGrants(statements, { approvedAccount, expected, partialRevokes }) {
   if (typeof approvedAccount !== 'string' || !/^`[^`]+`@`[^`]+`$/u.test(approvedAccount)) throw new Error('Approved account/host binding is required.');
-  return assertExactGrantSet(statements, { account: approvedAccount, expected });
+  return assertExactGrantSet(statements, { account: approvedAccount, expected, partialRevokes });
 }
 
 export function assertHttpPhaseLive(capability, runId, now = Date.now()) {
@@ -163,8 +164,9 @@ async function connectRole(context, phase, role, env) {
   let connection;
   try {
     connection = await connectVerifiedMysql({ ...context, phase, credential: credential(role, env) });
+    const partialRevokes = await readPartialRevokes(connection, role);
     assertApprovedRoleGrants(await showCurrentGrants(connection), { approvedAccount: expectedAccount,
-      expected: expectedRunAccountGrants(context.identity.database)[role] });
+      expected: expectedRunAccountGrants(context.identity.database)[role], partialRevokes });
     return connection;
   } catch (error) {
     await connection?.end().catch(() => {});
@@ -176,6 +178,13 @@ async function connectRole(context, phase, role, env) {
 async function showCurrentGrants(connection) {
   const [rows] = await connection.query('SHOW GRANTS');
   return rows.map(row => String(Object.values(row)[0]));
+}
+
+async function readPartialRevokes(connection, role) {
+  if (role !== 'initializer') return undefined;
+  const [[row]] = await connection.query('SELECT @@GLOBAL.partial_revokes AS partialRevokes');
+  if (!['0', '1'].includes(String(row.partialRevokes))) throw new Error('Unknown partial_revokes setting.');
+  return String(row.partialRevokes) === '1';
 }
 
 export async function verifyTargetPhase(env = process.env) {
@@ -196,7 +205,7 @@ export async function verifyGrantPhase(env = process.env) {
     const connection = await connectVerifiedMysql({ ...context, phase: 'verify-grants', credential: accountCredential });
     try {
       const statements = await showCurrentGrants(connection);
-      assertApprovedRoleGrants(statements, { approvedAccount: expectedAccount, expected: expected[role] });
+      assertApprovedRoleGrants(statements, { approvedAccount: expectedAccount, expected: expected[role], partialRevokes: await readPartialRevokes(connection, role) });
       results.push(Object.freeze({ role, grantCount: expected[role].length }));
     } finally { await connection.end(); }
   }
@@ -222,6 +231,7 @@ export async function initializeSchemaPhase(env = process.env) {
 export async function runActualHttpScenario(env = process.env) {
   const snapshot = await loadApprovedSnapshot({ sqlPath: snapshotPath, manifestPath });
   const fixtureContext = await loadAuthorizedContext('load-fixtures', env);
+  assertAdministratorCredentialExclusion(env, fixtureContext.approval, fixtureContext.identity);
   const httpCapability = validateApprovalEnvelope(fixtureContext.approval, { phase: 'execute-http' });
   const schemaCapability = validateApprovalEnvelope(fixtureContext.approval, { phase: 'initialize-schema' });
   const schemaEvidence = await readJsonArtifact(requiredEnvironment('ENTERFLOW_IT_SCHEMA_EVIDENCE_FILE', env));
@@ -233,7 +243,7 @@ export async function runActualHttpScenario(env = process.env) {
   const objectInventory = await readJsonArtifact(requiredEnvironment('ENTERFLOW_IT_VERIFIED_OBJECT_INVENTORY_FILE', env));
   assertAdministratorObjectInventory(objectInventory, { identity: fixtureContext.identity, stage: 'initialized' });
   const provisionerAttestation = await readJsonArtifact(requiredEnvironment('ENTERFLOW_IT_PROVISIONER_ATTESTATION_FILE', env));
-  validateProvisionerRuntimeAttestation(provisionerAttestation, fixtureContext.identity);
+  validateRuntimeProvisioningAttestation(provisionerAttestation, fixtureContext.identity, fixtureContext.approval);
   const apiPortInput = requiredEnvironment('ENTERFLOW_IT_API_PORT', env);
   if (!/^\d+$/u.test(apiPortInput)) throw new Error('Invalid API port.');
   const apiPort = Number(apiPortInput);

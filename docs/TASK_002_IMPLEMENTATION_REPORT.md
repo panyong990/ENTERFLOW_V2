@@ -1,5 +1,11 @@
 # Task 002 implementation report
 
+> Runtime update, 2026-11-21: one authenticated Warehouse scenario and guarded
+> three-record cleanup **PASSED** on the isolated run. Full Task 002 acceptance
+> remains **INCOMPLETE** because the documented second fresh-run repeatability
+> criterion has no evidence. See the [runtime acceptance report](TASK_002_RUNTIME_ACCEPTANCE_REPORT_2026-11-21.md).
+> The implementation-only statements below retain their original historical scope.
+
 Date: 2026-11-21 (Asia/Singapore)
 
 Scope: implementation and offline validation of the approved isolated Inventory authentication/MySQL integration-test infrastructure. No runtime target, database, Docker resource, API process, account, grant, fixture, cleanup, or teardown operation was authorized or performed.

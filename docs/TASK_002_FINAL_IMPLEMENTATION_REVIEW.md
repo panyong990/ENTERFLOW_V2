@@ -1,5 +1,12 @@
 # Task 002 final implementation review
 
+> Runtime reconciliation, 2026-11-21: later approved corrections, a successful
+> live Warehouse scenario, 11/11 schema hashes, controlled API stop, and guarded
+> cleanup are recorded in the [runtime acceptance report](TASK_002_RUNTIME_ACCEPTANCE_REPORT_2026-11-21.md).
+> Earlier findings/verdicts below are preserved as dated evidence. Normal-run
+> runtime gaps are now evidenced; live fault-injection limits remain. Overall
+> Task 002 acceptance is **INCOMPLETE** pending the required second fresh run.
+
 Date: 2026-11-21 (Asia/Singapore). Review only; the sole file created is this report. Existing implementation files and documentation were not corrected during this review.
 
 ## Decision

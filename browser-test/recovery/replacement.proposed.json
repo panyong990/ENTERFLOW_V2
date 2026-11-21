@@ -7,5 +7,14 @@
   "image": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
   "serverVersion": "8.4.13",
   "serverName": "MySQL_Server_8.4.13_Auto_Generated_Server_Certificate",
-  "fixtureTag": "2f90dcd2bbc8a779"
+  "fixtureTag": "2f90dcd2bbc8a779",
+  "ownership": {
+    "assignedTask": "Task 002",
+    "previousTask": "Task 29",
+    "ownerAuthorizedOn": "2026-11-21",
+    "record": "docs/TASK29_MINIMAL_RECOVERY_PLAN.md#task-002-ownership-reassignment---2026-11-21",
+    "dockerLabelRole": "unchanged Task 29 creation provenance",
+    "runtimeAuthorized": false,
+    "dataDestructionAuthorized": false
+  }
 }

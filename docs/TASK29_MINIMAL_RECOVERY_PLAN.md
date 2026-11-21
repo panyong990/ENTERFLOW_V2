@@ -345,6 +345,70 @@ destroy all fixture data; restarting can generate a new UUID/certificate, which
 must fail existing pins and requires a new review. Never compensate by weakening
 pins or resetting any existing Docker resources.
 
+## Owner preservation decision — 2026-11-21 (Asia/Manila)
+
+The owner accepts the recovered Task 29 execution reports, four Playwright logs,
+postflight evidence, and existing fixture definitions as sufficient historical
+testing evidence for conditional release of
+`enterflow-browser-recovery-29caa4ce81d64f02`
+(`enterflow.task29.recovery=29caa4ce81d64f02`) for Task 002 reuse. Recovered execution
+evidence remains at
+`%LOCALAPPDATA%\EnterFlow\PreFrontendBackup\final-20261116-200609\docs\evidence\task29-authenticated-execution\`.
+The summary and four logs record seven passing authenticated cases; postflight
+evidence records the historical observation, not a restorable database backup.
+
+The owner acknowledges that the original 116 synthetic rows across 28 tables,
+including 23 audit events, have not been verified as recoverable. This decision
+resolves the Task 29 historical-evidence retention condition; it does not
+authorize deletion or destruction of any existing data. Preserve recovered
+evidence, fixture definitions, and protected credential files unchanged.
+
+Task 29 is complete for its documented scope, and no remaining Task 29 execution
+dependency or separate release prohibition was found in the reviewed records.
+The container has not been reassigned. The next gate is explicit approval for
+actual reassignment of this exact container to Task 002. Restart/bootstrap,
+database/account/schema operations, cleanup, and test execution remain separately
+unauthorized. Any proposed restart must address the documented tmpfs data-loss
+and changed-identity risks without treating this decision as destruction approval.
+Task 002 still requires fresh target identity/isolation evidence and its own
+phase-specific approvals before runtime execution.
+
+Documentation-only assessment: no container or database access, schema/data
+changes, migrations, tests, backups, or Git changes were performed. Migration 007
+and the approved Task 002 schema snapshot and hashes were untouched.
+
+### Task 002 ownership reassignment - 2026-11-21
+
+Following the preservation decision above, the owner explicitly authorized
+reassignment of `enterflow-browser-recovery-29caa4ce81d64f02` to Task 002.
+Project ownership is now **ASSIGNED TO TASK 002**, recorded in the existing
+`browser-test/recovery/replacement.proposed.json` ownership metadata. This
+supersedes the earlier pending-reassignment status above.
+
+The exact container ID remains
+`7e72accecadb1fd8eef9f778a784079c12c191458ed6400ff4dd44d586bcd6ca`
+as previously inspected; no fresh Docker inspection or operation was performed.
+Its existing name and `enterflow.task29.recovery=29caa4ce81d64f02` label remain
+creation provenance. Docker container labels require recreation to change
+([Docker label documentation](https://docs.docker.com/engine/manage-resources/labels/));
+no label change or recreation is required for this project ownership assignment.
+Task 002's identity contract can pin the existing label key/value and exact ID.
+The legacy Task 29 database/fixture fields remain historical recovery metadata,
+not authorization to use that database or its credentials for Task 002.
+
+Recovered reports/logs/postflight evidence, fixture definitions, and protected
+credentials remain unchanged. No existing data deletion or destruction is
+authorized. No container/runtime configuration or database state was changed.
+
+Minimum next step: obtain a separately scoped restart/bootstrap authorization
+addressing tmpfs data-loss and changed-identity risks before any runtime action.
+Fresh isolation/identity verification and separate database/account/schema and
+scenario approvals are still required; this reassignment grants none of them.
+
+Database Change Report: no tables accessed; no schema/data changes proposed or
+performed, migrations created/applied, tests, backups, services, or container
+operations. Migration 007 and approved schema snapshots/hashes were untouched.
+
 ## Fresh offline validation and limitations
 
 Executed **7 new offline recovery tests: 7 passed, 0 failed/skipped**

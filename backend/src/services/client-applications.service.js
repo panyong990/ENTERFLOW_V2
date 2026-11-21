@@ -1,5 +1,6 @@
 import { auditRequestId } from './audit-request-id.js';
 import { registrationIdentityLockName } from './registration.service.js';
+import { isDuplicateKey } from './identity-duplicate.js';
 import {
   validateApplicationId, validateApplicationReadParams,
   validateApplicationApproval, validateApplicationRejection
@@ -12,11 +13,11 @@ const invalid = validation => ({ success: false, code: 'VALIDATION_ERROR', messa
 const outcomeUnknown = () => failure('DECISION_OUTCOME_UNKNOWN', 'Decision outcome could not be confirmed. Refresh the application before retrying.');
 const timestamp = column => `LEFT(DATE_FORMAT(${column}, '%Y-%m-%d %H:%i:%s.%f'), 23)`;
 // Explicit safe columns in SQL AND output. No SELECT * or credential projections.
-const PUBLIC_COLUMNS = `CAST(id AS CHAR) AS id, company_name AS companyName,
-  contact_person AS contactPerson, email, username, phone, status,
-  ${timestamp('submitted_at')} AS submittedAt, ${timestamp('decided_at')} AS decidedAt,
-  CAST(decided_by AS CHAR) AS decidedBy, rejection_reason AS rejectionReason,
-  CAST(approved_client_id AS CHAR) AS approvedClientId`;
+const PUBLIC_COLUMNS = `CAST(application_id AS CHAR) AS id, company_name AS companyName,
+  contact_person AS contactPerson, email, username, phone, application_status AS status,
+  ${timestamp('submitted_at')} AS submittedAt, ${timestamp('reviewed_at')} AS decidedAt,
+  CAST(reviewed_by_user_id AS CHAR) AS decidedBy, review_note AS rejectionReason,
+  CAST(created_client_id AS CHAR) AS approvedClientId`;
 const PUBLIC_KEYS = ['id', 'companyName', 'contactPerson', 'email', 'username', 'phone', 'status',
   'submittedAt', 'decidedAt', 'decidedBy', 'rejectionReason', 'approvedClientId'];
 const publicApplication = row => Object.fromEntries(PUBLIC_KEYS.map(key => [key, row[key] ?? null]));
@@ -67,8 +68,11 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
         transactionOpen = true;
         await connection.beginTransaction();
         const [admins] = await connection.execute(
-          `SELECT id FROM users WHERE id = ? AND role_code = 'admin'
-            AND account_type = 'employee' AND active = TRUE FOR SHARE`, [actor.userId]
+          `SELECT ua.user_id AS id FROM user_account ua
+            JOIN role r ON r.role_id = ua.role_id
+            LEFT JOIN client_user cu ON cu.client_user_id = ua.user_id
+            WHERE ua.user_id = ? AND r.role_name = 'Admin'
+              AND ua.status = 'active' AND cu.client_user_id IS NULL FOR SHARE`, [actor.userId]
         );
         result = admins.length === 1 ? await work(connection) : forbidden();
         if (result.success) {
@@ -114,9 +118,9 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
       const { limit, cursor } = validation.data;
       return await transact(actor, false, async connection => {
         const [rows] = await connection.execute(
-          `SELECT ${PUBLIC_COLUMNS} FROM client_applications WHERE status = 'pending'
-            ${cursor ? 'AND (submitted_at < ? OR (submitted_at = ? AND id < ?))' : ''}
-            ORDER BY submitted_at DESC, id DESC LIMIT ?`,
+          `SELECT ${PUBLIC_COLUMNS} FROM client_applications WHERE application_status = 'pending'
+            ${cursor ? 'AND (submitted_at < ? OR (submitted_at = ? AND application_id < ?))' : ''}
+            ORDER BY submitted_at DESC, application_id DESC LIMIT ?`,
           [...(cursor ? [cursor.submittedAt, cursor.submittedAt, cursor.id] : []), String(limit + 1)]
         );
         const applications = rows.slice(0, limit).map(publicApplication);
@@ -134,7 +138,7 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
       const denied = actorFailure(actor); if (denied) return denied;
       const validation = validateApplicationId(applicationId); if (!validation.success) return invalid(validation);
       return await transact(actor, false, async connection => {
-        const [rows] = await connection.execute(`SELECT ${PUBLIC_COLUMNS} FROM client_applications WHERE id = ?`, [applicationId]);
+        const [rows] = await connection.execute(`SELECT ${PUBLIC_COLUMNS} FROM client_applications WHERE application_id = ?`, [applicationId]);
         return rows.length === 1 ? { success: true, data: publicApplication(rows[0]) }
           : failure('NOT_FOUND', 'Application was not found.');
       });
@@ -157,60 +161,73 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
       if (!validation.success) return invalid(validation);
       return await transact(actor, true, async connection => {
         const [rows] = await connection.execute(
-          `SELECT id, company_name AS companyName, contact_person AS contactPerson,
-            email, username, phone, status${action === 'approve' ? ', password_hash AS passwordHash' : ''}
-            FROM client_applications WHERE id = ? FOR UPDATE`, [applicationId]
+          `SELECT CAST(application_id AS CHAR) AS id, company_name AS companyName, contact_person AS contactPerson,
+            email, username, phone, application_status AS status${action === 'approve' ? ', password_hash AS passwordHash' : ''}
+            FROM client_applications WHERE application_id = ? FOR UPDATE`, [applicationId]
         );
         if (!rows.length) return failure('NOT_FOUND', 'Application was not found.');
         const application = rows[0];
         if (application.status !== 'pending') return failure('APPLICATION_ALREADY_DECIDED', 'Application is no longer pending.');
         let clientId = null, userId = null;
         if (action === 'approve') {
-          const [companies] = await connection.execute('SELECT 1 FROM clients WHERE company_name = ? LIMIT 1', [application.companyName]);
+          const [companies] = await connection.execute('SELECT 1 FROM client WHERE company_name = ? LIMIT 1', [application.companyName]);
           if (companies.length) return failure('COMPANY_CONFLICT', 'An existing company requires Admin review.');
           const identities = [application.email, application.username, application.email, application.username];
-          const [users] = await connection.execute('SELECT 1 FROM users WHERE email IN (?, ?) OR username IN (?, ?) LIMIT 1', identities);
+          const [users] = await connection.execute('SELECT 1 FROM user_account WHERE email IN (?, ?) OR username IN (?, ?) LIMIT 1', identities);
           const [applications] = users.length ? [[]] : await connection.execute(
-            `SELECT 1 FROM client_applications WHERE id <> ? AND status IN ('pending', 'approved')
-              AND (email IN (?, ?) OR username IN (?, ?)) LIMIT 1`, [applicationId, ...identities]
+            `SELECT 1 FROM client_applications WHERE application_id <> ?
+              AND (active_email IN (?, ?) OR active_username IN (?, ?)) LIMIT 1`, [applicationId, ...identities]
           );
           if (users.length || applications.length) return failure('IDENTITY_CONFLICT', 'An account or application already uses these login details.');
           if (!validStoredHash(application.passwordHash)) throw new Error('Invalid stored credential.');
+          const [roles] = await connection.execute(
+            `SELECT CAST(role_id AS CHAR) AS roleId FROM role WHERE role_name = 'Client' FOR SHARE`
+          );
+          if (roles.length !== 1 || !validateApplicationId(roles[0].roleId).success) throw new Error('Client role is unavailable.');
           let stage = 'company';
           try {
             const [company] = await connection.execute(
-              `INSERT INTO clients (company_name, contact_person, email, phone) VALUES (?, ?, ?, ?)`,
+              `INSERT INTO client (company_name, contact_person, email, phone, status) VALUES (?, ?, ?, ?, 'active')`,
               [application.companyName, application.contactPerson, application.email, application.phone]
             );
             assertWrite(company); clientId = await insertedId(connection);
             stage = 'user';
             const [user] = await connection.execute(
-              `INSERT INTO users (role_code, account_type, client_id, display_name, email, username, phone, password_hash, active)
-                VALUES ('client', 'client', ?, ?, ?, ?, ?, ?, TRUE)`,
-              [clientId, application.contactPerson, application.email, application.username, application.phone, application.passwordHash]
+              `INSERT INTO user_account (role_id, full_name, email, username, phone, password_hash, status, must_change_password)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', FALSE)`,
+              [roles[0].roleId, application.contactPerson, application.email, application.username, application.phone, application.passwordHash]
             );
             assertWrite(user); userId = await insertedId(connection);
+            stage = 'membership';
+            const [membership] = await connection.execute(
+              'INSERT INTO client_user (client_user_id, client_id) VALUES (?, ?)', [userId, clientId]
+            );
+            assertWrite(membership);
           } catch (error) {
-            if (error?.code === 'ER_DUP_ENTRY') return stage === 'company'
-              ? failure('COMPANY_CONFLICT', 'An existing company requires Admin review.')
-              : failure('IDENTITY_CONFLICT', 'An account or application already uses these login details.');
+            if (stage === 'company' && isDuplicateKey(error, ['uq_client_company'])) {
+              return failure('COMPANY_CONFLICT', 'An existing company requires Admin review.');
+            }
+            if (stage === 'user' && isDuplicateKey(error, ['uq_user_email', 'uq_user_account_username'])) {
+              return failure('IDENTITY_CONFLICT', 'An account or application already uses these login details.');
+            }
             throw error;
           }
         }
         const status = action === 'approve' ? 'approved' : 'rejected';
         const reason = action === 'reject' ? validation.data.reason : null;
         const [update] = await connection.execute(
-          `UPDATE client_applications SET status = ?, decided_by = ?, decided_at = UTC_TIMESTAMP(3),
-            rejection_reason = ?, approved_client_id = ? WHERE id = ? AND status = 'pending'`,
-          [status, actor.userId, reason, clientId, applicationId]
+          `UPDATE client_applications SET application_status = ?, reviewed_by_user_id = ?, reviewed_at = UTC_TIMESTAMP(3),
+            review_note = ?, created_client_id = ?, created_user_id = ?
+            WHERE application_id = ? AND application_status = 'pending'`,
+          [status, actor.userId, reason, clientId, userId, applicationId]
         );
         assertWrite(update);
         const decision = { applicationId, status, ...(clientId ? { clientId, userId } : {}) };
         const [audit] = await connection.execute(
-          `INSERT INTO audit_events (actor_id, action, subject_type, subject_identifier, old_value, new_value, reason, request_id, occurred_at)
-            VALUES (?, ?, 'client_application', ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))`,
+          `INSERT INTO audit_event (actor_user_id, action, subject_type, subject_id, before_value, after_value, reason, occurred_at)
+            VALUES (?, ?, 'client_application', ?, ?, ?, ?, UTC_TIMESTAMP(3))`,
           [actor.userId, `client_application.${status}`, applicationId,
-            JSON.stringify({ status: 'pending' }), JSON.stringify(decision), reason, auditRequestId(context)]
+            JSON.stringify({ status: 'pending' }), JSON.stringify({ ...decision, requestId: auditRequestId(context) }), reason]
         );
         assertWrite(audit);
         return { success: true, data: decision, message: `Application ${status}.` };

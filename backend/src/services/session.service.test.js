@@ -133,8 +133,8 @@ test('createSession stores the token hash instead of the raw token', async () =>
   const { sql, params } = calls[0];
 
   assert.match(sql, /INSERT INTO user_sessions/i);
-  assert.match(sql, /FROM users/i);
-  assert.match(sql, /active = TRUE/i);
+  assert.match(sql, /FROM user_account ua/i);
+  assert.match(sql, /ua\.status = 'active'/i);
 
   assert.equal(params[0], hashSessionToken(token));
   assert.notEqual(params[0], token);
@@ -218,7 +218,7 @@ test('validateSession rejects inactive accounts', async () => {
   const result = await service.validateSession(generateSessionToken());
 
   assert.equal(result, null);
-  assert.match(calls[0].sql, /u\.active = TRUE/i);
+  assert.match(calls[0].sql, /ua\.status = 'active'/i);
 });
 
 test('updateSessionActivity updates activity without extending absolute expiration', async () => {

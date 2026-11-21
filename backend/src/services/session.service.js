@@ -1,5 +1,4 @@
-﻿
-import { randomBytes, createHash } from 'node:crypto';
+﻿import { randomBytes, createHash } from 'node:crypto';
 import { pool } from '../config/database.js';
 import { validateSessionTimeouts } from '../config/runtime-config.js';
 
@@ -56,15 +55,15 @@ export function createSessionService({
         expires_at
       )
       SELECT
-        id,
+        ua.user_id,
         ?,
         DATE_ADD(
           UTC_TIMESTAMP(3),
           INTERVAL ? HOUR
         )
-      FROM users
-      WHERE id = ?
-        AND active = TRUE`,
+      FROM user_account ua
+      WHERE ua.user_id = ?
+        AND ua.status = 'active'`,
       [tokenHash, absoluteTimeoutHours, validUserId]
     );
 
@@ -84,13 +83,21 @@ export function createSessionService({
         s.user_id AS userId,
         s.expires_at AS expiresAt,
         s.last_activity_at AS lastActivityAt,
-        u.role_code AS roleCode,
-        u.account_type AS accountType,
-        u.client_id AS clientId,
-        u.display_name AS displayName,
-        u.active AS active
+        LOWER(r.role_name) AS roleCode,
+        CASE
+          WHEN cu.client_user_id IS NULL THEN 'employee'
+          ELSE 'client'
+        END AS accountType,
+        cu.client_id AS clientId,
+        ua.full_name AS displayName,
+        1 AS active
       FROM user_sessions s
-      INNER JOIN users u ON u.id = s.user_id
+      INNER JOIN user_account ua
+        ON ua.user_id = s.user_id
+      INNER JOIN role r
+        ON r.role_id = ua.role_id
+      LEFT JOIN client_user cu
+        ON cu.client_user_id = ua.user_id
       WHERE s.token_hash = ?
         AND s.revoked_at IS NULL
         AND s.expires_at > UTC_TIMESTAMP(3)
@@ -99,7 +106,7 @@ export function createSessionService({
             UTC_TIMESTAMP(3),
             INTERVAL ? MINUTE
           )
-        AND u.active = TRUE
+        AND ua.status = 'active'
       LIMIT 1`,
       [tokenHash, idleTimeoutMinutes]
     );
@@ -112,7 +119,8 @@ export function createSessionService({
 
     const [result] = await db.execute(
       `UPDATE user_sessions s
-      INNER JOIN users u ON u.id = s.user_id
+      INNER JOIN user_account ua
+        ON ua.user_id = s.user_id
       SET s.last_activity_at = UTC_TIMESTAMP(3)
       WHERE s.token_hash = ?
         AND s.revoked_at IS NULL
@@ -122,7 +130,7 @@ export function createSessionService({
             UTC_TIMESTAMP(3),
             INTERVAL ? MINUTE
           )
-        AND u.active = TRUE`,
+        AND ua.status = 'active'`,
       [tokenHash, idleTimeoutMinutes]
     );
 

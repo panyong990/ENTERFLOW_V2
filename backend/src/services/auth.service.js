@@ -2,6 +2,7 @@
 import { pool } from '../config/database.js';
 import { hashPassword, verifyPassword } from './password.service.js';
 import { createSession } from './session.service.js';
+import { normalizeEmail, normalizeUsername } from '../validation/login-identity.js';
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid login credentials.';
 
@@ -50,28 +51,38 @@ export function createAuthService({
       };
     }
 
-    const normalizedIdentifier = identifier.trim();
+    const normalizedEmail = normalizeEmail(identifier);
+    const normalizedUsername = normalizeUsername(identifier);
 
     const [rows] = await db.execute(
       `SELECT
-        id,
-        email,
-        username,
-        password_hash AS passwordHash,
-        role_code AS roleCode,
-        account_type AS accountType,
-        display_name AS displayName,
-        active
-      FROM users
-      WHERE email = ?
-         OR username = ?
-      LIMIT 1`,
-      [normalizedIdentifier, normalizedIdentifier]
+        ua.user_id AS id,
+        ua.email,
+        ua.username,
+        ua.password_hash AS passwordHash,
+        LOWER(r.role_name) AS roleCode,
+        CASE
+          WHEN cu.client_user_id IS NULL THEN 'employee'
+          ELSE 'client'
+        END AS accountType,
+        ua.full_name AS displayName,
+        ua.status
+      FROM user_account ua
+      INNER JOIN role r
+        ON r.role_id = ua.role_id
+      LEFT JOIN client_user cu
+        ON cu.client_user_id = ua.user_id
+      WHERE ua.email = ? OR ua.username = ?
+      LIMIT 2`,
+      [normalizedEmail, normalizedUsername]
     );
 
     const account = rows[0];
 
-    if (!account || Number(account.active) !== 1) {
+    if (
+      rows.length !== 1 ||
+      account.status !== 'active'
+    ) {
       await verify(dummyPasswordHash, password);
 
       return {
@@ -99,7 +110,7 @@ export function createAuthService({
       data: {
         userId: String(account.id),
         email: account.email,
-        username: account.username,
+        username: account.username ?? null,
         roleCode: account.roleCode,
         accountType: account.accountType,
         displayName: account.displayName

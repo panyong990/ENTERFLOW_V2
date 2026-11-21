@@ -1,0 +1,28 @@
+[
+  {
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\P2B001_corrected_database_bootstrap.sql",
+    "matchesRecordedFingerprint": true,
+    "originalStillUnchanged": true
+  },
+  {
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\execution.json",
+    "matchesRecordedFingerprint": true,
+    "originalStillUnchanged": true
+  },
+  {
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_MIGRATION_REPORT.md",
+    "matchesRecordedFingerprint": true
+  },
+  {
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_CORRECTED_ERD.md",
+    "matchesRecordedFingerprint": true
+  },
+  {
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_DATA_DICTIONARY.md",
+    "matchesRecordedFingerprint": true
+  },
+  {
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_ERD_CORRECTION_REPORT.md",
+    "matchesRecordedFingerprint": true
+  }
+]

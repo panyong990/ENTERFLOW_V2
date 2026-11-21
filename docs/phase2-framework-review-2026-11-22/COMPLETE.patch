@@ -1,0 +1,570 @@
+diff --git a/database/migrate.mjs b/database/migrate.mjs
+index 57b37dc0..796e8df3 100644
+--- a/database/migrate.mjs
++++ b/database/migrate.mjs
+@@ -1,25 +1,44 @@
+-import mysql from 'mysql2/promise';
+ import { readFile } from 'node:fs/promises';
++import { pathToFileURL } from 'node:url';
+ import { run } from './migration-core.mjs';
++import { runPhase2, validatePhase2Target } from './migration-phase2.mjs';
+ 
+-let db;
+-try {
+-  const [command = 'status', ...args] = process.argv.slice(2);
++// Dependencies can be replaced by offline test doubles. No connection on import.
++export async function main(argv = process.argv.slice(2), dependencies = {}) {
++  let db;
++  try {
++  const [command = 'status', ...options] = argv;
++  const phase2 = options[0] === '--profile' && options[1] === 'phase2';
++  const args = phase2 ? options.slice(2) : options;
++  if (phase2 && !['status', 'migrate'].includes(command)) throw new Error('Phase 2 permits status or migrate only');
++  // Phase 2 never falls back to the shared environment file.
++  if (phase2 && (args.length !== 2 || args[0] !== '--env-file')) throw new Error('Phase 2 requires --profile phase2 --env-file <separately approved file>');
+   if (args.length && (args.length !== 2 || args[0] !== '--env-file')) throw new Error('Usage: node database/migrate.mjs status|baseline|migrate|seed [--env-file path]');
+-  try { process.loadEnvFile(args[1] ?? 'database/.env.migrations'); }
++  try { (dependencies.loadEnvFile ?? process.loadEnvFile)(args[1] ?? 'database/.env.migrations'); }
+   catch (error) { if (args.length || error.code !== 'ENOENT') throw error; }
+-  const env = process.env;
++  const env = dependencies.env ?? process.env;
+   for (const key of ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_MIGRATION_USER', 'DB_MIGRATION_PASSWORD']) if (!env[key]) throw new Error(`Missing ${key}`);
+   if (!/^[a-z][a-z0-9_]{0,63}$/.test(env.DB_NAME) || ['mysql', 'sys', 'performance_schema', 'information_schema'].includes(env.DB_NAME)) throw new Error('Invalid application database name');
+-  if (env.DB_HOST !== '127.0.0.1' || !['3308', '3309'].includes(env.DB_PORT)) throw new Error('Local workflow accepts only 127.0.0.1:3308 (development) or :3309 (isolated tests)');
+-  if ((env.DB_PORT === '3308' && env.DB_NAME !== 'enterflow_db') || (env.DB_PORT === '3309' && !/^enterflow_workflow_/.test(env.DB_NAME))) throw new Error('Database name does not match the approved local development/test target');
++  if (phase2) {
++    validatePhase2Target(env);
++    if (!env.DB_SSL_CA || env.DB_SSL_LOCAL_SELF_SIGNED === 'true') throw new Error('Phase 2 requires an approved CA and verified TLS; self-signed bypass is forbidden');
++  } else {
++    if (env.DB_HOST !== '127.0.0.1' || !['3308', '3309'].includes(env.DB_PORT)) throw new Error('Local workflow accepts only 127.0.0.1:3308 (development) or :3309 (isolated tests)');
++    if ((env.DB_PORT === '3308' && env.DB_NAME !== 'enterflow_db') || (env.DB_PORT === '3309' && !/^enterflow_workflow_/.test(env.DB_NAME))) throw new Error('Database name does not match the approved local development/test target');
++  }
+   // TLS is always enabled. Local Docker can explicitly accept its self-signed
+   // certificate; other environments must supply a trusted CA and a new plan.
+-  const ssl = env.DB_SSL_CA ? { ca: await readFile(env.DB_SSL_CA, 'utf8') } : { rejectUnauthorized: env.DB_SSL_LOCAL_SELF_SIGNED !== 'true' };
++  const ssl = env.DB_SSL_CA ? { ca: await (dependencies.readFile ?? readFile)(env.DB_SSL_CA, 'utf8'), ...(phase2 ? { rejectUnauthorized: true } : {}) } : { rejectUnauthorized: env.DB_SSL_LOCAL_SELF_SIGNED !== 'true' };
++  const mysql = dependencies.mysql ?? (await import('mysql2/promise')).default;
+   db = await mysql.createConnection({ host: env.DB_HOST, port: Number(env.DB_PORT), database: env.DB_NAME, user: env.DB_MIGRATION_USER, password: env.DB_MIGRATION_PASSWORD, ssl, multipleStatements: false, supportBigNumbers: true, bigNumberStrings: true, timezone: 'Z', connectTimeout: 10000 });
+-  await run(db, command);
+-} catch (error) {
++  if (phase2) await (dependencies.runPhase2 ?? runPhase2)(db, command, env);
++  else await (dependencies.run ?? run)(db, command);
++  } catch (error) {
++  if (dependencies.rethrow) throw error;
+   // Never print driver error objects: they may contain SQL/connection details.
+   console.error(`Migration error: ${error.code ?? error.message}`);
+   process.exitCode = 1;
+-} finally { if (db) await db.end(); }
++  } finally { if (db) await db.end(); }
++}
++
++if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+diff --git a/database/migration-phase2.mjs b/database/migration-phase2.mjs
+new file mode 100644
+--- /dev/null
++++ b/database/migration-phase2.mjs
+@@ -0,0 +1,229 @@
++// Dedicated activation stream. Importing this module performs no discovery or I/O.
++import { readFile, lstat } from 'node:fs/promises';
++import path from 'node:path';
++import { root, checksum, splitSql } from './migration-core.mjs';
++
++export const phase2History = '_enterflow_phase2_extension_history';
++export const phase2Files = Object.freeze([
++  ['001_auth_sessions.sql', 'ae15868de9bcc5205cdbe441357d57b5b091f8a36faee69465b327b22bf893fe'],
++  ['002_client_registration.sql', '1b0c30a391d95822bf56cd26a5a7742d322efd4010c7639f3dab8adfb962ea27'],
++  ['003_username_support.sql', '95c7f5715281bf5cf1c2543edbdb94783d51803159ce2bd2f976971ea50fe8b5'],
++].map(Object.freeze));
++const evidence = 'phase2-execution/P2B002-2026-11-22/after-metadata.json';
++const evidenceHash = 'd4aaff00d4fe6aabe1ec319c467a05689d3fc6dfe1ab5ac869f6636a0fb015fe';
++const bootstrapHash = '8af1b73263db7a65c2d307fbdb395d9701e7071b1c8b93bcd135f216580a306d';
++const assert = (ok, message) => { if (!ok) throw new Error(message); };
++const quote = name => '`' + name.replaceAll('`', '``') + '`';
++
++export function validatePhase2Target(env) {
++  assert(env.DB_HOST === '127.0.0.1' && env.DB_PORT === '62286' && env.DB_NAME === 'enterflow_phase2_db',
++    'Phase 2 accepts only 127.0.0.1:62286 / enterflow_phase2_db');
++}
++
++async function regularFile(base, relative) {
++  // No directory enumeration and no symlink redirection into held artifacts.
++  let current = base;
++  for (const part of relative.split('/')) {
++    current = path.join(current, part);
++    const stat = await lstat(current);
++    assert(!stat.isSymbolicLink(), `Phase 2 refuses symlink: ${relative}`);
++  }
++  assert((await lstat(current)).isFile(), `Expected regular file: ${relative}`);
++  return readFile(current, 'utf8');
++}
++
++export async function discoverPhase2FilesAt(base = root) {
++  const result = [];
++  for (const [name, digest] of phase2Files) {
++    const text = await regularFile(base, `phase2-extensions/${name}`);
++    assert(checksum(text) === digest, `Reviewed Phase 2 SQL checksum mismatch: ${name}`);
++    result.push({ file: name, checksum: digest, statements: splitSql(text) });
++  }
++  return result;
++}
++
++export async function loadPhase2Baseline(base = root) {
++  assert(checksum(await regularFile(base, 'phase2-bootstrap/P2B002_revised_erd_greenfield.sql')) === bootstrapHash,
++    'P2B002 bootstrap changed; prerequisite review required');
++  const text = await regularFile(base, evidence);
++  assert(checksum(text) === evidenceHash, 'P2B002 prerequisite evidence changed');
++  const { rowCounts, ...metadata } = JSON.parse(text);
++  assert(metadata.tables.length === 40 && metadata.triggers.length === 39, 'Invalid P2B002 prerequisite evidence');
++  return metadata; // Historical structure is the contract, never proof of current state.
++}
++
++// Same fields as the pinned P2B002 evidence; all queries are scoped to DATABASE().
++const projections = {
++  tables: ["'table',TABLE_NAME,'type',TABLE_TYPE,'engine',ENGINE,'collation',TABLE_COLLATION", 'TABLES', 'TABLE_SCHEMA'],
++  columns: ["'table',TABLE_NAME,'column',COLUMN_NAME,'position',ORDINAL_POSITION,'type',COLUMN_TYPE,'nullable',IS_NULLABLE,'default',COLUMN_DEFAULT,'extra',EXTRA,'generated',GENERATION_EXPRESSION,'collation',COLLATION_NAME", 'COLUMNS', 'TABLE_SCHEMA'],
++  keys: ["'table',TABLE_NAME,'name',CONSTRAINT_NAME,'position',ORDINAL_POSITION,'column',COLUMN_NAME,'parent',REFERENCED_TABLE_NAME,'parentColumn',REFERENCED_COLUMN_NAME", 'KEY_COLUMN_USAGE', 'TABLE_SCHEMA'],
++  constraints: ["'table',TABLE_NAME,'name',CONSTRAINT_NAME,'type',CONSTRAINT_TYPE,'enforced',ENFORCED", 'TABLE_CONSTRAINTS', 'TABLE_SCHEMA'],
++  indexes: ["'table',TABLE_NAME,'name',INDEX_NAME,'position',SEQ_IN_INDEX,'column',COLUMN_NAME,'nonUnique',NON_UNIQUE", 'STATISTICS', 'TABLE_SCHEMA'],
++  checks: ["'name',CONSTRAINT_NAME,'clause',CHECK_CLAUSE", 'CHECK_CONSTRAINTS', 'CONSTRAINT_SCHEMA'],
++  referentialActions: ["'table',TABLE_NAME,'name',CONSTRAINT_NAME,'update',UPDATE_RULE,'delete',DELETE_RULE", 'REFERENTIAL_CONSTRAINTS', 'CONSTRAINT_SCHEMA'],
++  triggers: ["'name',TRIGGER_NAME,'table',EVENT_OBJECT_TABLE,'timing',ACTION_TIMING,'event',EVENT_MANIPULATION,'order',ACTION_ORDER,'body',ACTION_STATEMENT", 'TRIGGERS', 'TRIGGER_SCHEMA'],
++  routines: ["'name',ROUTINE_NAME,'type',ROUTINE_TYPE", 'ROUTINES', 'ROUTINE_SCHEMA'],
++  events: ["'name',EVENT_NAME", 'EVENTS', 'EVENT_SCHEMA'],
++};
++export async function readPhase2Metadata(db) {
++  const result = {};
++  for (const [key, [projection, catalog, scope]] of Object.entries(projections)) {
++    const [rows] = await db.query(`SELECT JSON_OBJECT(${projection}) AS metadata FROM information_schema.${catalog} WHERE ${scope}=DATABASE()`);
++    result[key] = rows.map(r => typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata);
++  }
++  const [[cross]] = await db.query('SELECT COUNT(*) AS n FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_SCHEMA IS NOT NULL AND REFERENCED_TABLE_SCHEMA<>DATABASE()');
++  assert(Number(cross.n) === 0, 'Cross-schema foreign key; Phase 2 refused');
++  return result;
++}
++
++// Explicit postconditions for the reviewed SQL, not executable replacement DDL.
++export function phase2ExpectedMetadata(baseline, stage, withHistory) {
++  const m = structuredClone(baseline);
++  const table = name => m.tables.push({ table: name, type: 'BASE TABLE', engine: 'InnoDB', collation: 'utf8mb4_unicode_ci' });
++  function column(t, name, type, nullable = 'NO', extra = '', def = null, generated = '', collation) {
++    m.columns.push({ table: t, column: name, type, nullable, extra, default: def, generated,
++      collation: collation ?? (/^(varchar|char|text|enum)/.test(type) ? 'utf8mb4_unicode_ci' : null),
++      position: m.columns.filter(r => r.table === t).length + 1 });
++  }
++  function key(t, name, cols, type = 'UNIQUE', parent = null, parentColumn = null, action = 'NO ACTION') {
++    m.constraints.push({ table: t, name, type, enforced: 'YES' });
++    cols.forEach((c, i) => m.keys.push({ table: t, name, column: c, position: i + 1, parent, parentColumn }));
++    if (parent) m.referentialActions.push({ table: t, name, update: 'NO ACTION', delete: action });
++    else index(t, name, cols, 0);
++  }
++  function index(t, name, cols, nonUnique = 1) {
++    cols.forEach((c, i) => m.indexes.push({ table: t, name, column: c, position: i + 1, nonUnique }));
++  }
++  function username(t) {
++    const after = m.columns.find(r => r.table === t && r.column === 'email').position;
++    for (const c of m.columns) if (c.table === t && c.position > after) c.position++;
++    column(t, 'username', 'varchar(100)', t === 'user_account' ? 'YES' : 'NO');
++    m.columns.at(-1).position = after + 1;
++  }
++  if (stage >= 1) {
++    const t = 'user_sessions'; table(t);
++    column(t, 'id', 'bigint unsigned', 'NO', 'auto_increment');
++    column(t, 'user_id', 'bigint unsigned');
++    column(t, 'token_hash', 'char(64)', 'NO', '', null, '', 'ascii_bin');
++    column(t, 'expires_at', 'datetime(3)');
++    for (const c of ['created_at', 'last_activity_at']) column(t, c, 'datetime(3)', 'NO', 'DEFAULT_GENERATED', 'CURRENT_TIMESTAMP(3)');
++    column(t, 'revoked_at', 'datetime(3)', 'YES');
++    key(t, 'PRIMARY', ['id'], 'PRIMARY KEY'); key(t, 'uq_user_sessions_token_hash', ['token_hash']);
++    index(t, 'ix_user_sessions_user_id', ['user_id']); index(t, 'ix_user_sessions_expires_at', ['expires_at']);
++    key(t, 'fk_user_sessions_user_account', ['user_id'], 'FOREIGN KEY', 'user_account', 'user_id', 'RESTRICT');
++  }
++  if (stage >= 2) {
++    const t = 'client_applications'; table(t);
++    column(t, 'application_id', 'bigint unsigned', 'NO', 'auto_increment');
++    for (const [c, type, nullable] of [['company_name','varchar(200)'],['contact_person','varchar(160)'],['email','varchar(254)'],['phone','varchar(40)','YES'],['password_hash','varchar(255)']]) column(t, c, type, nullable);
++    column(t, 'application_status', "enum('pending','approved','rejected')", 'NO', '', 'pending');
++    for (const [c, type] of [['reviewed_by_user_id','bigint unsigned'],['reviewed_at','datetime(3)'],['review_note','text'],['created_client_id','bigint unsigned'],['created_user_id','bigint unsigned']]) column(t, c, type, 'YES');
++    column(t, 'active_email', 'varchar(254)', 'YES', 'STORED GENERATED', null, "(case when (`application_status` in (_utf8mb4'pending',_utf8mb4'approved')) then lower(`email`) else NULL end)");
++    column(t, 'submitted_at', 'datetime(3)', 'NO', 'DEFAULT_GENERATED', 'CURRENT_TIMESTAMP(3)');
++    key(t, 'PRIMARY', ['application_id'], 'PRIMARY KEY');
++    for (const [suffix, c] of [['active_email','active_email'],['created_client','created_client_id'],['created_user','created_user_id']]) key(t, 'uq_client_application_' + suffix, [c]);
++    index(t, 'ix_client_application_review_queue', ['application_status','submitted_at','application_id']);
++    index(t, 'ix_client_application_reviewer', ['reviewed_by_user_id','reviewed_at']);
++    for (const [suffix, c, parent, pc] of [['reviewer','reviewed_by_user_id','user_account','user_id'],['created_client','created_client_id','client','client_id'],['created_user','created_user_id','user_account','user_id']]) key(t, 'fk_client_application_' + suffix, [c], 'FOREIGN KEY', parent, pc);
++    const name = 'ck_client_application_review_state';
++    m.constraints.push({ table: t, name, type: 'CHECK', enforced: 'YES' });
++    m.checks.push({ name, clause: "(((`application_status` = _utf8mb4'pending') and (`reviewed_by_user_id` is null) and (`reviewed_at` is null) and (`created_client_id` is null) and (`created_user_id` is null)) or ((`application_status` = _utf8mb4'rejected') and (`reviewed_by_user_id` is not null) and (`reviewed_at` is not null) and (`created_client_id` is null) and (`created_user_id` is null)) or ((`application_status` = _utf8mb4'approved') and (`reviewed_by_user_id` is not null) and (`reviewed_at` is not null) and (`created_client_id` is not null) and (`created_user_id` is not null)))" });
++  }
++  if (stage >= 3) {
++    username('user_account'); key('user_account', 'uq_user_account_username', ['username']);
++    username('client_applications');
++    column('client_applications', 'active_username', 'varchar(100)', 'YES', 'STORED GENERATED', null, "(case when (`application_status` in (_utf8mb4'pending',_utf8mb4'approved')) then `username` else NULL end)");
++    key('client_applications', 'uq_client_application_active_username', ['active_username']);
++  }
++  if (withHistory) {
++    const t = phase2History; table(t);
++    column(t, 'file', 'varchar(100)', 'NO', '', null, '', 'ascii_bin');
++    column(t, 'checksum', 'char(64)', 'NO', '', null, '', 'ascii_bin');
++    column(t, 'state', "enum('applying','applied','failed')");
++    column(t, 'started_at', 'datetime(3)', 'NO', 'DEFAULT_GENERATED', 'CURRENT_TIMESTAMP(3)');
++    column(t, 'applied_at', 'datetime(3)', 'YES'); column(t, 'error_code', 'varchar(80)', 'YES');
++    key(t, 'PRIMARY', ['file'], 'PRIMARY KEY');
++  }
++  return m;
++}
++
++function canonical(rows) {
++  return rows.map(row => JSON.stringify(Object.fromEntries(Object.keys(row).sort().map(k => {
++    let v = row[k];
++    if (['clause','generated'].includes(k) && typeof v === 'string') v = v.replaceAll("\\'", "'");
++    if (['update','delete'].includes(k) && v === 'NO ACTION') v = 'RESTRICT';
++    return [k, v];
++  })))).sort();
++}
++export function verifyPhase2Metadata(actual, expected) {
++  for (const key of Object.keys(expected)) assert(JSON.stringify(canonical(actual[key])) === JSON.stringify(canonical(expected[key])),
++    `Phase 2 prerequisite/postcondition mismatch: ${key}. No adoption or automatic retry; Stephanie review required.`);
++}
++
++export async function runPhase2(db, command, target, base = root, log = console.log) {
++  validatePhase2Target(target);
++  assert(['status','migrate'].includes(command), 'Phase 2 permits status or migrate only; no baseline, seed or adoption');
++  const files = await discoverPhase2FilesAt(base);
++  const baseline = await loadPhase2Baseline(base);
++  const [[identity]] = await db.query('SELECT DATABASE() AS name, VERSION() AS version');
++  assert(identity.name === 'enterflow_phase2_db' && identity.version === '8.4.13', 'Phase 2 server/database identity mismatch');
++  const lockName = 'enterflow:phase2:enterflow_phase2_db';
++  const [[lock]] = await db.execute('SELECT GET_LOCK(?,0) AS acquired', [lockName]);
++  assert(Number(lock.acquired) === 1, 'Phase 2 lock unavailable; stop');
++  try {
++    let metadata = await readPhase2Metadata(db);
++    const exists = metadata.tables.some(r => r.table === phase2History);
++    // Never retrieve the shared/protected migration ledger, even if it exists.
++    const [rows] = exists ? await db.query(`SELECT file,checksum,state,started_at,applied_at,error_code FROM ${quote(phase2History)} ORDER BY file`) : [[]];
++    assert(rows.length <= files.length, 'Unexpected Phase 2 extension history');
++    rows.forEach((r, i) => {
++      assert(r.file === files[i]?.file, 'Out-of-order/unknown Phase 2 history; stop');
++      assert(r.checksum === files[i].checksum, `Phase 2 history checksum mismatch: ${r.file}`);
++      assert(r.state === 'applied' && r.applied_at != null, `Phase 2 ${r.state} history: no automatic retry; Stephanie recovery required`);
++    });
++    verifyPhase2Metadata(metadata, phase2ExpectedMetadata(baseline, rows.length, exists));
++    if (command === 'status') {
++      files.forEach((f, i) => log(`${i < rows.length ? 'APPLIED' : 'PENDING'} ${f.file}`));
++      return;
++    }
++    // Safe initial activation only: no inferred historical values or populated backfill.
++    if (rows.length < 3 && rows.length >= 2) {
++      const [[count]] = await db.query('SELECT COUNT(*) AS n FROM client_applications');
++      assert(String(count.n) === '0', '003 requires empty client_applications; approved backfill plan required');
++    }
++    await db.query("SET time_zone='+00:00'");
++    await db.query("SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
++    if (!exists) {
++      await db.query(`CREATE TABLE ${quote(phase2History)} (file VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,checksum CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,state ENUM('applying','applied','failed') NOT NULL,started_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),applied_at DATETIME(3) NULL,error_code VARCHAR(80) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
++      verifyPhase2Metadata(await readPhase2Metadata(db), phase2ExpectedMetadata(baseline, 0, true));
++    }
++    for (let i = rows.length; i < files.length; i++) {
++      const f = files[i];
++      // Recheck before the first ALTER too, including when 002 ran in this invocation.
++      if (i === 2) {
++        const [[count]] = await db.query('SELECT COUNT(*) AS n FROM client_applications');
++        assert(String(count.n) === '0', '003 requires empty client_applications; stop before ALTER');
++      }
++      const [marker] = await db.execute(`INSERT INTO ${quote(phase2History)} (file,checksum,state) VALUES (?,?,'applying')`, [f.file, f.checksum]);
++      assert(marker.affectedRows === 1 && !marker.warningStatus, 'Phase 2 applying marker not acknowledged; stop before DDL');
++      await db.commit(); // Durable failure marker before any implicitly committing DDL.
++      try {
++        for (const sql of f.statements) {
++          const [result] = await db.query(sql);
++          assert(!result?.warningStatus, 'Phase 2 SQL warning; stop');
++        }
++        await db.commit();
++        metadata = await readPhase2Metadata(db);
++        verifyPhase2Metadata(metadata, phase2ExpectedMetadata(baseline, i + 1, true));
++        const [completed] = await db.execute(`UPDATE ${quote(phase2History)} SET state='applied',applied_at=UTC_TIMESTAMP(3) WHERE file=? AND state='applying'`, [f.file]);
++        assert(completed.affectedRows === 1 && !completed.warningStatus, 'Phase 2 completion marker not acknowledged');
++        await db.commit();
++        log(`APPLIED ${f.file}`);
++      } catch (error) {
++        await db.rollback().catch(() => {}); // Cannot undo MySQL DDL.
++        await db.execute(`UPDATE ${quote(phase2History)} SET state='failed',error_code=? WHERE file=?`, [String(error.code ?? 'PHASE2_FAILURE').slice(0,80), f.file]).then(() => db.commit()).catch(() => {});
++        throw new Error(`Stopped at ${f.file}; partial DDL may exist. No automatic retry; Stephanie recovery required.`);
++      }
++    }
++  } finally { await db.execute('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {}); }
++}
+diff --git a/database/migration-phase2.test.mjs b/database/migration-phase2.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/database/migration-phase2.test.mjs
+@@ -0,0 +1,270 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
++import { tmpdir } from 'node:os';
++import path from 'node:path';
++import { root } from './migration-core.mjs';
++import { main } from './migrate.mjs';
++import { phase2Files, phase2History, validatePhase2Target, discoverPhase2FilesAt,
++  loadPhase2Baseline, phase2ExpectedMetadata, verifyPhase2Metadata, runPhase2 } from './migration-phase2.mjs';
++
++// Only these reviewed files are copied; legacy discovery is never invoked.
++const fixture = await mkdtemp(path.join(tmpdir(), 'enterflow-phase2-offline-'));
++for (const relative of [
++  ...phase2Files.map(([f]) => `phase2-extensions/${f}`),
++  'phase2-bootstrap/P2B002_revised_erd_greenfield.sql',
++  'phase2-execution/P2B002-2026-11-22/after-metadata.json',
++]) {
++  const dest = path.join(fixture, relative);
++  await mkdir(path.dirname(dest), { recursive: true });
++  await writeFile(dest, await readFile(path.join(root, relative)));
++}
++// Enumeration of either legacy path would fail ENOTDIR. No real legacy files used.
++await writeFile(path.join(fixture, 'migrations'), 'synthetic forbidden legacy path');
++await writeFile(path.join(fixture, 'seeds'), 'synthetic forbidden seed path');
++for (const f of ['007_deferred_fixture.sql','008_inventory_material_master.sql','004_unapproved.sql']) {
++  await writeFile(path.join(fixture, 'phase2-extensions', f), 'USE forbidden;');
++}
++const baseline = await loadPhase2Baseline(fixture);
++const target = { DB_HOST: '127.0.0.1', DB_PORT: '62286', DB_NAME: 'enterflow_phase2_db' };
++const historyRows = n => phase2Files.slice(0,n).map(([file, checksum]) => ({ file, checksum, state: 'applied', applied_at: 'synthetic' }));
++
++function fake({ stage = 0, history = stage > 0, rows = historyRows(stage), lock = 1,
++  identity = {}, failStatement, failMarker = false, failCommit = 0, failApplied = false,
++  warning = false, populated = false, mutate = () => {}, cross = 0, zeroMarker = false, zeroApplied = false } = {}) {
++  let current = stage, hasHistory = history, ddl = 0, commits = 0;
++  const ledger = structuredClone(rows), calls = [];
++  return {
++    calls, ledger, get stage() { return current; },
++    async query(sql) {
++      calls.push(sql);
++      if (sql.startsWith('SELECT DATABASE()')) return [[{ name: target.DB_NAME, version: '8.4.13', ...identity }]];
++      if (sql.includes(' AS metadata FROM information_schema.')) {
++        const catalog = /FROM information_schema\.(\w+)/.exec(sql)[1];
++        const keys = { TABLES:'tables', COLUMNS:'columns', KEY_COLUMN_USAGE:'keys', TABLE_CONSTRAINTS:'constraints', STATISTICS:'indexes', CHECK_CONSTRAINTS:'checks', REFERENTIAL_CONSTRAINTS:'referentialActions', TRIGGERS:'triggers', ROUTINES:'routines', EVENTS:'events' };
++        const m = phase2ExpectedMetadata(baseline, current, hasHistory); mutate(m);
++        return [m[keys[catalog]].map(metadata => ({ metadata: JSON.stringify(metadata) }))];
++      }
++      if (sql.includes('REFERENCED_TABLE_SCHEMA<>DATABASE()')) return [[{ n: cross }]];
++      if (sql.startsWith('SELECT file,checksum')) {
++        assert(sql.includes(phase2History)); return [structuredClone(ledger)];
++      }
++      if (sql === 'SELECT COUNT(*) AS n FROM client_applications') return [[{ n: populated ? '1' : '0' }]];
++      if (sql.startsWith('SET ')) return [{}];
++      if (sql.startsWith(`CREATE TABLE \`${phase2History}\``)) { hasHistory = true; return [{}]; }
++      ddl++;
++      if (ddl === failStatement) throw Object.assign(new Error('synthetic DDL failure'), { code: 'FIXTURE_DDL' });
++      if (sql.startsWith('CREATE TABLE user_sessions')) current = 1;
++      else if (sql.startsWith('CREATE TABLE client_applications')) current = 2;
++      else if (sql.startsWith('ALTER TABLE user_account')) current = 2.5;
++      else if (sql.startsWith('ALTER TABLE client_applications')) current = 3;
++      else throw new Error(`Unexpected fake query: ${sql}`);
++      return [{ warningStatus: warning ? 1 : 0 }];
++    },
++    async execute(sql, params) {
++      calls.push(sql);
++      if (sql.startsWith('SELECT GET_LOCK')) return [[{ acquired: lock }]];
++      if (sql.startsWith('SELECT RELEASE_LOCK')) return [[{ released: 1 }]];
++      assert(sql.includes(phase2History), 'Only isolated history may be written');
++      if (sql.startsWith('INSERT')) {
++        if (zeroMarker) return [{ affectedRows:0 }];
++        ledger.push({ file: params[0], checksum: params[1], state: 'applying', applied_at: null });
++      }
++      else if (sql.includes("SET state='failed'")) {
++        if (failMarker) throw new Error('synthetic unavailable marker');
++        ledger.find(r => r.file === params[1]).state = 'failed';
++      } else if (sql.includes("SET state='applied'")) {
++        if (failApplied) throw new Error('synthetic acknowledgement failure');
++        if (zeroApplied) return [{ affectedRows:0 }];
++        Object.assign(ledger.find(r => r.file === params[0]), { state: 'applied', applied_at: 'synthetic' });
++      } else throw new Error(`Unexpected fake execute: ${sql}`);
++      return [{ affectedRows: 1 }];
++    },
++    async commit() { calls.push('COMMIT_DOUBLE'); if (++commits === failCommit) throw new Error('synthetic commit failure'); },
++    async rollback() { calls.push('ROLLBACK_DOUBLE'); },
++  };
++}
++const invoke = (db, command = 'migrate', env = target) => runPhase2(db, command, env, fixture, () => {});
++const writes = db => db.calls.filter(s => /^(CREATE|ALTER|INSERT|UPDATE|SET |COMMIT_DOUBLE)/.test(s));
++
++test('only the three pinned extensions are discovered; legacy/seeds/deferred extras never opened', async () => {
++  const files = await discoverPhase2FilesAt(fixture);
++  assert.deepEqual(files.map(f => f.file), phase2Files.map(([f]) => f));
++  assert.deepEqual(files.map(f => f.statements.length), [1,1,2]);
++});
++
++for (const [name, bad] of Object.entries({ host: { DB_HOST:'localhost' }, remote: { DB_HOST:'10.0.0.1' }, shared: { DB_PORT:'3308' }, test: { DB_PORT:'3309' }, paddedPort: { DB_PORT:'062286' }, restore: { DB_NAME:'enterflow_phase2_restore_p2b002' }, other: { DB_NAME:'enterflow_db' } })) {
++  test(`wrong ${name} rejected before any database-double call`, async () => {
++    const db = fake(); assert.throws(() => validatePhase2Target({ ...target, ...bad }));
++    await assert.rejects(invoke(db, 'status', { ...target, ...bad }), /only 127/);
++    assert.deepEqual(db.calls, []);
++  });
++}
++for (const command of ['baseline','seed','adopt','unknown']) test(`${command} blocked without queries`, async () => {
++  const db = fake(); await assert.rejects(invoke(db, command), /status or migrate only/); assert.deepEqual(db.calls, []);
++});
++
++test('modified extension rejected before database identity/lock', async () => {
++  const base = await mkdtemp(path.join(tmpdir(), 'enterflow-phase2-tamper-'));
++  await mkdir(path.join(base, 'phase2-extensions'));
++  await writeFile(path.join(base, 'phase2-extensions', phase2Files[0][0]), 'CREATE TABLE malicious (id INT);');
++  const db = fake();
++  await assert.rejects(runPhase2(db, 'migrate', target, base), /checksum mismatch/);
++  assert.deepEqual(db.calls, []);
++});
++test('changed P2B002 evidence rejected without consulting a database double', async () => {
++  const base = await mkdtemp(path.join(tmpdir(), 'enterflow-phase2-evidence-tamper-'));
++  for (const relative of ['phase2-bootstrap/P2B002_revised_erd_greenfield.sql','phase2-execution/P2B002-2026-11-22/after-metadata.json']) {
++    await mkdir(path.dirname(path.join(base, relative)), { recursive:true });
++    await writeFile(path.join(base, relative), relative.endsWith('.json') ? '{}' : await readFile(path.join(fixture, relative)));
++  }
++  await assert.rejects(loadPhase2Baseline(base), /evidence changed/);
++});
++test('changed P2B002 bootstrap rejected before prerequisite evidence is loaded', async () => {
++  const base = await mkdtemp(path.join(tmpdir(), 'enterflow-phase2-bootstrap-tamper-'));
++  await mkdir(path.join(base, 'phase2-bootstrap'));
++  await writeFile(path.join(base, 'phase2-bootstrap/P2B002_revised_erd_greenfield.sql'), 'synthetic change');
++  await assert.rejects(loadPhase2Baseline(base), /bootstrap changed/);
++});
++
++for (const identity of [{ name:'enterflow_phase2_restore_p2b002' }, { version:'8.4.12' }]) test(`wrong selected identity ${JSON.stringify(identity)} rejected`, async () => {
++  const db = fake({ identity }); await assert.rejects(invoke(db), /identity mismatch/); assert.equal(db.calls.length, 1);
++});
++test('lock failure stops before metadata, history, session changes or DDL', async () => {
++  const db = fake({ lock:0 }); await assert.rejects(invoke(db), /lock unavailable/); assert.equal(db.calls.length, 2);
++});
++test('fresh status validates P2B002 without writes or legacy ledger queries', async () => {
++  const db = fake(); await invoke(db, 'status'); assert.deepEqual(writes(db), []);
++  assert(!db.calls.some(s => /_enterflow_migration_history|schema_migrations/.test(s)));
++  assert(db.calls.at(-1).startsWith('SELECT RELEASE_LOCK'));
++});
++for (const category of Object.keys(baseline)) test(`prerequisite rejects ${category} drift before any writes`, async () => {
++  const db = fake({ mutate: m => m[category].push({ unexpected:'synthetic drift' }) });
++  await assert.rejects(invoke(db), /mismatch/); assert.deepEqual(writes(db), []);
++});
++test('cross-schema foreign keys rejected before writes', async () => {
++  const db = fake({ cross:1 }); await assert.rejects(invoke(db), /Cross-schema/); assert.deepEqual(writes(db), []);
++});
++test('untracked already-installed extension is refused, never adopted or replayed', async () => {
++  const db = fake({ stage:1, history:false, rows:[] }); await assert.rejects(invoke(db), /mismatch/); assert.deepEqual(writes(db), []);
++});
++for (const state of ['applying','failed']) test(`${state} history stops status and migrate without retry`, async () => {
++  for (const command of ['status','migrate']) {
++    const rows = historyRows(1); rows[0].state = state;
++    const db = fake({ stage:1, rows }); await assert.rejects(invoke(db, command), /no automatic retry/); assert.deepEqual(writes(db), []);
++  }
++});
++test('history checksum mismatch rejected before writes', async () => {
++  const rows = historyRows(1); rows[0].checksum = '0'.repeat(64);
++  const db = fake({ stage:1, rows }); await assert.rejects(invoke(db), /history checksum mismatch/); assert.deepEqual(writes(db), []);
++});
++for (const file of ['007_deferred_fixture.sql','008_inventory_material_master.sql','003_username_support.sql']) test(`unknown/deferred/out-of-order ledger ${file} refused`, async () => {
++  const rows = historyRows(1); rows[0].file = file;
++  const db = fake({ stage:1, rows }); await assert.rejects(invoke(db), /Out-of-order\/unknown/); assert.deepEqual(writes(db), []);
++});
++test('a deferred filename in isolated history is rejected before its checksum is inspected', async () => {
++  const db = fake({ stage:1 }); const originalQuery = db.query.bind(db);
++  db.query = async sql => sql.startsWith('SELECT file,checksum') ? [[{
++    file:'008_inventory_material_master.sql', state:'applied',
++    get checksum() { assert.fail('Synthetic deferred checksum must not be inspected'); },
++  }]] : originalQuery(sql);
++  await assert.rejects(invoke(db), /Out-of-order\/unknown/); assert.deepEqual(writes(db), []);
++});
++test('003 populated applications stop before first ALTER or session changes', async () => {
++  const db = fake({ stage:2, populated:true }); await assert.rejects(invoke(db), /backfill/); assert.deepEqual(writes(db), []);
++});
++test('success uses dependency order, durable markers, postconditions, then applied states', async () => {
++  const db = fake(); await invoke(db);
++  assert.equal(db.stage, 3); assert.deepEqual(db.ledger.map(r => r.state), ['applied','applied','applied']);
++  assert.deepEqual(db.ledger.map(r => r.file), phase2Files.map(([f]) => f));
++  const first = db.calls.findIndex(s => s.startsWith('CREATE TABLE user_sessions'));
++  assert.equal(db.calls[first - 1], 'COMMIT_DOUBLE');
++  assert(db.calls[first - 2].startsWith('INSERT INTO'));
++  assert.equal(db.calls.filter(s => s.startsWith('ALTER TABLE')).length, 2);
++  assert(!db.calls.some(s => /_enterflow_migration_history|schema_migrations/.test(s)));
++});
++test('already applied stream is verified without replaying extension DDL', async () => {
++  const db = fake({ stage:3 }); await invoke(db, 'status'); assert.deepEqual(writes(db), []);
++});
++test('DDL warning marks failed, stops next extension and refuses retry', async () => {
++  const db = fake({ warning:true }); await assert.rejects(invoke(db), /No automatic retry/);
++  assert.equal(db.ledger[0].state, 'failed'); assert.equal(db.ledger.length, 1);
++  await assert.rejects(invoke(db), /no automatic retry/);
++});
++test('second ALTER failure preserves partial 003 marker and never retries', async () => {
++  const db = fake({ stage:2, failStatement:2 }); await assert.rejects(invoke(db), /partial DDL/);
++  assert.equal(db.stage, 2.5); assert.equal(db.ledger[2].state, 'failed');
++  const alters = db.calls.filter(s => s.startsWith('ALTER')).length;
++  await assert.rejects(invoke(db), /no automatic retry/);
++  assert.equal(db.calls.filter(s => s.startsWith('ALTER')).length, alters);
++});
++test('failed failure-marker write leaves applying and still blocks retry', async () => {
++  const db = fake({ failStatement:1, failMarker:true }); await assert.rejects(invoke(db), /No automatic retry/);
++  assert.equal(db.ledger[0].state, 'applying'); await assert.rejects(invoke(db), /no automatic retry/);
++});
++test('commit failure before DDL stops without executing an extension', async () => {
++  const db = fake({ failCommit:1 }); await assert.rejects(invoke(db), /commit failure/);
++  assert(!db.calls.some(s => s.startsWith('CREATE TABLE user_sessions')));
++  assert.equal(db.ledger[0].state, 'applying');
++});
++test('completion acknowledgement failure never logs success and requires recovery', async () => {
++  const db = fake({ failApplied:true }); const logs = [];
++  await assert.rejects(runPhase2(db, 'migrate', target, fixture, s => logs.push(s)), /No automatic retry/);
++  assert.deepEqual(logs, []); assert.equal(db.ledger[0].state, 'failed');
++});
++test('zero-row applying marker stops before extension DDL', async () => {
++  const db = fake({ zeroMarker:true }); await assert.rejects(invoke(db), /applying marker not acknowledged/);
++  assert(!db.calls.some(s => s.startsWith('CREATE TABLE user_sessions')));
++});
++test('zero-row completion update cannot report successful application', async () => {
++  const db = fake({ zeroApplied:true }); const logs = [];
++  await assert.rejects(runPhase2(db, 'migrate', target, fixture, s => logs.push(s)), /No automatic retry/);
++  assert.deepEqual(logs, []); assert.equal(db.ledger[0].state, 'failed');
++});
++test('commit acknowledgement lost after DDL is marked failed and blocks retry', async () => {
++  const db = fake({ failCommit:2 }); await assert.rejects(invoke(db), /No automatic retry/);
++  assert.equal(db.stage, 1); assert.equal(db.ledger[0].state, 'failed');
++  await assert.rejects(invoke(db), /no automatic retry/);
++});
++test('postcondition drift marks failed instead of reporting success', async () => {
++  const db = fake({ mutate: m => { if (m.tables.some(t => t.table === 'user_sessions')) m.triggers.pop(); } });
++  await assert.rejects(invoke(db), /No automatic retry/); assert.equal(db.ledger[0].state, 'failed');
++});
++
++function cliDeps(overrides = {}) {
++  const calls = [];
++  const deps = { env: { ...target, DB_MIGRATION_USER:'synthetic', DB_MIGRATION_PASSWORD:'synthetic', DB_SSL_CA:'synthetic-ca' },
++    rethrow:true, loadEnvFile: p => calls.push(['env',p]), readFile: async () => 'synthetic CA',
++    mysql: { createConnection: async config => { calls.push(['connect-double',config]); return { end:async () => calls.push(['end-double']) }; } },
++    runPhase2: async () => calls.push(['phase2-double']), run: async () => calls.push(['legacy-double']), ...overrides };
++  return { calls, deps };
++}
++test('CLI routes explicit Phase 2 to dedicated runner with verified TLS', async () => {
++  const { calls, deps } = cliDeps(); await main(['status','--profile','phase2','--env-file','synthetic-only'], deps);
++  assert(calls.some(([k]) => k === 'phase2-double')); assert(!calls.some(([k]) => k === 'legacy-double'));
++  const config = calls.find(([k]) => k === 'connect-double')[1];
++  assert.equal(config.ssl.rejectUnauthorized, true); assert.equal(config.port, 62286);
++  assert.equal(config.multipleStatements, false); assert.equal(calls.at(-1)[0], 'end-double');
++});
++for (const args of [[], ['--env-file','x'], ['--profile','phase2'], ['--profile','unknown','--env-file','x']]) test(`CLI rejects missing/unapproved profile options ${JSON.stringify(args)}`, async () => {
++  const { calls, deps } = cliDeps(); await assert.rejects(main(['status', ...args], deps));
++  assert(!calls.some(([k]) => k === 'connect-double'));
++});
++for (const bad of [{ DB_PORT:'3308' }, { DB_NAME:'enterflow_phase2_restore_p2b002' }, { DB_SSL_LOCAL_SELF_SIGNED:'true' }, { DB_SSL_CA:'' }]) test(`CLI fail-closed before connecting: ${JSON.stringify(bad)}`, async () => {
++  const { calls, deps } = cliDeps(); Object.assign(deps.env, bad);
++  await assert.rejects(main(['migrate','--profile','phase2','--env-file','synthetic-only'], deps));
++  assert(!calls.some(([k]) => k === 'connect-double'));
++});
++test('shared CLI still rejects Phase 2 port; original development route retained with doubles', async () => {
++  const { calls, deps } = cliDeps();
++  await assert.rejects(main(['status','--env-file','synthetic-only'], deps), /3308/);
++  assert(!calls.some(([k]) => k === 'connect-double'));
++  Object.assign(deps.env, { DB_PORT:'3308', DB_NAME:'enterflow_db' });
++  await main(['status','--env-file','synthetic-only'], deps);
++  assert(calls.some(([k]) => k === 'legacy-double')); assert(!calls.some(([k]) => k === 'phase2-double'));
++});
++test('metadata comparison accepts only metadata escape and referential-action equivalents', () => {
++  const m = structuredClone(baseline); m.checks[0].clause = m.checks[0].clause.replaceAll("\\'", "'");
++  m.referentialActions[0].delete = 'RESTRICT'; verifyPhase2Metadata(m, baseline);
++  m.columns[0].nullable = 'YES'; assert.throws(() => verifyPhase2Metadata(m, baseline), /columns/);
++});

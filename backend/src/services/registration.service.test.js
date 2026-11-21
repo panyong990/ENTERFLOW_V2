@@ -135,7 +135,7 @@ test('registration diagnostics: broken logging sinks cannot change response or c
 
 // A deliberately limited mock of the case/accent/PAD SPACE examples already
 // verified in the isolated MySQL tests. This is not a MySQL collation emulator.
-const comparisonKey = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/ +$/, '');
+const comparisonKey = value => typeof value === 'string' ? value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/ +$/, '') : null;
 const state = () => ({ users: [], applications: [], locks: new Map(), waiters: new Map(), nextId: 0 });
 
 function harness(options = {}, shared = state()) {
@@ -144,7 +144,7 @@ function harness(options = {}, shared = state()) {
     events.push({ stage: name, connection: connection?.id });
     if (sql) calls.push({ sql, params, connection: connection.id });
     if (options.failAt === name || options.alsoFailAt === name) {
-      throw Object.assign(new Error(PRIVATE_ERROR), { code: options.errorCode ?? 'ER_TEST_FAILURE' });
+      throw Object.assign(new Error(PRIVATE_ERROR), { code: options.errorCode ?? 'ER_TEST_FAILURE', sqlMessage: options.sqlMessage ?? (options.errorCode === 'ER_DUP_ENTRY' && name === 'insert' ? "Duplicate entry for key 'uq_client_application_active_email'" : undefined) });
     }
   }
   function unlock(connection) {
@@ -288,7 +288,7 @@ test('case/accent comparisons are delegated to database lookups, preserving Unic
   for (const row of [{ email: 'cafe@example.invalid', username: 'other' }, { email: 'other@example.invalid', username: 'RESUME ' }]) {
     const h = harness(); h.shared.users.push(row);
     assert.deepEqual(await h.service.register({ ...valid(), email: 'CAF\u00c9@example.invalid', username: 'r\u00e9sum\u00e9' }), conflict);
-    const lookup = h.calls.find(c => /SELECT 1 FROM users/.test(c.sql));
+    const lookup = h.calls.find(c => /SELECT\s+1\s+FROM\s+user_account/.test(c.sql));
     assert.deepEqual(lookup.params, ['caf\u00e9@example.invalid', 'r\u00e9sum\u00e9', 'caf\u00e9@example.invalid', 'r\u00e9sum\u00e9']);
   }
 });
@@ -298,7 +298,15 @@ test('rejected applications and duplicate company names do not reserve identitie
   assert.equal((await h.service.register(valid())).success, true);
   assert.equal((await h.service.register({ ...valid(), email: 'different@example.invalid', username: 'Different' })).success, true);
   assert.equal(h.shared.applications.length, 3);
-  assert.match(h.calls.find(c => /SELECT 1 FROM client_applications/.test(c.sql)).sql, /status IN \('pending', 'approved'\)/);
+  const lookup = h.calls.find(c => /SELECT\s+1\s+FROM\s+client_applications/.test(c.sql));
+  assert.match(lookup.sql, /active_email IN .*active_username IN/s);
+});
+
+test('employee accounts with NULL usernames still reserve email without blocking unrelated applicants', async () => {
+  const h = harness(); h.shared.users.push({ email: 'employee@example.invalid', username: null });
+  assert.equal((await h.service.register(valid())).success, true);
+  assert.deepEqual(await h.service.register({ ...valid(), email: 'EMPLOYEE@example.invalid', username: 'other' }), conflict);
+  assert.equal(h.shared.applications.length, 1);
 });
 
 test('SQL-injection payloads remain bound data; only applications can be inserted', async () => {
@@ -315,6 +323,19 @@ test('duplicate-key insert errors become the same generic conflict and roll back
   assert.equal(h.events.filter(e => e.stage === 'insert').length, 1);
   assert.ok(h.events.find(e => e.stage === 'rollback')); assert.ok(h.events.find(e => e.stage === 'destroy'));
   assert.equal(h.shared.locks.size, 0); assert.equal(h.shared.applications.length, 0);
+});
+
+test('both active identity constraints are conflicts; unrelated duplicates and stages remain unavailable', async () => {
+  for (const key of ['uq_client_application_active_email', 'uq_client_application_active_username']) {
+    const h = harness({ failAt: 'insert', errorCode: 'ER_DUP_ENTRY', sqlMessage: `Duplicate entry for key 'client_applications.${key}'` });
+    assert.deepEqual(await h.service.register(valid()), conflict);
+    assert.equal(h.shared.applications.length, 0);
+  }
+  for (const [failAt, key] of [['insert', 'PRIMARY'], ['users', 'uq_client_application_active_email'], ['insert', 'unrelated_unique']]) {
+    const h = harness({ failAt, errorCode: 'ER_DUP_ENTRY', sqlMessage: `Duplicate entry for key '${key}'` });
+    assert.deepEqual(await h.service.register(valid()), unavailable);
+    assert.equal(h.shared.applications.length, 0); assert.equal(h.shared.locks.size, 0);
+  }
 });
 
 for (const failAt of ['hash', 'getConnection', 'database', 'getLock', 'begin', 'users', 'applications', 'insert', 'commit']) {

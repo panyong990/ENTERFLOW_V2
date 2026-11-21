@@ -16,9 +16,9 @@ const app = (extra = {}) => ({ id: ID, companyName: 'Synthetic company', contact
   decidedBy: null, approvedClientId: null, rejectionReason: null, ...extra });
 const request = (extra = {}) => ({ actor: ACTOR, applicationId: ID, input: {}, ...extra });
 const freshState = () => ({ data: { admin: { id: '7', role: 'admin', accountType: 'employee', active: 1 },
-  applications: [app()], companies: [], users: [], audits: [], nextId: 9007199254741000n },
+  applications: [app()], companies: [], users: [], memberships: [], audits: [], nextId: 9007199254741000n },
   nextConnection: 0, lockHolder: null, waiters: [] });
-const comparisonKey = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/ +$/, '');
+const comparisonKey = value => typeof value === 'string' ? value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/ +$/, '') : null;
 
 // A transactional in-memory test double, NOT a MySQL collation/isolation proof.
 // Queries are explicitly recognized; every other query or write fails closed.
@@ -27,7 +27,7 @@ function harness(options = {}, shared = freshState()) {
   function stage(name) {
     events.push(name);
     if (options.failAt === name || options.alsoFailAt === name) {
-      throw Object.assign(new Error(PRIVATE), { code: options.errorCode ?? 'ER_TEST_FAILURE' });
+      throw Object.assign(new Error(PRIVATE), { code: options.errorCode ?? 'ER_TEST_FAILURE', sqlMessage: options.sqlMessage ?? (options.errorCode === 'ER_DUP_ENTRY' ? "Duplicate entry for key '" + (name === 'insertCompany' ? 'uq_client_company' : name === 'insertUser' ? 'uq_user_email' : 'PRIMARY') + "'" : undefined) });
     }
   }
   function unlock(connection) {
@@ -65,17 +65,17 @@ function harness(options = {}, shared = freshState()) {
         }
         assert.ok(this.working, 'Data SQL requires an active transaction.');
         const data = this.working;
-        if (text.startsWith('SELECT id FROM users')) {
+        if (text.startsWith('SELECT ua.user_id AS id FROM user_account')) {
           stage('actor');
           assert.match(text, /FOR SHARE$/);
           const admin = data.admin;
           options.onActorCheck?.();
           return [admin && admin.id === params[0] && admin.role === 'admin' && admin.accountType === 'employee' && admin.active === 1 ? [{ id: admin.id }] : []];
         }
-        if (text.startsWith('SELECT CAST(id AS CHAR)')) {
-          stage(text.includes("WHERE status = 'pending'") ? 'list' : 'detail');
+        if (text.startsWith('SELECT CAST(application_id AS CHAR)') && !text.endsWith('FOR UPDATE')) {
+          stage(text.includes("WHERE application_status = 'pending'") ? 'list' : 'detail');
           let rows;
-          if (text.includes("WHERE status = 'pending'")) {
+          if (text.includes("WHERE application_status = 'pending'")) {
             rows = data.applications.filter(row => row.status === 'pending');
             if (params.length === 4) rows = rows.filter(row => row.submittedAt < params[0] || row.submittedAt === params[0] && BigInt(row.id) < BigInt(params[2]));
             rows = rows.toSorted((a, b) => a.submittedAt === b.submittedAt ? (BigInt(a.id) > BigInt(b.id) ? -1 : 1) : a.submittedAt > b.submittedAt ? -1 : 1).slice(0, Number(params.at(-1)));
@@ -84,16 +84,16 @@ function harness(options = {}, shared = freshState()) {
           return [structuredClone(rows).map(row => ({ ...row, sessionToken: PRIVATE }))];
         }
         assert.equal(shared.lockHolder, this.id, 'Decision SQL requires the shared identity lock.');
-        if (text.startsWith('SELECT id, company_name')) {
+        if (text.startsWith('SELECT CAST(application_id AS CHAR)') && text.endsWith('FOR UPDATE')) {
           stage('application'); assert.match(text, /FOR UPDATE$/);
           const rows = data.applications.filter(row => row.id === params[0]);
           return [structuredClone(rows)];
         }
-        if (text.startsWith('SELECT 1 FROM clients')) {
+        if (text.startsWith('SELECT 1 FROM client WHERE')) {
           stage('companyConflict');
           return [data.companies.some(row => comparisonKey(row.companyName) === comparisonKey(params[0])) ? [{}] : []];
         }
-        if (text.startsWith('SELECT 1 FROM users')) {
+        if (text.startsWith('SELECT 1 FROM user_account')) {
           stage('userConflict');
           return [data.users.some(row => params.some(value => comparisonKey(value) === comparisonKey(row.email) || comparisonKey(value) === comparisonKey(row.username))) ? [{}] : []];
         }
@@ -102,7 +102,14 @@ function harness(options = {}, shared = freshState()) {
           return [data.applications.some(row => row.id !== params[0] && ['pending', 'approved'].includes(row.status) &&
             params.slice(1).some(value => comparisonKey(value) === comparisonKey(row.email) || comparisonKey(value) === comparisonKey(row.username))) ? [{}] : []];
         }
-        if (text.startsWith('INSERT INTO clients')) {
+        if (text.startsWith('SELECT CAST(role_id AS CHAR)')) {
+          stage('clientRole'); return [options.roleRows ?? [{ roleId: '11' }]];
+        }
+        if (text.startsWith('INSERT INTO client_user ')) {
+          stage('insertMembership'); data.memberships.push({ userId: params[0], clientId: params[1] });
+          return [header('insertMembership')];
+        }
+        if (text.startsWith('INSERT INTO client (')) {
           stage('insertCompany');
           this.lastId = String(data.nextId++);
           data.companies.push({ id: this.lastId, companyName: params[0], contactPerson: params[1], email: params[2], phone: params[3] });
@@ -111,24 +118,24 @@ function harness(options = {}, shared = freshState()) {
         if (text.startsWith('SELECT CAST(LAST_INSERT_ID()')) {
           stage('insertedId'); return [[{ id: options.invalidInsertedId ? '18446744073709551616' : this.lastId }]];
         }
-        if (text.startsWith('INSERT INTO users')) {
-          stage('insertUser'); assert.match(text, /VALUES \('client', 'client', \?/);
+        if (text.startsWith('INSERT INTO user_account')) {
+          stage('insertUser'); assert.match(text, /status, must_change_password\).*'active', FALSE\)/);
           this.lastId = String(data.nextId++);
-          data.users.push({ id: this.lastId, roleCode: 'client', accountType: 'client', clientId: params[0],
+          data.users.push({ id: this.lastId, roleId: params[0], roleCode: 'client', accountType: 'client',
             displayName: params[1], email: params[2], username: params[3], phone: params[4], passwordHash: params[5], active: 1 });
           return [header('insertUser')];
         }
         if (text.startsWith('UPDATE client_applications')) {
-          stage('updateApplication'); assert.match(text, /AND status = 'pending'$/);
-          const row = data.applications.find(row => row.id === params[4] && row.status === 'pending');
+          stage('updateApplication'); assert.match(text, /AND application_status = 'pending'$/);
+          const row = data.applications.find(row => row.id === params[5] && row.status === 'pending');
           assert.ok(row);
-          Object.assign(row, { status: params[0], decidedBy: params[1], rejectionReason: params[2], approvedClientId: params[3], decidedAt: '2026-11-15 02:00:00.000' });
+          Object.assign(row, { status: params[0], decidedBy: params[1], rejectionReason: params[2], approvedClientId: params[3], approvedUserId: params[4], decidedAt: '2026-11-15 02:00:00.000' });
           return [header('updateApplication')];
         }
-        if (text.startsWith('INSERT INTO audit_events')) {
+        if (text.startsWith('INSERT INTO audit_event')) {
           stage('insertAudit');
           data.audits.push({ actorId: params[0], action: params[1], subject: params[2],
-            oldValue: params[3], newValue: params[4], reason: params[5], requestId: params[6] });
+            oldValue: params[3], newValue: params[4], reason: params[5], requestId: JSON.parse(params[4]).requestId });
           return [header('insertAudit')];
         }
         throw new Error('Unrecognized SQL is forbidden in review unit tests.');
@@ -156,6 +163,7 @@ function safe(result) {
 }
 function noDecision(data) {
   assert.equal(data.companies.length, 0); assert.equal(data.users.length, 0); assert.equal(data.audits.length, 0);
+  assert.equal(data.memberships.length, 0);
   assert.equal(data.applications[0].status, 'pending');
 }
 
@@ -194,7 +202,7 @@ test('paginated pending reads are bounded, stable on timestamp ties, and credent
   assert.equal(validateApplicationReadParams({ cursor: first.data.nextCursor }).success, true);
   const second = await h.service.listPending(request({ query: { limit: '1', cursor: first.data.nextCursor } }));
   assert.equal(second.data.applications[0].id, ID); assert.equal(second.data.nextCursor, null); safe(second);
-  const reads = h.calls.filter(call => call.sql.includes("WHERE status = 'pending'"));
+  const reads = h.calls.filter(call => call.sql.includes("WHERE application_status = 'pending'"));
   assert.ok(reads.every(call => !/password|SELECT \*/i.test(call.sql)));
   assert.deepEqual(reads[0].params, ['2']);
   assert.deepEqual(reads[1].params, ['2026-11-15 01:02:03.004', '2026-11-15 01:02:03.004', '9007199254740994', '2']);
@@ -208,7 +216,7 @@ test('empty pending list has no cursor; detail reads use safe fields and precise
   assert.equal((await h.service.getApplication(request({ applicationId: '99' }))).code, 'NOT_FOUND');
   h.shared.data.applications = [];
   assert.deepEqual((await h.service.listPending(request())).data, { applications: [], nextCursor: null });
-  assert.ok(h.calls.filter(call => call.sql.startsWith('SELECT CAST(id')).every(call => !/password|SELECT \*/i.test(call.sql)));
+  assert.ok(h.calls.filter(call => call.sql.startsWith('SELECT CAST(application_id')).every(call => !/password|SELECT \*/i.test(call.sql)));
 });
 
 for (const change of [{ active: 0 }, { role: 'sales' }, { role: 'owner' }, { accountType: 'client' }, { id: '8' }]) {
@@ -229,19 +237,19 @@ test('approval atomically creates one linked company/client user, decision, and 
   const user = data.users[0];
   assert.equal(user.roleCode, 'client'); assert.equal(user.accountType, 'client');
   assert.equal(Number(user.active), 1);
-  assert.match(h.calls.find(call => call.sql.startsWith('INSERT INTO users')).sql, /password_hash, active\).*TRUE\)/);
-  assert.equal(user.clientId, data.companies[0].id); assert.equal(user.passwordHash === HASH, true);
-  assert.equal(result.data.userId, user.id); assert.equal(result.data.clientId, user.clientId);
-  assert.equal(data.applications[0].approvedClientId, user.clientId); assert.equal(data.applications[0].decidedBy, ACTOR.userId);
+  assert.match(h.calls.find(call => call.sql.startsWith('INSERT INTO user_account')).sql, /status, must_change_password\).*'active', FALSE\)/);
+  assert.deepEqual(data.memberships, [{ userId: user.id, clientId: data.companies[0].id }]); assert.equal(user.passwordHash === HASH, true);
+  assert.equal(result.data.userId, user.id); assert.equal(result.data.clientId, data.memberships[0].clientId);
+  assert.equal(data.applications[0].approvedClientId, data.memberships[0].clientId); assert.equal(data.applications[0].decidedBy, ACTOR.userId);
   assert.equal(data.applications[0].status, 'approved'); assert.ok(data.applications[0].decidedAt);
   const audit = data.audits[0]; assert.equal(audit.actorId, ACTOR.userId);
   assert.equal(audit.action, 'client_application.approved'); assert.equal(audit.subject, ID);
-  assert.deepEqual(JSON.parse(audit.newValue), result.data);
+  assert.deepEqual(JSON.parse(audit.newValue), { ...result.data, requestId: audit.requestId });
   assert.match(audit.requestId, /^[a-f0-9-]{36}$/); safe(audit);
   assert.equal(h.calls.some(call => /user_sessions/i.test(call.sql)), false);
   assert.equal(new Set(h.calls.map(call => call.connection)).size, 1);
   assert.deepEqual(h.events, ['getConnection', 'database', 'getLock', 'begin', 'actor', 'application',
-    'companyConflict', 'userConflict', 'applicationConflict', 'insertCompany', 'insertedId', 'insertUser', 'insertedId',
+    'companyConflict', 'userConflict', 'applicationConflict', 'clientRole', 'insertCompany', 'insertedId', 'insertUser', 'insertedId', 'insertMembership',
     'updateApplication', 'insertAudit', 'commit', 'releaseLock', 'releasePool']);
 });
 test('actor identity is snapshotted before asynchronous work and cannot change decision attribution', async () => {
@@ -259,6 +267,34 @@ test('approval reuses a real valid Argon2id hash unchanged without access to pla
   assert.equal((await h.service.approve(request())).success, true);
   assert.equal(h.shared.data.users[0].passwordHash === hash, true);
   assert.equal(await verifyPassword(h.shared.data.users[0].passwordHash, 'Synthetic fixture password'), true);
+});
+
+test('Client role is resolved from the existing table and both generated account links are retained', async () => {
+  const h = harness({ roleRows: [{ roleId: '9007199254740999' }] });
+  const result = await h.service.approve(request());
+  assert.equal(result.success, true);
+  assert.equal(h.shared.data.users[0].roleId, '9007199254740999');
+  assert.deepEqual(h.shared.data.memberships, [{ userId: result.data.userId, clientId: result.data.clientId }]);
+  assert.equal(h.shared.data.applications[0].approvedUserId, result.data.userId);
+  assert.match(h.calls.find(c => c.sql.startsWith('SELECT CAST(role_id')).sql, /role_name = 'Client' FOR SHARE/);
+  assert.match(h.calls.find(c => c.sql.startsWith('SELECT ua.user_id')).sql, /ua.status = 'active' AND cu.client_user_id IS NULL/);
+});
+
+test('missing, ambiguous or invalid Client role data rolls back without inventing a role', async () => {
+  for (const roleRows of [[], [{ roleId: '1' }, { roleId: '2' }], [{ roleId: 11 }], [{ roleId: '0' }]]) {
+    const h = harness({ roleRows });
+    assert.equal((await h.service.approve(request())).code, 'SERVICE_UNAVAILABLE');
+    noDecision(h.shared.data);
+    assert.equal(h.calls.some(c => /INSERT INTO role/.test(c.sql)), false);
+  }
+});
+
+test('unrelated duplicate-key failures do not masquerade as existing-company/identity conflicts', async () => {
+  for (const failAt of ['insertCompany', 'insertUser', 'insertMembership', 'updateApplication', 'insertAudit']) {
+    const h = harness({ failAt, errorCode: 'ER_DUP_ENTRY', sqlMessage: "Duplicate entry for key 'PRIMARY'" });
+    assert.equal((await h.service.approve(request())).code, 'SERVICE_UNAVAILABLE');
+    noDecision(h.shared.data); assert.equal(h.shared.lockHolder, null);
+  }
 });
 
 test('rejection trims its reason and atomically audits without selecting or writing credentials/accounts', async () => {
@@ -307,7 +343,7 @@ test('company and identity equality are delegated to SQL with Unicode values pre
   h.shared.data.applications[0].username = 'r\u00e9sum\u00e9';
   h.shared.data.users.push({ email: 'other@example.invalid', username: 'RESUME' });
   assert.equal((await h.service.approve(request())).code, 'IDENTITY_CONFLICT');
-  assert.equal(h.calls.find(call => call.sql.startsWith('SELECT 1 FROM users')).params[1], 'r\u00e9sum\u00e9');
+  assert.equal(h.calls.find(call => call.sql.startsWith('SELECT 1 FROM user_account')).params[1], 'r\u00e9sum\u00e9');
 });
 
 test('injection-shaped company and rejection strings remain bound values', async () => {
@@ -337,7 +373,7 @@ for (const method of ['approve', 'reject']) {
 }
 
 for (const failAt of ['getConnection', 'database', 'getLock', 'begin', 'actor', 'application', 'companyConflict',
-  'userConflict', 'applicationConflict', 'insertCompany', 'insertedId', 'insertUser', 'updateApplication', 'insertAudit']) {
+  'userConflict', 'applicationConflict', 'clientRole', 'insertCompany', 'insertedId', 'insertUser', 'insertMembership', 'updateApplication', 'insertAudit']) {
   test(`approval ${failAt} failure is confidential and never partially commits`, async () => {
     const h = harness({ failAt });
     const result = await h.service.approve(request());
@@ -353,7 +389,7 @@ for (const failAt of ['application', 'updateApplication', 'insertAudit']) {
     noDecision(h.shared.data); assert.ok(h.events.includes('rollback')); assert.equal(h.shared.lockHolder, null);
   });
 }
-for (const stage of ['insertCompany', 'insertUser', 'updateApplication', 'insertAudit']) {
+for (const stage of ['insertCompany', 'insertUser', 'insertMembership', 'updateApplication', 'insertAudit']) {
   test(`write counts and warnings at ${stage} roll back the entire approval`, async () => {
     for (const options of [{ badCountAt: stage }, { warningAt: stage }]) {
       const h = harness(options);
@@ -490,7 +526,7 @@ for (const action of ['approve', 'reject']) {
     assert.equal(audit.subject, ID);
     assert.equal(audit.action, `client_application.${action === 'approve' ? 'approved' : 'rejected'}`);
     assert.deepEqual(JSON.parse(audit.oldValue), { status: 'pending' });
-    assert.deepEqual(JSON.parse(audit.newValue), response.body.data);
+    assert.deepEqual(JSON.parse(audit.newValue), { ...response.body.data, requestId: response.requestId });
     assert.equal(audit.reason, action === 'reject' ? 'Synthetic reason' : null);
     assert.equal(h.events.filter(event => event === 'commit').length, 1);
     assert.equal(h.events.includes('rollback'), false);
@@ -506,8 +542,8 @@ test('HTTP application audit failure preserves atomic rollback with the correlat
   noDecision(h.shared.data);
   assert.ok(h.events.includes('rollback'));
   assert.equal(h.events.includes('commit'), false);
-  const attempt = h.calls.find(call => call.sql.startsWith('INSERT INTO audit_events'));
-  assert.equal(attempt.params[6], response.requestId);
+  const attempt = h.calls.find(call => call.sql.startsWith('INSERT INTO audit_event'));
+  assert.equal(JSON.parse(attempt.params[4]).requestId, response.requestId);
   safe(response.body);
 });
 

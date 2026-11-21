@@ -1,0 +1,32 @@
+[
+  {
+    "original": "database/phase2-bootstrap/P2B001_corrected_database_bootstrap.sql",
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\P2B001_corrected_database_bootstrap.sql",
+    "sha256": "1181e3ed51b17057648d9d6c9efa63190eb65299ecffb2534673be1eda3125ec"
+  },
+  {
+    "original": "database/phase2-execution/2026-11-22-bootstrap/execution.json",
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\execution.json",
+    "sha256": "f66e67adf449a9901b9094b699f00f879706498b1036454a4a79e3eea39c4a66"
+  },
+  {
+    "original": "docs/PHASE_2_DATABASE_MIGRATION_REPORT.md",
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_MIGRATION_REPORT.md",
+    "sha256": "0cf98da7ba9cdbadc3af7474a29f7ae455acebf521f4e646d1a4c14a38f747f9"
+  },
+  {
+    "original": "docs/PHASE_2_DATABASE_CORRECTED_ERD.md",
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_CORRECTED_ERD.md",
+    "sha256": "e6aa2146e636fda82fe64e66462c3fd19888ce6c025dd233129a88fb1517a11c"
+  },
+  {
+    "original": "docs/PHASE_2_DATABASE_DATA_DICTIONARY.md",
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_DATA_DICTIONARY.md",
+    "sha256": "4fc36dccee149f6dcd05193c8003a96c8f0fbf4311dbe9c9c628cfbba336425a"
+  },
+  {
+    "original": "docs/PHASE_2_DATABASE_ERD_CORRECTION_REPORT.md",
+    "archive": "database\\phase2-execution\\P2B002-2026-11-22\\rejected-P2B001\\PHASE_2_DATABASE_ERD_CORRECTION_REPORT.md",
+    "sha256": "e9ac1e4d03e10532e4a4fbc46c32aa7e3a5509d20053dc4ec08526a70ec593c3"
+  }
+]

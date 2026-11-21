@@ -1,0 +1,69 @@
+{
+  "database": "enterflow_phase2_db",
+  "container": "enterflow-phase2-mysql",
+  "restoreDatabase": "enterflow_phase2_restore_p2b002",
+  "status": "complete",
+  "startedAt": "2026-11-22T02:07:48.249243+08:00",
+  "ddlStarted": true,
+  "priorPreflightAttempt": "database\\phase2-execution\\P2B002-2026-11-22\\preflight-attempt-01.json",
+  "priorPreflightExplanation": "MySQL warning 1287 from deprecated INFORMATION_SCHEMA.PROCESSLIST, before any DDL; switched to performance_schema.processlist.",
+  "quiescence": {
+    "otherTargetSessions": [],
+    "establishedTargetTcpConnections": 0,
+    "applicationConfigs": [
+      {
+        "file": "database/.env.dev",
+        "database": "enterflow_db"
+      }
+    ],
+    "scope": "Observed quiescence plus configuration; no app was switched or stopped."
+  },
+  "beforeTableCount": 71,
+  "allExistingTablesEmpty": true,
+  "bootstrap": {
+    "file": "database\\phase2-bootstrap\\P2B002_revised_erd_greenfield.sql",
+    "sha256": "7db7d58d82599a3d81f9edc27a7bc83a2b34c2721a08593c67e85d5bce49c8b1"
+  },
+  "schemaCreated": true,
+  "ddlExitCode": 0,
+  "verification": {
+    "tables": 40,
+    "columns": 412,
+    "primaryKeys": 40,
+    "foreignKeys": 95,
+    "uniqueConstraints": 40,
+    "enforcedChecks": 40,
+    "indexes": 167,
+    "triggers": 39,
+    "rows": 0,
+    "exactTableColumnAndKeyInventory": true,
+    "allColumnTypesNullabilityDefaultsVerified": true,
+    "allDeclaredIndexesAndReferentialActionsVerified": true,
+    "triggerDefinitionsVerified": true
+  },
+  "backup": {
+    "file": "database\\phase2-execution\\P2B002-2026-11-22\\P2B002_verified_empty_schema.sql",
+    "bytes": 119693,
+    "sha256": "025eeba4e6ad096b11afd79010169dfe50a6553c4c60d98286df91dbac0e485c",
+    "createdAfterVerification": true
+  },
+  "restoreIdentityBefore": {
+    "uuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+    "version": "8.4.13",
+    "database": "enterflow_phase2_restore_p2b002"
+  },
+  "restoration": {
+    "database": "enterflow_phase2_restore_p2b002",
+    "separateInitiallyEmptySchema": true,
+    "metadataExactlyMatchesCorrectedTarget": true,
+    "tables": 40,
+    "rows": 0,
+    "retainedForReview": true
+  },
+  "identityAfter": {
+    "uuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+    "version": "8.4.13",
+    "database": "enterflow_phase2_db"
+  },
+  "completedAt": "2026-11-22T02:08:04.863044+08:00"
+}

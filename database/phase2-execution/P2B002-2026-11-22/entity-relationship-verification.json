@@ -1,0 +1,1208 @@
+{
+  "tables": 40,
+  "columns": 412,
+  "primaryKeys": 40,
+  "foreignKeys": 95,
+  "uniqueConstraints": 40,
+  "enforcedChecks": 40,
+  "indexes": 167,
+  "triggers": 39,
+  "rows": 0,
+  "entityAttributeVerification": [
+    {
+      "entity": "role",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "role_id",
+        "role_name",
+        "description",
+        "is_owner_role"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "role_id",
+        "role_name",
+        "description",
+        "is_owner_role"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "delivery_method",
+      "justification": "Revised reference; five documented delivery methods, no values seeded.",
+      "revisedAttributes": [
+        "delivery_method_id",
+        "method_name",
+        "is_active"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "delivery_method_id",
+        "method_name",
+        "is_active"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "payment_method",
+      "justification": "Revised reference; manual payment-method selection/instructions, not a gateway.",
+      "revisedAttributes": [
+        "payment_method_id",
+        "method_name",
+        "instructions",
+        "is_active"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "payment_method_id",
+        "method_name",
+        "instructions",
+        "is_active"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "material_category",
+      "justification": "Revised reference; documented raw-material categories.",
+      "revisedAttributes": [
+        "material_category_id",
+        "category_name"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "material_category_id",
+        "category_name"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "unit_of_measure",
+      "justification": "Revised reference; quantities and costing material measurement units.",
+      "revisedAttributes": [
+        "uom_id",
+        "uom_name",
+        "abbreviation"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "uom_id",
+        "uom_name",
+        "abbreviation"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "filter_type",
+      "justification": "Revised reference; sixteen filter types/six template groups, no fictional values.",
+      "revisedAttributes": [
+        "filter_type_id",
+        "filter_type_name",
+        "template_group",
+        "is_active"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "filter_type_id",
+        "filter_type_name",
+        "template_group",
+        "is_active"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "production_stage",
+      "justification": "Revised reference and ten-stage requirement; labels/order values remain unpopulated.",
+      "revisedAttributes": [
+        "stage_id",
+        "stage_name",
+        "stage_order",
+        "is_active"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "stage_id",
+        "stage_name",
+        "stage_order",
+        "is_active"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "user_account",
+      "justification": "Revised common account identity; client_user is a shared-PK subtype, not another credential store.",
+      "revisedAttributes": [
+        "user_id",
+        "role_id",
+        "full_name",
+        "email",
+        "password_hash",
+        "initials",
+        "phone",
+        "status",
+        "must_change_password",
+        "joined_date",
+        "last_login_at",
+        "created_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "user_id",
+        "role_id",
+        "full_name",
+        "email",
+        "password_hash",
+        "initials",
+        "phone",
+        "status",
+        "must_change_password",
+        "joined_date",
+        "last_login_at",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "client",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "client_id",
+        "company_name",
+        "industry",
+        "contact_person",
+        "phone",
+        "email",
+        "address_line1",
+        "address_line2",
+        "city_province",
+        "zip_code",
+        "default_payment_terms",
+        "preferred_delivery_method_id",
+        "internal_notes",
+        "status",
+        "client_since",
+        "created_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "client_id",
+        "company_name",
+        "industry",
+        "contact_person",
+        "phone",
+        "email",
+        "address_line1",
+        "address_line2",
+        "city_province",
+        "zip_code",
+        "default_payment_terms",
+        "preferred_delivery_method_id",
+        "internal_notes",
+        "status",
+        "client_since",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "client_user",
+      "justification": "Revised portal membership. Common login attributes reside once in user_account; approved one-company-login uniqueness retained.",
+      "revisedAttributes": [
+        "client_user_id",
+        "client_id",
+        "email",
+        "password_hash",
+        "must_change_password",
+        "status",
+        "last_login_at",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "email": "user_account.email",
+        "password_hash": "user_account.password_hash",
+        "must_change_password": "user_account.must_change_password",
+        "status": "user_account.status",
+        "last_login_at": "user_account.last_login_at",
+        "created_at": "user_account.created_at"
+      },
+      "actualColumns": [
+        "client_user_id",
+        "client_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "document",
+      "justification": "Revised document entity with private object identity/lifecycle required by security and auditability; no second files subsystem.",
+      "revisedAttributes": [
+        "document_id",
+        "file_name",
+        "file_path",
+        "mime_type",
+        "uploaded_by_user_id",
+        "uploaded_at"
+      ],
+      "attributeResolution": {
+        "file_path": "storage_key",
+        "file_path or storage_key": "storage_key"
+      },
+      "actualColumns": [
+        "document_id",
+        "file_name",
+        "storage_bucket",
+        "storage_key",
+        "object_generation",
+        "mime_type",
+        "size_bytes",
+        "sha256",
+        "storage_status",
+        "uploaded_by_user_id",
+        "uploaded_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "inquiry",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "inquiry_id",
+        "inquiry_no",
+        "client_id",
+        "contact_person",
+        "payment_terms",
+        "source",
+        "submitted_by_client_user_id",
+        "created_by_user_id",
+        "general_notes",
+        "required_by_date",
+        "due_date",
+        "status",
+        "rejection_reason",
+        "created_at",
+        "updated_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "inquiry_id",
+        "inquiry_no",
+        "client_id",
+        "contact_person",
+        "payment_terms",
+        "source",
+        "submitted_by_client_user_id",
+        "created_by_user_id",
+        "general_notes",
+        "required_by_date",
+        "due_date",
+        "status",
+        "rejection_reason",
+        "created_at",
+        "updated_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "inquiry_item",
+      "justification": "Revised requested-item specifications directly on the item; JSON accommodates the documented six template groups, not a copied specification master.",
+      "revisedAttributes": [
+        "inquiry_item_id",
+        "inquiry_id",
+        "line_no",
+        "filter_type_id",
+        "filter_name",
+        "oem_reference",
+        "od1_mm",
+        "od2_mm",
+        "id1_mm",
+        "id2_mm",
+        "height_mm",
+        "overall_height_mm",
+        "filter_media",
+        "inner_core",
+        "outer_core",
+        "o_ring",
+        "gasket",
+        "filtration_rating",
+        "filtration_rating_custom",
+        "quantity",
+        "sketch_document_id"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "inquiry_item_id",
+        "inquiry_id",
+        "line_no",
+        "filter_type_id",
+        "filter_name",
+        "oem_reference",
+        "od1_mm",
+        "od2_mm",
+        "id1_mm",
+        "id2_mm",
+        "height_mm",
+        "overall_height_mm",
+        "filter_media",
+        "inner_core",
+        "outer_core",
+        "o_ring",
+        "gasket",
+        "filtration_rating",
+        "filtration_rating_custom",
+        "quantity",
+        "template_specifications",
+        "sketch_document_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "quotation",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "quotation_id",
+        "quotation_no",
+        "inquiry_id",
+        "revision_no",
+        "is_current",
+        "quotation_date",
+        "valid_until",
+        "terms_of_payment",
+        "time_of_delivery",
+        "place_of_delivery",
+        "vat_type",
+        "highlight_tag",
+        "highlight_note",
+        "requires_downpayment",
+        "downpayment_percent",
+        "downpayment_amount",
+        "subtotal",
+        "addons_total",
+        "total_amount",
+        "status",
+        "prepared_by_user_id",
+        "approved_by_user_id",
+        "sent_at",
+        "created_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "quotation_id",
+        "quotation_no",
+        "inquiry_id",
+        "revision_no",
+        "is_current",
+        "current_inquiry_id",
+        "quotation_date",
+        "valid_until",
+        "terms_of_payment",
+        "time_of_delivery",
+        "place_of_delivery",
+        "vat_type",
+        "highlight_tag",
+        "highlight_note",
+        "requires_downpayment",
+        "downpayment_percent",
+        "downpayment_amount",
+        "subtotal",
+        "addons_total",
+        "total_amount",
+        "status",
+        "prepared_by_user_id",
+        "approved_by_user_id",
+        "sent_at",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "quotation_item",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "quotation_item_id",
+        "quotation_id",
+        "inquiry_item_id",
+        "line_no",
+        "description",
+        "quantity",
+        "uom_id",
+        "unit_price",
+        "line_total"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "quotation_item_id",
+        "quotation_id",
+        "inquiry_item_id",
+        "line_no",
+        "description",
+        "quantity",
+        "uom_id",
+        "unit_price",
+        "line_total"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "cost_estimate",
+      "justification": "Revised per-quotation-item estimate; nonunique item FK preserves estimate history without deciding one-current-estimate policy.",
+      "revisedAttributes": [
+        "estimate_id",
+        "quotation_item_id",
+        "labor_cost_per_unit",
+        "include_labor",
+        "markup_percent",
+        "apply_markup",
+        "vat_type",
+        "vat_rate",
+        "apply_vat",
+        "material_cost_per_unit",
+        "unit_cost_with_markup",
+        "unit_cost_with_vat",
+        "is_locked",
+        "created_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "estimate_id",
+        "quotation_item_id",
+        "labor_cost_per_unit",
+        "include_labor",
+        "markup_percent",
+        "apply_markup",
+        "vat_type",
+        "vat_rate",
+        "apply_vat",
+        "material_cost_per_unit",
+        "unit_cost_with_markup",
+        "unit_cost_with_vat",
+        "is_locked",
+        "created_by_user_id",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "raw_material",
+      "justification": "Revised raw material plus explicitly approved unknown/sample/verified provenance and reference-versus-approved price safeguards; no import lineage clone.",
+      "revisedAttributes": [
+        "material_id",
+        "material_category_id",
+        "material_name",
+        "uom_id",
+        "qty_in_stock",
+        "unit_price",
+        "reorder_threshold",
+        "supplier_name",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "material_id",
+        "material_category_id",
+        "material_name",
+        "uom_id",
+        "qty_in_stock",
+        "quantity_status",
+        "unit_price",
+        "unit_price_approved_by_user_id",
+        "unit_price_approved_at",
+        "reference_unit_price",
+        "reference_document_id",
+        "reference_page",
+        "reorder_threshold",
+        "threshold_status",
+        "supplier_name",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "cost_estimate_material",
+      "justification": "Revised material-cost snapshot; category/UOM describe estimate-time measurement, not a second current stock balance.",
+      "revisedAttributes": [
+        "estimate_material_id",
+        "estimate_id",
+        "material_category_id",
+        "raw_material_id",
+        "qty_per_filter",
+        "uom_id",
+        "unit_price_snapshot",
+        "line_cost"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "estimate_material_id",
+        "estimate_id",
+        "material_category_id",
+        "raw_material_id",
+        "qty_per_filter",
+        "uom_id",
+        "unit_price_snapshot",
+        "line_cost"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "purchase_order",
+      "justification": "Accepted quotation is the only commercial owner link; inquiry/client and downpayment facts derive through quotation, not duplicate FK/boolean state.",
+      "revisedAttributes": [
+        "po_id",
+        "po_no",
+        "inquiry_id",
+        "quotation_id",
+        "client_id",
+        "po_document_id",
+        "received_date",
+        "payment_terms",
+        "delivery_method_id",
+        "downpayment_required",
+        "downpayment_percent",
+        "downpayment_amount",
+        "downpayment_confirmed",
+        "downpayment_confirmed_date",
+        "recorded_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "inquiry_id": "derived quotation.inquiry_id",
+        "client_id": "derived quotation -> inquiry.client_id",
+        "downpayment_required": "derived accepted quotation.requires_downpayment",
+        "downpayment_percent": "derived accepted quotation.downpayment_percent",
+        "downpayment_amount": "derived accepted quotation.downpayment_amount",
+        "downpayment_confirmed": "derived confirmed invoice payment facts; no duplicate mutable flag",
+        "downpayment_confirmed_date": "derived confirmed invoice payment review history; no fabricated allocation/date"
+      },
+      "actualColumns": [
+        "po_id",
+        "po_no",
+        "quotation_id",
+        "po_document_id",
+        "received_date",
+        "payment_terms",
+        "delivery_method_id",
+        "recorded_by_user_id",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "job_order",
+      "justification": "Revised single PO header; no copied inquiry/client/accepted quote owner IDs and no product-level legacy JO.",
+      "revisedAttributes": [
+        "jo_id",
+        "jo_no",
+        "po_id",
+        "client_id",
+        "jo_date",
+        "due_date",
+        "status",
+        "payment_terms",
+        "delivery_method_id",
+        "issue_sales_invoice",
+        "po_verified",
+        "specs_verified",
+        "terms_verified",
+        "prepared_by_user_id",
+        "approved_by_user_id",
+        "cancellation_reason",
+        "completed_at",
+        "archived_at",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "client_id": "derived po -> quotation -> inquiry.client_id",
+        "issue_sales_invoice": "omitted: invoice precedes JO in documented workflow"
+      },
+      "actualColumns": [
+        "jo_id",
+        "jo_no",
+        "po_id",
+        "jo_date",
+        "due_date",
+        "status",
+        "payment_terms",
+        "delivery_method_id",
+        "po_verified",
+        "specs_verified",
+        "terms_verified",
+        "prepared_by_user_id",
+        "approved_by_user_id",
+        "cancellation_reason",
+        "completed_at",
+        "archived_at",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "job_order_item",
+      "justification": "Revised item-level immutable manufacturing specifications, including structured six-template snapshot; no mutable product master reference.",
+      "revisedAttributes": [
+        "jo_item_id",
+        "jo_id",
+        "quotation_item_id",
+        "line_no",
+        "item_code",
+        "enterfil_pn",
+        "item_name",
+        "quantity",
+        "od1_mm",
+        "od2_mm",
+        "id1_mm",
+        "id2_mm",
+        "height_mm",
+        "overall_height_mm",
+        "filter_media",
+        "inner_core",
+        "outer_core",
+        "end_cap",
+        "o_ring",
+        "gasket",
+        "oem_pn",
+        "brand",
+        "other_specs",
+        "final_sketch_document_id"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "jo_item_id",
+        "jo_id",
+        "quotation_item_id",
+        "line_no",
+        "item_code",
+        "enterfil_pn",
+        "item_name",
+        "quantity",
+        "od1_mm",
+        "od2_mm",
+        "id1_mm",
+        "id2_mm",
+        "height_mm",
+        "overall_height_mm",
+        "filter_media",
+        "inner_core",
+        "outer_core",
+        "end_cap",
+        "o_ring",
+        "gasket",
+        "oem_pn",
+        "brand",
+        "other_specs",
+        "template_specifications_snapshot",
+        "final_sketch_document_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "job_order_stage",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "jo_stage_id",
+        "jo_id",
+        "stage_id",
+        "status",
+        "started_at",
+        "completed_at",
+        "marked_by_user_id",
+        "remarks",
+        "reverted_count"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "jo_stage_id",
+        "jo_id",
+        "stage_id",
+        "status",
+        "started_at",
+        "completed_at",
+        "marked_by_user_id",
+        "remarks",
+        "reverted_count"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "material_shortage_report",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "report_id",
+        "jo_id",
+        "jo_stage_id",
+        "raw_material_id",
+        "qty_needed",
+        "description",
+        "status",
+        "reported_by_user_id",
+        "reported_at",
+        "resolved_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "report_id",
+        "jo_id",
+        "jo_stage_id",
+        "raw_material_id",
+        "qty_needed",
+        "description",
+        "status",
+        "reported_by_user_id",
+        "reported_at",
+        "resolved_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "finished_good",
+      "justification": "Revised client-specific repeat-product inventory; quantities and thresholds are unknown until observed. Forecast attributes are not populated.",
+      "revisedAttributes": [
+        "finished_good_id",
+        "item_code",
+        "enterfil_pn",
+        "item_name",
+        "client_id",
+        "filter_type_id",
+        "qty_in_stock",
+        "buffer_min",
+        "demand_level",
+        "order_frequency",
+        "avg_qty_per_order",
+        "is_active"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "finished_good_id",
+        "item_code",
+        "enterfil_pn",
+        "item_name",
+        "client_id",
+        "filter_type_id",
+        "qty_in_stock",
+        "quantity_status",
+        "buffer_min",
+        "threshold_status",
+        "demand_level",
+        "order_frequency",
+        "avg_qty_per_order",
+        "is_active"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "stock_movement",
+      "justification": "Revised single typed movement ledger; provenance, required actor/reason, unit evidence and replay identity support genuine first observations without fictitious zero.",
+      "revisedAttributes": [
+        "movement_id",
+        "item_type",
+        "raw_material_id",
+        "finished_good_id",
+        "movement_reason",
+        "qty_before",
+        "qty_after",
+        "qty_change",
+        "reference_no",
+        "supplier_name",
+        "jo_id",
+        "notes",
+        "performed_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "movement_id",
+        "item_type",
+        "raw_material_id",
+        "finished_good_id",
+        "movement_reason",
+        "quantity_status_before",
+        "qty_before",
+        "qty_after",
+        "qty_change",
+        "uom_id",
+        "reference_no",
+        "supplier_name",
+        "jo_id",
+        "notes",
+        "performed_by_user_id",
+        "operation_key",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "stock_request",
+      "justification": "Stock-request entity shown in supplied cardinality diagram and newer handoff Warehouse/Sales backlog, absent from revised text attribute sections.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "stock_request_id",
+        "inquiry_id",
+        "requested_by_user_id",
+        "handled_by_user_id",
+        "request_date",
+        "status",
+        "remarks",
+        "created_at",
+        "updated_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "stock_request_item",
+      "justification": "Diagram request item plus Q02-approved provenance distinction; it is an immutable request-time snapshot, not a second live inventory balance.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "stock_request_item_id",
+        "stock_request_id",
+        "raw_material_id",
+        "qty_requested",
+        "stock_at_request",
+        "qty_available",
+        "shortage_at_request",
+        "quantity_status_at_request",
+        "available_quantity_status",
+        "observed_at",
+        "observed_by_user_id",
+        "uom_id",
+        "notes"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "production_plan",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "plan_id",
+        "plan_code",
+        "client_id",
+        "finished_good_id",
+        "jo_id",
+        "source",
+        "planned_qty",
+        "week_start_date",
+        "week_end_date",
+        "created_by_user_id"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "plan_id",
+        "plan_code",
+        "client_id",
+        "finished_good_id",
+        "jo_id",
+        "source",
+        "planned_qty",
+        "week_start_date",
+        "week_end_date",
+        "created_by_user_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "sales_invoice",
+      "justification": "Invoice follows PO acceptance before payment/JO in documented use cases; JO/client derive through PO, avoiding a circular mandatory JO FK.",
+      "revisedAttributes": [
+        "invoice_id",
+        "invoice_no",
+        "jo_id",
+        "po_id",
+        "client_id",
+        "invoice_date",
+        "payment_terms",
+        "delivered_date",
+        "due_date",
+        "total_amount",
+        "status",
+        "issued_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "jo_id": "derived job_order.po_id; no mandatory pre-JO cycle",
+        "client_id": "derived po -> quotation -> inquiry.client_id"
+      },
+      "actualColumns": [
+        "invoice_id",
+        "invoice_no",
+        "po_id",
+        "invoice_date",
+        "payment_terms",
+        "delivered_date",
+        "due_date",
+        "total_amount",
+        "status",
+        "issued_by_user_id",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "client_receipt",
+      "justification": "Revised proof submission, not a payment; document_id expands to client_receipt_file for explicitly documented multi-photo submissions.",
+      "revisedAttributes": [
+        "receipt_id",
+        "invoice_id",
+        "client_user_id",
+        "document_id",
+        "payment_method_id",
+        "amount_declared",
+        "note",
+        "review_status",
+        "reviewed_by_user_id",
+        "reviewed_at",
+        "sent_at"
+      ],
+      "attributeResolution": {
+        "document_id": "client_receipt_file.document_id (one logical submission, many photos)"
+      },
+      "actualColumns": [
+        "receipt_id",
+        "invoice_id",
+        "client_user_id",
+        "payment_method_id",
+        "amount_declared",
+        "note",
+        "review_status",
+        "reviewed_by_user_id",
+        "reviewed_at",
+        "review_note",
+        "sent_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "payment_transaction",
+      "justification": "Confirmed-only money, one row per partial/full payment; optional nonunique receipt FK does not impose allocation cardinality or copy attachment amounts.",
+      "revisedAttributes": [
+        "payment_id",
+        "invoice_id",
+        "payment_method_id",
+        "transaction_type",
+        "amount",
+        "reference_no",
+        "date_paid",
+        "client_receipt_id",
+        "approval_status",
+        "recorded_by_user_id",
+        "approved_by_user_id",
+        "approved_at",
+        "notes",
+        "created_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "payment_id",
+        "invoice_id",
+        "payment_method_id",
+        "transaction_type",
+        "amount",
+        "reference_no",
+        "date_paid",
+        "client_receipt_id",
+        "approval_status",
+        "recorded_by_user_id",
+        "approved_by_user_id",
+        "approved_at",
+        "notes",
+        "created_at",
+        "operation_key",
+        "official_receipt_document_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "delivery",
+      "justification": "Revised delivery aggregate, many deliveries per JO. PO/invoice/client derive through JO; document numbers and signed files live in required document entities.",
+      "revisedAttributes": [
+        "delivery_id",
+        "jo_id",
+        "po_id",
+        "invoice_id",
+        "client_id",
+        "delivery_method_id",
+        "dr_no",
+        "waybill_no",
+        "status",
+        "dispatch_date",
+        "estimated_delivery_date",
+        "delivered_date",
+        "driver_name",
+        "driver_contact",
+        "vehicle_plate",
+        "tracking_link",
+        "signed_dr_document_id",
+        "received_by",
+        "notes",
+        "dispatched_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "po_id": "derived job_order.po_id",
+        "invoice_id": "derived sales_invoice.po_id unique relation",
+        "client_id": "derived JO -> PO -> quotation -> inquiry.client_id",
+        "dr_no": "delivery_receipt.dr_no",
+        "waybill_no": "waybill.waybill_no",
+        "signed_dr_document_id": "signed_delivery_receipt.document_id via delivery_receipt"
+      },
+      "actualColumns": [
+        "delivery_id",
+        "jo_id",
+        "delivery_method_id",
+        "status",
+        "dispatch_date",
+        "estimated_delivery_date",
+        "delivered_date",
+        "driver_name",
+        "driver_contact",
+        "vehicle_plate",
+        "tracking_link",
+        "received_by",
+        "notes",
+        "dispatched_by_user_id",
+        "created_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "delivery_item",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "delivery_item_id",
+        "delivery_id",
+        "jo_item_id",
+        "quantity"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "delivery_item_id",
+        "delivery_id",
+        "jo_item_id",
+        "quantity"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "notification",
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "notification_id",
+        "user_id",
+        "title",
+        "message",
+        "notification_type",
+        "is_read",
+        "created_at",
+        "read_at"
+      ],
+      "attributeResolution": {},
+      "actualColumns": [
+        "notification_id",
+        "user_id",
+        "title",
+        "message",
+        "notification_type",
+        "is_read",
+        "created_at",
+        "read_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "client_receipt_file",
+      "justification": "Final.pdf scope p12 explicitly requires multi-photo receipt uploads; one submission amount is independent from the number of documents.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "receipt_id",
+        "document_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "waybill",
+      "justification": "Documented Warehouse generation/printing and Logistics QR verification; waybill is not a shipment or second delivery aggregate.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "waybill_id",
+        "delivery_id",
+        "waybill_no",
+        "qr_identifier",
+        "generated_by_user_id",
+        "generated_at",
+        "printed_at",
+        "document_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "delivery_receipt",
+      "justification": "Final.pdf pp47-49: Accounting generates a DR after dispatch; unlike waybill, it is a different document and responsible role.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "delivery_receipt_id",
+        "delivery_id",
+        "dr_no",
+        "generated_by_user_id",
+        "generated_at",
+        "document_id"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "signed_delivery_receipt",
+      "justification": "Final.pdf pp50-51: signed DR upload/retention by Client or Logistics after delivery. Multiple retained uploads do not overwrite one file on delivery.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "signed_dr_id",
+        "delivery_receipt_id",
+        "document_id",
+        "submitted_by_user_id",
+        "submitted_at",
+        "received_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "production_stage_event",
+      "justification": "Backlog requires timestamped staff attribution and required reversion reason; this append-only event trail is not a second stage-state tracker.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "stage_event_id",
+        "jo_stage_id",
+        "action",
+        "reason",
+        "performed_by_user_id",
+        "occurred_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    },
+    {
+      "entity": "audit_event",
+      "justification": "Explicit inventory audit/reason and cross-role historical traceability requirements; polymorphic historical subject IDs intentionally survive lifecycle changes.",
+      "revisedAttributes": [],
+      "attributeResolution": {},
+      "actualColumns": [
+        "audit_event_id",
+        "actor_user_id",
+        "action",
+        "subject_type",
+        "subject_id",
+        "before_value",
+        "after_value",
+        "reason",
+        "occurred_at"
+      ],
+      "columnTypesNullabilityDefaultsVerified": true
+    }
+  ],
+  "exactTableColumnAndKeyInventory": true,
+  "allColumnTypesNullabilityDefaultsVerified": true,
+  "allDeclaredIndexesAndReferentialActionsVerified": true,
+  "triggerDefinitionsVerified": true
+}

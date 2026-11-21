@@ -1,0 +1,47 @@
+{
+  "startedAt": "2026-11-22T01:33:19.625824+08:00",
+  "container": "enterflow-phase2-mysql",
+  "database": "enterflow_phase2_db",
+  "host": "127.0.0.1",
+  "port": 62286,
+  "status": "complete",
+  "bootstrapAttempted": true,
+  "containerId": "2acac2d1b6069b6ed30a95b69eb582bd68ef9f365bc092f46530306f34a9eb73",
+  "identityBefore": {
+    "uuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+    "version": "8.4.13",
+    "database": "enterflow_phase2_db"
+  },
+  "backup": {
+    "file": "database\\phase2-execution\\2026-11-22-bootstrap\\pre-bootstrap-empty.sql",
+    "bytes": 1609,
+    "sha256": "be8188fe36d4e01199a4d7b06b791e7c89504fff0484b4897d47f0073eec0c62",
+    "replayedOnSameEmptyTarget": true
+  },
+  "bootstrap": {
+    "file": "database\\phase2-bootstrap\\P2B001_corrected_database_bootstrap.sql",
+    "sha256": "1181e3ed51b17057648d9d6c9efa63190eb65299ecffb2534673be1eda3125ec"
+  },
+  "ddlBatchExitCode": 0,
+  "verification": {
+    "tables": 71,
+    "primaryKeys": 71,
+    "foreignKeys": 153,
+    "uniqueConstraints": 76,
+    "enforcedChecks": 47,
+    "indexesIncludingPrimaryAndFkSupporting": 294,
+    "rowsAcrossAllTables": 0,
+    "tableSetExact": true,
+    "primaryKeysExact": true,
+    "foreignKeysExact": true,
+    "uniqueConstraintsExact": true,
+    "authoredIndexesPresent": true,
+    "checkInventoryExactAndEnforced": true
+  },
+  "identityAfter": {
+    "uuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+    "version": "8.4.13",
+    "database": "enterflow_phase2_db"
+  },
+  "completedAt": "2026-11-22T01:33:24.006558+08:00"
+}

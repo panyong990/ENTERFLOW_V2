@@ -1,0 +1,43 @@
+{
+  "originalTables": 40,
+  "beforeTotalRows": 0,
+  "afterTotalRows": 0,
+  "rowCountsAndDigestsMatch": true,
+  "postFailureSchema": {
+    "check": "P2B002 and installed extension structure",
+    "result": "PASS",
+    "detail": {
+      "stage": 2,
+      "tables": 43,
+      "triggers": 39
+    }
+  },
+  "history": [
+    {
+      "file": "001_auth_sessions.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.168Z",
+      "applied_at": "2026-11-21T21:10:31.222Z",
+      "error_code": null,
+      "checksum": "ae15868de9bcc5205cdbe441357d57b5b091f8a36faee69465b327b22bf893fe"
+    },
+    {
+      "file": "002_client_registration.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.226Z",
+      "applied_at": "2026-11-21T21:10:31.294Z",
+      "error_code": null,
+      "checksum": "1b0c30a391d95822bf56cd26a5a7742d322efd4010c7639f3dab8adfb962ea27"
+    },
+    {
+      "file": "003_username_support.sql",
+      "state": "failed",
+      "started_at": "2026-11-21T21:10:31.301Z",
+      "applied_at": null,
+      "error_code": "ER_TABLE_NOT_LOCKED",
+      "checksum": "95c7f5715281bf5cf1c2543edbdb94783d51803159ce2bd2f976971ea50fe8b5"
+    }
+  ],
+  "activationResult": "FAILED_AND_STOPPED",
+  "retryPerformed": false
+}

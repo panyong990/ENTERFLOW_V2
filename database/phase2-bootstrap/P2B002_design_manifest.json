@@ -1,0 +1,907 @@
+{
+  "designAuthority": "docs\\erd-reference\\EnterFlow_ERD_Revised.md",
+  "tables": {
+    "role": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "role_id",
+        "role_name",
+        "description",
+        "is_owner_role"
+      ],
+      "attributeResolution": {}
+    },
+    "delivery_method": {
+      "justification": "Revised reference; five documented delivery methods, no values seeded.",
+      "revisedAttributes": [
+        "delivery_method_id",
+        "method_name",
+        "is_active"
+      ],
+      "attributeResolution": {}
+    },
+    "payment_method": {
+      "justification": "Revised reference; manual payment-method selection/instructions, not a gateway.",
+      "revisedAttributes": [
+        "payment_method_id",
+        "method_name",
+        "instructions",
+        "is_active"
+      ],
+      "attributeResolution": {}
+    },
+    "material_category": {
+      "justification": "Revised reference; documented raw-material categories.",
+      "revisedAttributes": [
+        "material_category_id",
+        "category_name"
+      ],
+      "attributeResolution": {}
+    },
+    "unit_of_measure": {
+      "justification": "Revised reference; quantities and costing material measurement units.",
+      "revisedAttributes": [
+        "uom_id",
+        "uom_name",
+        "abbreviation"
+      ],
+      "attributeResolution": {}
+    },
+    "filter_type": {
+      "justification": "Revised reference; sixteen filter types/six template groups, no fictional values.",
+      "revisedAttributes": [
+        "filter_type_id",
+        "filter_type_name",
+        "template_group",
+        "is_active"
+      ],
+      "attributeResolution": {}
+    },
+    "production_stage": {
+      "justification": "Revised reference and ten-stage requirement; labels/order values remain unpopulated.",
+      "revisedAttributes": [
+        "stage_id",
+        "stage_name",
+        "stage_order",
+        "is_active"
+      ],
+      "attributeResolution": {}
+    },
+    "user_account": {
+      "justification": "Revised common account identity; client_user is a shared-PK subtype, not another credential store.",
+      "revisedAttributes": [
+        "user_id",
+        "role_id",
+        "full_name",
+        "email",
+        "password_hash",
+        "initials",
+        "phone",
+        "status",
+        "must_change_password",
+        "joined_date",
+        "last_login_at",
+        "created_at"
+      ],
+      "attributeResolution": {}
+    },
+    "client": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "client_id",
+        "company_name",
+        "industry",
+        "contact_person",
+        "phone",
+        "email",
+        "address_line1",
+        "address_line2",
+        "city_province",
+        "zip_code",
+        "default_payment_terms",
+        "preferred_delivery_method_id",
+        "internal_notes",
+        "status",
+        "client_since",
+        "created_at"
+      ],
+      "attributeResolution": {}
+    },
+    "client_user": {
+      "justification": "Revised portal membership. Common login attributes reside once in user_account; approved one-company-login uniqueness retained.",
+      "revisedAttributes": [
+        "client_user_id",
+        "client_id",
+        "email",
+        "password_hash",
+        "must_change_password",
+        "status",
+        "last_login_at",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "email": "user_account.email",
+        "password_hash": "user_account.password_hash",
+        "must_change_password": "user_account.must_change_password",
+        "status": "user_account.status",
+        "last_login_at": "user_account.last_login_at",
+        "created_at": "user_account.created_at"
+      }
+    },
+    "document": {
+      "justification": "Revised document entity with private object identity/lifecycle required by security and auditability; no second files subsystem.",
+      "revisedAttributes": [
+        "document_id",
+        "file_name",
+        "file_path",
+        "mime_type",
+        "uploaded_by_user_id",
+        "uploaded_at"
+      ],
+      "attributeResolution": {
+        "file_path": "storage_key",
+        "file_path or storage_key": "storage_key"
+      }
+    },
+    "inquiry": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "inquiry_id",
+        "inquiry_no",
+        "client_id",
+        "contact_person",
+        "payment_terms",
+        "source",
+        "submitted_by_client_user_id",
+        "created_by_user_id",
+        "general_notes",
+        "required_by_date",
+        "due_date",
+        "status",
+        "rejection_reason",
+        "created_at",
+        "updated_at"
+      ],
+      "attributeResolution": {}
+    },
+    "inquiry_item": {
+      "justification": "Revised requested-item specifications directly on the item; JSON accommodates the documented six template groups, not a copied specification master.",
+      "revisedAttributes": [
+        "inquiry_item_id",
+        "inquiry_id",
+        "line_no",
+        "filter_type_id",
+        "filter_name",
+        "oem_reference",
+        "od1_mm",
+        "od2_mm",
+        "id1_mm",
+        "id2_mm",
+        "height_mm",
+        "overall_height_mm",
+        "filter_media",
+        "inner_core",
+        "outer_core",
+        "o_ring",
+        "gasket",
+        "filtration_rating",
+        "filtration_rating_custom",
+        "quantity",
+        "sketch_document_id"
+      ],
+      "attributeResolution": {}
+    },
+    "quotation": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "quotation_id",
+        "quotation_no",
+        "inquiry_id",
+        "revision_no",
+        "is_current",
+        "quotation_date",
+        "valid_until",
+        "terms_of_payment",
+        "time_of_delivery",
+        "place_of_delivery",
+        "vat_type",
+        "highlight_tag",
+        "highlight_note",
+        "requires_downpayment",
+        "downpayment_percent",
+        "downpayment_amount",
+        "subtotal",
+        "addons_total",
+        "total_amount",
+        "status",
+        "prepared_by_user_id",
+        "approved_by_user_id",
+        "sent_at",
+        "created_at"
+      ],
+      "attributeResolution": {}
+    },
+    "quotation_item": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "quotation_item_id",
+        "quotation_id",
+        "inquiry_item_id",
+        "line_no",
+        "description",
+        "quantity",
+        "uom_id",
+        "unit_price",
+        "line_total"
+      ],
+      "attributeResolution": {}
+    },
+    "cost_estimate": {
+      "justification": "Revised per-quotation-item estimate; nonunique item FK preserves estimate history without deciding one-current-estimate policy.",
+      "revisedAttributes": [
+        "estimate_id",
+        "quotation_item_id",
+        "labor_cost_per_unit",
+        "include_labor",
+        "markup_percent",
+        "apply_markup",
+        "vat_type",
+        "vat_rate",
+        "apply_vat",
+        "material_cost_per_unit",
+        "unit_cost_with_markup",
+        "unit_cost_with_vat",
+        "is_locked",
+        "created_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {}
+    },
+    "raw_material": {
+      "justification": "Revised raw material plus explicitly approved unknown/sample/verified provenance and reference-versus-approved price safeguards; no import lineage clone.",
+      "revisedAttributes": [
+        "material_id",
+        "material_category_id",
+        "material_name",
+        "uom_id",
+        "qty_in_stock",
+        "unit_price",
+        "reorder_threshold",
+        "supplier_name",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "attributeResolution": {}
+    },
+    "cost_estimate_material": {
+      "justification": "Revised material-cost snapshot; category/UOM describe estimate-time measurement, not a second current stock balance.",
+      "revisedAttributes": [
+        "estimate_material_id",
+        "estimate_id",
+        "material_category_id",
+        "raw_material_id",
+        "qty_per_filter",
+        "uom_id",
+        "unit_price_snapshot",
+        "line_cost"
+      ],
+      "attributeResolution": {}
+    },
+    "purchase_order": {
+      "justification": "Accepted quotation is the only commercial owner link; inquiry/client and downpayment facts derive through quotation, not duplicate FK/boolean state.",
+      "revisedAttributes": [
+        "po_id",
+        "po_no",
+        "inquiry_id",
+        "quotation_id",
+        "client_id",
+        "po_document_id",
+        "received_date",
+        "payment_terms",
+        "delivery_method_id",
+        "downpayment_required",
+        "downpayment_percent",
+        "downpayment_amount",
+        "downpayment_confirmed",
+        "downpayment_confirmed_date",
+        "recorded_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "inquiry_id": "derived quotation.inquiry_id",
+        "client_id": "derived quotation -> inquiry.client_id",
+        "downpayment_required": "derived accepted quotation.requires_downpayment",
+        "downpayment_percent": "derived accepted quotation.downpayment_percent",
+        "downpayment_amount": "derived accepted quotation.downpayment_amount",
+        "downpayment_confirmed": "derived confirmed invoice payment facts; no duplicate mutable flag",
+        "downpayment_confirmed_date": "derived confirmed invoice payment review history; no fabricated allocation/date"
+      }
+    },
+    "job_order": {
+      "justification": "Revised single PO header; no copied inquiry/client/accepted quote owner IDs and no product-level legacy JO.",
+      "revisedAttributes": [
+        "jo_id",
+        "jo_no",
+        "po_id",
+        "client_id",
+        "jo_date",
+        "due_date",
+        "status",
+        "payment_terms",
+        "delivery_method_id",
+        "issue_sales_invoice",
+        "po_verified",
+        "specs_verified",
+        "terms_verified",
+        "prepared_by_user_id",
+        "approved_by_user_id",
+        "cancellation_reason",
+        "completed_at",
+        "archived_at",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "client_id": "derived po -> quotation -> inquiry.client_id",
+        "issue_sales_invoice": "omitted: invoice precedes JO in documented workflow"
+      }
+    },
+    "job_order_item": {
+      "justification": "Revised item-level immutable manufacturing specifications, including structured six-template snapshot; no mutable product master reference.",
+      "revisedAttributes": [
+        "jo_item_id",
+        "jo_id",
+        "quotation_item_id",
+        "line_no",
+        "item_code",
+        "enterfil_pn",
+        "item_name",
+        "quantity",
+        "od1_mm",
+        "od2_mm",
+        "id1_mm",
+        "id2_mm",
+        "height_mm",
+        "overall_height_mm",
+        "filter_media",
+        "inner_core",
+        "outer_core",
+        "end_cap",
+        "o_ring",
+        "gasket",
+        "oem_pn",
+        "brand",
+        "other_specs",
+        "final_sketch_document_id"
+      ],
+      "attributeResolution": {}
+    },
+    "job_order_stage": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "jo_stage_id",
+        "jo_id",
+        "stage_id",
+        "status",
+        "started_at",
+        "completed_at",
+        "marked_by_user_id",
+        "remarks",
+        "reverted_count"
+      ],
+      "attributeResolution": {}
+    },
+    "material_shortage_report": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "report_id",
+        "jo_id",
+        "jo_stage_id",
+        "raw_material_id",
+        "qty_needed",
+        "description",
+        "status",
+        "reported_by_user_id",
+        "reported_at",
+        "resolved_at"
+      ],
+      "attributeResolution": {}
+    },
+    "finished_good": {
+      "justification": "Revised client-specific repeat-product inventory; quantities and thresholds are unknown until observed. Forecast attributes are not populated.",
+      "revisedAttributes": [
+        "finished_good_id",
+        "item_code",
+        "enterfil_pn",
+        "item_name",
+        "client_id",
+        "filter_type_id",
+        "qty_in_stock",
+        "buffer_min",
+        "demand_level",
+        "order_frequency",
+        "avg_qty_per_order",
+        "is_active"
+      ],
+      "attributeResolution": {}
+    },
+    "stock_movement": {
+      "justification": "Revised single typed movement ledger; provenance, required actor/reason, unit evidence and replay identity support genuine first observations without fictitious zero.",
+      "revisedAttributes": [
+        "movement_id",
+        "item_type",
+        "raw_material_id",
+        "finished_good_id",
+        "movement_reason",
+        "qty_before",
+        "qty_after",
+        "qty_change",
+        "reference_no",
+        "supplier_name",
+        "jo_id",
+        "notes",
+        "performed_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {}
+    },
+    "stock_request": {
+      "justification": "Stock-request entity shown in supplied cardinality diagram and newer handoff Warehouse/Sales backlog, absent from revised text attribute sections.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    },
+    "stock_request_item": {
+      "justification": "Diagram request item plus Q02-approved provenance distinction; it is an immutable request-time snapshot, not a second live inventory balance.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    },
+    "production_plan": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "plan_id",
+        "plan_code",
+        "client_id",
+        "finished_good_id",
+        "jo_id",
+        "source",
+        "planned_qty",
+        "week_start_date",
+        "week_end_date",
+        "created_by_user_id"
+      ],
+      "attributeResolution": {}
+    },
+    "sales_invoice": {
+      "justification": "Invoice follows PO acceptance before payment/JO in documented use cases; JO/client derive through PO, avoiding a circular mandatory JO FK.",
+      "revisedAttributes": [
+        "invoice_id",
+        "invoice_no",
+        "jo_id",
+        "po_id",
+        "client_id",
+        "invoice_date",
+        "payment_terms",
+        "delivered_date",
+        "due_date",
+        "total_amount",
+        "status",
+        "issued_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "jo_id": "derived job_order.po_id; no mandatory pre-JO cycle",
+        "client_id": "derived po -> quotation -> inquiry.client_id"
+      }
+    },
+    "client_receipt": {
+      "justification": "Revised proof submission, not a payment; document_id expands to client_receipt_file for explicitly documented multi-photo submissions.",
+      "revisedAttributes": [
+        "receipt_id",
+        "invoice_id",
+        "client_user_id",
+        "document_id",
+        "payment_method_id",
+        "amount_declared",
+        "note",
+        "review_status",
+        "reviewed_by_user_id",
+        "reviewed_at",
+        "sent_at"
+      ],
+      "attributeResolution": {
+        "document_id": "client_receipt_file.document_id (one logical submission, many photos)"
+      }
+    },
+    "payment_transaction": {
+      "justification": "Confirmed-only money, one row per partial/full payment; optional nonunique receipt FK does not impose allocation cardinality or copy attachment amounts.",
+      "revisedAttributes": [
+        "payment_id",
+        "invoice_id",
+        "payment_method_id",
+        "transaction_type",
+        "amount",
+        "reference_no",
+        "date_paid",
+        "client_receipt_id",
+        "approval_status",
+        "recorded_by_user_id",
+        "approved_by_user_id",
+        "approved_at",
+        "notes",
+        "created_at"
+      ],
+      "attributeResolution": {}
+    },
+    "delivery": {
+      "justification": "Revised delivery aggregate, many deliveries per JO. PO/invoice/client derive through JO; document numbers and signed files live in required document entities.",
+      "revisedAttributes": [
+        "delivery_id",
+        "jo_id",
+        "po_id",
+        "invoice_id",
+        "client_id",
+        "delivery_method_id",
+        "dr_no",
+        "waybill_no",
+        "status",
+        "dispatch_date",
+        "estimated_delivery_date",
+        "delivered_date",
+        "driver_name",
+        "driver_contact",
+        "vehicle_plate",
+        "tracking_link",
+        "signed_dr_document_id",
+        "received_by",
+        "notes",
+        "dispatched_by_user_id",
+        "created_at"
+      ],
+      "attributeResolution": {
+        "po_id": "derived job_order.po_id",
+        "invoice_id": "derived sales_invoice.po_id unique relation",
+        "client_id": "derived JO -> PO -> quotation -> inquiry.client_id",
+        "dr_no": "delivery_receipt.dr_no",
+        "waybill_no": "waybill.waybill_no",
+        "signed_dr_document_id": "signed_delivery_receipt.document_id via delivery_receipt"
+      }
+    },
+    "delivery_item": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "delivery_item_id",
+        "delivery_id",
+        "jo_item_id",
+        "quantity"
+      ],
+      "attributeResolution": {}
+    },
+    "notification": {
+      "justification": "Revised ERD entity and attributes.",
+      "revisedAttributes": [
+        "notification_id",
+        "user_id",
+        "title",
+        "message",
+        "notification_type",
+        "is_read",
+        "created_at",
+        "read_at"
+      ],
+      "attributeResolution": {}
+    },
+    "client_receipt_file": {
+      "justification": "Final.pdf scope p12 explicitly requires multi-photo receipt uploads; one submission amount is independent from the number of documents.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    },
+    "waybill": {
+      "justification": "Documented Warehouse generation/printing and Logistics QR verification; waybill is not a shipment or second delivery aggregate.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    },
+    "delivery_receipt": {
+      "justification": "Final.pdf pp47-49: Accounting generates a DR after dispatch; unlike waybill, it is a different document and responsible role.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    },
+    "signed_delivery_receipt": {
+      "justification": "Final.pdf pp50-51: signed DR upload/retention by Client or Logistics after delivery. Multiple retained uploads do not overwrite one file on delivery.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    },
+    "production_stage_event": {
+      "justification": "Backlog requires timestamped staff attribution and required reversion reason; this append-only event trail is not a second stage-state tracker.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    },
+    "audit_event": {
+      "justification": "Explicit inventory audit/reason and cross-role historical traceability requirements; polymorphic historical subject IDs intentionally survive lifecycle changes.",
+      "revisedAttributes": [],
+      "attributeResolution": {}
+    }
+  },
+  "triggers": [
+    {
+      "name": "client_user_role_bi",
+      "table": "client_user",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF (SELECT r.role_name FROM user_account u JOIN role r ON r.role_id=u.role_id WHERE u.user_id=NEW.client_user_id)<>'Client' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Portal profile requires Client role'; END IF;"
+    },
+    {
+      "name": "client_user_role_bu",
+      "table": "client_user",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF (SELECT r.role_name FROM user_account u JOIN role r ON r.role_id=u.role_id WHERE u.user_id=NEW.client_user_id)<>'Client' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Portal profile requires Client role'; END IF;"
+    },
+    {
+      "name": "quote_item_source_bi",
+      "table": "quotation_item",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF NEW.inquiry_item_id IS NOT NULL AND (SELECT inquiry_id FROM quotation WHERE quotation_id=NEW.quotation_id)<>(SELECT inquiry_id FROM inquiry_item WHERE inquiry_item_id=NEW.inquiry_item_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Quotation item must belong to the same inquiry'; END IF;"
+    },
+    {
+      "name": "quote_item_source_bu",
+      "table": "quotation_item",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NEW.inquiry_item_id IS NOT NULL AND (SELECT inquiry_id FROM quotation WHERE quotation_id=NEW.quotation_id)<>(SELECT inquiry_id FROM inquiry_item WHERE inquiry_item_id=NEW.inquiry_item_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Quotation item must belong to the same inquiry'; END IF;"
+    },
+    {
+      "name": "jo_item_source_bi",
+      "table": "job_order_item",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF (SELECT p.quotation_id FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id WHERE j.jo_id=NEW.jo_id)<>(SELECT quotation_id FROM quotation_item WHERE quotation_item_id=NEW.quotation_item_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='JO item must reference its PO accepted quotation'; END IF;"
+    },
+    {
+      "name": "jo_item_source_bu",
+      "table": "job_order_item",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF (SELECT p.quotation_id FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id WHERE j.jo_id=NEW.jo_id)<>(SELECT quotation_id FROM quotation_item WHERE quotation_item_id=NEW.quotation_item_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='JO item must reference its PO accepted quotation'; END IF;"
+    },
+    {
+      "name": "delivery_item_owner_bi",
+      "table": "delivery_item",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF (SELECT jo_id FROM delivery WHERE delivery_id=NEW.delivery_id)<>(SELECT jo_id FROM job_order_item WHERE jo_item_id=NEW.jo_item_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Delivery item must belong to the same JO'; END IF;"
+    },
+    {
+      "name": "delivery_item_owner_bu",
+      "table": "delivery_item",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF (SELECT jo_id FROM delivery WHERE delivery_id=NEW.delivery_id)<>(SELECT jo_id FROM job_order_item WHERE jo_item_id=NEW.jo_item_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Delivery item must belong to the same JO'; END IF;"
+    },
+    {
+      "name": "shortage_stage_owner_bi",
+      "table": "material_shortage_report",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF NEW.jo_stage_id IS NOT NULL AND NEW.jo_id<>(SELECT jo_id FROM job_order_stage WHERE jo_stage_id=NEW.jo_stage_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Shortage stage must belong to its JO'; END IF;"
+    },
+    {
+      "name": "shortage_stage_owner_bu",
+      "table": "material_shortage_report",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NEW.jo_stage_id IS NOT NULL AND NEW.jo_id<>(SELECT jo_id FROM job_order_stage WHERE jo_stage_id=NEW.jo_stage_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Shortage stage must belong to its JO'; END IF;"
+    },
+    {
+      "name": "receipt_client_owner_bi",
+      "table": "client_receipt",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF (SELECT i.client_id FROM sales_invoice s JOIN purchase_order p ON p.po_id=s.po_id JOIN quotation q ON q.quotation_id=p.quotation_id JOIN inquiry i ON i.inquiry_id=q.inquiry_id WHERE s.invoice_id=NEW.invoice_id)<>(SELECT client_id FROM client_user WHERE client_user_id=NEW.client_user_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Receipt submitter must own the invoice client'; END IF;"
+    },
+    {
+      "name": "receipt_client_owner_bu",
+      "table": "client_receipt",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF (SELECT i.client_id FROM sales_invoice s JOIN purchase_order p ON p.po_id=s.po_id JOIN quotation q ON q.quotation_id=p.quotation_id JOIN inquiry i ON i.inquiry_id=q.inquiry_id WHERE s.invoice_id=NEW.invoice_id)<>(SELECT client_id FROM client_user WHERE client_user_id=NEW.client_user_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Receipt submitter must own the invoice client'; END IF;"
+    },
+    {
+      "name": "plan_client_owner_bi",
+      "table": "production_plan",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF (NEW.finished_good_id IS NOT NULL AND NEW.client_id<>(SELECT client_id FROM finished_good WHERE finished_good_id=NEW.finished_good_id)) OR (NEW.jo_id IS NOT NULL AND NEW.client_id<>(SELECT i.client_id FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id JOIN inquiry i ON i.inquiry_id=q.inquiry_id WHERE j.jo_id=NEW.jo_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Production plan sources must belong to its client'; END IF;"
+    },
+    {
+      "name": "plan_client_owner_bu",
+      "table": "production_plan",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF (NEW.finished_good_id IS NOT NULL AND NEW.client_id<>(SELECT client_id FROM finished_good WHERE finished_good_id=NEW.finished_good_id)) OR (NEW.jo_id IS NOT NULL AND NEW.client_id<>(SELECT i.client_id FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id JOIN inquiry i ON i.inquiry_id=q.inquiry_id WHERE j.jo_id=NEW.jo_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Production plan sources must belong to its client'; END IF;"
+    },
+    {
+      "name": "movement_jo_client_bi",
+      "table": "stock_movement",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF NEW.finished_good_id IS NOT NULL AND NEW.jo_id IS NOT NULL AND (SELECT client_id FROM finished_good WHERE finished_good_id=NEW.finished_good_id)<>(SELECT i.client_id FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id JOIN inquiry i ON i.inquiry_id=q.inquiry_id WHERE j.jo_id=NEW.jo_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Finished good and JO must belong to the same client'; END IF;"
+    },
+    {
+      "name": "movement_jo_client_bu",
+      "table": "stock_movement",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NEW.finished_good_id IS NOT NULL AND NEW.jo_id IS NOT NULL AND (SELECT client_id FROM finished_good WHERE finished_good_id=NEW.finished_good_id)<>(SELECT i.client_id FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id JOIN inquiry i ON i.inquiry_id=q.inquiry_id WHERE j.jo_id=NEW.jo_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Finished good and JO must belong to the same client'; END IF;"
+    },
+    {
+      "name": "inquiry_client_id_history",
+      "table": "inquiry",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.client_id<=>OLD.client_id) AND (EXISTS(SELECT 1 FROM quotation WHERE inquiry_id=OLD.inquiry_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "quotation_inquiry_id_history",
+      "table": "quotation",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.inquiry_id<=>OLD.inquiry_id) AND (EXISTS(SELECT 1 FROM quotation_item WHERE quotation_id=OLD.quotation_id) OR EXISTS(SELECT 1 FROM purchase_order WHERE quotation_id=OLD.quotation_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "inquiry_item_inquiry_id_history",
+      "table": "inquiry_item",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.inquiry_id<=>OLD.inquiry_id) AND (EXISTS(SELECT 1 FROM quotation_item WHERE inquiry_item_id=OLD.inquiry_item_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "purchase_order_quotation_id_history",
+      "table": "purchase_order",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.quotation_id<=>OLD.quotation_id) AND (EXISTS(SELECT 1 FROM job_order WHERE po_id=OLD.po_id) OR EXISTS(SELECT 1 FROM sales_invoice WHERE po_id=OLD.po_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "job_order_po_id_history",
+      "table": "job_order",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.po_id<=>OLD.po_id) AND (EXISTS(SELECT 1 FROM job_order_item WHERE jo_id=OLD.jo_id) OR EXISTS(SELECT 1 FROM delivery WHERE jo_id=OLD.jo_id) OR EXISTS(SELECT 1 FROM production_plan WHERE jo_id=OLD.jo_id) OR EXISTS(SELECT 1 FROM stock_movement WHERE jo_id=OLD.jo_id) OR EXISTS(SELECT 1 FROM job_order_stage WHERE jo_id=OLD.jo_id) OR EXISTS(SELECT 1 FROM material_shortage_report WHERE jo_id=OLD.jo_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "quotation_item_quotation_id_history",
+      "table": "quotation_item",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.quotation_id<=>OLD.quotation_id) AND (EXISTS(SELECT 1 FROM job_order_item WHERE quotation_item_id=OLD.quotation_item_id) OR EXISTS(SELECT 1 FROM cost_estimate WHERE quotation_item_id=OLD.quotation_item_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "job_order_item_jo_id_history",
+      "table": "job_order_item",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.jo_id<=>OLD.jo_id) AND (EXISTS(SELECT 1 FROM delivery_item WHERE jo_item_id=OLD.jo_item_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "delivery_jo_id_history",
+      "table": "delivery",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.jo_id<=>OLD.jo_id) AND (EXISTS(SELECT 1 FROM delivery_item WHERE delivery_id=OLD.delivery_id) OR EXISTS(SELECT 1 FROM waybill WHERE delivery_id=OLD.delivery_id) OR EXISTS(SELECT 1 FROM delivery_receipt WHERE delivery_id=OLD.delivery_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "job_order_stage_jo_id_history",
+      "table": "job_order_stage",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.jo_id<=>OLD.jo_id) AND (EXISTS(SELECT 1 FROM material_shortage_report WHERE jo_stage_id=OLD.jo_stage_id) OR EXISTS(SELECT 1 FROM production_stage_event WHERE jo_stage_id=OLD.jo_stage_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "finished_good_client_id_history",
+      "table": "finished_good",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.client_id<=>OLD.client_id) AND (EXISTS(SELECT 1 FROM production_plan WHERE finished_good_id=OLD.finished_good_id) OR EXISTS(SELECT 1 FROM stock_movement WHERE finished_good_id=OLD.finished_good_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "sales_invoice_po_id_history",
+      "table": "sales_invoice",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.po_id<=>OLD.po_id) AND (EXISTS(SELECT 1 FROM client_receipt WHERE invoice_id=OLD.invoice_id) OR EXISTS(SELECT 1 FROM payment_transaction WHERE invoice_id=OLD.invoice_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "client_user_client_id_history",
+      "table": "client_user",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.client_id<=>OLD.client_id) AND (EXISTS(SELECT 1 FROM client_receipt WHERE client_user_id=OLD.client_user_id) OR EXISTS(SELECT 1 FROM inquiry WHERE submitted_by_client_user_id=OLD.client_user_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot reassign historical ownership'; END IF;"
+    },
+    {
+      "name": "audit_event_append_only_update",
+      "table": "audit_event",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Historical event is append only';"
+    },
+    {
+      "name": "audit_event_append_only_delete",
+      "table": "audit_event",
+      "timing": "BEFORE",
+      "event": "DELETE",
+      "body": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Historical event is append only';"
+    },
+    {
+      "name": "production_stage_event_append_only_update",
+      "table": "production_stage_event",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Historical event is append only';"
+    },
+    {
+      "name": "production_stage_event_append_only_delete",
+      "table": "production_stage_event",
+      "timing": "BEFORE",
+      "event": "DELETE",
+      "body": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Historical event is append only';"
+    },
+    {
+      "name": "stock_movement_append_only_update",
+      "table": "stock_movement",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Historical event is append only';"
+    },
+    {
+      "name": "stock_movement_append_only_delete",
+      "table": "stock_movement",
+      "timing": "BEFORE",
+      "event": "DELETE",
+      "body": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Historical event is append only';"
+    },
+    {
+      "name": "user_account_portal_role",
+      "table": "user_account",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF EXISTS(SELECT 1 FROM client_user WHERE client_user_id=OLD.user_id) AND (SELECT role_name FROM role WHERE role_id=NEW.role_id)<>'Client' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Portal identity must retain Client role'; END IF;"
+    },
+    {
+      "name": "role_identity_history",
+      "table": "role",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NOT(NEW.role_name<=>OLD.role_name) AND EXISTS(SELECT 1 FROM user_account WHERE role_id=OLD.role_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cannot relabel a role used by accounts'; END IF;"
+    },
+    {
+      "name": "raw_material_unit_history",
+      "table": "raw_material",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NEW.uom_id<>OLD.uom_id AND (EXISTS(SELECT 1 FROM stock_movement WHERE raw_material_id=OLD.material_id) OR EXISTS(SELECT 1 FROM stock_request_item WHERE raw_material_id=OLD.material_id)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unit conversion requires separate approved reconciliation'; END IF;"
+    },
+    {
+      "name": "raw_movement_unit_bi",
+      "table": "stock_movement",
+      "timing": "BEFORE",
+      "event": "INSERT",
+      "body": "IF NEW.raw_material_id IS NOT NULL AND NEW.uom_id<>(SELECT uom_id FROM raw_material WHERE material_id=NEW.raw_material_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Raw movement must use the recorded stock unit'; END IF;"
+    },
+    {
+      "name": "raw_movement_unit_bu",
+      "table": "stock_movement",
+      "timing": "BEFORE",
+      "event": "UPDATE",
+      "body": "IF NEW.raw_material_id IS NOT NULL AND NEW.uom_id<>(SELECT uom_id FROM raw_material WHERE material_id=NEW.raw_material_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Raw movement must use the recorded stock unit'; END IF;"
+    }
+  ],
+  "extensions": [
+    "client_receipt_file",
+    "waybill",
+    "delivery_receipt",
+    "signed_delivery_receipt",
+    "production_stage_event",
+    "audit_event"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "database": "enterflow_phase2_db",
+  "container": "enterflow-phase2-mysql",
+  "restoreDatabase": "enterflow_phase2_restore_p2b002",
+  "status": "stopped",
+  "startedAt": "2026-11-22T02:06:01.410898+08:00",
+  "ddlStarted": false,
+  "error": "Expecting value: line 1 column 1 (char 0)"
+}

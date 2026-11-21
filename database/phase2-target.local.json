@@ -1,0 +1,11 @@
+{
+  "container": "enterflow-phase2-mysql",
+  "containerId": "ed47d1d4b52e35585de492d4cd899915f6ff526a0c5f9fd6de7541558939f05a",
+  "volume": "enterflow-phase2-data",
+  "database": "enterflow_phase2_db",
+  "host": "127.0.0.1",
+  "port": 62286,
+  "image": "mysql@sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902",
+  "credentialFile": "C:\\Users\\amiaz\\AppData\\Local\\EnterFlow\\Phase2\\mysql-root.dpapi",
+  "createdAt": "2026-11-22T01:14:46.2414604+08:00"
+}

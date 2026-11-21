@@ -1,3 +1,5 @@
+import { normalizeEmail, normalizeUsername } from './login-identity.js';
+
 const FIELDS = new Set([
   'companyName', 'contactPerson', 'email', 'username', 'password', 'phone'
 ]);
@@ -14,20 +16,20 @@ function validEmail(value) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value)) return false;
   if (/[<>()[\],;:"\\\u0000-\u001f\u007f]/u.test(value)) return false;
   const [local, domain] = value.split('@');
-  return !local.startsWith('.') && !local.endsWith('.') && !local.includes('..') &&
+  return !local.startsWith('.') && !local.endsWith('.') &&
+    !local.includes('..') &&
     domain.split('.').every(label =>
       /^[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}-]*[\p{L}\p{N}\p{M}])?$/u.test(label)
     );
 }
 
-// Pure validation: no database/environment imports and no input values in errors.
-// This successful result is internal to the service; it includes the raw password.
 export function validateRegistration(input) {
   try {
     if (!input || typeof input !== 'object' || Array.isArray(input) ||
       ![Object.prototype, null].includes(Object.getPrototypeOf(input))) {
       return { success: false, errors: { body: 'Registration must be a JSON object.' } };
     }
+
     const descriptors = Object.getOwnPropertyDescriptors(input);
     if (Reflect.ownKeys(descriptors).some(key => !FIELDS.has(key) ||
       !Object.hasOwn(descriptors[key], 'value'))) {
@@ -36,23 +38,31 @@ export function validateRegistration(input) {
 
     const errors = {};
     const data = {};
+
     for (const [field, limit] of [
-      ['companyName', 200], ['contactPerson', 160], ['email', 254], ['username', 100]
+      ['companyName', 200],
+      ['contactPerson', 160],
+      ['email', 254],
+      ['username', 100]
     ]) {
       const value = descriptors[field]?.value;
+
       if (typeof value !== 'string' || !value.isWellFormed()) {
         errors[field] = `A valid ${field} string is required.`;
         continue;
       }
-      const trimmed = value.trim();
-      const normalized = field === 'email' ? trimmed.toLowerCase() : trimmed;
-      // Login already caps identifiers at 254 JavaScript code units. Keep email
-      // within that bound as well as the database's Unicode character limit.
+
+      const normalized = field === 'email'
+        ? normalizeEmail(value)
+        : normalizeUsername(value);
+
       if (!normalized || !withinCharacterLimit(normalized, limit) ||
         (field === 'email' && normalized.length > 254)) {
         errors[field] = `${field} must contain 1 to ${limit} characters.`;
       } else if (field === 'email' && !validEmail(normalized)) {
         errors.email = 'A valid email address is required.';
+      } else if (field === 'username' && /[\u0000-\u001f\u007f]/u.test(normalized)) {
+        errors.username = 'Username must not contain control characters.';
       } else {
         data[field] = normalized;
       }
@@ -75,7 +85,9 @@ export function validateRegistration(input) {
       data.phone = phone.trim() || null;
     }
 
-    return Object.keys(errors).length ? { success: false, errors } : { success: true, data };
+    return Object.keys(errors).length
+      ? { success: false, errors }
+      : { success: true, data };
   } catch {
     return { success: false, errors: { body: 'Registration must be a JSON object.' } };
   }

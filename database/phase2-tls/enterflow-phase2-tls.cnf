@@ -1,0 +1,5 @@
+[mysqld]
+# Isolated enterflow-phase2-mysql only. Existing data volume is preserved.
+ssl-ca=/var/lib/mysql/enterflow-phase2-tls-v1/ca.pem
+ssl-cert=/var/lib/mysql/enterflow-phase2-tls-v1/server-cert.pem
+ssl-key=/var/lib/mysql/enterflow-phase2-tls-v1/server-key.pem

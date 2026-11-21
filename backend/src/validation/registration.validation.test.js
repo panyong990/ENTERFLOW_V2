@@ -5,6 +5,14 @@ import { validateRegistration } from './registration.validation.js';
 const valid = () => ({ companyName: 'Example Company', contactPerson: 'Test Contact',
   email: 'test@example.invalid', username: 'Test User', password: 'password' });
 
+test('usernames reject internal control characters without inventing an ASCII-only policy', () => {
+  for (const username of ['part\u0000two', 'part\ntwo', 'part\ttwo', 'part\u007ftwo']) {
+    const result = validateRegistration({ ...valid(), username });
+    assert.equal(result.success, false); assert.ok(result.errors.username);
+  }
+  assert.equal(validateRegistration({ ...valid(), username: ' A.User+name@example.invalid ' }).data.username, 'A.User+name@example.invalid');
+});
+
 test('trims metadata, lowercases email without locale dependence, and preserves password exactly', () => {
   const password = '  P\u00e4ss\u{1f600} word\n';
   const result = validateRegistration({ companyName: ' Company ', contactPerson: ' Contact ',

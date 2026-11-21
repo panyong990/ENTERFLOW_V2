@@ -1,0 +1,24 @@
+﻿{
+  "identity": {
+    "name": "enterflow_phase2_db",
+    "version": "8.4.13",
+    "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8"
+  },
+  "digests": [
+    {
+      "DIGEST_TEXT": "SELECT COUNT ( * ) AS `n` FROM `performance_schema` . `metadata_locks` `l` JOIN `performance_schema` . `threads` `t` ON `t` . `THREAD_ID` = `l` . `OWNER_THREAD_ID` WHERE `t` . `PROCESSLIST_ID` = `CONNECTION_ID` ( ) AND `l` . `OBJECT_SCHEMA` = SCHEMA ( ) AND `l` . `OBJECT_NAME` = ? AND `l` . `LOCK_STATUS` = ? AND `l` . `LOCK_TYPE` = ? AND `l` . `LOCK_DURATION` = ?",
+      "COUNT_STAR": "1",
+      "SUM_ERRORS": "1",
+      "FIRST_SEEN": "2026-11-21T21:10:31.309Z",
+      "LAST_SEEN": "2026-11-21T21:10:31.309Z"
+    },
+    {
+      "DIGEST_TEXT": "LOCK TABLES `client_applications` WRITE , `user_account` WRITE , `_enterflow_phase2_extension_history` WRITE",
+      "COUNT_STAR": "1",
+      "SUM_ERRORS": "0",
+      "FIRST_SEEN": "2026-11-21T21:10:31.307Z",
+      "LAST_SEEN": "2026-11-21T21:10:31.307Z"
+    }
+  ],
+  "readOnly": true
+}

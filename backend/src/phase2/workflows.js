@@ -29,33 +29,124 @@ const FILTER_TYPE_NAME_BY_CODE = {
   BAGFIL: 'Bag / Dust Collector',
   PADFIL: 'Pad / Disc Filter',
 };
+
 export async function insertInquiry(c, clientId, userId, data) {
   const ref = reference('INQ');
-  const inquiryId = await insert(c, `INSERT INTO inquiry(inquiry_no,client_id,contact_person,payment_terms,source,submitted_by_client_user_id,general_notes,required_by_date,status) VALUES (?,?,?,?,'portal',?,?,?,'inquiry')`, [ref, clientId, data.contactPerson, paymentTerm(data.paymentTermCode), userId, data.generalNotes, data.requestedDeliveryDate]);
+
+  const inquiryId = await insert(
+    c,
+    `INSERT INTO inquiry(
+      inquiry_no,
+      client_id,
+      contact_person,
+      payment_terms,
+      source,
+      submitted_by_client_user_id,
+      general_notes,
+      required_by_date,
+      status
+    ) VALUES (?,?,?,?,'portal',?,?,?,'inquiry')`,
+    [
+      ref,
+      clientId,
+      data.contactPerson,
+      paymentTerm(data.paymentTermCode),
+      userId,
+      data.generalNotes,
+      data.requestedDeliveryDate
+    ]
+  );
+
   const items = [];
+
   for (const [index, product] of data.products.entries()) {
     const filterTypeName =
-  FILTER_TYPE_NAME_BY_CODE[product.type] ?? product.type;
+      FILTER_TYPE_NAME_BY_CODE[product.type] ?? product.type;
 
-const types = await rows(
-  c,
-  `SELECT CAST(filter_type_id AS CHAR) id
-   FROM filter_type
-   WHERE ${
-     product.filterTypeId
-       ? 'filter_type_id=?'
-       : 'filter_type_name=?'
-   }
-   AND is_active=1`,
-  product.filterTypeId
-    ? [product.filterTypeId]
-    : [filterTypeName]
-);
+    const types = await rows(
+      c,
+      `SELECT CAST(filter_type_id AS CHAR) id
+       FROM filter_type
+       WHERE ${
+         product.filterTypeId
+           ? 'filter_type_id=?'
+           : 'filter_type_name=?'
+       }
+       AND is_active=1`,
+      product.filterTypeId
+        ? [product.filterTypeId]
+        : [filterTypeName]
+    );
 
-requireThat(types.length === 1, 'REFERENCE_DATA_MISSING');
-  const timestamp = await one(c, "SELECT DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.%fZ') submittedAt FROM inquiry WHERE inquiry_id=?", [inquiryId]);
+    requireThat(types.length === 1, 'REFERENCE_DATA_MISSING');
+
+    const ft = types[0];
+    const s = product.specifications;
+
+    const dimension = k =>
+      s[k] == null ? null : format(decimal(s[k]));
+
+    const itemId = await insert(
+      c,
+      `INSERT INTO inquiry_item(
+        inquiry_id,
+        line_no,
+        filter_type_id,
+        filter_name,
+        quantity,
+        od1_mm,
+        od2_mm,
+        id1_mm,
+        id2_mm,
+        height_mm,
+        overall_height_mm,
+        filter_media,
+        inner_core,
+        outer_core,
+        o_ring,
+        gasket,
+        filtration_rating,
+        template_specifications
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        inquiryId,
+        index + 1,
+        ft.id,
+        product.filterName,
+        product.quantity,
+        dimension('od1'),
+        dimension('od2'),
+        dimension('id1'),
+        dimension('id2'),
+        dimension('height'),
+        dimension('overallHeight'),
+        s.media,
+        s.innerCore,
+        s.outerCore,
+        s.oring,
+        s.gasket,
+        s.filtrationRating,
+        JSON.stringify(s)
+      ]
+    );
+
+    items.push({
+      id: itemId,
+      specificationId: itemId,
+      lineNumber: index + 1
+    });
+  }
+
+  const timestamp = await one(
+    c,
+    "SELECT DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.%fZ') submittedAt FROM inquiry WHERE inquiry_id=?",
+    [inquiryId]
+  );
+
   requireThat(timestamp, 'SERVICE_UNAVAILABLE');
+
   await notifyRole(c, 'sales', 'New inquiry', ref, 'inquiry');
+
   return {
     result: {
       id: inquiryId,
@@ -67,6 +158,7 @@ requireThat(types.length === 1, 'REFERENCE_DATA_MISSING');
     items
   };
 }
+
 export function createClientInquiryService({
   db
 }) {

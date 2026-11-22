@@ -15,7 +15,7 @@ export async function diagnosePhase2Lock(db,env,log = console.log) {
 
 // This command intentionally has no mutation/lock/transaction/recovery API.
 // No legacy discovery, GET_LOCK, LOCK TABLES, SET, history creation or DDL.
-export async function preflightPhase2(db, env, base = root, log = console.log) {
+export async function preflightPhase2(db, env, base = root, log = console.log,{part1=false}={}) {
   validatePhase2Target(env);
   const report = { target:{host:env.DB_HOST,port:62286,database:env.DB_NAME},checks:[],queries:[],activationAuthorized:false };
   const add = (check,result,detail) => report.checks.push({check,result,detail});
@@ -31,13 +31,13 @@ export async function preflightPhase2(db, env, base = root, log = console.log) {
   const [[identity]] = await query('SELECT DATABASE() AS name,VERSION() AS version,@@server_uuid AS serverUuid,@@hostname AS hostname,@@port AS internalPort,CURRENT_USER() AS account,USER() AS connectedUser');
   add('Server identity',identity.name === env.DB_NAME && identity.version === '8.4.13' ? 'PASS':'FAIL',identity);
   if (report.checks.at(-1).result === 'FAIL') { log(JSON.stringify(report,null,2)); return report; }
-  const files = await discoverPhase2FilesAt(base), baseline = await loadPhase2Baseline(base);
+  const files = await discoverPhase2FilesAt(base,part1), baseline = await loadPhase2Baseline(base);
   // Keep SQL accounting at the connection boundary, including the existing
   // metadata reader; only SELECTs can pass through this adapter.
   const metadata = await readPhase2Metadata({ query:sql => query(sql) });
   const has = table => metadata.tables.some(t => t.table === table);
   const username = metadata.columns.some(c => c.column === 'username' && ['user_account','client_applications'].includes(c.table));
-  const stage = username ? 3 : has('client_applications') ? 2 : has('user_sessions') ? 1 : 0;
+  const stage = part1 && metadata.triggers.some(t=>t.name==='purchase_order_request_history') ? 6 : part1 && has('proof_of_payment') ? 5 : part1 && has('cancellation_request') ? 4 : username ? 3 : has('client_applications') ? 2 : has('user_sessions') ? 1 : 0;
   const history = has(phase2History);
   try { verifyPhase2Metadata(metadata,phase2ExpectedMetadata(baseline,stage,history)); add('P2B002 and installed extension structure','PASS',{stage,tables:metadata.tables.length,triggers:metadata.triggers.length}); }
   catch(error) { add('P2B002 and installed extension structure','FAIL',error.message); }
@@ -55,7 +55,7 @@ export async function preflightPhase2(db, env, base = root, log = console.log) {
     if (history) [rows] = await query(`SELECT file,state,started_at,applied_at,error_code FROM \`${phase2History}\` ORDER BY file`);
     report.extensionHistory = rows;
     try {
-      if (rows.length > 3) throw new Error('Unexpected extension history');
+      if (rows.length > files.length) throw new Error('Unexpected extension history');
       for (const [i,row] of rows.entries()) if (row.file !== files[i]?.file) throw new Error('Unknown/out-of-order extension history; no retry');
       for (const [i,row] of rows.entries()) {
         const [[digest]] = await query(`SELECT checksum FROM \`${phase2History}\` WHERE file=?`,[row.file]);
@@ -67,7 +67,7 @@ export async function preflightPhase2(db, env, base = root, log = console.log) {
       add('Extension history','PASS',{exists:history,applied:rows.map(r => r.file)});
     } catch(error) { add('Extension history','FAIL',error.message); }
   }
-  report.originalData = await originalDataSnapshot({query:sql => query(sql)},baseline);
+  report.originalData = await originalDataSnapshot({query:sql => query(sql)},baseline,has('proof_of_payment'));
   if (rows.some(row => row.file === '003_username_support.sql' && row.state === 'failed' && row.error_code === 'ER_TABLE_NOT_LOCKED')) {
     try {
       const [consumers] = await query("SELECT NAME,ENABLED FROM performance_schema.setup_consumers WHERE NAME IN ('events_statements_history','events_statements_history_long')");
@@ -85,7 +85,7 @@ export async function preflightPhase2(db, env, base = root, log = console.log) {
   try {
     const [grants] = await query('SHOW GRANTS FOR CURRENT_USER()');
     const statements = grants.map(r => Object.values(r)[0]);
-    const required = ['SELECT','CREATE','ALTER','INDEX','REFERENCES','INSERT','UPDATE','LOCK TABLES'];
+    const required = ['SELECT','CREATE','ALTER','INDEX','REFERENCES','INSERT','UPDATE','LOCK TABLES',...(part1?['DROP','TRIGGER']:[])];
     const allowed = new Set();
     for (const grant of statements) {
       const match = /^GRANT (.+) ON (\*\.\*|`enterflow_phase2_db`\.\*) TO /i.exec(grant);
@@ -99,7 +99,7 @@ export async function preflightPhase2(db, env, base = root, log = console.log) {
     const [instruments] = await query("SELECT ENABLED FROM performance_schema.setup_instruments WHERE NAME='wait/lock/metadata/sql/mdl'");
     const [[thread]] = await query('SELECT COUNT(*) AS n FROM performance_schema.threads WHERE PROCESSLIST_ID=CONNECTION_ID()');
     add('Locking prerequisites',Number(settings.performanceSchema) === 1 && Number(settings.innodbTableLocks) === 1 && instruments[0]?.ENABLED === 'YES' && Number(thread.n) === 1 ? 'PASS':'FAIL',{...settings,mdlInstrument:instruments[0]?.ENABLED ?? null,ownThreadVisible:Number(thread.n) === 1});
-    add('003 lock acquisition','UNVERIFIED','No lock acquired by preflight; activation must verify exclusive locks and emptiness for each ALTER');
+    add('003 lock acquisition',stage<3?'UNVERIFIED':'PASS',stage<3?'No lock acquired by preflight; activation must verify exclusive locks and emptiness for each ALTER':'003 is already installed; no 003 execution lock is needed for this status check');
   } catch(error) { add('Locking prerequisites','UNVERIFIED',error.code ?? 'Lock metadata unavailable'); }
   add('Excluded targets','PASS','No shared or restoration schema selected or queried');
   report.result = report.checks.some(c => c.result === 'FAIL') ? 'FAIL' : report.checks.some(c => c.result === 'UNVERIFIED') ? 'PASS WITH EXCEPTIONS' : 'PASS';

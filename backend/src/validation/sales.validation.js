@@ -109,11 +109,11 @@ export function validateQuotationDecision(body) {
 
 export function validatePurchaseOrderSubmission(body) {
   try {
-    const input = ownData(body, ['reference']);
+    const input = ownData(body, ['reference','quotationId','documentId','deliveryMethodId']);
     if (!input || typeof input.reference !== 'string' || !input.reference.trim() || input.reference.length > 60 || !input.reference.isWellFormed()) {
       return fail({ reference: 'A valid purchase-order reference is required.' });
     }
-    return { success: true, data: { reference: input.reference.trim() } };
+    if(!validateApplicationId(input.documentId).success||!validateApplicationId(input.deliveryMethodId).success||(input.quotationId!==undefined&&!validateApplicationId(input.quotationId).success))return fail({documentId:'An available uploaded document and configured delivery method are required.'});return { success: true, data: { reference: input.reference.trim(),documentId:input.documentId,deliveryMethodId:input.deliveryMethodId,...(input.quotationId?{quotationId:input.quotationId}:{}) } };
   } catch { return fail({ body: 'Invalid purchase-order submission.' }); }
 }
 
@@ -153,12 +153,12 @@ export function validateQuotationRevisionRequest(body) {
 
 export function validateCancellationRequest(body) {
   try {
-    const input = ownData(body, ['reason', 'termsAcknowledged']);
+    const input = ownData(body, ['reason','termsAcknowledged','quotationId','purchaseOrderId']);
     if (!input) return fail({ body: 'Only reason and termsAcknowledged are allowed.' });
     const reason = validateApplicationRejection({ reason: input.reason });
     if (!reason.success) return fail(reason.errors);
     if (input.termsAcknowledged !== true) return fail({ termsAcknowledged: 'Acknowledge the cancellation terms before submitting.' });
-    return { success: true, data: { reason: reason.data.reason, termsAcknowledged: true } };
+    for(const key of ['quotationId','purchaseOrderId'])if(input[key]!==undefined&&!validateApplicationId(input[key]).success)return fail({[key]:'Invalid request target.'});if(input.quotationId&&input.purchaseOrderId)return fail({body:'Choose one request target.'});return {success:true,data:{reason:reason.data.reason,termsAcknowledged:true,...(input.quotationId?{quotationId:input.quotationId}:{}),...(input.purchaseOrderId?{purchaseOrderId:input.purchaseOrderId}:{})}};
   } catch { return fail({ body: 'Invalid cancellation request.' }); }
 }
 

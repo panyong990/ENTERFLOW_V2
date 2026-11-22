@@ -66,13 +66,17 @@ export function createAuthService({
           ELSE 'client'
         END AS accountType,
         ua.full_name AS displayName,
+        ua.must_change_password AS mustChangePassword,
         ua.status
       FROM user_account ua
       INNER JOIN role r
         ON r.role_id = ua.role_id
       LEFT JOIN client_user cu
         ON cu.client_user_id = ua.user_id
-      WHERE ua.email = ? OR ua.username = ?
+      LEFT JOIN client cl ON cl.client_id=cu.client_id
+      WHERE (ua.email = ? OR ua.username = ?)
+        AND ((r.role_name='Client' AND cu.client_user_id IS NOT NULL AND cl.status='active')
+          OR (r.role_name<>'Client' AND cu.client_user_id IS NULL))
       LIMIT 2`,
       [normalizedEmail, normalizedUsername]
     );
@@ -111,6 +115,7 @@ export function createAuthService({
         userId: String(account.id),
         email: account.email,
         username: account.username ?? null,
+        mustChangePassword: Boolean(Number(account.mustChangePassword)),
         roleCode: account.roleCode,
         accountType: account.accountType,
         displayName: account.displayName

@@ -11,6 +11,7 @@ export const DOCUMENT_LIMITS = Object.freeze({
   po: 10 * 1024 * 1024,
   paymentProof: 10 * 1024 * 1024,
   sketch: 10 * 1024 * 1024
+  ,deliveryReceipt: 10 * 1024 * 1024
 });
 
 export function extensionForMime(mimeType) {
@@ -72,6 +73,6 @@ export function objectKeyFor({ scope, parentId, fileId, extension }) {
 
 export function storageForEnvironment({ storage, allowMock = false } = {}) {
   if (storage) return storage;
-  if (allowMock || process.env.NODE_ENV === 'test') return createMockDocumentStorage();
+  if (allowMock) return createMockDocumentStorage();
   return createGcsDocumentStorage();
 }

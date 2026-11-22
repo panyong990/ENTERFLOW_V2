@@ -194,14 +194,14 @@ test('invoice and payment routes enforce their existing client permissions and a
 test('client notifications are user-scoped and read mutation requires notification permissions', async t => {
   const h = await harness(t);
   assert.equal((await h.request('/notifications?page=2&pageSize=10&status=unread')).status, 200);
-  assert.equal((await h.request('/notifications/9007199254740993/read', true, { method: 'PATCH' })).status, 200);
+  assert.equal((await h.request('/notifications/9007199254740993/read', true, { method: 'PATCH',headers:{'Content-Type':'application/json'} })).status, 200);
   assert.equal(h.calls.at(-2)[0], 'notifications-list');
   assert.equal(h.calls.at(-2)[1], '9');
   assert.deepEqual({ ...h.calls.at(-2)[2] }, { page: '2', pageSize: '10', status: 'unread' });
   assert.deepEqual(h.calls.at(-1), ['notifications-read', '9', '9007199254740993']);
   const denied = await harness(t, { allowed: false });
   assert.equal((await denied.request('/notifications')).status, 403);
-  assert.equal((await denied.request('/notifications/1/read', true, { method: 'PATCH' })).status, 403);
+  assert.equal((await denied.request('/notifications/1/read', true, { method: 'PATCH',headers:{'Content-Type':'application/json'} })).status, 403);
 });
 
 test('job-order and delivery routes use authenticated ownership and orders:read', async t => {

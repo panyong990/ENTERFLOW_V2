@@ -90,6 +90,7 @@ export function createSessionService({
         END AS accountType,
         cu.client_id AS clientId,
         ua.full_name AS displayName,
+        ua.must_change_password AS mustChangePassword,
         1 AS active
       FROM user_sessions s
       INNER JOIN user_account ua
@@ -98,6 +99,7 @@ export function createSessionService({
         ON r.role_id = ua.role_id
       LEFT JOIN client_user cu
         ON cu.client_user_id = ua.user_id
+      LEFT JOIN client cl ON cl.client_id=cu.client_id
       WHERE s.token_hash = ?
         AND s.revoked_at IS NULL
         AND s.expires_at > UTC_TIMESTAMP(3)
@@ -107,6 +109,8 @@ export function createSessionService({
             INTERVAL ? MINUTE
           )
         AND ua.status = 'active'
+        AND ((r.role_name='Client' AND cu.client_user_id IS NOT NULL AND cl.status='active')
+          OR (r.role_name<>'Client' AND cu.client_user_id IS NULL))
       LIMIT 1`,
       [tokenHash, idleTimeoutMinutes]
     );

@@ -7,16 +7,16 @@ function database({ orderExists = true, jobRows = [], shipmentRows = [] } = {}) 
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
-      if (sql === 'SELECT id FROM orders WHERE id=?') return [orderExists ? [{ id: '9007199254740993' }] : []];
-      if (sql.includes('FROM job_orders jo LEFT JOIN production_stages')) return [jobRows];
-      if (sql.includes('FROM production_events')) return [[
+      if (sql.includes('FROM inquiry i JOIN client')&&sql.includes('WHERE i.inquiry_id=?')) return [orderExists ? [{ id: '9007199254740993' }] : []];
+      if (sql.includes('FROM job_order j JOIN purchase_order')) return [jobRows.map(j=>({...j,bomLineCount:3}))];
+      if (sql.includes('FROM production_stage_event')) return [[
         { id: '41', jobOrderId: '31', stagePosition: 2, stageLabel: 'Assembling', action: 'done', reason: null }
       ]];
       if (sql.includes('FROM job_bom_lines')) return [[{ jobOrderId: '31', bomLineCount: 3 }]];
-      if (sql.includes('FROM shipments s JOIN delivery_methods')) return [shipmentRows];
-      if (sql.includes('FROM waybills')) return [[{ id: '51', shipmentId: '41', reference: 'WB-1', printedAt: null }]];
-      if (sql.includes('FROM delivery_receipts')) return [[{ id: '61', shipmentId: '41', reference: 'DR-1', generatedAt: '2026-01-01T00:00:00.000000Z', sentToLogisticsAt: null, sentToClientAt: null }]];
-      if (sql.includes('FROM signed_delivery_receipts')) return [[{ id: '71', deliveryReceiptId: '61', fileId: '81', uploadedAt: '2026-01-02T00:00:00.000000Z', receivedAt: null, acceptedSlot: null, discardedAt: null, originalFilename: 'signed-dr.pdf', mimeType: 'application/pdf', sizeBytes: '100', fileState: 'available' }]];
+      if (sql.includes('FROM delivery d JOIN job_order')) return [shipmentRows];
+      if (sql.includes('FROM waybill WHERE')) return [[{ id: '51', shipmentId: '41', reference: 'WB-1', printedAt: null }]];
+      if (sql.includes('FROM delivery_receipt WHERE')) return [[{ id: '61', shipmentId: '41', reference: 'DR-1', generatedAt: '2026-01-01T00:00:00.000000Z', sentToLogisticsAt: null, sentToClientAt: null }]];
+      if (sql.includes('FROM signed_delivery_receipt sr')) return [[{ id: '71', deliveryReceiptId: '61', fileId: '81', uploadedAt: '2026-01-02T00:00:00.000000Z', receivedAt: null, acceptedSlot: null, discardedAt: null, originalFilename: 'signed-dr.pdf', mimeType: 'application/pdf', sizeBytes: '100', fileState: 'available' }]];
       return [[]];
     },
     release() {}

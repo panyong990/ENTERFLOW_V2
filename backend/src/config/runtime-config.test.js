@@ -135,3 +135,61 @@ test('integration runtime rejects development fallback and incomplete identity p
     assert.throws(() => validateRuntimeConfig(integrationEnvironment(overrides)));
   }
 });
+
+function phase2Environment(overrides = {}) {
+  return validEnvironment({
+    DB_HOST: '127.0.0.1',
+    DB_PORT: '62286',
+    DB_NAME: 'enterflow_phase2_db',
+    DB_USER: 'enterflow_phase2_app',
+    DB_TIMEZONE: 'Z',
+    DB_SSL_CA_PATH: 'database/certs/phase2-ca.pem',
+    DB_SSL_SERVER_NAME: 'localhost',
+    APP_ORIGIN: 'http://127.0.0.1:3107',
+    HOST: '127.0.0.1',
+    PORT: '3107',
+    NODE_ENV: 'development',
+    PHASE2_RUNTIME: '1',
+    ...overrides
+  });
+}
+
+test('accepts the isolated Phase 2 runtime target', () => {
+  const environment = phase2Environment();
+  assert.deepEqual(loadRuntimeEnvironment(environment), { error: null });
+
+  const config = validateRuntimeConfig(environment);
+  assert.equal(config.phase2.serverUuid, '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8');
+  assert.equal(config.database.name, 'enterflow_phase2_db');
+  assert.equal(config.database.timezone, 'Z');
+  assert.equal(config.idleTimeoutMinutes, 30);
+  assert.equal(config.absoluteTimeoutHours, 8);
+});
+
+test('rejects Phase 2 runtime target substitutions', () => {
+  for (const overrides of [
+    { DB_HOST: 'localhost' },
+    { DB_PORT: '3308' },
+    { DB_NAME: 'enterflow_db' },
+    { DB_USER: 'enterflow_app' },
+    { DB_TIMEZONE: 'local' },
+    { DB_SSL_SERVER_NAME: '127.0.0.1' },
+    { DB_SSL_CA_PATH: '' },
+    { APP_ORIGIN: 'http://localhost:3107' },
+    { HOST: '0.0.0.0' },
+    { PORT: '3108' },
+    { NODE_ENV: 'test' }
+  ]) {
+    assert.throws(() => validateRuntimeConfig(phase2Environment(overrides)));
+  }
+});
+
+test('rejects Phase 2 runtime combined with browser or integration modes', () => {
+  assert.throws(() => loadRuntimeEnvironment(
+    phase2Environment({ BROWSER_TEST_RUNTIME: '1' })
+  ), /Phase 2 runtime/);
+
+  assert.throws(() => loadRuntimeEnvironment(
+    phase2Environment({ INTEGRATION_TEST_RUNTIME: '1' })
+  ), /Phase 2 runtime/);
+});

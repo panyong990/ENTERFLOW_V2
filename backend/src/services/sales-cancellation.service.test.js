@@ -36,20 +36,22 @@ function harness({ decision = 'approved', paid = false, fail = null, commitFailu
     async execute(sql, params = []) {
       calls.push({ sql, params });
       if (fail && sql.includes(fail)) throw new Error('synthetic query failure');
-      if (sql.startsWith('SELECT id FROM users')) return [activeActor ? [{ id: '7' }] : []];
-      if (sql.includes('FROM orders o WHERE o.id=?')) return [[{ ...state.order }]];
-      if (sql.includes('FROM order_requests')) return [[{ ...state.request }]];
-      if (sql.startsWith('SELECT id FROM payments')) return [paid ? [{ id: '901' }] : []];
-      if (sql.startsWith('UPDATE orders SET')) {
-        Object.assign(state.order, { archiveReason: 'cancelled', archiveNote: null, archivedBy: params[0], archivedAt: '2026-11-18T11:00:00.000000Z' });
+      if(sql.includes('FROM user_account'))return [activeActor?[{userId:'7',roleCode:'sales',status:'active',clientId:null,mustChangePassword:0}]:[]];
+      if(sql.includes('FROM client_user WHERE'))return [[{id:'2'}]];
+      if(sql.startsWith('INSERT INTO notification'))return [{affectedRows:1,insertId:'1'}];
+      if (sql.includes('FROM inquiry WHERE inquiry_id=?')) return [[{...state.order,status:state.order.stageCode}]];
+      if (sql.includes('FROM cancellation_request')) return [[{ ...state.request }]];
+      if (sql.startsWith('SELECT (EXISTS(')) return [[{blocked:paid?1:0}]];
+      if (sql.startsWith('UPDATE inquiry SET')) {
+        Object.assign(state.order, { stageCode:'cancelled',archiveReason:'cancelled',archiveNote:null,archivedBy:'7', archivedAt: '2026-11-18T11:00:00.000000Z' });
         return [{ affectedRows: 1 }];
       }
-      if (sql.startsWith('UPDATE order_requests SET')) {
-        Object.assign(state.request, { status: params[0], response: params[1], decidedBy: params[2], decidedAt: '2026-11-18T11:00:00.000000Z' });
+      if (sql.startsWith('UPDATE cancellation_request SET')) {
+        Object.assign(state.request, { status: params[0], response:params[2],decidedBy:params[1], decidedAt: '2026-11-18T11:00:00.000000Z' });
         return [{ affectedRows: 1 }];
       }
       if (sql.startsWith('SELECT CAST(id AS CHAR) id, reason, status')) return [[{ ...state.request, resolvedAt: state.request.decidedAt }]];
-      if (sql.startsWith('INSERT INTO audit_events')) { state.audit.push(params); return [{ affectedRows: 1 }]; }
+      if (sql.startsWith('INSERT INTO audit_event')) { state.audit.push(params);return [{affectedRows:1,insertId:'1'}]; }
       throw new Error(`Unexpected SQL: ${sql}`);
     }
   };
@@ -63,7 +65,7 @@ test('accepting a pending cancellation archives the order and preserves request 
   assert.equal(result.success, true);
   assert.equal(result.data.archiveReason, 'cancelled');
   assert.equal(result.data.archived, true);
-  assert.equal(result.data.stageCode, 'inquiry');
+  assert.equal(result.data.stageCode,'cancelled');
   assert.equal(h.state.order.archiveReason, 'cancelled');
   assert.equal(h.state.request.status, 'approved');
   assert.equal(h.state.request.reason, 'Changed requirements.');
@@ -71,23 +73,23 @@ test('accepting a pending cancellation archives the order and preserves request 
   assert.equal(h.state.request.decidedBy, actor.userId);
   assert.equal(h.state.audit.length, 1);
   assert.equal(h.state.audit[0][1], 'cancellation.approved');
-  assert.equal(h.state.audit[0][5], 'Changed requirements.');
+  assert.equal(JSON.parse(h.state.audit[0][5]).status,'approved');assert.equal(JSON.parse(h.state.audit[0][5]).requestId,context.requestId);
   assert.deepEqual(h.counts(), { commits: 1, rollbacks: 0, destroyed: 0 });
 });
 
 test('declining a cancellation resolves its request without archiving or changing the prior stage', async () => {
   const h = harness();
   h.state.order.stageCode = 'quotation';
-  const result = await h.service.reviewCancellation('91', '802', 'declined', actor, context);
+  const result = await h.service.reviewCancellation('91', '802', 'declined',actor,context,{reason:'Sales review reason'});
   assert.equal(result.success, true);
   assert.equal(result.data.archiveReason, null);
   assert.equal(result.data.archived, false);
   assert.equal(result.data.stageCode, 'quotation');
   assert.equal(h.state.order.stageCode, 'quotation');
   assert.equal(h.state.order.archiveReason, null);
-  assert.equal(h.state.request.status, 'declined');
+  assert.equal(h.state.request.status,'rejected');
   assert.equal(h.state.request.reason, 'Changed requirements.');
-  assert.equal(h.calls.some(call => typeof call === 'object' && call.sql.startsWith('UPDATE orders SET')), false);
+  assert.equal(h.calls.some(call => typeof call === 'object' && call.sql.startsWith('UPDATE inquiry SET')), false);
   assert.equal(h.counts().commits, 1);
 });
 
@@ -112,13 +114,13 @@ test('duplicate, paid, unauthorized, and unknown cancellation decisions cannot m
 });
 
 test('cancellation decision write failures roll back and uncertain commits are not retried', async () => {
-  const failed = harness({ fail: 'INSERT INTO audit_events' });
+  const failed = harness({ fail: 'INSERT INTO audit_event' });
   assert.equal((await failed.service.reviewCancellation('91', '802', 'approved', actor)).code, 'SERVICE_UNAVAILABLE');
   assert.equal(failed.state.order.archiveReason, null);
   assert.equal(failed.state.request.status, 'pending');
   assert.equal(failed.counts().commits, 0);
   assert.equal(failed.counts().rollbacks, 1);
-  assert.equal(failed.counts().destroyed, 1);
+  assert.equal(failed.counts().destroyed,0);
 
   const uncertain = harness({ commitFailure: true });
   assert.equal((await uncertain.service.reviewCancellation('91', '802', 'approved', actor)).code, 'WRITE_OUTCOME_UNKNOWN');

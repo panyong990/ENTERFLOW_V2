@@ -9,10 +9,10 @@ function harness({ shipments = [], shipment = null, waybills = [], receipts = []
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
-      if (sql.includes('LIMIT ?') && sql.includes('FROM shipments s')) return [shipments];
-      if (sql.includes('WHERE s.id=?')) return [shipment ? [shipment] : []];
-      if (sql.includes('FROM waybills w')) return [waybills];
-      if (sql.includes('FROM delivery_receipts dr')) return [receipts];
+      if (sql.includes('LIMIT ?') && sql.includes('FROM delivery d')) return [shipments];
+      if (sql.includes('WHERE d.delivery_id=?')) return [shipment ? [shipment] : []];
+      if (sql.includes('FROM waybill WHERE')) return [waybills];
+      if (sql.includes('FROM delivery_receipt WHERE')) return [receipts];
       throw new Error(`Unexpected SQL: ${sql}`);
     },
     release() {}
@@ -36,8 +36,8 @@ test('Warehouse shipment list uses bounded parameterized SQL', async () => {
   const h = harness({ shipments: [{ id: '41', status: 'pending' }] });
   const result = await h.service.listShipments(warehouse, { status: 'pending', orderId: '91', limit: '25' });
   assert.equal(result.success, true);
-  assert.deepEqual(h.calls[0].params, ['pending', '91', 25]);
-  assert.match(h.calls[0].sql, /FROM shipments s/);
+  assert.deepEqual(h.calls[0].params, ['91','pending','25']);
+  assert.match(h.calls[0].sql, /FROM delivery d/);
   assert.match(h.calls[0].sql, /LIMIT \?/);
 });
 

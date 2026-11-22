@@ -1,7 +1,10 @@
+import {phase2Errors} from './phase2-response.js';
 import { logServiceFailure } from './service-failure-log.js';
 
 const responseErrors = {
-  FORBIDDEN: [403, 'Inventory maintenance access is required.'],
+  ...phase2Errors,
+  FORBIDDEN: [403, 'Inventory access is required.'],
+  SERVICE_UNAVAILABLE: [503, 'Inventory service is temporarily unavailable.'],
   NOT_FOUND: [404, 'Material was not found.'],
   ITEM_CODE_CONFLICT: [409, 'That material code is already in use.'],
   VALIDATION_ERROR: [400, 'Invalid material details.'],

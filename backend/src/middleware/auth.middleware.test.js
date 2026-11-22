@@ -187,7 +187,7 @@ test('authenticates valid sessions and attaches request identity', async () => {
     roleCode: 'admin',
     accountType: 'employee',
     clientId: null,
-    displayName: 'Test Administrator'
+    displayName: 'Test Administrator',mustChangePassword:false
   });
 
   assert.equal(Object.isFrozen(request.auth), true);

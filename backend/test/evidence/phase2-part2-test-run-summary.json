@@ -1,0 +1,254 @@
+﻿[
+    {
+        "file":  "phase2-admin-final.log",
+        "tests":  35,
+        "pass":  35,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-admin-port.log",
+        "tests":  35,
+        "pass":  34,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-boundary-regression.log",
+        "tests":  165,
+        "pass":  165,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-cancellation-client-final.log",
+        "tests":  31,
+        "pass":  31,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-client-port-01.log",
+        "tests":  26,
+        "pass":  16,
+        "fail":  10,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-client-port-02.log",
+        "tests":  26,
+        "pass":  24,
+        "fail":  2,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-client-sales-final.log",
+        "tests":  95,
+        "pass":  94,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-final-contract-checks.log",
+        "tests":  26,
+        "pass":  26,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-inventory-port.log",
+        "tests":  19,
+        "pass":  19,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-onboarding-debug.log",
+        "tests":  1,
+        "pass":  0,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-onboarding-final.log",
+        "tests":  1,
+        "pass":  1,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-onboarding-port.log",
+        "tests":  1,
+        "pass":  0,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-operations-http.log",
+        "tests":  37,
+        "pass":  37,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-part2-regression-acceptance.log",
+        "tests":  1123,
+        "pass":  1123,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-part2-regression-bounded.log",
+        "tests":  1122,
+        "pass":  1122,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-part2-regression-candidate.log",
+        "tests":  1085,
+        "pass":  1082,
+        "fail":  3,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-part2-regression-final-acceptance.log",
+        "tests":  1124,
+        "pass":  1124,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-part2-regression-final.log",
+        "tests":  1083,
+        "pass":  1082,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-part2-regression-initial.log",
+        "tests":  970,
+        "pass":  724,
+        "fail":  246,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-part2-regression-progress.log",
+        "tests":  1075,
+        "pass":  888,
+        "fail":  187,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-read-regression.log",
+        "tests":  20,
+        "pass":  19,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-rejection-port-02.log",
+        "tests":  27,
+        "pass":  27,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-rejection-port.log",
+        "tests":  1,
+        "pass":  0,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-sales-port-01.log",
+        "tests":  69,
+        "pass":  40,
+        "fail":  29,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-sales-port-02.log",
+        "tests":  69,
+        "pass":  68,
+        "fail":  1,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-sketch-lock-order.log",
+        "tests":  18,
+        "pass":  18,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-sketch-port.log",
+        "tests":  18,
+        "pass":  16,
+        "fail":  2,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    },
+    {
+        "file":  "phase2-stock-port.log",
+        "tests":  19,
+        "pass":  19,
+        "fail":  0,
+        "cancelled":  0,
+        "skipped":  0,
+        "todo":  0
+    }
+]

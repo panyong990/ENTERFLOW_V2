@@ -1,0 +1,28 @@
+{
+  "purpose": "Read-only diagnosis of observer TLS failure; no recovery invocation",
+  "connections": [
+    {
+      "role": "diagnostic owner",
+      "identity": {
+        "name": "enterflow_phase2_db",
+        "version": "8.4.13",
+        "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+        "connectionId": "13"
+      },
+      "tlsAuthorized": true,
+      "protocol": "TLSv1.3"
+    },
+    {
+      "role": "diagnostic observer",
+      "result": "failed",
+      "code": "HANDSHAKE_SSL_ERROR",
+      "tlsFailure": {
+        "code": "ERR_TLS_CERT_ALTNAME_INVALID",
+        "expectedIdentity": "127.0.0.1"
+      }
+    }
+  ],
+  "queries": [
+    "SELECT DATABASE() AS name,VERSION() AS version,@@server_uuid AS serverUuid,CAST(CONNECTION_ID() AS CHAR) AS connectionId"
+  ]
+}

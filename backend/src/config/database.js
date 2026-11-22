@@ -3,6 +3,7 @@ import { createDatabaseTlsOptions } from './database-tls.js';
 import { guardIntegrationPool, verifyIntegrationDatabaseIdentity } from './integration-database-identity.js';
 import { loadDatabaseCa } from './database-ca.js';
 import { loadRuntimeEnvironment, validateRuntimeConfig } from './runtime-config.js';
+import {guardPhase2Pool} from './phase2-pool.js';
 
 loadRuntimeEnvironment();
 const runtime = validateRuntimeConfig(process.env);
@@ -35,7 +36,7 @@ const rawPool = mysql.createPool({
   bigNumberStrings: true,
   decimalNumbers: false
 });
-export const pool = guardIntegrationPool(rawPool, runtime);
+export const pool = guardPhase2Pool(guardIntegrationPool(rawPool, runtime),runtime);
 
 export async function testDatabaseConnection() {
   const connection = await pool.getConnection();

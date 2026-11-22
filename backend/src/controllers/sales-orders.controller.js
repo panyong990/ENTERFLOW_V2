@@ -1,6 +1,8 @@
+import {phase2Errors} from './phase2-response.js';
 import { logServiceFailure } from './service-failure-log.js';
 
 const errors = {
+  ...phase2Errors,
   FORBIDDEN: [403, 'Sales access is required.'],
   INQUIRY_ALREADY_REJECTED: [409, 'This inquiry was already rejected. Its original rejection is preserved.'],
   CANCELLATION_ALREADY_DECIDED: [409, 'This cancellation request already has a recorded decision.'],
@@ -37,7 +39,7 @@ export function createSalesOrdersController({ service, logger = console }) {
       const result = operation === 'rejectInquiry' ? await service.rejectInquiry(request.params.id, request.body, request.auth, { requestId: request.requestId })
         : operation === 'acceptCancellation' || operation === 'declineCancellation' ? await service.reviewCancellation(
           request.params.id, request.params.requestId, operation === 'acceptCancellation' ? 'approved' : 'declined',
-          request.auth, { requestId: request.requestId }
+          request.auth, { requestId: request.requestId },request.body??{}
         )
         : operation === 'createQuotation' ? await service.createQuotation(request.params.id, request.body, request.auth)
         : operation === 'rejectionHistory' ? await service.rejectionHistory(request.query)
@@ -55,7 +57,7 @@ export function createSalesOrdersController({ service, logger = console }) {
       if (result?.success === true) return response.status(200).json({ success: true, data: result.data });
       const [status, message] = errors[result?.code] ?? errors.SERVICE_UNAVAILABLE;
       if (status === 503) logServiceFailure({ logger, operation: `sales.orders.${operation}`, requestId: request.requestId, stage: 'service_result', error: result });
-      return response.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message, ...(result?.errors && ['VALIDATION_ERROR', 'MATERIAL_COSTING_INCOMPLETE'].includes(result.code) ? { errors: result.errors } : {}) });
+      return response.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message, ...(['VALIDATION_ERROR', 'MATERIAL_COSTING_INCOMPLETE'].includes(result?.code) ? { errors: result.errors } : {}) });
     } catch (error) {
       logServiceFailure({ logger, operation: `sales.orders.${operation}`, requestId: request.requestId, stage, error });
       return response.status(503).json({ success: false, code: 'SERVICE_UNAVAILABLE', message: errors.SERVICE_UNAVAILABLE[1] });

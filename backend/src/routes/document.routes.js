@@ -1,3 +1,4 @@
+import {phase2Errors} from '../controllers/phase2-response.js';
 import { Router } from 'express';
 import express from 'express';
 import { pool } from '../config/database.js';
@@ -14,6 +15,7 @@ import { createEngineerSketchService } from '../services/engineer-sketch.service
 import { createInquiryUploadMiddleware } from '../middleware/inquiry-upload.middleware.js';
 
 const errors = {
+  ...phase2Errors,
   FORBIDDEN: [403, 'Client account access is required.'],
   INVALID_SUBMISSION_KEY: [400, 'A valid Idempotency-Key is required.'],
   DOCUMENT_RETRIEVAL_FAILED: [503, 'The sketch could not be retrieved. Try again.'],
@@ -34,7 +36,7 @@ const errors = {
   VALIDATION_ERROR: [400, 'Invalid document workflow request.']
 };
 function respond(res, result, successStatus = 200) { if (result?.success) return res.status(successStatus).json({ success: true, data: result.data }); const [status, message] = errors[result?.code] ?? [503, 'Document service is temporarily unavailable.']; return res.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message, ...(result?.errors ? { errors: result.errors } : {}) }); }
-function fileResponse(res, result) { if (!result?.success) return respond(res, result); res.set('Content-Type', result.data.mimeType); res.set('Content-Disposition', `inline; filename="${String(result.data.originalFilename).replace(/[^A-Za-z0-9._-]/g, '_')}"`); res.set('Cache-Control', 'no-store'); return res.status(200).send(result.data.buffer); }
+function fileResponse(res, result) { if (!result?.success) return respond(res, result); res.set('X-Content-Type-Options','nosniff');res.set('Content-Security-Policy',"sandbox; default-src 'none'");res.set('Content-Type', result.data.mimeType); res.set('Content-Disposition', `inline; filename="${String(result.data.originalFilename).replace(/[^A-Za-z0-9._-]/g, '_')}"`); res.set('Cache-Control', 'no-store'); return res.status(200).send(result.data.buffer); }
 
 export function createDocumentRouter({ service = createDocumentWorkflowsService({ db: pool }), sketchService = createEngineerSketchService({ db: pool }), validateSessionService = validateSession, updateSessionActivityService = updateSessionActivity, permissionChecker = hasPermission, appOrigin = process.env.APP_ORIGIN } = {}) {
   const router = Router();
@@ -74,10 +76,10 @@ export function createDocumentRouter({ service = createDocumentWorkflowsService(
   }
 
   router.post('/client/orders/:id/purchase-order', clientRole, permission('orders', 'read'), permission('quotations', 'read'), createOriginMiddleware({ appOrigin, allowMultipart: true }), createDocumentUploadMiddleware(), async (req, res) => {
-    try { return respond(res, await service.uploadPurchaseOrder({ clientId: req.auth.clientId, userId: req.auth.userId, orderId: req.params.id, reference: req.documentUpload.fields.reference, file: req.documentUpload.file, context: { requestId: req.requestId } }), 201); } catch { return respond(res, { code: 'DOCUMENT_UPLOAD_FAILED' }); }
+    try { return respond(res, await service.uploadPurchaseOrder({ clientId: req.auth.clientId, userId: req.auth.userId, orderId: req.params.id, reference: req.documentUpload.fields.reference,deliveryMethodId:req.documentUpload.fields.deliveryMethodId,quotationId:req.documentUpload.fields.quotationId, file: req.documentUpload.file, context: { requestId: req.requestId } }), 201); } catch { return respond(res, { code: 'DOCUMENT_UPLOAD_FAILED' }); }
   });
-  router.post('/client/orders/:id/payment-proof', clientRole, permission('payments', 'create'), createOriginMiddleware({ appOrigin, allowMultipart: true }), createDocumentUploadMiddleware(), async (req, res) => {
-    try { return respond(res, await service.uploadPaymentProof({ clientId: req.auth.clientId, userId: req.auth.userId, orderId: req.params.id, invoiceId: req.documentUpload.fields.invoiceId, amount: req.documentUpload.fields.amount, method: req.documentUpload.fields.method, referenceNumber: req.documentUpload.fields.referenceNumber, file: req.documentUpload.file, context: { requestId: req.requestId } }), 201); } catch { return respond(res, { code: 'DOCUMENT_UPLOAD_FAILED' }); }
+  router.post('/client/orders/:id/payment-proof', clientRole, permission('payments', 'create'), createOriginMiddleware({ appOrigin, allowMultipart: true }), createDocumentUploadMiddleware({multiple:true}), async (req, res) => {
+    try { return respond(res, await service.uploadPaymentProof({ clientId: req.auth.clientId, userId: req.auth.userId, orderId: req.params.id, invoiceId: req.documentUpload.fields.invoiceId, amount: req.documentUpload.fields.amount, method: req.documentUpload.fields.method,paymentMethodId:req.documentUpload.fields.paymentMethodId,note:req.documentUpload.fields.note, referenceNumber: req.documentUpload.fields.referenceNumber, files: req.documentUpload.files, context: { requestId: req.requestId } }), 201); } catch { return respond(res, { code: 'DOCUMENT_UPLOAD_FAILED' }); }
   });
   router.get('/client/purchase-order-files/:fileId', clientRole, permission('orders', 'read'), async (req, res) => { try { return fileResponse(res, await service.retrieveFile({ fileId: req.params.fileId, purchaseOrderId: req.query.purchaseOrderId, actor: req.auth })); } catch { return respond(res, { code: 'NOT_FOUND' }); } });
   router.get('/client/payment-files/:fileId', clientRole, permission('payments', 'read'), async (req, res) => { try { return fileResponse(res, await service.retrieveFile({ fileId: req.params.fileId, paymentId: req.query.paymentId, actor: req.auth })); } catch { return respond(res, { code: 'NOT_FOUND' }); } });

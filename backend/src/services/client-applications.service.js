@@ -183,7 +183,7 @@ export function createClientApplicationsService({ db, lockTimeoutSeconds = 2 }) 
           const [roles] = await connection.execute(
             `SELECT CAST(role_id AS CHAR) AS roleId FROM role WHERE role_name = 'Client' FOR SHARE`
           );
-          if (roles.length !== 1 || !validateApplicationId(roles[0].roleId).success) throw new Error('Client role is unavailable.');
+          if (roles.length !== 1 || !validateApplicationId(roles[0].roleId).success) return failure('REFERENCE_DATA_MISSING','The approved Client role must be provisioned before approval.');
           let stage = 'company';
           try {
             const [company] = await connection.execute(

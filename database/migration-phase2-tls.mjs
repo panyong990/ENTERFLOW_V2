@@ -17,7 +17,12 @@ export function verifyPhase2Peer(socket, name) {
 export async function connectPhase2(config, name, driver) {
   if (config.ssl?.verifyIdentity !== true || config.ssl?.rejectUnauthorized !== true) throw new Error('Phase 2 requires verified TLS before authentication');
   const mysql = driver ?? (await import('mysql2')).default;
-  const connection = mysql.createConnection(config);
+  // mysql2 caches TLS sessions by SSL-options object identity. A resumed
+  // session can expose an empty getPeerCertificate(), so the mandatory
+  // explicit IP/SAN check cannot inspect its certificate. Keep this client's
+  // SSL options private to each connection: require a full handshake and
+  // independently verify the peer BEFORE credentials on owner and observer.
+  const connection = mysql.createConnection({...config,ssl:{...config.ssl}});
   const original = connection.startTLS;
   let verified = false;
   if (typeof original !== 'function') {

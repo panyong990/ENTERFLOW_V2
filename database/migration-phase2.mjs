@@ -3,6 +3,7 @@ import { readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { root, checksum, splitSql } from './migration-core.mjs';
+import {extendPart1Metadata,splitPart1Sql} from './phase2-part1-contract.mjs';
 
 export const phase2History = '_enterflow_phase2_extension_history';
 export const phase2Files = Object.freeze([
@@ -10,11 +11,55 @@ export const phase2Files = Object.freeze([
   ['002_client_registration.sql', '1b0c30a391d95822bf56cd26a5a7742d322efd4010c7639f3dab8adfb962ea27'],
   ['003_username_support.sql', '95c7f5715281bf5cf1c2543edbdb94783d51803159ce2bd2f976971ea50fe8b5'],
 ].map(Object.freeze));
+export const phase2Part1Files=Object.freeze([...phase2Files,
+  Object.freeze(['004_client_requests.sql','a30c9acb9901d581b2f408718c5312e2384ad2887c84c00da8486d3bad739276']),
+  Object.freeze(['005_proof_of_payment.sql','0a2848b9c99857bf9a27e5caa4ff8a67eab603de9a56bca24c2acdd763242c92']),
+  Object.freeze(['006_request_target_history.sql','5aadb174b3b460474b565f4ae9d07b5de1e6e3aa643dcd37e9c8451e6bf1207c']),
+]);
 const evidence = 'phase2-execution/P2B002-2026-11-22/after-metadata.json';
 const evidenceHash = 'd4aaff00d4fe6aabe1ec319c467a05689d3fc6dfe1ab5ac869f6636a0fb015fe';
 const bootstrapHash = '8af1b73263db7a65c2d307fbdb395d9701e7071b1c8b93bcd135f216580a306d';
 const assert = (ok, message) => { if (!ok) throw new Error(message); };
 const quote = name => '`' + name.replaceAll('`', '``') + '`';
+
+// One reviewed failure only. No delete/adoption/reset API and no generic retry.
+export const usernameRecoveryHistory = Object.freeze([
+  ['2026-11-21T21:10:31.168Z','2026-11-21T21:10:31.222Z'],
+  ['2026-11-21T21:10:31.226Z','2026-11-21T21:10:31.294Z'],
+  ['2026-11-21T21:10:31.301Z',null],
+].map(Object.freeze));
+
+function verifyUsernameRecoveryHistory(rows) {
+  assert(rows.length === 3, '003 recovery requires exactly the reviewed three history entries');
+  const iso = value => value == null ? null : new Date(value).toISOString();
+  rows.forEach((row,i) => {
+    assert(row.state === (i === 2 ? 'failed' : 'applied') &&
+      (i === 2 ? ['HANDSHAKE_SSL_ERROR','PHASE2_FAILURE'].includes(row.error_code) : row.error_code === null) &&
+      iso(row.started_at) === usernameRecoveryHistory[i][0] &&
+      iso(row.applied_at) === usernameRecoveryHistory[i][1],
+    '003 recovery refuses changed failure or successful history');
+  });
+}
+
+async function verifyUsernameRecoveryPrerequisites(db) {
+  const [[settings]] = await db.query('SELECT @@performance_schema AS performanceSchema,@@session.innodb_table_locks AS innodbTableLocks');
+  const [instruments] = await db.query("SELECT ENABLED FROM performance_schema.setup_instruments WHERE NAME='wait/lock/metadata/sql/mdl'");
+  const [[thread]] = await db.query('SELECT COUNT(*) AS n FROM performance_schema.threads WHERE PROCESSLIST_ID=CONNECTION_ID()');
+  assert(Number(settings.performanceSchema) === 1 && Number(settings.innodbTableLocks) === 1 &&
+    instruments.length === 1 && instruments[0].ENABLED === 'YES' && Number(thread.n) === 1,
+  '003 recovery locking prerequisites unavailable');
+  const [grants] = await db.query('SHOW GRANTS FOR CURRENT_USER()');
+  const required = ['SELECT','ALTER','INDEX','REFERENCES','UPDATE','LOCK TABLES'];
+  const allowed = new Set();
+  for (const row of grants) {
+    const match = /^GRANT (.+) ON (\*\.\*|`enterflow_phase2_db`\.\*) TO /i.exec(Object.values(row)[0]);
+    if (match) for (const p of match[1].split(/,\s*/)) {
+      if (p === 'ALL PRIVILEGES') required.forEach(p => allowed.add(p));
+      else allowed.add(p);
+    }
+  }
+  assert(required.every(p => allowed.has(p)), '003 recovery grants unavailable; no privilege changes permitted');
+}
 
 export function validatePhase2Target(env) {
   assert(env.DB_HOST === '127.0.0.1' && env.DB_PORT === '62286' && env.DB_NAME === 'enterflow_phase2_db',
@@ -33,12 +78,12 @@ async function regularFile(base, relative) {
   return readFile(current, 'utf8');
 }
 
-export async function discoverPhase2FilesAt(base = root) {
+export async function discoverPhase2FilesAt(base = root,part1 = false) {
   const result = [];
-  for (const [name, digest] of phase2Files) {
+  for (const [name, digest] of (part1 ? phase2Part1Files : phase2Files)) {
     const text = await regularFile(base, `phase2-extensions/${name}`);
     assert(checksum(text) === digest, `Reviewed Phase 2 SQL checksum mismatch: ${name}`);
-    result.push({ file: name, checksum: digest, statements: splitSql(text) });
+    result.push({ file: name, checksum: digest, statements: part1 && !phase2Files.some(([f])=>f===name) ? splitPart1Sql(text) : splitSql(text) });
   }
   return result;
 }
@@ -147,7 +192,7 @@ export function phase2ExpectedMetadata(baseline, stage, withHistory) {
     column(t, 'applied_at', 'datetime(3)', 'YES'); column(t, 'error_code', 'varchar(80)', 'YES');
     key(t, 'PRIMARY', ['file'], 'PRIMARY KEY');
   }
-  return m;
+  return extendPart1Metadata(m,stage,{table,column,key,index});
 }
 
 function canonical(rows) {
@@ -170,7 +215,7 @@ export function verifyPhase2HistoryObject(metadata, baseline) {
   verifyPhase2Metadata(own(metadata), own(expected));
 }
 
-export async function originalDataSnapshot(db, baseline) {
+export async function originalDataSnapshot(db, baseline, renamed = false) {
   const result = [];
   for (const {table} of baseline.tables) {
     const columns = baseline.columns.filter(c => c.table === table).sort((a,b) => a.position-b.position).map(c => quote(c.column));
@@ -178,7 +223,8 @@ export async function originalDataSnapshot(db, baseline) {
     assert(pk.length > 0, 'Original table has no deterministic primary key');
     // Return only hashes, never original record contents. Use ORIGINAL columns,
     // so adding nullable user_account.username does not change the comparison.
-    const [rows] = await db.query(`SELECT SHA2(CAST(JSON_ARRAY(${columns.join(',')}) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM ${quote(table)} ORDER BY ${pk.join(',')}`);
+    const actualTable=renamed ? ({client_receipt:'proof_of_payment',client_receipt_file:'proof_of_payment_file'}[table] ?? table) : table;
+    const [rows] = await db.query(`SELECT SHA2(CAST(JSON_ARRAY(${columns.join(',')}) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM ${quote(actualTable)} ORDER BY ${pk.join(',')}`);
     result.push({table,rows:rows.length,sha256:createHash('sha256').update(JSON.stringify(rows.map(r => r.row_hash))).digest('hex')});
   }
   return result;
@@ -212,7 +258,7 @@ async function guardedUsernameAlter(db, sql, log, context) {
     step = 'observer lock verification';
     // This SELECT must NOT run in the LOCK TABLES session. MySQL rejected that
     // self-inspection with ER_TABLE_NOT_LOCKED in the actual 003 attempt.
-    const [[lock]] = await context.observer.query("SELECT COUNT(*) AS n FROM performance_schema.metadata_locks l JOIN performance_schema.threads t ON t.THREAD_ID=l.OWNER_THREAD_ID WHERE t.PROCESSLIST_ID=? AND l.OBJECT_SCHEMA=DATABASE() AND l.OBJECT_TYPE='TABLE' AND l.OBJECT_NAME='client_applications' AND l.LOCK_STATUS='GRANTED' AND l.LOCK_TYPE='SHARED_NO_READ_WRITE' AND l.LOCK_DURATION='EXPLICIT'",[context.ownerConnectionId]);
+    const [[lock]] = await context.observer.query("SELECT COUNT(*) AS n FROM performance_schema.metadata_locks l JOIN performance_schema.threads t ON t.THREAD_ID=l.OWNER_THREAD_ID WHERE t.PROCESSLIST_ID=? AND l.OBJECT_SCHEMA=DATABASE() AND l.OBJECT_TYPE='TABLE' AND l.OBJECT_NAME='client_applications' AND l.LOCK_STATUS='GRANTED' AND l.LOCK_TYPE='SHARED_NO_READ_WRITE' AND l.LOCK_DURATION='TRANSACTION'",[context.ownerConnectionId]);
     assert(Number(lock.n) === 1, 'Cannot verify exclusive activation window; stop before ALTER');
     step = 'locked empty-table check';
     const [[count]] = await db.query('SELECT COUNT(*) AS n FROM client_applications');
@@ -233,8 +279,10 @@ async function guardedUsernameAlter(db, sql, log, context) {
 
 export async function runPhase2(db, command, target, base = root, log = console.log, {openLockObserver} = {}) {
   validatePhase2Target(target);
-  assert(['status','migrate'].includes(command), 'Phase 2 permits status or migrate only; no baseline, seed or adoption');
-  const files = await discoverPhase2FilesAt(base);
+  assert(['status','migrate','resume-003','status-part1','migrate-part1'].includes(command), 'Phase 2 permits status or migrate only in reviewed scopes, plus explicit resume-003; no baseline, seed or adoption');
+  const part1=command.endsWith('-part1');
+  const recovering = command === 'resume-003';
+  const files = await discoverPhase2FilesAt(base,part1);
   const baseline = await loadPhase2Baseline(base);
   const [[identity]] = await db.query('SELECT DATABASE() AS name, VERSION() AS version, @@server_uuid AS serverUuid');
   assert(identity.name === 'enterflow_phase2_db' && identity.version === '8.4.13' && identity.serverUuid === '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8', 'Phase 2 server/database identity mismatch');
@@ -250,25 +298,35 @@ export async function runPhase2(db, command, target, base = root, log = console.
     // Validate object type, engine, columns, keys and absence of triggers BEFORE contents.
     if (exists) verifyPhase2HistoryObject(metadata, baseline);
     // Never retrieve the shared/protected migration ledger or unknown-row checksums.
-    const [rows] = exists ? await db.query(`SELECT file,state,started_at,applied_at FROM ${quote(phase2History)} ORDER BY file`) : [[]];
+    const [rows] = exists ? await db.query(`SELECT file,state,started_at,applied_at${recovering ? ',error_code' : ''} FROM ${quote(phase2History)} ORDER BY file`) : [[]];
     assert(rows.length <= files.length, 'Unexpected Phase 2 extension history');
     rows.forEach((r, i) => {
       assert(r.file === files[i]?.file, 'Out-of-order/unknown Phase 2 history; stop');
-      assert(r.state === 'applied' && r.applied_at != null, `Phase 2 ${r.state} history: no automatic retry; Stephanie recovery required`);
+      if (!recovering) assert(r.state === 'applied' && r.applied_at != null, `Phase 2 ${r.state} history: no automatic retry; Stephanie recovery required`);
     });
+    if (recovering) verifyUsernameRecoveryHistory(rows);
     for (const [i, row] of rows.entries()) {
       const [[digest]] = await db.execute(`SELECT checksum FROM ${quote(phase2History)} WHERE file=?`, [row.file]);
       assert(digest?.checksum === files[i].checksum, `Phase 2 history checksum mismatch: ${row.file}`);
     }
-    verifyPhase2Metadata(metadata, phase2ExpectedMetadata(baseline, rows.length, exists));
-    if (command === 'status') {
+    const appliedCount = recovering ? 2 : rows.length;
+    verifyPhase2Metadata(metadata, phase2ExpectedMetadata(baseline, appliedCount, exists));
+    if (part1) assert(exists && rows.length>=3,'Part 1 requires applied extensions 001-003; never initializes or recovers them');
+    if (command === 'status' || command==='status-part1') {
       files.forEach((f, i) => log(`${i < rows.length ? 'APPLIED' : 'PENDING'} ${f.file}`));
       return;
     }
-    const dataBefore = await originalDataSnapshot(db,baseline);
+    const preservationBaseline=part1 ? phase2ExpectedMetadata(baseline,3,false) : baseline;
+    const dataBefore = await originalDataSnapshot(db,preservationBaseline,metadata.tables.some(t=>t.table==='proof_of_payment'));
+    if (recovering) {
+      // This recovery is authorized only for the verified empty P2B002 state.
+      assert(dataBefore.length === 40 && dataBefore.every(t => t.rows === 0),
+        '003 recovery original P2B002 data changed; separate review required');
+      await verifyUsernameRecoveryPrerequisites(db);
+    }
     log(JSON.stringify({event:'ORIGINAL_DATA_BEFORE',tables:dataBefore}));
     // Safe initial activation only: no inferred historical values or populated backfill.
-    if (rows.length < 3 && rows.length >= 2) {
+    if (appliedCount < 3 && appliedCount >= 2) {
       const [[count]] = await db.query('SELECT COUNT(*) AS n FROM client_applications');
       assert(String(count.n) === '0', '003 requires empty client_applications; approved backfill plan required');
     }
@@ -280,35 +338,47 @@ export async function runPhase2(db, command, target, base = root, log = console.
       await db.query(`CREATE TABLE ${quote(phase2History)} (file VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,checksum CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,state ENUM('applying','applied','failed') NOT NULL,started_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),applied_at DATETIME(3) NULL,error_code VARCHAR(80) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
       verifyPhase2Metadata(await readPhase2Metadata(db), phase2ExpectedMetadata(baseline, 0, true));
     }
-    for (let i = rows.length; i < files.length; i++) {
+    for (let i = appliedCount; i < files.length; i++) {
       const f = files[i];
       // Recheck before the first ALTER too, including when 002 ran in this invocation.
       if (i === 2) {
         const [[count]] = await db.query('SELECT COUNT(*) AS n FROM client_applications');
         assert(String(count.n) === '0', '003 requires empty client_applications; stop before ALTER');
       }
-      const [marker] = await db.execute(`INSERT INTO ${quote(phase2History)} (file,checksum,state) VALUES (?,?,'applying')`, [f.file, f.checksum]);
+      // Framework-owned compare-and-set, never manual history rewriting. Keep
+      // the original start time and failure code; log the original witness.
+      if (recovering) log(JSON.stringify({event:'003_RECOVERY_VALIDATED',history:rows,checksum:f.checksum}));
+      const [marker] = recovering
+        ? await db.execute(`UPDATE ${quote(phase2History)} SET state='applying' WHERE file=? AND checksum=? AND state='failed' AND error_code IN ('HANDSHAKE_SSL_ERROR','PHASE2_FAILURE') AND applied_at IS NULL AND started_at=?`,
+          [f.file,f.checksum,new Date(usernameRecoveryHistory[2][0])])
+        : await db.execute(`INSERT INTO ${quote(phase2History)} (file,checksum,state) VALUES (?,?,'applying')`, [f.file, f.checksum]);
       assert(marker.affectedRows === 1 && !marker.warningStatus, 'Phase 2 applying marker not acknowledged; stop before DDL');
       await db.commit(); // Durable failure marker before any implicitly committing DDL.
       let lockContext;
       try {
         if (i === 2) lockContext = await usernameLockObserver(db,openLockObserver);
-        for (const sql of f.statements) {
+        for (const [statementIndex,sql] of f.statements.entries()) {
+          if(part1) log(JSON.stringify({event:'PART1_STATEMENT_STARTED',file:f.file,statement:statementIndex+1,checksum:checksum(sql)}));
           if (i === 2) await guardedUsernameAlter(db, sql, log,lockContext);
           else {
             const [result] = await db.query(sql);
             assert(!result?.warningStatus, 'Phase 2 SQL warning; stop');
           }
+          if(part1) log(JSON.stringify({event:'PART1_STATEMENT_COMPLETED',file:f.file,statement:statementIndex+1}));
         }
         await db.commit();
         metadata = await readPhase2Metadata(db);
         verifyPhase2Metadata(metadata, phase2ExpectedMetadata(baseline, i + 1, true));
+        if(part1) {
+          const preserved=await originalDataSnapshot(db,preservationBaseline,metadata.tables.some(t=>t.table==='proof_of_payment'));
+          assert(JSON.stringify(dataBefore)===JSON.stringify(preserved),'Part 1 existing data changed; stop before completion marker');
+        }
         if (lockContext) {
           const observer = lockContext.observer;
           lockContext = null;
           await observer.end();
         }
-        const [completed] = await db.execute(`UPDATE ${quote(phase2History)} SET state='applied',applied_at=UTC_TIMESTAMP(3) WHERE file=? AND state='applying'`, [f.file]);
+        const [completed] = await db.execute(`UPDATE ${quote(phase2History)} SET state='applied',applied_at=UTC_TIMESTAMP(3)${recovering ? ',error_code=NULL' : ''} WHERE file=? AND state='applying'`, [f.file]);
         assert(completed.affectedRows === 1 && !completed.warningStatus, 'Phase 2 completion marker not acknowledged');
         await db.commit();
         log(`APPLIED ${f.file}`);
@@ -320,7 +390,7 @@ export async function runPhase2(db, command, target, base = root, log = console.
         if (lockContext) await lockContext.observer.end().catch(() => {});
       }
     }
-    const dataAfter = await originalDataSnapshot(db,baseline);
+    const dataAfter = await originalDataSnapshot(db,preservationBaseline,metadata.tables.some(t=>t.table==='proof_of_payment'));
     assert(JSON.stringify(dataBefore) === JSON.stringify(dataAfter), 'Original P2B002 records changed during activation; stop and investigate');
     log(JSON.stringify({event:'ORIGINAL_DATA_PRESERVED',tables:dataAfter}));
   } finally { await db.execute('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {}); }

@@ -14,9 +14,10 @@ try {
     app, testDatabaseConnection, pool, host, port, logger: console, processAdapter: process
   });
   await lifecycle.run();
-} catch {
+} catch (error) {
   console.error(JSON.stringify({
-    event: 'server_initialization_failed', category: 'startup_configuration_error'
+    event: 'server_initialization_failed',
+    category: 'startup_configuration_error'
   }));
   process.exitCode = 1;
 }

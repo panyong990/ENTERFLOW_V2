@@ -1,5 +1,5 @@
 // Keep API failures JSON-only; Vite's default unreachable-target response is empty.
-export function createApiProxy(target = 'http://127.0.0.1:3000') {
+export function createApiProxy(target = 'http://127.0.0.1:3107') {
   return {
     target,
     changeOrigin: false,

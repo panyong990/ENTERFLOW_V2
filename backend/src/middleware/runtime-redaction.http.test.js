@@ -91,10 +91,9 @@ for (const env of ['production', 'development']) {
     assert.equal(response.status, 502);
     assert.equal(response.headers.get('x-synthetic-status'), 'retained');
     assert.match(response.headers.get('content-type'), /text\/html/);
-    // Preserve Express's pre-existing development response contract. Its debug
-    // body is not application logging and must not be enabled in production.
-    if (env === 'development') assert.ok(text.includes(secrets[0]));
-    else assert.match(text, /Bad Gateway/);
+    // Phase 2 returns safe error bodies in every environment.
+    for(const secret of secrets)assert(!text.includes(secret));
+    assert.match(text,/Bad Gateway/);
     assertSafe(entries, response.headers.get('x-request-id'), 502);
     const failures = entries.filter(entry => entry.level === 'error');
     assert.equal(failures.length, 1);

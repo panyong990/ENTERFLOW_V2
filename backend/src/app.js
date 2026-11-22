@@ -19,6 +19,7 @@ import documentRoutes from './routes/document.routes.js';
 import accountingRoutes from './routes/accounting.routes.js';
 import warehouseRoutes from './routes/warehouse.routes.js';
 import logisticsRoutes from './routes/logistics.routes.js';
+import phase2OperationsRoutes from './routes/phase2-operations.routes.js';
 
 // Resolve Express's own responder even when dependencies are not hoisted.
 const finalhandler = createRequire(import.meta.resolve('express'))('finalhandler');
@@ -46,6 +47,7 @@ export function createApp({
   app.use('/api/accounting', accountingRoutes);
   app.use('/api/warehouse', warehouseRoutes);
   app.use('/api/logistics', logisticsRoutes);
+  app.use('/api/phase2',phase2OperationsRoutes);
   app.use('/api/workspace/sales', salesWorkspaceRoutes);
   app.use('/api/sales', clientDirectoryRoutes);
   app.use('/api/client', clientPortalRoutes);
@@ -77,7 +79,7 @@ export function createApp({
       'charset.unsupported', 'entity.parse.failed', 'request.aborted',
       'request.size.invalid'].includes(error?.type);
     finalhandler(request, response, {
-      env: app.get('env'),
+      env: 'production',
       onerror: () => console.error(JSON.stringify({
         event: 'http_request_failed',
         category: parserFailure ? 'request_body_error' : 'unhandled_error',

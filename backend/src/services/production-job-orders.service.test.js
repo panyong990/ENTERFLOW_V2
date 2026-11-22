@@ -9,18 +9,20 @@ function database({ rows = [row], audit = [{ actorId: '8', newValue: JSON.string
   const connection = { async execute(sql, params) {
     calls.push({ sql, params });
     if (sql.startsWith('SELECT COUNT(*)')) return [[{ total: rows.length }]];
-    if (sql.includes('FROM job_orders jo') && sql.includes('WHERE jo.id=?')) return [detail ? [detail] : []];
-    if (sql.includes('FROM job_orders jo')) return [rows];
+    if (sql.includes('FROM job_order WHERE jo_id=?')) return [detail ? [detail] : []];
+    if (sql.includes('FROM job_order j JOIN purchase_order')) return [rows];
     if (sql.includes("subject_type='job_order'")) return [audit];
     if (sql.includes('FROM quotations WHERE id=?')) return [[{ id: '31', reference: 'Q-1', revisionNumber: 2, status: 'sent', totalAmount: '100.00', downpaymentPercent: 20, downpaymentAmount: '20.00' }]];
-    if (sql.includes('FROM purchase_orders WHERE id=?')) return [[{ id: '401', reference: 'PO-1', clientReference: 'CLIENT-PO', uploadedAt: null, receivedAt: null, clearedAt: null }]];
-    if (sql.includes('FROM production_stages')) return [[
+    if (sql.includes('FROM purchase_order p JOIN quotation')) return [[{id:'401',acceptedQuotationId:'31',acceptedQuotationReference:'Q-1',reference:'PO-1',clientReference: 'CLIENT-PO', uploadedAt: null, receivedAt: null, clearedAt: null }]];
+    if (sql.includes('FROM job_order_stage js JOIN production_stage')) return [[
       { position: 0, label: 'Molding' },
       { position: 8, label: 'Quality / Product Inspection' }
     ]];
-    if (sql.includes('FROM production_events pe')) return [[
+    if (sql.includes('FROM production_stage_event e')) return [[
       { id: '601', stagePosition: 0, action: 'done', reason: null, performedBy: '8', occurredAt: '2026-11-18T00:01:00.000000Z', stageLabel: 'Molding' }
     ]];
+    if(sql.includes('FROM production_plan')||sql.includes('FROM material_shortage_report'))return [[]];
+    if(sql.includes('FROM job_order_item'))return [[]];
     throw new Error(`Unexpected SQL: ${sql}`);
   }, release() {} };
   return { db: { async getConnection() { return connection; } }, calls };

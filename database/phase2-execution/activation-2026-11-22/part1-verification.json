@@ -1,0 +1,434 @@
+{
+  "result": "PASS",
+  "identity": {
+    "name": "enterflow_phase2_db",
+    "version": "8.4.13",
+    "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+    "hostname": "2acac2d1b606",
+    "account": "root@%",
+    "connectionId": "69"
+  },
+  "tables": 45,
+  "triggers": 47,
+  "oldNamesAbsent": true,
+  "history001003Unchanged": true,
+  "history": [
+    {
+      "file": "001_auth_sessions.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.168Z",
+      "applied_at": "2026-11-21T21:10:31.222Z",
+      "error_code": null,
+      "checksum": "ae15868de9bcc5205cdbe441357d57b5b091f8a36faee69465b327b22bf893fe"
+    },
+    {
+      "file": "002_client_registration.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.226Z",
+      "applied_at": "2026-11-21T21:10:31.294Z",
+      "error_code": null,
+      "checksum": "1b0c30a391d95822bf56cd26a5a7742d322efd4010c7639f3dab8adfb962ea27"
+    },
+    {
+      "file": "003_username_support.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.301Z",
+      "applied_at": "2026-11-22T10:30:49.024Z",
+      "error_code": null,
+      "checksum": "95c7f5715281bf5cf1c2543edbdb94783d51803159ce2bd2f976971ea50fe8b5"
+    },
+    {
+      "file": "004_client_requests.sql",
+      "state": "applied",
+      "started_at": "2026-11-22T13:32:56.487Z",
+      "applied_at": "2026-11-22T13:32:56.681Z",
+      "error_code": null,
+      "checksum": "a30c9acb9901d581b2f408718c5312e2384ad2887c84c00da8486d3bad739276"
+    },
+    {
+      "file": "005_proof_of_payment.sql",
+      "state": "applied",
+      "started_at": "2026-11-22T13:32:56.684Z",
+      "applied_at": "2026-11-22T13:32:56.802Z",
+      "error_code": null,
+      "checksum": "0a2848b9c99857bf9a27e5caa4ff8a67eab603de9a56bca24c2acdd763242c92"
+    },
+    {
+      "file": "006_request_target_history.sql",
+      "state": "applied",
+      "started_at": "2026-11-22T13:38:12.418Z",
+      "applied_at": "2026-11-22T13:38:12.490Z",
+      "error_code": null,
+      "checksum": "5aadb174b3b460474b565f4ae9d07b5de1e6e3aa643dcd37e9c8451e6bf1207c"
+    }
+  ],
+  "preserved": [
+    {
+      "before": "audit_event",
+      "after": "audit_event",
+      "rows": 8,
+      "preserved": true
+    },
+    {
+      "before": "client",
+      "after": "client",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "client_applications",
+      "after": "client_applications",
+      "rows": 1,
+      "preserved": true
+    },
+    {
+      "before": "client_receipt",
+      "after": "proof_of_payment",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "client_receipt_file",
+      "after": "proof_of_payment_file",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "client_user",
+      "after": "client_user",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "cost_estimate",
+      "after": "cost_estimate",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "cost_estimate_material",
+      "after": "cost_estimate_material",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "delivery",
+      "after": "delivery",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "delivery_item",
+      "after": "delivery_item",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "delivery_method",
+      "after": "delivery_method",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "delivery_receipt",
+      "after": "delivery_receipt",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "document",
+      "after": "document",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "filter_type",
+      "after": "filter_type",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "finished_good",
+      "after": "finished_good",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "inquiry",
+      "after": "inquiry",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "inquiry_item",
+      "after": "inquiry_item",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "job_order",
+      "after": "job_order",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "job_order_item",
+      "after": "job_order_item",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "job_order_stage",
+      "after": "job_order_stage",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "material_category",
+      "after": "material_category",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "material_shortage_report",
+      "after": "material_shortage_report",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "notification",
+      "after": "notification",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "payment_method",
+      "after": "payment_method",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "payment_transaction",
+      "after": "payment_transaction",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "production_plan",
+      "after": "production_plan",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "production_stage",
+      "after": "production_stage",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "production_stage_event",
+      "after": "production_stage_event",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "purchase_order",
+      "after": "purchase_order",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "quotation",
+      "after": "quotation",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "quotation_item",
+      "after": "quotation_item",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "raw_material",
+      "after": "raw_material",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "role",
+      "after": "role",
+      "rows": 8,
+      "preserved": true
+    },
+    {
+      "before": "sales_invoice",
+      "after": "sales_invoice",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "signed_delivery_receipt",
+      "after": "signed_delivery_receipt",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "stock_movement",
+      "after": "stock_movement",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "stock_request",
+      "after": "stock_request",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "stock_request_item",
+      "after": "stock_request_item",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "unit_of_measure",
+      "after": "unit_of_measure",
+      "rows": 0,
+      "preserved": true
+    },
+    {
+      "before": "user_account",
+      "after": "user_account",
+      "rows": 8,
+      "preserved": true
+    },
+    {
+      "before": "user_sessions",
+      "after": "user_sessions",
+      "rows": 3,
+      "preserved": true
+    },
+    {
+      "before": "waybill",
+      "after": "waybill",
+      "rows": 0,
+      "preserved": true
+    }
+  ],
+  "liveTests": [
+    {
+      "evidence": "part1-live-tests.json",
+      "checks": 33,
+      "queries": 161,
+      "rollback": true
+    },
+    {
+      "evidence": "part1-final-live-tests.json",
+      "checks": 34,
+      "queries": 165,
+      "rollback": true
+    }
+  ],
+  "rolledBackFixtureDml": {
+    "role": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "user_account": {
+      "inserts": 4,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "client": {
+      "inserts": 4,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "client_user": {
+      "inserts": 4,
+      "updates": 0,
+      "expectedRejections": 2
+    },
+    "inquiry": {
+      "inserts": 4,
+      "updates": 0,
+      "expectedRejections": 2
+    },
+    "quotation": {
+      "inserts": 3,
+      "updates": 0,
+      "expectedRejections": 2
+    },
+    "quotation_revision_request": {
+      "inserts": 4,
+      "updates": 4,
+      "expectedRejections": 12
+    },
+    "cancellation_request": {
+      "inserts": 3,
+      "updates": 3,
+      "expectedRejections": 16
+    },
+    "payment_method": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "delivery_method": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "document": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "purchase_order": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 3
+    },
+    "sales_invoice": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "proof_of_payment": {
+      "inserts": 2,
+      "updates": 2,
+      "expectedRejections": 2
+    },
+    "proof_of_payment_file": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "payment_transaction": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "job_order": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 0
+    },
+    "notification": {
+      "inserts": 2,
+      "updates": 2,
+      "expectedRejections": 2
+    },
+    "audit_event": {
+      "inserts": 2,
+      "updates": 0,
+      "expectedRejections": 2
+    }
+  },
+  "relationships": {
+    "orphanPayments": "0",
+    "orphanPoDocuments": "0"
+  }
+}

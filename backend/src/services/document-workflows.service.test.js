@@ -1,197 +1,21 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDocumentWorkflowsService } from './document-workflows.service.js';
-import { createMockDocumentStorage } from '../storage/document-storage.js';
-
-test('purchase-order upload validates a valid PDF and stores its attachment', async () => {
-  const calls = [];
-
-  const connection = {
-    async beginTransaction() {},
-    async commit() {},
-    async rollback() {},
-    release() {},
-    async execute(sql) {
-      calls.push(sql);
-
-      if (sql.includes('FROM orders o')) {
-        return [[{ id: '1', clientId: '2' }]];
-      }
-      if (sql.includes('FROM quotations q')) {
-        return [[{ id: '3', status: 'sent', downpaymentPercent: 20 }]];
-      }
-      if (sql.includes('SELECT action FROM audit_events')) {
-        return [[{ action: 'quotation.accepted' }]];
-      }
-      if (sql.includes('FROM purchase_orders WHERE')) {
-        return [[{ id: '4', reference: 'PO-TEST' }]];
-      }
-      if (sql.startsWith('INSERT INTO files')) {
-        return [{ affectedRows: 1, insertId: 5 }];
-      }
-      if (sql.startsWith('UPDATE files')) {
-        return [{ affectedRows: 1 }];
-      }
-      if (sql.startsWith('INSERT INTO purchase_order_files')) {
-        return [{ affectedRows: 1 }];
-      }
-      return [{ affectedRows: 1 }];
-    }
-  };
-
-  const service = createDocumentWorkflowsService({
-    db: { async getConnection() { return connection; } },
-    storage: createMockDocumentStorage()
-  });
-
-  const result = await service.uploadPurchaseOrder({
-    clientId: '2',
-    userId: '6',
-    orderId: '1',
-    reference: 'PO-TEST',
-    file: {
-      filename: 'purchase-order.pdf',
-      mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.7\nsynthetic test document')
-    }
-  });
-
-  assert.equal(result.success, true, JSON.stringify(result));
-  assert.ok(calls.some(sql => sql.startsWith('INSERT INTO files')));
-});
-
-test('payment-proof upload accepts a valid PDF and links its attachment', async () => {
-  const calls = [];
-  let committed = false;
-
-  const connection = {
-    async beginTransaction() {},
-    async commit() { committed = true; },
-    async rollback() {},
-    release() {},
-    async execute(sql) {
-      calls.push(sql);
-
-      if (sql.includes('FROM invoices i JOIN orders o')) {
-        return [[{
-          invoiceId: '10',
-          orderId: '1',
-          clientId: '2',
-          requiredDownpayment: '500.00',
-          sentAt: '2026-11-18',
-          purchaseOrderId: '4',
-          receivedAt: '2026-11-18',
-          clearedAt: '2026-11-18'
-        }]];
-      }
-      if (sql.startsWith('INSERT INTO payments')) {
-        return [{ affectedRows: 1, insertId: 20 }];
-      }
-      if (sql.startsWith('INSERT INTO files')) {
-        return [{ affectedRows: 1, insertId: 21 }];
-      }
-      if (sql.startsWith('UPDATE files')) {
-        return [{ affectedRows: 1 }];
-      }
-      if (sql.startsWith('INSERT INTO payment_files')) {
-        return [{ affectedRows: 1 }];
-      }
-      return [{ affectedRows: 1 }];
-    }
-  };
-
-  const service = createDocumentWorkflowsService({
-    db: { async getConnection() { return connection; } },
-    storage: createMockDocumentStorage()
-  });
-
-  const result = await service.uploadPaymentProof({
-    clientId: '2',
-    userId: '6',
-    orderId: '1',
-    invoiceId: '10',
-    amount: '500.00',
-    method: 'bank_transfer',
-    referenceNumber: 'TEST-REFERENCE',
-    file: {
-      filename: 'payment-proof.pdf',
-      mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.7\nsynthetic payment proof')
-    }
-  });
-
-  assert.equal(result.success, true, JSON.stringify(result));
-  assert.equal(committed, true);
-  assert.ok(calls.some(sql => sql.startsWith('INSERT INTO files')));
-  assert.ok(calls.some(sql => sql.startsWith('INSERT INTO payment_files')));
-});
-
-test('D07 review queue returns one proof-only representative per payment without hiding recorded decisions', async () => {
-  const payments = [
-    { id: '9007199254740993', paymentType: 'DOWNPAYMENT', verificationStatus: 'pending', attachments: [] },
-    { id: '9007199254740994', paymentType: 'DOWNPAYMENT', verificationStatus: 'pending', attachments: [{ id: '1', purpose: 'receipt' }] },
-    { id: '9007199254740995', paymentType: 'DOWNPAYMENT', verificationStatus: 'pending', attachments: [{ id: '10', purpose: 'proof_of_payment' }, { id: '1', purpose: 'receipt' }, { id: '2', purpose: 'proof_of_payment' }] },
-    { id: '9007199254740996', paymentType: 'DOWNPAYMENT', verificationStatus: 'verified', attachments: [{ id: '9007199254740995', purpose: 'proof_of_payment' }] },
-    { id: '9007199254740997', paymentType: 'DOWNPAYMENT', verificationStatus: 'rejected', attachments: [{ id: '3', purpose: 'proof_of_payment' }] },
-    { id: '9007199254740998', paymentType: 'BALANCE_PAYMENT', verificationStatus: 'pending', attachments: [{ id: '4', purpose: 'proof_of_payment' }] },
-  ];
-  const calls = [];
-  const connection = {
-    async execute(sql) {
-      calls.push(sql);
-      assert.match(sql, /pf.file_id=\(SELECT MIN\(proof.file_id\) FROM payment_files proof\s+WHERE proof.payment_id=p.id AND proof.purpose='proof_of_payment'\)/);
-      assert.match(sql, /JOIN payment_files pf ON pf.payment_id=p.id AND pf.purpose='proof_of_payment'/);
-      assert.match(sql, /WHERE p.payment_type='DOWNPAYMENT' ORDER BY p.submitted_at DESC, p.id DESC/);
-      assert.doesNotMatch(sql, /verification_status='pending'|SUM\(DISTINCT/i);
-      // SQL shape assertions protect the one-row contract. These synthetic rows
-      // model that contract; they do not execute or validate MySQL SQL syntax.
-      return [payments.filter(row => row.paymentType === 'DOWNPAYMENT').flatMap(row => {
-        const proof = row.attachments.filter(file => file.purpose === 'proof_of_payment')
-          .toSorted((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0)[0];
-        return proof ? [{ id: row.id, orderId: '91', invoiceId: '601', fileId: proof.id, verificationStatus: row.verificationStatus, submittedAmount: '20.00' }] : [];
-      })];
-    }, release() {},
-  };
-  const service = createDocumentWorkflowsService({ db: { async getConnection() { return connection; } }, storage: createMockDocumentStorage() });
-  const result = await service.paymentQueue();
-  assert.equal(result.data.length, 3);
-  assert.equal(new Set(result.data.map(row => row.id)).size, 3);
-  assert.deepEqual(result.data.map(row => row.fileId), ['2', '9007199254740995', '3']);
-  assert.deepEqual(result.data.map(row => row.verificationStatus), ['pending', 'verified', 'rejected']);
-  assert.equal(calls.length, 1);
-});
-
-test('D07 leaves payment verification, required amounts and rejection rules intact', async () => {
-  for (const scenario of [
-    { decision: 'verified', status: 'pending', amount: '20.00', success: true },
-    { decision: 'rejected', status: 'pending', amount: '20.00', reason: 'Proof mismatch', success: true },
-    { decision: 'rejected', status: 'pending', amount: '20.00', reason: '', code: 'VALIDATION_ERROR' },
-    { decision: 'verified', status: 'verified', amount: '20.00', code: 'PAYMENT_ALREADY_DECIDED' },
-    { decision: 'verified', status: 'rejected', amount: '20.00', code: 'PAYMENT_ALREADY_DECIDED' },
-    { decision: 'verified', status: 'pending', amount: '7.00', code: 'DOWNPAYMENT_AMOUNT_MISMATCH' },
-  ]) {
-    const calls = [];
-    const connection = {
-      async beginTransaction() {}, async commit() { calls.push('COMMIT'); }, async rollback() { calls.push('ROLLBACK'); }, release() {},
-      async execute(sql, params) {
-        calls.push({ sql, params });
-        if (sql.includes('FROM payments p JOIN invoices i')) return [[{ id: '901', verificationStatus: scenario.status, submittedAmount: scenario.amount, requiredDownpayment: '20.00' }]];
-        if (/^(UPDATE payments|INSERT INTO audit_events)/.test(sql)) return [{ affectedRows: 1 }];
-        throw new Error(`Unexpected SQL in review regression: ${sql}`);
-      },
-    };
-    const service = createDocumentWorkflowsService({ db: { async getConnection() { return connection; } }, storage: createMockDocumentStorage() });
-    const result = await service.reviewPayment({ paymentId: '901', actorId: '9', decision: scenario.decision, reason: scenario.reason });
-    if (scenario.success) {
-      assert.equal(result.success, true);
-      assert.equal(result.data.verificationStatus, scenario.decision);
-      assert.equal(result.data.verifiedAmount, scenario.decision === 'verified' ? '20.00' : null);
-      assert.ok(calls.includes('COMMIT'));
-      const write = calls.find(call => call.sql?.startsWith('UPDATE payments'));
-      assert.match(write.sql, /WHERE id=\? AND verification_status='pending'/);
-    } else {
-      assert.equal(result.code, scenario.code);
-      assert.equal(calls.some(call => /^UPDATE|^INSERT/.test(call.sql ?? '')), false);
-    }
-  }
-});
+import {fixture,actor,result} from '../../test/phase2-service-fixture.mjs';
+import {createDocumentWorkflowsService} from './document-workflows.service.js';
+import {createMockDocumentStorage} from '../storage/document-storage.js';
+const pdf={filename:'test.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\nexplicit offline fixture')};
+function uploads(){return fixture({role:'client',handler(sql,p,s){
+ if(sql.includes('FROM quotation WHERE inquiry_id='))return [{id:'59',paymentTermCode:'NET15'}];
+ if(sql.startsWith('SELECT CAST(p.po_id'))return [];
+ if(sql.includes('FROM delivery_method'))return [{delivery_method_id:'1'}];
+ if(sql.startsWith('SELECT v.* FROM sales_invoice'))return [{invoice_id:'69',status:'issued',total_amount:'100.00'}];
+ if(sql.includes('COALESCE(SUM(amount),0)'))return [{amount:'0.00'}];
+ if(sql.includes('FROM payment_method'))return [{id:'79'}];
+ if(/^(INSERT INTO (document|purchase_order|proof_of_payment)|UPDATE document)/.test(sql)){s.writes.push({sql,params:p});return {affectedRows:1,insertId:'99'};}
+}});}
+test('purchase-order upload validates a valid PDF and stores its document association',async()=>{const h=uploads(),storage=createMockDocumentStorage(),s=createDocumentWorkflowsService({...h,storage,bucketName:'explicit-test'});const data=result(await s.uploadPurchaseOrder({clientId:'29',userId:'9',orderId:'19',reference:'PO-TEST',deliveryMethodId:'1',file:pdf}));const doc=h.wrote('document').find(c=>c.sql.startsWith('INSERT'));assert.equal(doc.params[4],'9');assert.match(doc.params[3],/^[a-f0-9]{64}$/);const saved=h.wrote('document').find(c=>c.sql.startsWith('UPDATE'));assert.equal(saved.params[2],'mock-1');assert(storage.has(saved.params[1]));const po=h.wrote('purchase_order')[0];assert.equal(po.params[2],data.fileId);assert.equal(po.params[3],'NET15');assert.equal(h.wrote('job_order').length,0);});
+test('payment-proof upload accepts a partial amount and links actual document metadata without confirming money',async()=>{const h=uploads(),s=createDocumentWorkflowsService({...h,storage:createMockDocumentStorage(),bucketName:'explicit-test'});const data=result(await s.uploadPaymentProof({clientId:'29',userId:'9',orderId:'19',invoiceId:'69',amount:'7.00',paymentMethodId:'79',file:pdf}));assert.equal(data.verificationStatus,'pending');assert.equal(h.wrote('proof_of_payment').length,1);assert.equal(h.wrote('proof_of_payment_file').length,1);assert.equal(h.wrote('payment_transaction').length,0);assert.equal(h.wrote('sales_invoice').length,0);});
+test('D07 review queue has one available proof representative and preserves every recorded decision',async()=>{const proofs=[{id:'9007199254740993',verificationStatus:'pending',files:[]},{id:'9007199254740994',verificationStatus:'pending',files:['10','2']},{id:'9007199254740995',verificationStatus:'verified',files:['3']},{id:'9007199254740996',verificationStatus:'rejected',files:['4']}];const h=fixture({handler(sql){assert.match(sql,/SELECT CAST\(MIN\(f.document_id\)/);assert.match(sql,/d.storage_status='available'/);assert.doesNotMatch(sql,/JOIN proof_of_payment_file|review_status='pending'|SUM\(DISTINCT/);return proofs.map(({files,...p})=>({...p,fileId:files.toSorted((a,b)=>BigInt(a)<BigInt(b)?-1:1)[0]??null}));}});const rows=result(await createDocumentWorkflowsService({...h,storage:createMockDocumentStorage()}).paymentQueue());assert.equal(rows.length,4);assert.equal(new Set(rows.map(r=>r.id)).size,4);assert.deepEqual(rows.map(r=>r.fileId),[null,'2','3','4']);assert.deepEqual(rows.map(r=>r.verificationStatus),['pending','pending','verified','rejected']);});
+test('D07 review preserves partial payments, amount bounds, finalized decisions and rejection reasons',async()=>{for(const scenario of [{decision:'verified',status:'pending',amount:'20.00'},{decision:'verified',status:'pending',amount:'7.00'},{decision:'rejected',status:'pending',amount:'20.00',reason:'Proof mismatch'},{decision:'rejected',status:'pending',amount:'20.00',reason:'',code:'VALIDATION_ERROR'},{decision:'verified',status:'verified',amount:'20.00',code:'PAYMENT_ALREADY_DECIDED'},{decision:'verified',status:'rejected',amount:'20.00',code:'PAYMENT_ALREADY_DECIDED'},{decision:'verified',status:'pending',amount:'100.01',code:'PAYMENT_AMOUNT_EXCEEDED'}]){
+ const h=fixture({role:'accounting',handler(sql,p,s){if(sql.includes('FROM proof_of_payment r JOIN sales_invoice'))return [{id:'19'}];if(sql.startsWith('SELECT * FROM proof_of_payment'))return [{invoice_id:'69',payment_method_id:'79',amount_declared:scenario.amount,review_status:scenario.status}];if(sql.includes('FROM payment_transaction WHERE operation_key='))return [];if(sql.startsWith('SELECT * FROM sales_invoice'))return [{invoice_id:'69',po_id:'89',total_amount:'100.00',status:'issued'}];if(sql.includes('COALESCE(SUM(amount),0)'))return [{amount:'0.00'}];if(sql.includes('FROM proof_of_payment_file f JOIN document'))return [{total:1,available:1}];if(sql.startsWith('SELECT q.downpayment_amount'))return [{downpayment_amount:'20.00'}];if(/^(INSERT INTO payment_transaction|UPDATE sales_invoice|UPDATE proof_of_payment)/.test(sql)){s.writes.push({sql,params:p});return {affectedRows:1,insertId:'109'};}}});const service=createDocumentWorkflowsService({...h,storage:createMockDocumentStorage()});const data=result(await service.reviewPayment({paymentId:'99',actorId:'9',decision:scenario.decision,reason:scenario.reason}),scenario.code);if(scenario.code){h.assertRolledBack();assert.equal(h.wrote('payment_transaction').length,0);}else{assert.equal(data.verificationStatus,scenario.decision);assert.equal(data.verifiedAmount,scenario.decision==='verified'?scenario.amount:null);assert.equal(h.wrote('payment_transaction').length,scenario.decision==='verified'?1:0);assert.match(h.wrote('proof_of_payment')[0].sql,/WHERE receipt_id=\? AND review_status='pending'/);}
+}});

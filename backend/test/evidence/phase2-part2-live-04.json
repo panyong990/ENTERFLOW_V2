@@ -1,0 +1,639 @@
+{
+  "time": "2026-11-22T15:42:52.545Z",
+  "identity": {
+    "name": "enterflow_phase2_db",
+    "version": "8.4.13",
+    "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+    "account": "enterflow_phase2_app@%",
+    "target": {
+      "host": "localhost",
+      "port": 62286
+    },
+    "tls": {
+      "authorized": true,
+      "protocol": "TLSv1.3",
+      "expectedIdentity": "localhost"
+    }
+  },
+  "checks": [
+    {
+      "name": "Two actual guarded pool connections verify TLS, target server, application account, strict mode and all 45 tables",
+      "result": "PASS"
+    }
+  ],
+  "queries": [
+    {
+      "connectionId": "77",
+      "sql": "SELECT DATABASE(),VERSION(),@@server_uuid,CURRENT_USER(),@@SESSION.sql_mode [pool guard]",
+      "result": "OK"
+    },
+    {
+      "connectionId": "77",
+      "sql": "SET SESSION time_zone='+00:00'",
+      "result": "OK"
+    },
+    {
+      "connectionId": "77",
+      "sql": "SELECT CONNECTION_ID(),DATABASE(),VERSION(),@@server_uuid,CURRENT_USER(), scoped table count",
+      "result": "OK"
+    },
+    {
+      "connectionId": "76",
+      "sql": "SELECT DATABASE(),VERSION(),@@server_uuid,CURRENT_USER(),@@SESSION.sql_mode [pool guard]",
+      "result": "OK"
+    },
+    {
+      "connectionId": "76",
+      "sql": "SET SESSION time_zone='+00:00'",
+      "result": "OK"
+    },
+    {
+      "connectionId": "76",
+      "sql": "SELECT CONNECTION_ID(),DATABASE(),VERSION(),@@server_uuid,CURRENT_USER(), scoped table count",
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM proof_of_payment WHERE receipt_id=? FOR UPDATE",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(payment_id AS CHAR) id,amount,CAST(client_receipt_id AS CHAR) proofId FROM payment_transaction WHERE operation_key=?",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM sales_invoice WHERE invoice_id=? FOR UPDATE",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT COALESCE(SUM(amount),0) amount FROM payment_transaction WHERE invoice_id=? AND approval_status='approved'",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT COUNT(*) total,COALESCE(SUM(d.storage_status='available'),0) available FROM proof_of_payment_file f JOIN document d ON d.document_id=f.document_id WHERE f.receipt_id=?",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT q.downpayment_amount FROM purchase_order p JOIN quotation q ON q.quotation_id=p.quotation_id WHERE p.po_id=?",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO payment_transaction(invoice_id,payment_method_id,transaction_type,amount,date_paid,client_receipt_id,recorded_by_user_id,approved_by_user_id,approved_at,operation_key) VALUES (?,?,?,?,UTC_DATE(),?,?,?,UTC_TIMESTAMP(3),?)",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE sales_invoice SET status=? WHERE invoice_id=?",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE proof_of_payment SET review_status=?,reviewed_by_user_id=?,reviewed_at=UTC_TIMESTAMP(3),review_note=? WHERE receipt_id=? AND review_status='pending'",
+      "source": "backend/src/phase2/accounting.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(cl.client_id AS CHAR) id,cl.company_name companyName,cl.contact_person contactPerson,COALESCE(u.email,cl.email) email,u.username,COALESCE(u.phone,cl.phone) phone,CAST(u.user_id AS CHAR) accountId,(u.status='active') active,(cl.status='active') companyActive,cl.client_since joinedOn,cl.created_at createdAt FROM client cl LEFT JOIN client_user cu ON cu.client_id=cl.client_id LEFT JOIN user_account u ON u.user_id=cu.client_user_id WHERE cl.client_id=?",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT LOWER(role_name) code,role_name label FROM role ORDER BY role_id",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT (SELECT COUNT(*) FROM user_account u JOIN role r ON r.role_id=u.role_id WHERE r.role_name<>'Client') employees,(SELECT COUNT(*) FROM user_account u JOIN role r ON r.role_id=u.role_id WHERE r.role_name<>'Client' AND u.status='active') activeEmployees,(SELECT COUNT(*) FROM client) clients,(SELECT COUNT(*) FROM role) roles,(SELECT COUNT(*) FROM client_applications WHERE application_status='pending') pendingApplications",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(a.audit_event_id AS CHAR) id,a.action,a.subject_type subjectType,CAST(a.subject_id AS CHAR) subjectId,a.occurred_at occurredAt FROM audit_event a WHERE a.action IN (?,?,?,?) ORDER BY a.audit_event_id DESC LIMIT 10",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(client_id AS CHAR) id,company_name companyName,status FROM client ORDER BY client_id LIMIT ? OFFSET ?",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT COUNT(*) n FROM client",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(role_id AS CHAR) id FROM role WHERE LOWER(role_name)=? AND role_name<>'Client'",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT audit_event_id FROM audit_event WHERE subject_type='user_account' AND action IN ('employee.created','employee.updated') AND JSON_UNQUOTE(JSON_EXTRACT(after_value,'$.employeeId'))=? LIMIT 1",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO user_account(role_id,full_name,email,username,phone,password_hash,status,must_change_password,joined_date) VALUES (?,?,?,?,?,?,'active',1,UTC_DATE())",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT user_id FROM user_account WHERE user_id=? FOR UPDATE",
+      "source": "backend/src/phase2/sketches.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE user_account SET full_name=?,email=?,username=?,phone=? WHERE user_id=?",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE client SET company_name=?,contact_person=?,email=?,phone=? WHERE client_id=?",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE user_account SET role_id=? WHERE user_id=?",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE user_account SET status=? WHERE user_id=?",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE client SET status=? WHERE client_id=?",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE user_sessions SET revoked_at=UTC_TIMESTAMP(3) WHERE user_id=? AND revoked_at IS NULL",
+      "source": "backend/src/phase2/admin.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT DATABASE() AS databaseName",
+      "source": "backend/src/services/client-applications.service.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT GET_LOCK(?,2) AS acquired",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT RELEASE_LOCK(?) AS released",
+      "source": "backend/src/services/client-applications.service.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(u.user_id AS CHAR) userId,LOWER(r.role_name) roleCode,u.status,u.must_change_password mustChangePassword,\n    CAST(cu.client_id AS CHAR) clientId,cl.status clientStatus FROM user_account u JOIN role r ON r.role_id=u.role_id\n    LEFT JOIN client_user cu ON cu.client_user_id=u.user_id LEFT JOIN client cl ON cl.client_id=cu.client_id WHERE u.user_id=? FOR SHARE",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(q.inquiry_id AS CHAR) id FROM sales_invoice v JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE v.invoice_id=?",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(q.inquiry_id AS CHAR) id FROM proof_of_payment r JOIN sales_invoice v ON v.invoice_id=r.invoice_id JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE r.receipt_id=?",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(q.inquiry_id AS CHAR) id FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE j.jo_id=?",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(q.inquiry_id AS CHAR) id FROM delivery d JOIN job_order j ON j.jo_id=d.jo_id JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE d.delivery_id=?",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO audit_event(actor_user_id,action,subject_type,subject_id,before_value,after_value,reason) VALUES (?,?,?,?,?,?,?)",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO notification(user_id,title,message,notification_type) VALUES (?,?,?,?)",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(client_user_id AS CHAR) id FROM client_user WHERE client_id=?",
+      "source": "backend/src/phase2/notifications.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(u.user_id AS CHAR) id FROM user_account u JOIN role r ON r.role_id=u.role_id WHERE LOWER(r.role_name)=? AND u.status='active' AND NOT EXISTS(SELECT 1 FROM client_user cu WHERE cu.client_user_id=u.user_id)",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT (EXISTS(SELECT 1 FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE q.inquiry_id=?) OR EXISTS(SELECT 1 FROM payment_transaction t JOIN sales_invoice v ON v.invoice_id=t.invoice_id JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE q.inquiry_id=? AND t.transaction_type='DOWNPAYMENT' AND t.approval_status='approved')) blocked",
+      "source": "backend/src/phase2/core.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT (SELECT COUNT(*) FROM inquiry WHERE status='inquiry') pendingInquiries,(SELECT COUNT(*) FROM quotation WHERE status='sent' AND is_current=1) quotationsSent,(SELECT COUNT(*) FROM purchase_order) purchaseOrdersReceived,(SELECT COALESCE(SUM(amount),0) FROM payment_transaction WHERE approval_status='approved') verifiedRevenue",
+      "source": "backend/src/phase2/dashboard.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT DATE_FORMAT(date_paid,'%Y-%m') month,SUM(amount) amount FROM payment_transaction WHERE approval_status='approved' GROUP BY DATE_FORMAT(date_paid,'%Y-%m') ORDER BY month",
+      "source": "backend/src/phase2/dashboard.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO document(file_name,mime_type,size_bytes,sha256,storage_status,uploaded_by_user_id) VALUES (?,?,?,?,'pending',?)",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE document SET storage_bucket=?,storage_key=?,object_generation=?,storage_status='available' WHERE document_id=? AND storage_status='pending'",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT delivery_method_id FROM delivery_method WHERE delivery_method_id=? AND is_active=1",
+      "source": "backend/src/phase2/workflows.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(quotation_id AS CHAR) id,terms_of_payment paymentTermCode FROM quotation WHERE inquiry_id=? AND is_current=1 AND status='accepted' FOR UPDATE",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO purchase_order(po_no,quotation_id,po_document_id,received_date,payment_terms,delivery_method_id,recorded_by_user_id) VALUES (?,?,?,UTC_DATE(),?,?,?)",
+      "source": "backend/src/phase2/workflows.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE inquiry SET status='po' WHERE inquiry_id=?",
+      "source": "backend/src/phase2/workflows.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT v.* FROM sales_invoice v JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE v.invoice_id=? AND q.inquiry_id=? FOR UPDATE",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO proof_of_payment(invoice_id,client_user_id,payment_method_id,amount_declared,note) VALUES (?,?,?,?,?)",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO proof_of_payment_file(receipt_id,document_id) VALUES (?,?)",
+      "source": "backend/src/phase2/documents.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT audit_event_id FROM audit_event WHERE subject_type='delivery' AND subject_id=? AND action='delivery.handed_off' LIMIT 1",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(m.material_id AS CHAR) id,m.material_name name,mc.category_name category,CAST(m.material_category_id AS CHAR) categoryId,CAST(m.uom_id AS CHAR) uomId,u.abbreviation unit,m.qty_in_stock qtyInStock,m.quantity_status quantityStatus,m.reorder_threshold threshold,m.threshold_status thresholdStatus,m.supplier_name supplier,m.unit_price approvedCostingPrice,m.reference_unit_price referenceUnitPrice,m.created_at createdAt,m.updated_at updatedAt FROM raw_material m JOIN unit_of_measure u ON u.uom_id=m.uom_id LEFT JOIN material_category mc ON mc.material_category_id=m.material_category_id WHERE m.is_active=1 ORDER BY m.material_name,m.material_id",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(finished_good_id AS CHAR) id,item_code itemCode,enterfil_pn enterFilPN,item_name name,CAST(client_id AS CHAR) clientId,qty_in_stock qtyInStock,quantity_status quantityStatus,buffer_min bufferMin,threshold_status thresholdStatus,demand_level demand FROM finished_good WHERE is_active=1 ORDER BY item_code",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM raw_material WHERE material_id=? FOR UPDATE",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT uom_id FROM unit_of_measure WHERE uom_id=?",
+      "source": "backend/src/phase2/workflows.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT material_category_id FROM material_category WHERE material_category_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO raw_material(material_name,material_category_id,uom_id,reorder_threshold,threshold_status,supplier_name) VALUES (?,?,?,?,?,?)",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT movement_id FROM stock_movement WHERE raw_material_id=? LIMIT 1",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE raw_material SET material_name=?,material_category_id=?,uom_id=?,reorder_threshold=?,threshold_status=?,supplier_name=? WHERE material_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE raw_material SET qty_in_stock=NULL,quantity_status='unknown' WHERE material_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO stock_movement(item_type,raw_material_id,movement_reason,quantity_status_before,qty_before,qty_after,qty_change,uom_id,performed_by_user_id,operation_key) VALUES ('raw_material',?,?,?,?,?,?,?,?,?)",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE raw_material SET qty_in_stock=?,quantity_status='verified' WHERE material_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(quotation_id AS CHAR) id,quotation_no reference FROM quotation WHERE quotation_id=? AND inquiry_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM raw_material WHERE material_id=? AND is_active=1 FOR SHARE",
+      "source": "backend/src/phase2/workflows.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO stock_request(inquiry_id,requested_by_user_id,status) VALUES (?,?,'pending')",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO stock_request_item(stock_request_id,raw_material_id,qty_requested,stock_at_request,shortage_at_request,quantity_status_at_request,uom_id) VALUES (?,?,?,?,?,?,?)",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(sr.stock_request_id AS CHAR) id,CAST(sr.inquiry_id AS CHAR) orderId,i.inquiry_no orderReference,sr.status,sr.request_date createdAt,(SELECT JSON_UNQUOTE(JSON_EXTRACT(e.after_value,\"$.clientReference\")) FROM audit_event e WHERE e.subject_type=\"stock_request\" AND e.subject_id=sr.stock_request_id AND e.action=\"stock_request.created\" ORDER BY e.audit_event_id LIMIT 1) clientReference FROM stock_request sr JOIN inquiry i ON i.inquiry_id=sr.inquiry_id ORDER BY sr.request_date DESC",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(s.stock_request_item_id AS CHAR) id,CAST(s.raw_material_id AS CHAR) materialId,m.material_name materialName,s.qty_requested requiredQuantity,s.stock_at_request stockAtRequest,s.shortage_at_request shortageAtRequest,s.quantity_status_at_request quantityStatus,s.qty_available currentQuantity,s.available_quantity_status availableQuantityStatus,s.observed_at respondedAt FROM stock_request_item s JOIN raw_material m ON m.material_id=s.raw_material_id WHERE s.stock_request_id=? ORDER BY s.stock_request_item_id",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(inquiry_id AS CHAR) id FROM stock_request WHERE stock_request_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM stock_request WHERE stock_request_id=? FOR UPDATE",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM stock_request_item WHERE stock_request_id=? ORDER BY raw_material_id FOR UPDATE",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM raw_material WHERE material_id=? AND is_active=1 FOR UPDATE",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE stock_request_item SET qty_available=?,available_quantity_status='verified',observed_at=UTC_TIMESTAMP(3),observed_by_user_id=? WHERE stock_request_item_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE stock_request SET status=?,handled_by_user_id=? WHERE stock_request_id=?",
+      "source": "backend/src/phase2/inventory.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(delivery_receipt_id AS CHAR) id,dr_no reference,CAST(document_id AS CHAR) documentId,generated_at generatedAt FROM delivery_receipt WHERE delivery_id=?",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM job_order WHERE jo_id=? FOR UPDATE",
+      "source": "backend/src/phase2/production.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO delivery(jo_id,delivery_method_id,status,estimated_delivery_date,driver_name,driver_contact,vehicle_plate,tracking_link) VALUES (?,?,'pending',?,?,?,?,?)",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT quantity FROM job_order_item WHERE jo_item_id=? AND jo_id=? FOR UPDATE",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT COALESCE(SUM(di.quantity),0) quantity FROM delivery_item di JOIN delivery d ON d.delivery_id=di.delivery_id WHERE di.jo_item_id=? AND d.status<>'cancelled'",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO delivery_item(delivery_id,jo_item_id,quantity) VALUES (?,?,?)",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE delivery SET status=?,dispatch_date=IF(?='in_transit',UTC_DATE(),dispatch_date),delivered_date=IF(? IN ('delivered','picked_up'),UTC_DATE(),delivered_date),dispatched_by_user_id=IF(?='in_transit',?,dispatched_by_user_id),received_by=COALESCE(?,received_by),tracking_link=COALESCE(?,tracking_link) WHERE delivery_id=?",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT COUNT(*) n FROM job_order_item ji WHERE ji.jo_id=? AND ji.quantity>COALESCE((SELECT SUM(di.quantity) FROM delivery_item di JOIN delivery dx ON dx.delivery_id=di.delivery_id WHERE di.jo_item_id=ji.jo_item_id AND dx.status IN ('delivered','picked_up')),0)",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE job_order SET status='delivered' WHERE jo_id=?",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE inquiry SET status='delivered' WHERE inquiry_id=?",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE sales_invoice v JOIN job_order j ON j.po_id=v.po_id SET v.delivered_date=UTC_DATE(),v.due_date=DATE_ADD(UTC_DATE(),INTERVAL IF(v.payment_terms='NET15',15,30) DAY) WHERE j.jo_id=? AND v.payment_terms IN ('NET15','NET30')",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT * FROM waybill WHERE delivery_id=? FOR UPDATE",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO waybill(delivery_id,waybill_no,qr_identifier,generated_by_user_id) VALUES (?,?,?,?)",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "UPDATE waybill SET printed_at=COALESCE(printed_at,UTC_TIMESTAMP(3)) WHERE waybill_id=?",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT document_id FROM document WHERE document_id=? AND uploaded_by_user_id=? AND storage_status='available' AND EXISTS(SELECT 1 FROM audit_event e WHERE e.subject_type='document' AND e.subject_id=document.document_id AND e.action='delivery.document_uploaded' AND JSON_UNQUOTE(JSON_EXTRACT(e.after_value,'$.deliveryId'))=?)",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT CAST(delivery_receipt_id AS CHAR) id,CAST(document_id AS CHAR) documentId FROM delivery_receipt WHERE delivery_id=? FOR UPDATE",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "INSERT INTO delivery_receipt(delivery_id,dr_no,generated_by_user_id,document_id) VALUES (?,?,?,?)",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT waybill_id FROM waybill WHERE delivery_id=? AND printed_at IS NOT NULL",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "OK"
+    },
+    {
+      "sql": "SELECT r.delivery_receipt_id FROM delivery_receipt r JOIN delivery d ON d.delivery_id=r.delivery_id WHERE r.delivery_id=? AND d.status IN ('delivered','picked_up') AND ",
+      "source": "backend/src/phase2/logistics.js",
+      "prepareOnly": true,
+      "result": "ERROR",
+      "code": "ER_PARSE_ERROR"
+    }
+  ],
+  "blocked": [],
+  "rolledBack": false,
+  "storage": "explicit in-memory external-storage double; no GCS calls",
+  "poolConnections": [
+    {
+      "connectionId": "77",
+      "name": "enterflow_phase2_db",
+      "version": "8.4.13",
+      "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+      "account": "enterflow_phase2_app@%",
+      "tables": "45",
+      "tlsProtocol": "TLSv1.3",
+      "tlsAuthorized": true
+    },
+    {
+      "connectionId": "76",
+      "name": "enterflow_phase2_db",
+      "version": "8.4.13",
+      "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+      "account": "enterflow_phase2_app@%",
+      "tables": "45",
+      "tlsProtocol": "TLSv1.3",
+      "tlsAuthorized": true
+    }
+  ],
+  "result": "FAIL",
+  "failure": {
+    "code": "ER_PARSE_ERROR",
+    "message": "Database statement failed; inspect SQL log"
+  }
+}

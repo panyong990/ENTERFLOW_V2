@@ -113,12 +113,46 @@ function validateIntegrationRuntime(env, database, appOrigin) {
   return Object.freeze({ runId, serverUuid: serverUuid.toLowerCase(), certificateSha256, sqlMode: Object.freeze(sqlMode) });
 }
 
+function validatePhase2Runtime(env, database, appOrigin) {
+  if (env.PHASE2_RUNTIME !== '1') return null;
+
+  if (env.BROWSER_TEST_RUNTIME === '1' || env.INTEGRATION_TEST_RUNTIME === '1') {
+    throw new Error('Phase 2 runtime cannot be combined with other test runtimes.');
+  }
+
+  if (env.NODE_ENV !== 'development') {
+    throw new Error('Phase 2 runtime requires NODE_ENV=development.');
+  }
+  if (database.host !== '127.0.0.1' || database.port !== 62286 ||
+      database.name !== 'enterflow_phase2_db' || env.DB_USER !== 'enterflow_phase2_app') {
+    throw new Error('Phase 2 database target does not match the approved isolated target.');
+  }
+  if (database.timezone !== 'Z') {
+    throw new Error('Phase 2 database timezone must be UTC.');
+  }
+  if (env.DB_SSL_SERVER_NAME !== 'localhost') {
+    throw new Error('Phase 2 database TLS identity must be localhost.');
+  }
+  requiredString(env, 'DB_SSL_CA_PATH');
+
+  if (appOrigin !== 'http://127.0.0.1:3107' ||
+      env.HOST !== '127.0.0.1' || env.PORT !== '3107') {
+    throw new Error('Phase 2 API must bind to 127.0.0.1:3107.');
+  }
+
+  return Object.freeze({
+    serverUuid: '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8'
+  });
+}
+
 export function validateRuntimeConfig(env = process.env) {
   const database = validateDatabase(env);
   const idleTimeoutMinutes = positiveInteger(env, 'SESSION_IDLE_TIMEOUT_MINUTES');
   const absoluteTimeoutHours = positiveInteger(env, 'SESSION_ABSOLUTE_TIMEOUT_HOURS');
   validateSessionTimeouts({ idleTimeoutMinutes, absoluteTimeoutHours });
   const appOrigin = validateOrigin(requiredString(env, 'APP_ORIGIN'));
+
+  const phase2 = validatePhase2Runtime(env, database, appOrigin);
   const integration = validateIntegrationRuntime(env, database, appOrigin);
 
   const production = env.NODE_ENV === 'production' || Boolean(env.K_SERVICE);
@@ -132,7 +166,8 @@ export function validateRuntimeConfig(env = process.env) {
     absoluteTimeoutHours,
     appOrigin,
     production,
-    integration
+    integration,
+    phase2
   });
 }
 
@@ -140,9 +175,13 @@ export function loadRuntimeEnvironment(env = process.env) {
   if (env.BROWSER_TEST_RUNTIME === '1' && env.INTEGRATION_TEST_RUNTIME === '1') {
     throw new Error('Integration and browser test runtimes cannot be combined.');
   }
-  const result = env.BROWSER_TEST_RUNTIME === '1' || env.INTEGRATION_TEST_RUNTIME === '1'
-    ? { error: null }
-    : dotenv.config({ path: envPath });
+  if (env.PHASE2_RUNTIME === '1' &&
+      (env.BROWSER_TEST_RUNTIME === '1' || env.INTEGRATION_TEST_RUNTIME === '1')) {
+    throw new Error('Phase 2 runtime cannot be combined with other test runtimes.');
+  }
+  const skipDotenv = env.PHASE2_RUNTIME === '1' ||
+    env.BROWSER_TEST_RUNTIME === '1' || env.INTEGRATION_TEST_RUNTIME === '1';
+  const result = skipDotenv ? { error: null } : dotenv.config({ path: envPath });
 
   if (result.error && result.error.code !== 'ENOENT') {
     throw new Error('Unable to load database/.env.dev');

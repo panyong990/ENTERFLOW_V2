@@ -13,8 +13,9 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   try {
   const [command = 'status', ...options] = argv;
   const phase2 = options[0] === '--profile' && options[1] === 'phase2';
+  if ((command === 'resume-003' || command.endsWith('-part1')) && !phase2) throw new Error('Phase 2 scoped command requires the explicit Phase 2 profile');
   const args = phase2 ? options.slice(2) : options;
-  if (phase2 && !['preflight','diagnose-lock','status', 'migrate'].includes(command)) throw new Error('Phase 2 permits preflight, diagnose-lock, status or migrate only');
+  if (phase2 && !['preflight','preflight-part1','diagnose-lock','status', 'migrate','resume-003','status-part1','migrate-part1'].includes(command)) throw new Error('Unknown Phase 2 command');
   // Phase 2 never falls back to the shared environment file.
   if (phase2 && (args.length !== 2 || args[0] !== '--env-file')) throw new Error('Phase 2 requires --profile phase2 --env-file <separately approved file>');
   if (args.length && (args.length !== 2 || args[0] !== '--env-file')) throw new Error('Usage: node database/migrate.mjs status|baseline|migrate|seed [--env-file path]');
@@ -50,8 +51,8 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
     db = await mysql.createConnection(config);
   }
   if (phase2 && command === 'diagnose-lock') await (dependencies.diagnosePhase2Lock ?? diagnosePhase2Lock)(db,env);
-  else if (phase2 && command === 'preflight') {
-    const result = await (dependencies.preflightPhase2 ?? preflightPhase2)(db,env);
+  else if (phase2 && ['preflight','preflight-part1'].includes(command)) {
+    const result = await (dependencies.preflightPhase2 ?? preflightPhase2)(db,env,undefined,undefined,{part1:command==='preflight-part1'});
     if (result.result === 'FAIL') process.exitCode = 1;
   }
   else if (phase2) await (dependencies.runPhase2 ?? runPhase2)(db, command, env,undefined,undefined,{

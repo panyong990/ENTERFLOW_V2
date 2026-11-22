@@ -10,12 +10,16 @@ function harness() {
     async rollback() { calls.push('rollback'); },
     async execute(sql, params) {
       calls.push({ sql, params });
-      if (sql.includes('FROM users u JOIN clients')) return [[{ id: '9' }]];
+      if(sql.includes('FROM user_account u JOIN role r')&&sql.includes('FOR SHARE'))return [[{userId:'9',roleCode:'client',status:'active',mustChangePassword:0,clientId:'21',clientStatus:'active'}]];
+      if(sql.includes('FROM user_account u JOIN role r'))return [[]];
+      if(sql.includes('FROM filter_type'))return [[{id:'1'}]];
+      if(sql.startsWith('SELECT DATE_FORMAT(created_at'))return [[{submittedAt:'2026-11-22T00:00:00.000Z'}]];
+      if(sql.startsWith('INSERT INTO audit_event'))return [{affectedRows:1,insertId:'1'}];
       if (sql.includes('INSERT INTO document_sequences')) return [{ affectedRows: 1 }];
       if (sql.includes('SELECT `last_value`')) return [[{ last_value: '7' }]];
-      if (sql.includes('INSERT INTO orders')) return [{ insertId: '91' }];
+      if(sql.includes('INSERT INTO inquiry('))return [{insertId:'91',affectedRows:1}];
       if (sql.includes('INSERT INTO product_specifications')) return [{ insertId: '101' }];
-      if (sql.includes('INSERT INTO order_items')) return [{ insertId: '201' }];
+      if(sql.includes('INSERT INTO inquiry_item'))return [{insertId:'201',affectedRows:1}];
       throw new Error(`Unexpected SQL: ${sql}`);
     },
     release() { calls.push('release'); }
@@ -34,12 +38,12 @@ test('creates a client-owned inquiry and specification/item rows in one transact
   const result = await h.service.createInquiry('21', '9', input);
   assert.equal(result.success, true);
   assert.equal(result.data.id, '91');
-  assert.equal(result.data.reference, `INQ-${new Date().getUTCFullYear()}-000007`);
+  assert.match(result.data.reference,/^INQ-[a-f0-9-]{36}$/);
   assert.equal(result.data.stageCode, 'inquiry');
   assert.equal(result.data.itemCount, 1);
   assert.equal(h.calls[0], 'begin');
-  assert.equal(h.calls[1].sql.includes('FROM users u JOIN clients'), true);
-  assert.deepEqual(h.calls[1].params, ['9', '21']);
+  assert.equal(h.calls[1].sql.includes('FROM user_account u JOIN role r'), true);
+  assert.deepEqual(h.calls[1].params, ['9']);
   assert.equal(h.calls.at(-2), 'commit');
   assert.equal(h.calls.at(-1), 'release');
 });

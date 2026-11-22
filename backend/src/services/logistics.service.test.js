@@ -9,10 +9,10 @@ function harness({ shipments = [], shipment = null, waybills = [], receipts = []
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
-      if (sql.includes('LIMIT ?') && sql.includes('FROM shipments s')) return [shipments];
-      if (sql.includes('WHERE s.id=?')) return [shipment ? [shipment] : []];
-      if (sql.includes('FROM waybills w')) return [waybills];
-      if (sql.includes('FROM delivery_receipts dr')) return [receipts];
+      if (sql.includes('LIMIT ?') && sql.includes('FROM delivery d')) return [shipments];
+      if (sql.includes('WHERE d.delivery_id=?')) return [shipment ? [shipment] : []];
+      if (sql.includes('FROM waybill WHERE')) return [waybills];
+      if (sql.includes('FROM delivery_receipt WHERE')) return [receipts];
       throw new Error(`Unexpected SQL: ${sql}`);
     },
     release() {}
@@ -36,9 +36,9 @@ test('Logistics shipment list is limited to printed waybills and delivery receip
   const h = harness({ shipments: [{ id: '41', status: 'in_transit' }] });
   const result = await h.service.listShipments(logistics, { status: 'in_transit', orderId: '91', limit: '25' });
   assert.equal(result.success, true);
-  assert.deepEqual(h.calls[0].params, ['in_transit', '91', 25]);
-  assert.match(h.calls[0].sql, /JOIN waybills hw ON hw\.shipment_id=s\.id AND hw\.printed_at IS NOT NULL/);
-  assert.match(h.calls[0].sql, /JOIN delivery_receipts hdr ON hdr\.shipment_id=s\.id AND hdr\.sent_to_logistics_at IS NOT NULL/);
+  assert.deepEqual(h.calls[0].params, ['91','in_transit','25']);
+  assert.match(h.calls[0].sql, /FROM waybill hw WHERE hw\.delivery_id=d\.delivery_id AND hw\.printed_at IS NOT NULL/);
+  assert.match(h.calls[0].sql, /ae\.action='delivery.handed_off'/);
   assert.match(h.calls[0].sql, /LIMIT \?/);
 });
 
@@ -51,7 +51,7 @@ test('Logistics detail returns waybill and receipt references without QR identif
   const result = await h.service.getShipment(logistics, '41');
   assert.equal(result.success, true);
   assert.match(h.calls[0].sql, /hw\.printed_at IS NOT NULL/);
-  assert.match(h.calls[0].sql, /hdr\.sent_to_logistics_at IS NOT NULL/);
+  assert.match(h.calls[0].sql, /ae\.action='delivery.handed_off'/);
   assert.equal(result.data.waybills[0].reference, 'WB-1');
   assert.equal(result.data.deliveryReceipts[0].reference, 'DR-1');
   assert.doesNotMatch(JSON.stringify(result), /qrIdentifier|qr_identifier|objectPath|bucket|fileBytes/);

@@ -56,7 +56,7 @@ export function createSalesRouter({
   router.post('/orders/:id/cancellation/:requestId/accept', permission('inquiries','update'), permission('orders','update'),
     createOriginMiddleware(), createSalesOrdersController({ service: ordersService })('acceptCancellation'));
   router.post('/orders/:id/cancellation/:requestId/decline', permission('inquiries','update'), permission('orders','update'),
-    createOriginMiddleware(), createSalesOrdersController({ service: ordersService })('declineCancellation'));
+    createOriginMiddleware(),json({limit:'8kb'}), createSalesOrdersController({ service: ordersService })('declineCancellation'));
   router.get('/clients/:id', permission('clients', 'read'), createSalesClientsController({ service })('detail'));
   router.post('/orders/:id/quotations', permission('orders', 'read'), permission('orders', 'update'), permission('quotations', 'create'),
     createOriginMiddleware(), json({ limit: '64kb' }), createSalesOrdersController({ service: ordersService })('createQuotation'),

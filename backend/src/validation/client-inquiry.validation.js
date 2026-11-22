@@ -1,3 +1,4 @@
+import {validateApplicationId} from './client-applications.validation.js';
 const FILTER_TYPES = new Set([
   'OILSEP', 'WATSEP', 'SOLFIL', 'HYDFIL', 'AIRFIL', 'OILFIL', 'FUELFIL', 'COALFIL',
   'SEPFIL', 'PRIFIL', 'PREFIL', 'ACTIFIL', 'SECFIL', 'HEPFIL', 'BAGFIL', 'PADFIL'
@@ -48,6 +49,7 @@ export function validateClientInquiry(input) {
         return;
       }
       if (!FILTER_TYPES.has(product.type)) errors[`${prefix}.type`] = 'Unsupported filter type.';
+      if(product.filterTypeId!==undefined&&!validateApplicationId(product.filterTypeId).success)errors[`${prefix}.filterTypeId`]='A configured filter type ID is required.';
       const nameError = text(product.filterName, `${prefix}.filterName`, 200, true);
       if (nameError) errors[`${prefix}.filterName`] = nameError;
       if (!Number.isInteger(product.quantity) || product.quantity < 10 || product.quantity > 1000000) {
@@ -70,7 +72,7 @@ export function validateClientInquiry(input) {
       contactPerson: input.contactPerson.trim(), paymentTermCode: input.paymentTermCode,
       requestedDeliveryDate: input.requestedDeliveryDate || null, generalNotes: input.generalNotes?.trim() || null,
       products: input.products.map(product => ({
-        type: product.type, filterName: product.filterName.trim(), quantity: product.quantity,
+        type: product.type, filterName: product.filterName.trim(), quantity: product.quantity,...(product.filterTypeId?{filterTypeId:product.filterTypeId}:{}),
         specifications: Object.fromEntries(SPEC_FIELDS.map(([source]) => [source, typeof product.specifications[source] === 'string' ? product.specifications[source].trim() || null : null]))
       }))
     }

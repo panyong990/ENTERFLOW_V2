@@ -283,7 +283,7 @@ test('Client role is resolved from the existing table and both generated account
 test('missing, ambiguous or invalid Client role data rolls back without inventing a role', async () => {
   for (const roleRows of [[], [{ roleId: '1' }, { roleId: '2' }], [{ roleId: 11 }], [{ roleId: '0' }]]) {
     const h = harness({ roleRows });
-    assert.equal((await h.service.approve(request())).code, 'SERVICE_UNAVAILABLE');
+    assert.equal((await h.service.approve(request())).code, 'REFERENCE_DATA_MISSING');
     noDecision(h.shared.data);
     assert.equal(h.calls.some(c => /INSERT INTO role/.test(c.sql)), false);
   }

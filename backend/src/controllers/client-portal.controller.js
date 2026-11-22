@@ -1,4 +1,6 @@
+import {phase2Errors} from './phase2-response.js';
 const errors = {
+  ...phase2Errors,
   INVALID_SUBMISSION_KEY: [400, 'A valid Idempotency-Key is required.'],
   SUBMISSION_CONFLICT: [409, 'This submission key was already used for a different inquiry.'],
   SUBMISSION_FAILED: [503, 'The inquiry could not be submitted. Retry with the same submission key.'],

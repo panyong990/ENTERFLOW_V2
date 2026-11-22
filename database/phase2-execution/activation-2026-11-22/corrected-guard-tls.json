@@ -1,0 +1,176 @@
+{
+  "target": {
+    "host": "127.0.0.1",
+    "port": 62286,
+    "database": "enterflow_phase2_db",
+    "expectedIdentity": "127.0.0.1"
+  },
+  "ca": {
+    "path": "C:\\Users\\amiaz\\Downloads\\ENTERFLOW_DEV_INTEGRATION\\backend\\certs\\local\\phase2\\ca.pem",
+    "subject": "CN=EnterFlow Phase2 Local Development CA",
+    "issuer": "CN=EnterFlow Phase2 Local Development CA",
+    "validFrom": "Nov 21 20:56:44 2026 GMT",
+    "validTo": "Nov 18 20:56:44 2036 GMT",
+    "fingerprint256": "34:2B:44:FD:ED:74:5E:7D:04:5C:03:E9:32:E2:B7:32:92:F1:48:6C:46:19:D4:C7:53:7C:D7:3F:07:E5:A8:54"
+  },
+  "handshakes": [
+    {
+      "host": "127.0.0.1",
+      "port": 62286,
+      "rejectUnauthorized": true,
+      "verifyIdentity": true,
+      "authorized": true,
+      "authorizationError": null,
+      "protocol": "TLSv1.3",
+      "sessionReused": false,
+      "servername": false,
+      "peerCertificateFields": [
+        "subject",
+        "issuer",
+        "subjectaltname",
+        "infoAccess",
+        "ca",
+        "modulus",
+        "exponent",
+        "pubkey",
+        "bits",
+        "valid_from",
+        "valid_to",
+        "fingerprint",
+        "fingerprint256",
+        "fingerprint512",
+        "ext_key_usage",
+        "serialNumber",
+        "raw",
+        "asn1Curve",
+        "nistCurve",
+        "issuerCertificate"
+      ],
+      "san": "IP Address:127.0.0.1, DNS:localhost",
+      "subject": {
+        "CN": "localhost"
+      },
+      "issuer": {
+        "CN": "EnterFlow Phase2 Local Development CA"
+      },
+      "validFrom": "Nov 21 20:56:44 2026 GMT",
+      "validTo": "Feb 23 20:56:44 2029 GMT",
+      "fingerprint256": "DD:4C:C3:18:88:44:CB:2A:71:04:76:E2:D8:CF:BD:7D:F4:63:E9:E0:91:2A:04:43:95:7B:AD:1B:DA:60:DB:2A",
+      "signedByConfiguredCA": true,
+      "identityError": null,
+      "driverTlsError": null
+    },
+    {
+      "host": "127.0.0.1",
+      "port": 62286,
+      "rejectUnauthorized": true,
+      "verifyIdentity": true,
+      "authorized": true,
+      "authorizationError": null,
+      "protocol": "TLSv1.3",
+      "sessionReused": false,
+      "servername": false,
+      "peerCertificateFields": [
+        "subject",
+        "issuer",
+        "subjectaltname",
+        "infoAccess",
+        "ca",
+        "modulus",
+        "exponent",
+        "pubkey",
+        "bits",
+        "valid_from",
+        "valid_to",
+        "fingerprint",
+        "fingerprint256",
+        "fingerprint512",
+        "ext_key_usage",
+        "serialNumber",
+        "raw",
+        "asn1Curve",
+        "nistCurve",
+        "issuerCertificate"
+      ],
+      "san": "IP Address:127.0.0.1, DNS:localhost",
+      "subject": {
+        "CN": "localhost"
+      },
+      "issuer": {
+        "CN": "EnterFlow Phase2 Local Development CA"
+      },
+      "validFrom": "Nov 21 20:56:44 2026 GMT",
+      "validTo": "Feb 23 20:56:44 2029 GMT",
+      "fingerprint256": "DD:4C:C3:18:88:44:CB:2A:71:04:76:E2:D8:CF:BD:7D:F4:63:E9:E0:91:2A:04:43:95:7B:AD:1B:DA:60:DB:2A",
+      "signedByConfiguredCA": true,
+      "identityError": null,
+      "driverTlsError": null
+    }
+  ],
+  "connections": [
+    {
+      "role": "owner",
+      "result": "PASS",
+      "identity": {
+        "name": "enterflow_phase2_db",
+        "version": "8.4.13",
+        "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+        "hostname": "2acac2d1b606",
+        "internalPort": "3306",
+        "connectionId": "19"
+      },
+      "settings": [
+        {
+          "Variable_name": "ssl_ca",
+          "Value": "/var/lib/mysql/enterflow-phase2-tls-v1/ca.pem"
+        },
+        {
+          "Variable_name": "ssl_cert",
+          "Value": "/var/lib/mysql/enterflow-phase2-tls-v1/server-cert.pem"
+        }
+      ]
+    },
+    {
+      "role": "observer",
+      "result": "PASS",
+      "identity": {
+        "name": "enterflow_phase2_db",
+        "version": "8.4.13",
+        "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+        "hostname": "2acac2d1b606",
+        "internalPort": "3306",
+        "connectionId": "20"
+      },
+      "settings": [
+        {
+          "Variable_name": "ssl_ca",
+          "Value": "/var/lib/mysql/enterflow-phase2-tls-v1/ca.pem"
+        },
+        {
+          "Variable_name": "ssl_cert",
+          "Value": "/var/lib/mysql/enterflow-phase2-tls-v1/server-cert.pem"
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "role": "owner",
+      "sql": "SELECT DATABASE() AS name,VERSION() AS version,@@server_uuid AS serverUuid,@@hostname AS hostname,@@port AS internalPort,CAST(CONNECTION_ID() AS CHAR) AS connectionId"
+    },
+    {
+      "role": "owner",
+      "sql": "SHOW VARIABLES WHERE Variable_name IN ('ssl_ca','ssl_cert')"
+    },
+    {
+      "role": "observer",
+      "sql": "SELECT DATABASE() AS name,VERSION() AS version,@@server_uuid AS serverUuid,@@hostname AS hostname,@@port AS internalPort,CAST(CONNECTION_ID() AS CHAR) AS connectionId"
+    },
+    {
+      "role": "observer",
+      "sql": "SHOW VARIABLES WHERE Variable_name IN ('ssl_ca','ssl_cert')"
+    }
+  ],
+  "readOnly": true,
+  "result": "PASS"
+}

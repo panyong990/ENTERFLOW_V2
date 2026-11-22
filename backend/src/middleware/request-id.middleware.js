@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {withRequestId} from '../config/request-context.js';
 
 export function requestIdMiddleware(request, response, next) {
   const requestId = randomUUID();
@@ -6,5 +7,5 @@ export function requestIdMiddleware(request, response, next) {
   request.requestId = requestId;
   response.setHeader('X-Request-ID', requestId);
 
-  next();
+  return withRequestId(requestId,next);
 }

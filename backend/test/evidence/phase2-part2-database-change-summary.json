@@ -1,0 +1,577 @@
+{
+  "scope": "Part 2 only; successful fixture DML was rolled back. Prepare-only entries are excluded from write counts.",
+  "additionalInitialReadOnlyConnections": 1,
+  "totalConnections": 16,
+  "runs": [
+    {
+      "file": "phase2-part2-live-01.json",
+      "result": "FAIL",
+      "checks": 2,
+      "connections": [],
+      "loggedEntries": 91,
+      "prepareAttempts": 0,
+      "successfulPrepares": 0,
+      "successfulInserts": 23,
+      "successfulUpdates": 3,
+      "failedWrites": 0,
+      "deletes": 0,
+      "ddl": 0,
+      "physicalCommits": 0,
+      "rolledBack": true,
+      "beforeAfterEqual": null,
+      "baselineNonempty": [
+        {
+          "table": "audit_event",
+          "rows": 8
+        },
+        {
+          "table": "role",
+          "rows": 8
+        },
+        {
+          "table": "user_account",
+          "rows": 8
+        },
+        {
+          "table": "user_sessions",
+          "rows": 4
+        },
+        {
+          "table": "client_applications",
+          "rows": 1
+        }
+      ],
+      "physicalConnectionCount": 1,
+      "directConnectionIdRecorded": false,
+      "executedQueryClasses": {
+        "SELECT": 59,
+        "START": 1,
+        "INSERT": 23,
+        "SAVEPOINT": 2,
+        "UPDATE": 3,
+        "RELEASE": 2,
+        "ROLLBACK": 1
+      }
+    },
+    {
+      "file": "phase2-part2-live-02.json",
+      "result": "PASS",
+      "checks": 62,
+      "connections": [],
+      "loggedEntries": 654,
+      "prepareAttempts": 0,
+      "successfulPrepares": 0,
+      "successfulInserts": 130,
+      "successfulUpdates": 86,
+      "failedWrites": 0,
+      "deletes": 0,
+      "ddl": 0,
+      "physicalCommits": 0,
+      "rolledBack": true,
+      "beforeAfterEqual": true,
+      "baselineNonempty": [
+        {
+          "table": "audit_event",
+          "rows": 8
+        },
+        {
+          "table": "role",
+          "rows": 8
+        },
+        {
+          "table": "user_account",
+          "rows": 8
+        },
+        {
+          "table": "user_sessions",
+          "rows": 4
+        },
+        {
+          "table": "client_applications",
+          "rows": 1
+        }
+      ],
+      "physicalConnectionCount": 1,
+      "directConnectionIdRecorded": false,
+      "executedQueryClasses": {
+        "SELECT": 344,
+        "START": 1,
+        "INSERT": 130,
+        "SAVEPOINT": 46,
+        "UPDATE": 86,
+        "RELEASE": 41,
+        "ROLLBACK": 6
+      }
+    },
+    {
+      "file": "phase2-part2-live-03.json",
+      "result": "PASS",
+      "checks": 77,
+      "connections": [],
+      "loggedEntries": 725,
+      "prepareAttempts": 0,
+      "successfulPrepares": 0,
+      "successfulInserts": 133,
+      "successfulUpdates": 89,
+      "failedWrites": 0,
+      "deletes": 0,
+      "ddl": 0,
+      "physicalCommits": 0,
+      "rolledBack": true,
+      "beforeAfterEqual": true,
+      "baselineNonempty": [
+        {
+          "table": "audit_event",
+          "rows": 8
+        },
+        {
+          "table": "role",
+          "rows": 8
+        },
+        {
+          "table": "user_account",
+          "rows": 8
+        },
+        {
+          "table": "user_sessions",
+          "rows": 4
+        },
+        {
+          "table": "client_applications",
+          "rows": 1
+        }
+      ],
+      "physicalConnectionCount": 1,
+      "directConnectionIdRecorded": false,
+      "executedQueryClasses": {
+        "SELECT": 409,
+        "START": 1,
+        "INSERT": 133,
+        "SAVEPOINT": 46,
+        "UPDATE": 89,
+        "RELEASE": 41,
+        "ROLLBACK": 6
+      }
+    },
+    {
+      "file": "phase2-part2-live-04.json",
+      "result": "FAIL",
+      "checks": 1,
+      "connections": [
+        "77",
+        "76"
+      ],
+      "loggedEntries": 98,
+      "prepareAttempts": 92,
+      "successfulPrepares": 91,
+      "successfulInserts": 0,
+      "successfulUpdates": 0,
+      "failedWrites": 0,
+      "deletes": 0,
+      "ddl": 0,
+      "physicalCommits": 0,
+      "rolledBack": false,
+      "beforeAfterEqual": null,
+      "baselineNonempty": [],
+      "physicalConnectionCount": 3,
+      "directConnectionIdRecorded": false,
+      "executedQueryClasses": {
+        "SELECT": 4,
+        "SET": 2
+      }
+    },
+    {
+      "file": "phase2-part2-live-05.json",
+      "result": "FAIL",
+      "checks": 10,
+      "connections": [
+        "78",
+        "79",
+        "80"
+      ],
+      "loggedEntries": 405,
+      "prepareAttempts": 194,
+      "successfulPrepares": 194,
+      "successfulInserts": 40,
+      "successfulUpdates": 5,
+      "failedWrites": 0,
+      "deletes": 0,
+      "ddl": 0,
+      "physicalCommits": 0,
+      "rolledBack": true,
+      "beforeAfterEqual": true,
+      "baselineNonempty": [
+        {
+          "table": "audit_event",
+          "rows": 8
+        },
+        {
+          "table": "role",
+          "rows": 8
+        },
+        {
+          "table": "user_account",
+          "rows": 8
+        },
+        {
+          "table": "user_sessions",
+          "rows": 5
+        },
+        {
+          "table": "client_applications",
+          "rows": 1
+        }
+      ],
+      "physicalConnectionCount": 3,
+      "directConnectionIdRecorded": true,
+      "executedQueryClasses": {
+        "SELECT": 144,
+        "SET": 3,
+        "START": 1,
+        "INSERT": 40,
+        "SAVEPOINT": 7,
+        "UPDATE": 5,
+        "RELEASE": 7,
+        "ROLLBACK": 4
+      }
+    },
+    {
+      "file": "phase2-part2-live-06.json",
+      "result": "PASS",
+      "checks": 84,
+      "connections": [
+        "81",
+        "82",
+        "83"
+      ],
+      "loggedEntries": 993,
+      "prepareAttempts": 194,
+      "successfulPrepares": 194,
+      "successfulInserts": 137,
+      "successfulUpdates": 92,
+      "failedWrites": 0,
+      "deletes": 0,
+      "ddl": 0,
+      "physicalCommits": 0,
+      "rolledBack": true,
+      "beforeAfterEqual": true,
+      "baselineNonempty": [
+        {
+          "table": "audit_event",
+          "rows": 8
+        },
+        {
+          "table": "role",
+          "rows": 8
+        },
+        {
+          "table": "user_account",
+          "rows": 8
+        },
+        {
+          "table": "user_sessions",
+          "rows": 5
+        },
+        {
+          "table": "client_applications",
+          "rows": 1
+        }
+      ],
+      "physicalConnectionCount": 3,
+      "directConnectionIdRecorded": true,
+      "executedQueryClasses": {
+        "SELECT": 462,
+        "SET": 3,
+        "START": 1,
+        "INSERT": 137,
+        "SAVEPOINT": 49,
+        "UPDATE": 92,
+        "RELEASE": 49,
+        "ROLLBACK": 6
+      }
+    },
+    {
+      "file": "phase2-part2-live-07.json",
+      "result": "PASS",
+      "checks": 85,
+      "connections": [
+        "84",
+        "85",
+        "86"
+      ],
+      "loggedEntries": 1002,
+      "prepareAttempts": 196,
+      "successfulPrepares": 196,
+      "successfulInserts": 137,
+      "successfulUpdates": 92,
+      "failedWrites": 0,
+      "deletes": 0,
+      "ddl": 0,
+      "physicalCommits": 0,
+      "rolledBack": true,
+      "beforeAfterEqual": true,
+      "baselineNonempty": [
+        {
+          "table": "audit_event",
+          "rows": 8
+        },
+        {
+          "table": "role",
+          "rows": 8
+        },
+        {
+          "table": "user_account",
+          "rows": 8
+        },
+        {
+          "table": "user_sessions",
+          "rows": 5
+        },
+        {
+          "table": "client_applications",
+          "rows": 1
+        }
+      ],
+      "physicalConnectionCount": 3,
+      "directConnectionIdRecorded": true,
+      "executedQueryClasses": {
+        "SELECT": 469,
+        "SET": 3,
+        "START": 1,
+        "INSERT": 137,
+        "SAVEPOINT": 49,
+        "UPDATE": 92,
+        "RELEASE": 49,
+        "ROLLBACK": 6
+      }
+    }
+  ],
+  "tables": {
+    "user_account": {
+      "insertStatements": 42,
+      "updateStatements": 8,
+      "insertAffectedRows": 42,
+      "updateAffectedRows": 8
+    },
+    "client": {
+      "insertStatements": 6,
+      "updateStatements": 0,
+      "insertAffectedRows": 6,
+      "updateAffectedRows": 0
+    },
+    "inquiry": {
+      "insertStatements": 6,
+      "updateStatements": 105,
+      "insertAffectedRows": 6,
+      "updateAffectedRows": 105
+    },
+    "unit_of_measure": {
+      "insertStatements": 6,
+      "updateStatements": 0,
+      "insertAffectedRows": 6,
+      "updateAffectedRows": 0
+    },
+    "filter_type": {
+      "insertStatements": 6,
+      "updateStatements": 0,
+      "insertAffectedRows": 6,
+      "updateAffectedRows": 0
+    },
+    "delivery_method": {
+      "insertStatements": 6,
+      "updateStatements": 0,
+      "insertAffectedRows": 6,
+      "updateAffectedRows": 0
+    },
+    "raw_material": {
+      "insertStatements": 6,
+      "updateStatements": 10,
+      "insertAffectedRows": 6,
+      "updateAffectedRows": 10
+    },
+    "inquiry_item": {
+      "insertStatements": 6,
+      "updateStatements": 0,
+      "insertAffectedRows": 6,
+      "updateAffectedRows": 0
+    },
+    "quotation": {
+      "insertStatements": 12,
+      "updateStatements": 11,
+      "insertAffectedRows": 12,
+      "updateAffectedRows": 11
+    },
+    "quotation_item": {
+      "insertStatements": 12,
+      "updateStatements": 0,
+      "insertAffectedRows": 12,
+      "updateAffectedRows": 0
+    },
+    "cost_estimate": {
+      "insertStatements": 12,
+      "updateStatements": 0,
+      "insertAffectedRows": 12,
+      "updateAffectedRows": 0
+    },
+    "cost_estimate_material": {
+      "insertStatements": 12,
+      "updateStatements": 0,
+      "insertAffectedRows": 12,
+      "updateAffectedRows": 0
+    },
+    "audit_event": {
+      "insertStatements": 176,
+      "updateStatements": 0,
+      "insertAffectedRows": 176,
+      "updateAffectedRows": 0
+    },
+    "document": {
+      "insertStatements": 13,
+      "updateStatements": 8,
+      "insertAffectedRows": 13,
+      "updateAffectedRows": 8
+    },
+    "purchase_order": {
+      "insertStatements": 5,
+      "updateStatements": 0,
+      "insertAffectedRows": 5,
+      "updateAffectedRows": 0
+    },
+    "sales_invoice": {
+      "insertStatements": 5,
+      "updateStatements": 4,
+      "insertAffectedRows": 5,
+      "updateAffectedRows": 4
+    },
+    "payment_method": {
+      "insertStatements": 5,
+      "updateStatements": 0,
+      "insertAffectedRows": 5,
+      "updateAffectedRows": 0
+    },
+    "payment_transaction": {
+      "insertStatements": 5,
+      "updateStatements": 0,
+      "insertAffectedRows": 5,
+      "updateAffectedRows": 0
+    },
+    "production_stage": {
+      "insertStatements": 50,
+      "updateStatements": 0,
+      "insertAffectedRows": 50,
+      "updateAffectedRows": 0
+    },
+    "job_order": {
+      "insertStatements": 4,
+      "updateStatements": 84,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 84
+    },
+    "job_order_item": {
+      "insertStatements": 4,
+      "updateStatements": 0,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 0
+    },
+    "job_order_stage": {
+      "insertStatements": 40,
+      "updateStatements": 80,
+      "insertAffectedRows": 40,
+      "updateAffectedRows": 80
+    },
+    "notification": {
+      "insertStatements": 18,
+      "updateStatements": 8,
+      "insertAffectedRows": 18,
+      "updateAffectedRows": 4
+    },
+    "production_plan": {
+      "insertStatements": 4,
+      "updateStatements": 0,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 0
+    },
+    "production_stage_event": {
+      "insertStatements": 80,
+      "updateStatements": 0,
+      "insertAffectedRows": 80,
+      "updateAffectedRows": 0
+    },
+    "material_shortage_report": {
+      "insertStatements": 4,
+      "updateStatements": 0,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 0
+    },
+    "stock_movement": {
+      "insertStatements": 8,
+      "updateStatements": 0,
+      "insertAffectedRows": 8,
+      "updateAffectedRows": 0
+    },
+    "stock_request": {
+      "insertStatements": 4,
+      "updateStatements": 8,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 8
+    },
+    "stock_request_item": {
+      "insertStatements": 4,
+      "updateStatements": 8,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 8
+    },
+    "delivery": {
+      "insertStatements": 4,
+      "updateStatements": 8,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 8
+    },
+    "delivery_item": {
+      "insertStatements": 4,
+      "updateStatements": 0,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 0
+    },
+    "waybill": {
+      "insertStatements": 4,
+      "updateStatements": 4,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 4
+    },
+    "delivery_receipt": {
+      "insertStatements": 4,
+      "updateStatements": 0,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 0
+    },
+    "signed_delivery_receipt": {
+      "insertStatements": 4,
+      "updateStatements": 0,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 0
+    },
+    "user_sessions": {
+      "insertStatements": 15,
+      "updateStatements": 21,
+      "insertAffectedRows": 15,
+      "updateAffectedRows": 17
+    },
+    "client_applications": {
+      "insertStatements": 4,
+      "updateStatements": 0,
+      "insertAffectedRows": 4,
+      "updateAffectedRows": 0
+    }
+  },
+  "totals": {
+    "successfulInserts": 600,
+    "successfulUpdates": 367,
+    "failedWrites": 0,
+    "deletes": 0,
+    "ddl": 0,
+    "physicalCommits": 0
+  },
+  "connectionNote": "Runs 01?04 do not record the direct connection ID. Each used one direct connection; runs 04?07 also used two guarded pool connections. An additional initial application-account probe was read-only. All connections targeted only the dedicated Phase 2 database.",
+  "baselineDrift": "Runs 01?03 observed 4 permanent sessions. Runs 05?07 observed 5. The extra session appeared between runs; its origin was not established. Each completed run with after hashes exactly preserved its own baseline. All fixture transactions were rolled back, with no physical COMMIT."
+}

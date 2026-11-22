@@ -13,6 +13,7 @@ const ERRORS = new Map([
   ['APPLICATION_ALREADY_DECIDED', [409, 'Application is no longer pending.']],
   ['COMPANY_CONFLICT', [409, 'An existing company requires Admin review.']],
   ['IDENTITY_CONFLICT', [409, 'An account or application already uses these login details.']],
+  ['REFERENCE_DATA_MISSING',[409,'The approved Client role must be provisioned before approval.']],
   ['SERVICE_UNAVAILABLE', [503, 'Application review service is temporarily unavailable.']],
   ['DECISION_OUTCOME_UNKNOWN', [503, 'Decision outcome could not be confirmed. Refresh the application before retrying.']]
 ]);
@@ -21,7 +22,7 @@ function errorResponse(response, code, errors) {
   const [status, message] = ERRORS.get(code) ?? ERRORS.get('SERVICE_UNAVAILABLE');
   return response.status(status).json({ success: false, message,
     ...(errors ? { errors } : {}),
-    ...(code === 'DECISION_OUTCOME_UNKNOWN' ? { code } : {}) });
+    ...(['DECISION_OUTCOME_UNKNOWN','REFERENCE_DATA_MISSING'].includes(code) ? { code } : {}) });
 }
 function publicApplication(row) {
   if (!validateApplicationId(row?.id).success) throw new Error('Invalid application result.');

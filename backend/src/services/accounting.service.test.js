@@ -9,7 +9,7 @@ function harness(rows = []) {
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
-      return [rows];
+      return [rows.map(r=>({...r,outstandingAmount:r.outstandingAmount??'0.00'}))];
     },
     release() {}
   };
@@ -28,15 +28,15 @@ test('Accounting invoice and payment reads use parameterized bounded SQL', async
   const invoice = harness([{ id: '501', reference: 'SI-2026-0501' }]);
   const invoices = await invoice.service.listInvoices(actor, { limit: '25', orderId: '501' });
   assert.equal(invoices.success, true);
-  assert.match(invoice.calls[0].sql, /FROM invoices i/);
+  assert.match(invoice.calls[0].sql, /FROM sales_invoice v/);
   assert.equal(invoice.calls[0].params[0], '501');
-  assert.equal(invoice.calls[0].params[1], 25);
+  assert.equal(invoice.calls[0].params[1], '25');
 
   const payment = harness([{ id: '601', verificationStatus: 'pending' }]);
   const payments = await payment.service.listPayments(actor, { limit: '10', status: 'pending', invoiceId: '501' });
   assert.equal(payments.success, true);
-  assert.match(payment.calls[0].sql, /FROM payments p/);
-  assert.deepEqual(payment.calls[0].params, ['501', 'pending', 10]);
+  assert.match(payment.calls[0].sql, /FROM proof_of_payment r/);
+  assert.deepEqual(payment.calls[0].params, ['pending','501','10']);
 });
 
 test('Accounting read service rejects unsupported filters and excessive limits', async () => {
@@ -51,10 +51,10 @@ function proofProjectionHarness(paymentRows) {
     async execute(sql, params) {
       calls.push({ sql, params });
       // Source contract + relational fixture, not execution of SQL against MySQL.
-      assert.match(sql, /SELECT CAST\(MIN\(pf.file_id\) AS CHAR\) FROM payment_files pf\s+WHERE pf.payment_id=p.id AND pf.purpose='proof_of_payment'/);
-      assert.doesNotMatch(sql, /JOIN\s+payment_files|SUM\(DISTINCT/i);
-      assert.match(sql, /CASE WHEN p.verification_status='verified' THEN p.verified_amount ELSE NULL END verifiedAmount/);
-      const rows = sql.includes('WHERE p.id=?') ? paymentRows.filter(row => row.id === params[0]) : paymentRows.slice(0, params.at(-1));
+      assert.match(sql, /SELECT CAST\(MIN\(document_id\) AS CHAR\) FROM proof_of_payment_file f WHERE f.receipt_id=r.receipt_id/);
+      assert.doesNotMatch(sql, /JOIN\s+proof_of_payment_file|SUM\(DISTINCT/i);
+      assert.match(sql, /CASE WHEN r.review_status='verified' THEN \(SELECT SUM\(t.amount\) FROM payment_transaction/);
+      const rows = sql.includes('WHERE 1=1 AND r.receipt_id=?') ? paymentRows.filter(row => row.id === params[0]) : paymentRows.slice(0, params.at(-1));
       return [rows.map(({ attachments, ...payment }) => {
         const proofs = attachments.filter(file => file.purpose === 'proof_of_payment')
           .toSorted((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0);
@@ -100,14 +100,14 @@ test('D07 Accounting preserves equal-value payments, status masking and payment-
 });
 
 test('D07 invoice list/detail keep the payment-only verified sum and exact totals', async () => {
-  const row = { id: '601', orderId: '91', amount: '100.00', requiredDownpayment: '20.00', verifiedAmount: '20.00' };
+  const row = { id: '601', orderId: '91', amount: '100.00', requiredDownpayment: '20.00', verifiedAmount: '20.00',outstandingAmount:'80.00',paymentTermLabel:null,isOverdue:false };
   const h = harness([row]);
   const listed = await h.service.listInvoices(actor);
   const detail = await h.service.getInvoice(actor, row.id);
   assert.deepEqual(listed.data[0], row);
   assert.deepEqual(detail.data, row);
   for (const { sql } of h.calls) {
-    assert.match(sql, /SELECT SUM\(p.verified_amount\) FROM payments p\s+WHERE p.invoice_id=i.id AND p.verification_status='verified'/);
+    assert.match(sql, /SELECT SUM\(t.amount\) FROM payment_transaction t WHERE t.invoice_id=v.invoice_id AND t.approval_status='approved'/);
     assert.doesNotMatch(sql, /payment_files|SUM\(DISTINCT/i);
   }
 });

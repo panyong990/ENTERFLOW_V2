@@ -1,0 +1,23 @@
+﻿{
+    "originalTables":  40,
+    "originalDataUnchanged":  true,
+    "history001002Unchanged":  true,
+    "final003":  {
+                     "file":  "003_username_support.sql",
+                     "state":  "failed",
+                     "started_at":  "2026-11-21T21:10:31.301Z",
+                     "applied_at":  null,
+                     "error_code":  "PHASE2_FAILURE",
+                     "checksum":  "95c7f5715281bf5cf1c2543edbdb94783d51803159ce2bd2f976971ea50fe8b5"
+                 },
+    "schema":  {
+                   "check":  "P2B002 and installed extension structure",
+                   "result":  "PASS",
+                   "detail":  {
+                                  "stage":  2,
+                                  "tables":  43,
+                                  "triggers":  39
+                              }
+               },
+    "clientApplications":  "0"
+}

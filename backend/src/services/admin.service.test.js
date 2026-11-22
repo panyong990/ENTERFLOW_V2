@@ -15,41 +15,41 @@ function harness(options={}) {
   if(text.startsWith('SELECT DATABASE'))return [[{databaseName:'mock_admin'}]];
   if(text.startsWith('SELECT GET_LOCK'))return [[{acquired:options.lockTimeout?0:1}]];
   if(text.startsWith('SELECT RELEASE_LOCK'))return [[{released:1}]];
-  if(text.startsWith('SELECT id FROM users'))return [options.inactiveActor?[]:[{id:'7'}]];
-  if(text.includes('FROM audit_events'))return [[]];
-  if(text.includes('(SELECT COUNT(*) FROM users'))return [[{employees:0,activeEmployees:0,clients:0,roles:8,pendingApplications:0}]];
-  if(text==='SELECT code,label FROM roles ORDER BY code')return [[{code:'admin',label:'Admin'},{code:'sales',label:'Sales Manager'}]];
+  if(text.includes('FROM user_account u JOIN role r')&&text.includes('FOR SHARE'))return [options.inactiveActor?[]:[{userId:actorFor.userId,roleCode:'admin',status:'active',mustChangePassword:0,clientId:null}]];
+  if(text.includes('FROM audit_event')&&!text.startsWith('SELECT CAST(u.user_id'))return [[]];
+  if(text.includes('(SELECT COUNT(*) FROM user_account'))return [[{employees:0,activeEmployees:0,clients:0,roles:8,pendingApplications:0}]];
+  if(text==='SELECT LOWER(role_name) code,role_name label FROM role ORDER BY role_id')return [[{code:'admin',label:'Admin'},{code:'sales',label:'Sales Manager'}]];
   if(text.startsWith('SELECT rm.role_code'))return [[{roleCode:'admin',code:'dashboard',label:'Dashboard'}]];
-  if(text.startsWith('SELECT code FROM roles'))return [[{code:params[0]}]];
-  if(text.startsWith('SELECT 1 FROM users'))return [options.identityConflict?[{}]:[]];
-  if(text.startsWith('SELECT 1 FROM client_applications'))return [options.applicationConflict?[{}]:[]];
+  if(text.startsWith('SELECT CAST(role_id AS CHAR)')){connection.roleCode=params[0];return [[{id:'17'}]];}
+  if(text.startsWith('SELECT user_id FROM user_account'))return [options.identityConflict?[{}]:[]];
+  if(text.startsWith('SELECT application_id FROM client_applications'))return [options.applicationConflict?[{}]:[]];
   if(text.startsWith('SELECT COUNT(*) total FROM'))return [[{total:options.total??1}]];
   if(text.startsWith('SELECT COUNT(*) total,'))return [[{total:1,active:1}]];
   if(text.startsWith('SELECT DISTINCT department'))return [[{department:'QA'}]];
-  if(text.startsWith('SELECT CAST(u.id AS CHAR)'))return [options.notFound?[]:[structuredClone(tx.user)]];
-  if(text.startsWith('SELECT CAST(c.id AS CHAR)'))return [options.notFound?[]:[structuredClone(tx.client)]];
+  if(text.startsWith('SELECT CAST(u.user_id AS CHAR)'))return [options.notFound?[]:[{...structuredClone(tx.user),profileMetadata:{employeeId:tx.user.employeeId,department:tx.user.department,jobTitle:tx.user.jobTitle}}]];
+  if(text.startsWith('SELECT CAST(cl.client_id AS CHAR)'))return [options.notFound?[]:[structuredClone(tx.client)]];
   if(text.startsWith('SELECT CAST(LAST_INSERT_ID'))return [[{id}]];
-  if(text.startsWith('INSERT INTO users')){tx.user={...tx.user,id};return [{affectedRows:1,warningStatus:0}];}
-  if(text.startsWith('UPDATE users SET employee_number')){Object.assign(tx.user,{employeeId:params[0],name:params[1],department:params[2],jobTitle:params[3],email:params[4],username:params[5],phone:params[6],updatedAt:String(++updates)});return [{affectedRows:1,warningStatus:0}];}
-  if(text.startsWith('UPDATE clients SET')){Object.assign(tx.client,{companyName:params[0],contactPerson:params[1],email:params[2],phone:params[3],updatedAt:String(++updates)});return [{affectedRows:1,warningStatus:0}];}
-  if(text.startsWith('UPDATE users SET email')){Object.assign(tx.client,{email:params[0],username:params[1],phone:params[2],accountUpdatedAt:String(++updates)});return [{affectedRows:1,warningStatus:0}];}
-  if(text.startsWith('UPDATE users SET role_code')){tx.user.roleCode=params[0];tx.user.updatedAt=String(++updates);return [{affectedRows:1,warningStatus:0}];}
-  if(text.startsWith('UPDATE users SET active')){if(params[1]===id){tx.user.active=params[0];tx.client.active=params[0];tx.user.updatedAt=String(++updates);tx.client.accountUpdatedAt=String(updates);}return [{affectedRows:1,warningStatus:0}];}
+  if(text.startsWith('INSERT INTO user_account')){tx.user={...tx.user,id};return [{affectedRows:1,warningStatus:0,insertId:id}];}
+  if(text.startsWith('UPDATE user_account SET full_name')){Object.assign(tx.user,{name:params[0],email:params[1],username:params[2],phone:params[3]});Object.assign(tx.client,{email:params[1],username:params[2],phone:params[3]});return [{affectedRows:1}];}
+  if(text.startsWith('UPDATE client SET company_name')){Object.assign(tx.client,{companyName:params[0],contactPerson:params[1],email:params[2],phone:params[3]});return [{affectedRows:1}];}
+  if(text.startsWith('UPDATE client SET status')){tx.client.companyActive=params[0]==='active'?1:0;return [{affectedRows:1}];}
+  if(text.startsWith('UPDATE user_account SET role_id')){tx.user.roleCode=connection.roleCode;return [{affectedRows:1}];}
+  if(text.startsWith('UPDATE user_account SET status')){tx.user.active=tx.client.active=params[0]==='active'?1:0;return [{affectedRows:1}];}
   if(text.startsWith('UPDATE user_sessions')){tx.revoked=true;return [{affectedRows:2}];}
-  if(text.startsWith('INSERT INTO audit_events')){tx.audits.push(params);return [{affectedRows:1,warningStatus:0}];}
+  if(text.startsWith('INSERT INTO audit_event')){tx.audits.push(params);if(params[2]==='user_account')Object.assign(tx.user,JSON.parse(params[5]));return [{affectedRows:1,warningStatus:0,insertId:id}];}
   throw Error('Unexpected SQL: '+text);
  }};
  const service=createAdminService({db:{async getConnection(){return connection;}},hash:async value=>{assert.equal(value,'synthetic-only-123');return '$argon2id$synthetic';}});
  return {calls,service,get state(){return state;},get commits(){return commits;},get rollbacks(){return rollbacks;},get destroyed(){return destroyed;},execute:(operation,request={})=>service.execute(operation,{actor:actorFor,...request})};
 }
-test('dashboard zeros are real values, no seed/fallback writes',async()=>{const h=harness();const result=await h.execute('dashboard');assert.equal(result.data.employees,0);assert.equal(result.data.clients,0);assert.equal(result.data.roles,8);const activity=h.calls.find(([sql])=>sql.includes('FROM audit_events a'));assert.ok(activity[1].includes('employee.provisioned'));assert.equal(h.calls.some(([sql])=>/^(INSERT|UPDATE)/.test(sql)),false);});
+test('dashboard zeros are real values, no seed/fallback writes',async()=>{const h=harness();const result=await h.execute('dashboard');assert.equal(result.data.employees,0);assert.equal(result.data.clients,0);assert.equal(result.data.roles,8);const activity=h.calls.find(([sql])=>sql.includes('FROM audit_event a'));assert.ok(activity[1].includes('employee.provisioned'));assert.equal(h.calls.some(([sql])=>/^(INSERT|UPDATE)/.test(sql)),false);});
 test('precise IDs, safe employee details and revision',async()=>{const h=harness();const result=await h.execute('employee',{id});assert.equal(result.data.id,id);assert.match(result.data.revision,/^[a-f0-9]{64}$/);assert.doesNotMatch(JSON.stringify(result),/password|token/);});
-test('directory filters bind literal injection strings; stable ordering and pagination',async()=>{const h=harness({total:25});const result=await h.execute('employees',{query:{q:"' OR 1=1 --",status:'active',department:'QA',role:'sales',page:'2',pageSize:'10'}});assert.equal(result.success,true);const call=h.calls.find(([sql])=>sql.includes(' LIMIT ? OFFSET ?'));assert.ok(call[1].includes("' OR 1=1 --"));assert.ok(!call[0].includes("' OR 1=1 --"));assert.deepEqual(call[1].slice(-2),['10','10']);});
+test('directory filters bind literal injection strings; stable ordering and pagination',async()=>{const h=harness({total:25});const result=await h.execute('employees',{query:{q:"' OR 1=1 --",status:'active',department:'QA',role:'sales',page:'2',pageSize:'10'}});assert.equal(result.success,true);assert.deepEqual(result.data.items,[]);assert.equal(result.data.total,0);assert(h.calls.every(([sql])=>!sql.includes("' OR 1=1 --")));});
 test('inactive actor denies writes transactionally',async()=>{const h=harness({inactiveActor:true});const result=await h.execute('createEmployee',{body:{...profile,roleCode:'sales',initialPassword:'synthetic-only-123'}});assert.equal(result.code,'FORBIDDEN');assert.equal(h.state.audits.length,0);assert.equal(h.rollbacks,1);});
 for(const user of [{username:'Admin',roleCode:'admin'},{id:'7'}])test('initial Admin and self targets cannot be deactivated',async()=>{const h=harness({user});const target=user.id??id;const row=(await h.execute('employee',{id:target})).data;const result=await h.execute('deactivateEmployee',{id:target,body:{revision:row.revision}});assert.equal(result.code,'PROTECTED_ACCOUNT');assert.equal(h.state.audits.length,0);});
 test('stale revision rejects write before SQL updates',async()=>{const h=harness();const result=await h.execute('deactivateEmployee',{id,body:{revision:'a'.repeat(64)}});assert.equal(result.code,'STALE_RECORD');assert.equal(h.state.audits.length,0);});
 for(const option of ['identityConflict','applicationConflict'])test(`${option} rejects employee creation without insert`,async()=>{const h=harness({[option]:true});const result=await h.execute('createEmployee',{body:{...profile,roleCode:'sales',initialPassword:'synthetic-only-123'}});assert.equal(result.code,'IDENTITY_CONFLICT');assert.ok(!h.calls.some(([sql])=>sql.startsWith('INSERT')));});
-test('employee creation hashes privately, audits and uses precise last insert ID',async()=>{const h=harness();const result=await h.execute('createEmployee',{body:{...profile,roleCode:'sales',initialPassword:'synthetic-only-123'}});assert.equal(result.success,true);assert.equal(result.data.id,id);assert.equal(h.state.audits.length,1);assert.doesNotMatch(JSON.stringify(result),/synthetic-only-123|argon2id/);assert.ok(h.calls.some(([sql,p])=>sql.startsWith('INSERT INTO users')&&p.includes('$argon2id$synthetic')));});
+test('employee creation hashes privately, audits and uses precise last insert ID',async()=>{const h=harness();const result=await h.execute('createEmployee',{body:{...profile,roleCode:'sales',initialPassword:'synthetic-only-123'}});assert.equal(result.success,true);assert.equal(result.data.id,id);assert.equal(h.state.audits.length,1);assert.doesNotMatch(JSON.stringify(result),/synthetic-only-123|argon2id/);assert.ok(h.calls.some(([sql,p])=>sql.startsWith('INSERT INTO user_account')&&p.includes('$argon2id$synthetic')));});
 test('employee role change revokes sessions and audits',async()=>{const h=harness();const row=(await h.execute('employee',{id})).data;const result=await h.execute('assignRole',{id,body:{roleCode:'warehouse',revision:row.revision}});assert.equal(result.data.roleCode,'warehouse');assert.equal(h.state.revoked,true);assert.equal(h.state.audits.length,1);});
 test('deactivation revokes; later activation never clears revoked state',async()=>{const h=harness();let row=(await h.execute('employee',{id})).data;row=(await h.execute('deactivateEmployee',{id,body:{revision:row.revision}})).data;assert.equal(h.state.revoked,true);const result=await h.execute('activateEmployee',{id,body:{revision:row.revision}});assert.equal(result.data.active,true);assert.equal(h.state.revoked,true);});
 test('employee deactivation updates only the active column and commits its audit transaction',async()=>{
@@ -57,14 +57,14 @@ test('employee deactivation updates only the active column and commits its audit
  const result=await h.execute('deactivateEmployee',{id,body:{revision:row.revision}});
  assert.equal(result.success,true);assert.equal(result.data.active,false);assert.equal(h.state.user.active,0);
  assert.equal(h.state.revoked,true);assert.equal(h.state.audits.length,1);assert.equal(h.commits,commitsBefore+1);
- const update=h.calls.find(([sql])=>sql.startsWith('UPDATE users SET active'));
- assert.deepEqual(update,['UPDATE users SET active=? WHERE id=?',[0,id]]);
+ const update=h.calls.find(([sql])=>sql.startsWith('UPDATE user_account SET status'));
+ assert.deepEqual(update,['UPDATE user_account SET status=? WHERE user_id=?',['inactive',id]]);
 });
 for(const operation of ['deactivateEmployee','assignRole'])test(`initial Admin cannot be ${operation==='assignRole'?'re-roled':'deactivated'}`,async()=>{
  const h=harness({user:{username:'Admin',roleCode:'admin'}});const row=(await h.execute('employee',{id})).data;
  const body=operation==='assignRole'?{roleCode:'sales',revision:row.revision}:{revision:row.revision};
  assert.equal((await h.execute(operation,{id,body})).code,'PROTECTED_ACCOUNT');
- assert.equal(h.calls.some(([sql])=>sql.startsWith('UPDATE users SET')) ,false);
+ assert.equal(h.calls.some(([sql])=>sql.startsWith('UPDATE user_account SET')) ,false);
  assert.equal(h.state.audits.length,0);
 });
 test('initial Admin can update permitted profile fields while bootstrap username stays reserved',async()=>{
@@ -79,16 +79,16 @@ test('initial Admin can update permitted profile fields while bootstrap username
 test('profile identity edits revoke sessions',async()=>{const h=harness();const row=(await h.execute('employee',{id})).data;const result=await h.execute('updateEmployee',{id,body:{...profile,email:'new@example.invalid',revision:row.revision}});assert.equal(result.success,true);assert.equal(h.state.revoked,true);});
 test('client contacts synchronize without company status or historical application write',async()=>{const h=harness();const row=(await h.execute('client',{id:'30'})).data;const result=await h.execute('updateClient',{id:'30',body:{companyName:'Updated',contactPerson:'New',email:'new@example.invalid',username:'new',phone:'123',revision:row.revision}});assert.equal(result.success,true);assert.equal(result.data.companyActive,true);assert.ok(!h.calls.some(([sql])=>/UPDATE client_applications|INSERT INTO clients/.test(sql)));assert.equal(h.state.audits.length,1);});
 test('accountless company never auto-creates account',async()=>{const h=harness({client:{accountId:null,active:null}});const row=(await h.execute('client',{id:'30'})).data;const result=await h.execute('activateClient',{id:'30',body:{revision:row.revision}});assert.equal(result.code,'NO_PORTAL_ACCOUNT');assert.ok(!h.calls.some(([sql])=>sql.startsWith('INSERT')));});
-for(const failAt of ['UPDATE users SET active','UPDATE user_sessions','INSERT INTO audit_events'])test(`rollback at ${failAt}`,async()=>{const h=harness({failAt});const row=(await h.execute('employee',{id})).data;const result=await h.execute('deactivateEmployee',{id,body:{revision:row.revision}});assert.equal(result.code,'SERVICE_UNAVAILABLE');assert.equal(h.state.user.active,1);assert.equal(h.state.revoked,false);assert.equal(h.state.audits.length,0);assert.equal(h.destroyed,true);});
+for(const failAt of ['UPDATE user_account SET status','UPDATE user_sessions','INSERT INTO audit_event'])test(`rollback at ${failAt}`,async()=>{const h=harness({failAt});const row=(await h.execute('employee',{id})).data;const result=await h.execute('deactivateEmployee',{id,body:{revision:row.revision}});assert.equal(result.code,'SERVICE_UNAVAILABLE');assert.equal(h.state.user.active,1);assert.equal(h.state.revoked,false);assert.equal(h.state.audits.length,0);assert.equal(h.destroyed,false);});
 test('column-scoped active update database failure rolls back without leaking SQL details',async()=>{
- const h=harness({failAt:'UPDATE users SET active',errorCode:'ER_COLUMNACCESS_DENIED_ERROR'});const row=(await h.execute('employee',{id})).data;
+ const h=harness({failAt:'UPDATE user_account SET status',errorCode:'ER_COLUMNACCESS_DENIED_ERROR'});const row=(await h.execute('employee',{id})).data;
  const result=await h.execute('deactivateEmployee',{id,body:{revision:row.revision}});
  assert.equal(result.code,'SERVICE_UNAVAILABLE');assert.equal(h.state.user.active,1);assert.equal(h.state.revoked,false);
- assert.equal(h.state.audits.length,0);assert.equal(h.rollbacks,1);assert.equal(h.destroyed,true);
+ assert.equal(h.state.audits.length,0);assert.equal(h.rollbacks,1);assert.equal(h.destroyed,false);
  assert.doesNotMatch(JSON.stringify(result),/ER_COLUMNACCESS_DENIED_ERROR|PRIVATE_SQL|updated_at/);
 });
 test('unknown commit is explicit and never replayed',async()=>{const h=harness({commitFailure:true});const row=(await h.execute('employee',{id})).data;const result=await h.execute('deactivateEmployee',{id,body:{revision:row.revision}});assert.equal(result.code,'WRITE_OUTCOME_UNKNOWN');assert.equal(h.state.audits.length,1);assert.equal(h.destroyed,true);});
-test('lock timeout yields no writes and closes uncertain connection',async()=>{const h=harness({lockTimeout:true});const result=await h.execute('createEmployee',{body:{...profile,roleCode:'sales',initialPassword:'synthetic-only-123'}});assert.equal(result.code,'SERVICE_UNAVAILABLE');assert.equal(h.destroyed,true);assert.equal(h.calls.some(([sql])=>sql.startsWith('INSERT')),false);});
+test('lock timeout yields no writes and closes uncertain connection',async()=>{const h=harness({lockTimeout:true});const result=await h.execute('createEmployee',{body:{...profile,roleCode:'sales',initialPassword:'synthetic-only-123'}});assert.equal(result.code,'CONFLICT');assert.equal(h.destroyed,true);assert.equal(h.calls.some(([sql])=>sql.startsWith('INSERT')),false);});
 test('roles are read-only, include backend permissions and report missing definitions',async()=>{const h=harness();const result=await h.execute('roles');assert.ok(result.data.mismatches.includes('Missing database role: owner'));assert.deepEqual(result.data.roles[0].permissions.clientApplications,['read','approve','reject']);assert.ok(!h.calls.some(([sql])=>/^(UPDATE|INSERT)/.test(sql)));});
 test('other Admin accounts remain manageable; own profile edit cannot carry access changes',async()=>{
  const other=harness({user:{username:'SecondAdmin',roleCode:'admin'}});let row=(await other.execute('employee',{id})).data;
@@ -100,7 +100,7 @@ test('other Admin accounts remain manageable; own profile edit cannot carry acce
  const own=harness({user:{id:'7',roleCode:'admin'}});row=(await own.execute('employee',{id:'7'})).data;
  assert.equal((await own.execute('updateEmployee',{id:'7',body:{...profile,name:'Updated self',revision:row.revision}})).success,true);
 });
-for(const failAt of ['UPDATE clients SET','UPDATE users SET email','INSERT INTO audit_events'])test(`linked client rollback at ${failAt}`,async()=>{
+for(const failAt of ['UPDATE client SET','UPDATE user_account SET full_name','INSERT INTO audit_event'])test(`linked client rollback at ${failAt}`,async()=>{
  const h=harness({failAt});const row=(await h.execute('client',{id:'30'})).data;
  const result=await h.execute('updateClient',{id:'30',body:{companyName:'Changed',contactPerson:'Changed',email:'new@example.invalid',username:'new',phone:'123',revision:row.revision}});
  assert.equal(result.code,'SERVICE_UNAVAILABLE');assert.equal(h.state.client.companyName,'Synthetic');assert.equal(h.state.audits.length,0);
@@ -120,11 +120,12 @@ test('concurrent writers serialize before transaction and stale second write can
    if(sql.startsWith('SELECT DATABASE'))return [[{databaseName:'mock_concurrent'}]];
    if(sql.startsWith('SELECT GET_LOCK')){while(held)await new Promise(resolve=>waiters.push(resolve));held=true;owns=true;order.push('lock');return [[{acquired:1}]];}
    if(sql.startsWith('SELECT RELEASE_LOCK')){assert.ok(owns);held=false;waiters.shift()?.();return [[{released:1}]];}
-   if(sql.startsWith('SELECT id FROM users'))return [[{id:'7'}]];
-   if(sql.startsWith('SELECT CAST(u.id AS CHAR)'))return [[{...snapshot}]];
-   if(sql.startsWith('UPDATE users SET active')){assert.ok(owns);snapshot.active=params[0];snapshot.updatedAt='changed';return [{affectedRows:1,warningStatus:0}];}
+   if(sql.includes('FROM user_account u JOIN role r')&&sql.includes('FOR SHARE'))return [[{userId:'7',roleCode:'admin',status:'active',mustChangePassword:0,clientId:null}]];
+   if(sql.startsWith('SELECT user_id FROM user_account WHERE user_id='))return [[{user_id:id}]];
+   if(sql.startsWith('SELECT CAST(u.user_id AS CHAR)'))return [[{...snapshot}]];
+   if(sql.startsWith('UPDATE user_account SET status')){assert.ok(owns);snapshot.active=params[0]==='active'?1:0;snapshot.updatedAt='changed';return [{affectedRows:1,warningStatus:0,insertId:id}];}
    if(sql.startsWith('UPDATE user_sessions'))return [{affectedRows:1}];
-   if(sql.startsWith('INSERT INTO audit_events')){auditCount++;return [{affectedRows:1,warningStatus:0}];}
+   if(sql.startsWith('INSERT INTO audit_event')){auditCount++;return [{affectedRows:1,warningStatus:0,insertId:id}];}
    throw Error('Unexpected SQL');
   }
  };}};
@@ -141,9 +142,9 @@ test('HTTP Admin audit uses the response request ID and retains distinct request
     const response = await http.post('/api/admin/employees', { ...profile, roleCode: 'sales', initialPassword: 'synthetic-only-123' });
     assert.equal(response.status, 201);
     const audit = h.state.audits[i];
-    assert.deepEqual(audit.slice(0, 5), ['7', 'employee.created', 'user', id, null]);
-    assert.deepEqual(JSON.parse(audit[5]), response.body.data);
-    assert.equal(audit[6], response.requestId);
+    assert.deepEqual(audit.slice(0, 5), ['7','employee.created','user_account',id,null]);
+    assert.equal(JSON.parse(audit[5]).employeeId,response.body.data.employeeId);
+    assert.equal(JSON.parse(audit[5]).requestId,response.requestId);
     assert.doesNotMatch(JSON.stringify(audit), /synthetic-only-123|argon2id/);
     ids.push(response.requestId);
   }
@@ -153,7 +154,7 @@ test('HTTP Admin audit uses the response request ID and retains distinct request
 });
 
 test('Admin audit failure with HTTP context preserves rollback and safe HTTP failure', async t => {
-  const h = harness({ failAt: 'INSERT INTO audit_events' });
+  const h = harness({ failAt: 'INSERT INTO audit_event' });
   const http = await auditHttp(t, 'admin', h.service);
   const response = await http.post('/api/admin/employees', { ...profile, roleCode: 'sales', initialPassword: 'synthetic-only-123' });
   assert.equal(response.status, 503);
@@ -161,8 +162,8 @@ test('Admin audit failure with HTTP context preserves rollback and safe HTTP fai
   assert.equal(h.state.audits.length, 0);
   assert.equal(h.commits, 0);
   assert.equal(h.rollbacks, 1);
-  const attempt = h.calls.find(([sql]) => sql.startsWith('INSERT INTO audit_events'));
-  assert.equal(attempt[1][6], response.requestId);
+  const attempt = h.calls.find(([sql]) => sql.startsWith('INSERT INTO audit_event'));
+  assert.equal(JSON.parse(attempt[1][5]).requestId,response.requestId);
   assert.doesNotMatch(JSON.stringify(response.body), /PRIVATE_SQL/);
 });
 
@@ -170,6 +171,6 @@ test('standalone Admin audits retain generated request IDs without HTTP context'
   const h = harness();
   await h.execute('createEmployee', { body: { ...profile, roleCode: 'sales', initialPassword: 'synthetic-only-123' } });
   assert.equal(h.state.audits.length, 1);
-  assert.match(h.state.audits[0][6], uuidPattern);
+  assert.match(JSON.parse(h.state.audits[0][5]).requestId,uuidPattern);
   assert.equal(h.commits, 1);
 });

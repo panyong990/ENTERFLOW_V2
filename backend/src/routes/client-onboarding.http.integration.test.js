@@ -90,33 +90,33 @@ function createMemoryDatabase(adminHash) {
       if (released) database.lockHolder = null;
       return [[{ released: released ? 1 : 0 }]];
     }
-    if (query.startsWith('SELECT id FROM users WHERE id = ? AND role_code =')) {
+    if (query.startsWith('SELECT ua.user_id AS id FROM user_account ua')) {
       const user = state.users.find(row => row.id === String(params[0])
         && row.roleCode === 'admin' && row.accountType === 'employee' && Number(row.active) === 1);
       return [user ? [{ id: user.id }] : []];
     }
-    if (query.startsWith('SELECT 1 FROM users WHERE email IN')) {
+    if (query.startsWith('SELECT 1 FROM user_account WHERE email IN')) {
       return [state.users.some(row => identityMatches(row, params)) ? [{ 1: 1 }] : []];
     }
-    if (query.startsWith('SELECT 1 FROM users WHERE id = ?')) {
+    if (query.startsWith('SELECT 1 FROM user_account WHERE user_id = ?')) {
       return [state.users.some(row => row.id === String(params[0])) ? [{ 1: 1 }] : []];
     }
     if (query.startsWith('SELECT 1 FROM client_applications')) {
-      const excludedId = query.includes('id <> ?') ? String(params[0]) : null;
+      const excludedId = query.includes('application_id <> ?') ? String(params[0]) : null;
       const values = excludedId ? params.slice(1) : params;
       return [state.applications.some(row => row.id !== excludedId
         && ['pending', 'approved'].includes(row.status) && identityMatches(row, values)) ? [{ 1: 1 }] : []];
     }
-    if (query.startsWith('SELECT 1 FROM clients WHERE company_name')) {
+    if (query.startsWith('SELECT 1 FROM client WHERE company_name')) {
       return [state.clients.some(row => row.companyName.toLowerCase() === String(params[0]).toLowerCase()) ? [{ 1: 1 }] : []];
     }
-    if (query.startsWith('SELECT CAST(id AS CHAR) AS id, company_name AS companyName')) {
-      const rows = query.includes("WHERE status = 'pending'")
+    if (query.startsWith('SELECT CAST(application_id AS CHAR) AS id, company_name AS companyName')&&!query.includes('FOR UPDATE')) {
+      const rows = query.includes("WHERE application_status = 'pending'")
         ? state.applications.filter(row => row.status === 'pending')
         : state.applications.filter(row => row.id === String(params[0]));
       return [rows.map(publicApplication)];
     }
-    if (query.startsWith('SELECT id, company_name AS companyName')) {
+    if (query.startsWith('SELECT CAST(application_id AS CHAR) AS id, company_name AS companyName')&&query.includes('FOR UPDATE')) {
       const row = state.applications.find(item => item.id === String(params[0]));
       return [row ? [{ ...row }] : []];
     }
@@ -131,7 +131,7 @@ function createMemoryDatabase(adminHash) {
       });
       return [{ affectedRows: 1, insertId: Number(id), warningStatus: 0 }];
     }
-    if (query.startsWith('INSERT INTO clients')) {
+    if (query.startsWith('INSERT INTO client (')) {
       const id = String(state.nextId++);
       connection.lastInsertId = id;
       state.clients.push({
@@ -142,11 +142,11 @@ function createMemoryDatabase(adminHash) {
       });
       return [{ affectedRows: 1, insertId: Number(id), warningStatus: 0 }];
     }
-    if (query.startsWith('INSERT INTO users (role_code, account_type, client_id')) {
+    if (query.startsWith('INSERT INTO user_account (role_id, full_name, email')) {
       const id = String(state.nextId++);
       connection.lastInsertId = id;
       state.users.push({
-        id, roleCode: 'client', accountType: 'client', clientId: String(params[0]),
+        id, roleCode: 'client', accountType: 'client', clientId: null,
         displayName: params[1], email: params[2], username: params[3],
         phone: params[4], passwordHash: params[5], active: 1
       });
@@ -155,8 +155,8 @@ function createMemoryDatabase(adminHash) {
     if (query.startsWith('SELECT CAST(LAST_INSERT_ID()')) {
       return [[{ id: connection.lastInsertId }]];
     }
-    if (query.startsWith('UPDATE client_applications SET status =')) {
-      const application = state.applications.find(row => row.id === String(params[4]) && row.status === 'pending');
+    if (query.startsWith('UPDATE client_applications SET application_status =')) {
+      const application = state.applications.find(row => row.id === String(params[5]) && row.status === 'pending');
       if (!application) return [{ affectedRows: 0, warningStatus: 0 }];
       Object.assign(application, {
         status: params[0], decidedBy: String(params[1]), rejectionReason: params[2],
@@ -164,21 +164,21 @@ function createMemoryDatabase(adminHash) {
       });
       return [{ affectedRows: 1, warningStatus: 0 }];
     }
-    if (query.startsWith('INSERT INTO audit_events')) {
+    if (query.startsWith('INSERT INTO audit_event')) {
       state.audits.push({
         actorId: String(params[0]), action: params[1], subjectType: params[2],
-        subjectIdentifier: String(params[3]), oldValue: params[4], newValue: params[5],
-        reason: params[6], requestId: params[7]
+        subjectIdentifier: String(params[3]), oldValue: params[3], newValue: params[4],
+        reason: params[5]
       });
       return [{ affectedRows: 1, warningStatus: 0 }];
     }
-    if (query.startsWith('SELECT id, email, username, password_hash AS passwordHash')) {
+    if (query.startsWith('SELECT ua.user_id AS id, ua.email, ua.username, ua.password_hash AS passwordHash')) {
       const value = String(params[0]).toLowerCase();
       const user = state.users.find(row => row.email.toLowerCase() === value || row.username.toLowerCase() === value);
       return [user ? [{
         id: user.id, email: user.email, username: user.username, passwordHash: user.passwordHash,
         roleCode: user.roleCode, accountType: user.accountType, displayName: user.displayName,
-        active: user.active
+        active:user.active,status:Number(user.active)===1?'active':'inactive'
       }] : []];
     }
     if (query.startsWith('INSERT INTO user_sessions')) {
@@ -196,7 +196,7 @@ function createMemoryDatabase(adminHash) {
       return [user ? [{
         sessionId: session.id, userId: user.id, roleCode: user.roleCode,
         accountType: user.accountType, clientId: user.clientId,
-        displayName: user.displayName, active: user.active
+        displayName: user.displayName, active:user.active,status:Number(user.active)===1?'active':'inactive'
       }] : []];
     }
     if (query.startsWith('UPDATE user_sessions s')) {
@@ -209,7 +209,7 @@ function createMemoryDatabase(adminHash) {
       if (session) session.revoked = true;
       return [{ affectedRows: session ? 1 : 0 }];
     }
-    if (query.startsWith('SELECT CAST(c.id AS CHAR) id, c.company_name companyName')) {
+    if (query.startsWith('SELECT CAST(client_id AS CHAR) id,company_name companyName')) {
       const client = state.clients.find(row => row.id === String(params[0]));
       return [client ? [{
         id: client.id, companyName: client.companyName, industry: client.industry,
@@ -220,17 +220,13 @@ function createMemoryDatabase(adminHash) {
         active: client.active, joinedOn: '2026-11-18'
       }] : []];
     }
-    if (query.includes('FROM orders o JOIN order_stages os') && query.includes('WHERE o.id=? AND o.client_id=?')) {
+    if (query.includes('FROM inquiry i JOIN client')&&query.includes('WHERE i.inquiry_id=?')) {
       const order = state.orders.find(row => row.id === String(params[0]) && row.clientId === String(params[1]));
       return [order ? [{ ...order }] : []];
     }
-    if (query.includes('FROM order_items oi JOIN product_specifications')) return [[]];
-    if (query.includes("FROM order_requests WHERE order_id=? AND kind='quotation_revision'")) return [[]];
-    if (query.includes("FROM order_requests r LEFT JOIN users") && query.includes("r.kind='cancellation'")) {
-      assert.equal(params.length, 1);
-      assert.ok(state.orders.some(order => String(order.id) === String(params[0])));
-      return [[]];
-    }
+    if(query.startsWith('INSERT INTO client_user')){state.users.find(u=>u.id===String(params[0])).clientId=String(params[1]);return [{affectedRows:1}];}
+    if(query.includes("FROM role WHERE role_name = 'Client'"))return [[{roleId:'99'}]];
+    if(/FROM (inquiry_item|quotation |quotation_revision_request|cancellation_request|job_order |delivery |proof_of_payment|sales_invoice|purchase_order p JOIN quotation)/.test(query))return [[]];
     throw new Error(`Unexpected SQL in onboarding integration test: ${query}`);
   }
 

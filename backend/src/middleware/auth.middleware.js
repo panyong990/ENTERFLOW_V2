@@ -80,6 +80,9 @@ export function createAuthenticationMiddleware({
         return unauthorized(response);
       }
 
+      if(Number(session.mustChangePassword)===1 && !/^\/api\/auth\/(?:me|logout|change-password)(?:\?|$)/.test(request.originalUrl??'')) {
+        return response.status(403).json({success:false,code:'PASSWORD_CHANGE_REQUIRED',message:'Change your initial password before continuing.'});
+      }
       request.auth = Object.freeze({
         userId: String(session.userId),
         sessionId: String(session.sessionId),
@@ -89,7 +92,8 @@ export function createAuthenticationMiddleware({
           session.clientId === null || session.clientId === undefined
             ? null
             : String(session.clientId),
-        displayName: session.displayName
+        displayName: session.displayName,
+        mustChangePassword: Boolean(Number(session.mustChangePassword))
       });
 
       return next();

@@ -46,7 +46,7 @@ export function createClientRouter({ service = createClientPortalService({ db: p
   router.get('/orders/:id/invoices', permission('invoices', 'read'), controller.invoices);
   router.get('/orders/:id/payments', permission('payments', 'read'), controller.payments);
   router.get('/notifications', permission('notifications', 'read'), notificationsController.list);
-  router.patch('/notifications/:id/read', permission('notifications', 'update'), notificationsController.markRead);
+  router.patch('/notifications/:id/read', permission('notifications', 'update'),createOriginMiddleware({appOrigin}), notificationsController.markRead);
   router.get('/orders/:id', permission('orders', 'read'), permission('inquiries', 'read'), controller.detailOrder);
   router.use((request, response) => response.status(404).json({ success: false, message: 'Client endpoint was not found.' }));
   return router;

@@ -7,14 +7,15 @@ function database({ orderExists = true, quotationRows = [], poRows = [] } = {}) 
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
-      if (sql === 'SELECT id FROM orders WHERE id=?') return [orderExists ? [{ id: '9007199254740993' }] : []];
-      if (sql.includes('FROM quotations q JOIN payment_terms')) return [quotationRows];
-      if (sql.includes('FROM quotation_lines')) return [[{ id: '41', quotationId: '31', lineNumber: 1, orderItemId: '51', description: 'Filter', quantity: '10.0000', unitPrice: '125.2500' }]];
-      if (sql.includes('FROM quotation_costing')) return [[{ id: '61', quotationId: '31', orderItemId: '51', laborCost: '10.2500', markupPercent: '20.0000', includeLabor: 1, applyMarkup: 1, applyVat: 0 }]];
+      if (sql.includes('FROM inquiry i JOIN client')&&sql.includes('WHERE i.inquiry_id=?')) return [orderExists ? [{ id: '9007199254740993' }] : []];
+      if (sql.includes('FROM quotation WHERE')) return [quotationRows];
+      if (sql.includes('FROM quotation_item')) return [[{ id: '41', quotationId: '31', lineNumber: 1, orderItemId: '51', description: 'Filter', quantity: '10.0000', unitPrice: '125.2500' }]];
+      if (sql.includes('FROM cost_estimate ce JOIN quotation_item')) return [[{ id: '61', quotationId: '31', orderItemId: '51', laborCost: '10.2500', markupPercent: '20.0000', includeLabor: 1, applyMarkup: 1, applyVat: 0 }]];
+      if(sql.includes('FROM cost_estimate_material'))return [[]];
       if (sql.includes('FROM quotation_discounts')) return [[{ quotationId: '31', lineNumber: 1, label: 'Trade', percent: '5.0000' }]];
       if (sql.includes('FROM quotation_addons')) return [[{ id: '71', quotationId: '31', kind: 'shipping', includeInUnitPrice: 0 }]];
       if (sql.includes('FROM quotation_files')) return [[{ quotationId: '31', id: '81', purpose: 'signed_quotation', originalFilename: 'quote.pdf', mimeType: 'application/pdf', sizeBytes: '100', state: 'available' }]];
-      if (sql.includes('FROM purchase_orders po')) return [poRows];
+      if (sql.includes('FROM purchase_order p JOIN quotation')) return [poRows.map(p=>({...p,fileId:'101',documentStatus:'available',originalFilename:'po.pdf',mimeType:'application/pdf',sizeBytes:'200'}))];
       if (sql.includes('FROM purchase_order_files')) return [[{ purchaseOrderId: '91', id: '101', purpose: 'client_document', originalFilename: 'po.pdf', mimeType: 'application/pdf', sizeBytes: '200', state: 'available' }]];
       return [[]];
     },
@@ -40,9 +41,8 @@ test('quotation history preserves revisions, exact monetary strings, safe files,
   assert.equal(result.data[0].downpaymentAmount, '375.7500');
   assert.equal(result.data[0].lines.length, 1);
   assert.equal(result.data[0].costing[0].laborCost, '10.2500');
-  assert.equal(result.data[0].files[0].originalFilename, 'quote.pdf');
-  assert.equal('objectPath' in result.data[0].files[0], false);
-  assert.equal(h.calls.filter(call => call.sql.includes('FROM quotations q JOIN payment_terms')).length, 1);
+  assert.equal('files' in result.data[0],false); // Phase 2 has no quotation-document association; no file is invented.
+  assert.equal(h.calls.filter(call => call.sql.includes('FROM quotation WHERE')).length, 1);
 });
 
 test('quotation reads verify order ownership and return an empty history for an existing order', async () => {

@@ -1,0 +1,407 @@
+﻿{
+  "target": {
+    "host": "127.0.0.1",
+    "port": 62286,
+    "database": "enterflow_phase2_db"
+  },
+  "checks": [
+    {
+      "check": "TLS identity",
+      "result": "PASS",
+      "detail": {
+        "expected": "127.0.0.1",
+        "authorized": true,
+        "subject": {
+          "CN": "localhost"
+        },
+        "issuer": {
+          "CN": "EnterFlow Phase2 Local Development CA"
+        },
+        "subjectAltName": "IP Address:127.0.0.1, DNS:localhost",
+        "fingerprint256": "DD:4C:C3:18:88:44:CB:2A:71:04:76:E2:D8:CF:BD:7D:F4:63:E9:E0:91:2A:04:43:95:7B:AD:1B:DA:60:DB:2A",
+        "validFrom": "Nov 21 20:56:44 2026 GMT",
+        "validTo": "Feb 23 20:56:44 2029 GMT",
+        "protocol": "TLSv1.3"
+      }
+    },
+    {
+      "check": "Server identity",
+      "result": "PASS",
+      "detail": {
+        "name": "enterflow_phase2_db",
+        "version": "8.4.13",
+        "serverUuid": "0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8",
+        "hostname": "2acac2d1b606",
+        "internalPort": "3306",
+        "account": "root@%",
+        "connectedUser": "root@172.17.0.1"
+      }
+    },
+    {
+      "check": "P2B002 and installed extension structure",
+      "result": "PASS",
+      "detail": {
+        "stage": 3,
+        "tables": 43,
+        "triggers": 39
+      }
+    },
+    {
+      "check": "user_sessions structure",
+      "result": "PASS",
+      "detail": "Installed; no adoption or replay performed"
+    },
+    {
+      "check": "Extension history",
+      "result": "PASS",
+      "detail": {
+        "exists": true,
+        "applied": [
+          "001_auth_sessions.sql",
+          "002_client_registration.sql",
+          "003_username_support.sql"
+        ]
+      }
+    },
+    {
+      "check": "Application data prerequisite",
+      "result": "PASS",
+      "detail": {
+        "rows": "1",
+        "note": "003 already installed; no backfill attempted"
+      }
+    },
+    {
+      "check": "Migration grants",
+      "result": "PASS",
+      "detail": {
+        "required": [
+          "SELECT",
+          "CREATE",
+          "ALTER",
+          "INDEX",
+          "REFERENCES",
+          "INSERT",
+          "UPDATE",
+          "LOCK TABLES"
+        ],
+        "missing": [],
+        "note": "Read-only grant inspection; no privilege probe or grant change"
+      }
+    },
+    {
+      "check": "Locking prerequisites",
+      "result": "PASS",
+      "detail": {
+        "performanceSchema": "1",
+        "innodbTableLocks": "1",
+        "metadataLockWait": "31536000",
+        "mdlInstrument": "YES",
+        "ownThreadVisible": true
+      }
+    },
+    {
+      "check": "003 lock acquisition",
+      "result": "UNVERIFIED",
+      "detail": "No lock acquired by preflight; activation must verify exclusive locks and emptiness for each ALTER"
+    },
+    {
+      "check": "Excluded targets",
+      "result": "PASS",
+      "detail": "No shared or restoration schema selected or queried"
+    }
+  ],
+  "queries": [
+    "SELECT DATABASE() AS name,VERSION() AS version,@@server_uuid AS serverUuid,@@hostname AS hostname,@@port AS internalPort,CURRENT_USER() AS account,USER() AS connectedUser",
+    "SELECT JSON_OBJECT('table',TABLE_NAME,'type',TABLE_TYPE,'engine',ENGINE,'collation',TABLE_COLLATION) AS metadata FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('table',TABLE_NAME,'column',COLUMN_NAME,'position',ORDINAL_POSITION,'type',COLUMN_TYPE,'nullable',IS_NULLABLE,'default',COLUMN_DEFAULT,'extra',EXTRA,'generated',GENERATION_EXPRESSION,'collation',COLLATION_NAME) AS metadata FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('table',TABLE_NAME,'name',CONSTRAINT_NAME,'position',ORDINAL_POSITION,'column',COLUMN_NAME,'parent',REFERENCED_TABLE_NAME,'parentColumn',REFERENCED_COLUMN_NAME) AS metadata FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('table',TABLE_NAME,'name',CONSTRAINT_NAME,'type',CONSTRAINT_TYPE,'enforced',ENFORCED) AS metadata FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('table',TABLE_NAME,'name',INDEX_NAME,'position',SEQ_IN_INDEX,'column',COLUMN_NAME,'nonUnique',NON_UNIQUE,'prefix',SUB_PART,'visibility',IS_VISIBLE,'type',INDEX_TYPE,'direction',COLLATION,'expression',EXPRESSION) AS metadata FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('name',CONSTRAINT_NAME,'clause',CHECK_CLAUSE) AS metadata FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('table',TABLE_NAME,'name',CONSTRAINT_NAME,'update',UPDATE_RULE,'delete',DELETE_RULE) AS metadata FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('name',TRIGGER_NAME,'table',EVENT_OBJECT_TABLE,'timing',ACTION_TIMING,'event',EVENT_MANIPULATION,'order',ACTION_ORDER,'body',ACTION_STATEMENT) AS metadata FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('name',ROUTINE_NAME,'type',ROUTINE_TYPE) AS metadata FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE()",
+    "SELECT JSON_OBJECT('name',EVENT_NAME) AS metadata FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE()",
+    "SELECT COUNT(*) AS n FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_SCHEMA IS NOT NULL AND REFERENCED_TABLE_SCHEMA<>DATABASE()",
+    "SELECT file,state,started_at,applied_at,error_code FROM `_enterflow_phase2_extension_history` ORDER BY file",
+    "SELECT checksum FROM `_enterflow_phase2_extension_history` WHERE file=?",
+    "SELECT checksum FROM `_enterflow_phase2_extension_history` WHERE file=?",
+    "SELECT checksum FROM `_enterflow_phase2_extension_history` WHERE file=?",
+    "SELECT SHA2(CAST(JSON_ARRAY(`audit_event_id`,`actor_user_id`,`action`,`subject_type`,`subject_id`,`before_value`,`after_value`,`reason`,`occurred_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `audit_event` ORDER BY `audit_event_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`client_id`,`company_name`,`industry`,`contact_person`,`phone`,`email`,`address_line1`,`address_line2`,`city_province`,`zip_code`,`default_payment_terms`,`preferred_delivery_method_id`,`internal_notes`,`status`,`client_since`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `client` ORDER BY `client_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`receipt_id`,`invoice_id`,`client_user_id`,`payment_method_id`,`amount_declared`,`note`,`review_status`,`reviewed_by_user_id`,`reviewed_at`,`review_note`,`sent_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `client_receipt` ORDER BY `receipt_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`receipt_id`,`document_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `client_receipt_file` ORDER BY `receipt_id`,`document_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`client_user_id`,`client_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `client_user` ORDER BY `client_user_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`estimate_id`,`quotation_item_id`,`labor_cost_per_unit`,`include_labor`,`markup_percent`,`apply_markup`,`vat_type`,`vat_rate`,`apply_vat`,`material_cost_per_unit`,`unit_cost_with_markup`,`unit_cost_with_vat`,`is_locked`,`created_by_user_id`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `cost_estimate` ORDER BY `estimate_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`estimate_material_id`,`estimate_id`,`material_category_id`,`raw_material_id`,`qty_per_filter`,`uom_id`,`unit_price_snapshot`,`line_cost`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `cost_estimate_material` ORDER BY `estimate_material_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`delivery_id`,`jo_id`,`delivery_method_id`,`status`,`dispatch_date`,`estimated_delivery_date`,`delivered_date`,`driver_name`,`driver_contact`,`vehicle_plate`,`tracking_link`,`received_by`,`notes`,`dispatched_by_user_id`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `delivery` ORDER BY `delivery_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`delivery_item_id`,`delivery_id`,`jo_item_id`,`quantity`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `delivery_item` ORDER BY `delivery_item_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`delivery_method_id`,`method_name`,`is_active`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `delivery_method` ORDER BY `delivery_method_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`delivery_receipt_id`,`delivery_id`,`dr_no`,`generated_by_user_id`,`generated_at`,`document_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `delivery_receipt` ORDER BY `delivery_receipt_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`document_id`,`file_name`,`storage_bucket`,`storage_key`,`object_generation`,`mime_type`,`size_bytes`,`sha256`,`storage_status`,`uploaded_by_user_id`,`uploaded_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `document` ORDER BY `document_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`filter_type_id`,`filter_type_name`,`template_group`,`is_active`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `filter_type` ORDER BY `filter_type_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`finished_good_id`,`item_code`,`enterfil_pn`,`item_name`,`client_id`,`filter_type_id`,`qty_in_stock`,`quantity_status`,`buffer_min`,`threshold_status`,`demand_level`,`order_frequency`,`avg_qty_per_order`,`is_active`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `finished_good` ORDER BY `finished_good_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`inquiry_id`,`inquiry_no`,`client_id`,`contact_person`,`payment_terms`,`source`,`submitted_by_client_user_id`,`created_by_user_id`,`general_notes`,`required_by_date`,`due_date`,`status`,`rejection_reason`,`created_at`,`updated_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `inquiry` ORDER BY `inquiry_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`inquiry_item_id`,`inquiry_id`,`line_no`,`filter_type_id`,`filter_name`,`oem_reference`,`od1_mm`,`od2_mm`,`id1_mm`,`id2_mm`,`height_mm`,`overall_height_mm`,`filter_media`,`inner_core`,`outer_core`,`o_ring`,`gasket`,`filtration_rating`,`filtration_rating_custom`,`quantity`,`template_specifications`,`sketch_document_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `inquiry_item` ORDER BY `inquiry_item_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`jo_id`,`jo_no`,`po_id`,`jo_date`,`due_date`,`status`,`payment_terms`,`delivery_method_id`,`po_verified`,`specs_verified`,`terms_verified`,`prepared_by_user_id`,`approved_by_user_id`,`cancellation_reason`,`completed_at`,`archived_at`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `job_order` ORDER BY `jo_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`jo_item_id`,`jo_id`,`quotation_item_id`,`line_no`,`item_code`,`enterfil_pn`,`item_name`,`quantity`,`od1_mm`,`od2_mm`,`id1_mm`,`id2_mm`,`height_mm`,`overall_height_mm`,`filter_media`,`inner_core`,`outer_core`,`end_cap`,`o_ring`,`gasket`,`oem_pn`,`brand`,`other_specs`,`template_specifications_snapshot`,`final_sketch_document_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `job_order_item` ORDER BY `jo_item_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`jo_stage_id`,`jo_id`,`stage_id`,`status`,`started_at`,`completed_at`,`marked_by_user_id`,`remarks`,`reverted_count`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `job_order_stage` ORDER BY `jo_stage_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`material_category_id`,`category_name`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `material_category` ORDER BY `material_category_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`report_id`,`jo_id`,`jo_stage_id`,`raw_material_id`,`qty_needed`,`description`,`status`,`reported_by_user_id`,`reported_at`,`resolved_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `material_shortage_report` ORDER BY `report_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`notification_id`,`user_id`,`title`,`message`,`notification_type`,`is_read`,`created_at`,`read_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `notification` ORDER BY `notification_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`payment_method_id`,`method_name`,`instructions`,`is_active`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `payment_method` ORDER BY `payment_method_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`payment_id`,`invoice_id`,`payment_method_id`,`transaction_type`,`amount`,`reference_no`,`date_paid`,`client_receipt_id`,`approval_status`,`recorded_by_user_id`,`approved_by_user_id`,`approved_at`,`notes`,`created_at`,`operation_key`,`official_receipt_document_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `payment_transaction` ORDER BY `payment_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`plan_id`,`plan_code`,`client_id`,`finished_good_id`,`jo_id`,`source`,`planned_qty`,`week_start_date`,`week_end_date`,`created_by_user_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `production_plan` ORDER BY `plan_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`stage_id`,`stage_name`,`stage_order`,`is_active`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `production_stage` ORDER BY `stage_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`stage_event_id`,`jo_stage_id`,`action`,`reason`,`performed_by_user_id`,`occurred_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `production_stage_event` ORDER BY `stage_event_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`po_id`,`po_no`,`quotation_id`,`po_document_id`,`received_date`,`payment_terms`,`delivery_method_id`,`recorded_by_user_id`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `purchase_order` ORDER BY `po_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`quotation_id`,`quotation_no`,`inquiry_id`,`revision_no`,`is_current`,`current_inquiry_id`,`quotation_date`,`valid_until`,`terms_of_payment`,`time_of_delivery`,`place_of_delivery`,`vat_type`,`highlight_tag`,`highlight_note`,`requires_downpayment`,`downpayment_percent`,`downpayment_amount`,`subtotal`,`addons_total`,`total_amount`,`status`,`prepared_by_user_id`,`approved_by_user_id`,`sent_at`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `quotation` ORDER BY `quotation_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`quotation_item_id`,`quotation_id`,`inquiry_item_id`,`line_no`,`description`,`quantity`,`uom_id`,`unit_price`,`line_total`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `quotation_item` ORDER BY `quotation_item_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`material_id`,`material_category_id`,`material_name`,`uom_id`,`qty_in_stock`,`quantity_status`,`unit_price`,`unit_price_approved_by_user_id`,`unit_price_approved_at`,`reference_unit_price`,`reference_document_id`,`reference_page`,`reorder_threshold`,`threshold_status`,`supplier_name`,`is_active`,`created_at`,`updated_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `raw_material` ORDER BY `material_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`role_id`,`role_name`,`description`,`is_owner_role`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `role` ORDER BY `role_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`invoice_id`,`invoice_no`,`po_id`,`invoice_date`,`payment_terms`,`delivered_date`,`due_date`,`total_amount`,`status`,`issued_by_user_id`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `sales_invoice` ORDER BY `invoice_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`signed_dr_id`,`delivery_receipt_id`,`document_id`,`submitted_by_user_id`,`submitted_at`,`received_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `signed_delivery_receipt` ORDER BY `signed_dr_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`movement_id`,`item_type`,`raw_material_id`,`finished_good_id`,`movement_reason`,`quantity_status_before`,`qty_before`,`qty_after`,`qty_change`,`uom_id`,`reference_no`,`supplier_name`,`jo_id`,`notes`,`performed_by_user_id`,`operation_key`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `stock_movement` ORDER BY `movement_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`stock_request_id`,`inquiry_id`,`requested_by_user_id`,`handled_by_user_id`,`request_date`,`status`,`remarks`,`created_at`,`updated_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `stock_request` ORDER BY `stock_request_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`stock_request_item_id`,`stock_request_id`,`raw_material_id`,`qty_requested`,`stock_at_request`,`qty_available`,`shortage_at_request`,`quantity_status_at_request`,`available_quantity_status`,`observed_at`,`observed_by_user_id`,`uom_id`,`notes`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `stock_request_item` ORDER BY `stock_request_item_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`uom_id`,`uom_name`,`abbreviation`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `unit_of_measure` ORDER BY `uom_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`user_id`,`role_id`,`full_name`,`email`,`password_hash`,`initials`,`phone`,`status`,`must_change_password`,`joined_date`,`last_login_at`,`created_at`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `user_account` ORDER BY `user_id`",
+    "SELECT SHA2(CAST(JSON_ARRAY(`waybill_id`,`delivery_id`,`waybill_no`,`qr_identifier`,`generated_by_user_id`,`generated_at`,`printed_at`,`document_id`) AS CHAR CHARACTER SET utf8mb4),256) AS row_hash FROM `waybill` ORDER BY `waybill_id`",
+    "SELECT COUNT(*) AS n FROM client_applications",
+    "SHOW GRANTS FOR CURRENT_USER()",
+    "SELECT @@performance_schema AS performanceSchema,@@session.innodb_table_locks AS innodbTableLocks,@@session.lock_wait_timeout AS metadataLockWait",
+    "SELECT ENABLED FROM performance_schema.setup_instruments WHERE NAME='wait/lock/metadata/sql/mdl'",
+    "SELECT COUNT(*) AS n FROM performance_schema.threads WHERE PROCESSLIST_ID=CONNECTION_ID()"
+  ],
+  "activationAuthorized": false,
+  "extensionHistory": [
+    {
+      "file": "001_auth_sessions.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.168Z",
+      "applied_at": "2026-11-21T21:10:31.222Z",
+      "error_code": null,
+      "checksum": "ae15868de9bcc5205cdbe441357d57b5b091f8a36faee69465b327b22bf893fe"
+    },
+    {
+      "file": "002_client_registration.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.226Z",
+      "applied_at": "2026-11-21T21:10:31.294Z",
+      "error_code": null,
+      "checksum": "1b0c30a391d95822bf56cd26a5a7742d322efd4010c7639f3dab8adfb962ea27"
+    },
+    {
+      "file": "003_username_support.sql",
+      "state": "applied",
+      "started_at": "2026-11-21T21:10:31.301Z",
+      "applied_at": "2026-11-22T10:30:49.024Z",
+      "error_code": null,
+      "checksum": "95c7f5715281bf5cf1c2543edbdb94783d51803159ce2bd2f976971ea50fe8b5"
+    }
+  ],
+  "originalData": [
+    {
+      "table": "audit_event",
+      "rows": 8,
+      "sha256": "a75b6144d9bdc8f9dd5a788eaae61c5fbb9d8d904a0705a50550c915dd790b8d"
+    },
+    {
+      "table": "client",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "client_receipt",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "client_receipt_file",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "client_user",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "cost_estimate",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "cost_estimate_material",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "delivery",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "delivery_item",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "delivery_method",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "delivery_receipt",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "document",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "filter_type",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "finished_good",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "inquiry",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "inquiry_item",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "job_order",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "job_order_item",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "job_order_stage",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "material_category",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "material_shortage_report",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "notification",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "payment_method",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "payment_transaction",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "production_plan",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "production_stage",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "production_stage_event",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "purchase_order",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "quotation",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "quotation_item",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "raw_material",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "role",
+      "rows": 8,
+      "sha256": "0e1ac11aba5855170cc8f0a1aae431a919de8dbda6d835359e539889dcd2af99"
+    },
+    {
+      "table": "sales_invoice",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "signed_delivery_receipt",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "stock_movement",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "stock_request",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "stock_request_item",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "unit_of_measure",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "user_account",
+      "rows": 8,
+      "sha256": "bac9c6a247dbad2d376fa05b8c1df73f2a51f18a361b1be250520403b389baec"
+    },
+    {
+      "table": "waybill",
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  ],
+  "result": "PASS WITH EXCEPTIONS"
+}

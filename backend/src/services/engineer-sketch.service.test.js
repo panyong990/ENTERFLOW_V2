@@ -29,7 +29,8 @@ function harness(options = {}) {
       release() { end(); },
       async execute(sql, params = []) {
         state.calls.push({ sql, params });
-        if (sql.startsWith('SELECT id FROM clients')) {
+        if(sql.startsWith('SELECT user_id FROM user_account'))return [[{user_id:params[0]}]];
+        if (sql.startsWith('SELECT client_id FROM client')) {
           assert.equal(transactional, true);
           owner = String(params[0]);
           const previous = state.locks.get(owner) ?? Promise.resolve();
@@ -40,33 +41,37 @@ function harness(options = {}) {
           unlock = done;
           return [options.denied ? [] : [{ id: owner }]];
         }
-        if (sql.startsWith('SELECT id FROM users')) return [options.deniedUser ? [] : [{ id: params[0] }]];
-        if (sql.startsWith('SELECT new_value')) {
+        if(sql.includes('FROM user_account u JOIN role r')&&sql.includes('FOR SHARE'))return [options.deniedUser?[]:[{userId:'9',roleCode:params[0]==='11'?'sales':'client',status:'active',clientId:params[0]==='11'?null:params[0]==='10'?'22':owner??'21',clientStatus:'active',mustChangePassword:0}]];
+        if (sql.startsWith('SELECT after_value new_value')) {
           assert.ok(unlock, 'receipt read requires the client-row mutex');
           assert.match(sql, /FOR UPDATE/);
           return [state.receipts.filter(row => row.subject === params[0])];
         }
-        if (sql.startsWith('INSERT INTO audit_events')) {
+        if (sql.startsWith('INSERT INTO audit_event')) {
           if (params[1] === 'inquiry.submitted') {
             assert.ok(unlock);
             if (options.auditFails) throw new Error('Receipt failure');
-            save('receipts', { subject: params[3], new_value: params[4] });
+            save('receipts',{subject:JSON.parse(params[4]).submissionSubject,new_value:params[4]});
           }
           save('audits', { action: params[1], subject: params[3], value: JSON.parse(params[4]) });
           return [{ affectedRows: 1 }];
         }
         if (sql.startsWith('INSERT INTO document_sequences')) return [{ affectedRows: 1 }];
         if (sql.startsWith('SELECT `last_value`')) return [[{ last_value: ++state.next }]];
-        if (sql.startsWith('INSERT INTO orders')) { const id = String(++state.next); save('orders', { id, clientId: params[1] }); return [{ insertId: id, affectedRows: 1 }]; }
-        if (sql.startsWith('INSERT INTO product_specifications') || sql.startsWith('INSERT INTO order_items')) return [{ insertId: String(++state.next), affectedRows: 1 }];
-        if (sql.startsWith('INSERT INTO files')) { const id = String(++state.next); save('files', { id, params }); return [{ insertId: id, affectedRows: 1 }]; }
-        if (sql.startsWith('INSERT INTO specification_files')) { if (options.linkFails) throw new Error('Link failure'); save('links', params); return [{ affectedRows: 1 }]; }
-        if (sql.includes('FROM orders o JOIN order_items')) {
-          const isClient = sql.includes('AND o.client_id=?');
+        if (sql.startsWith('INSERT INTO inquiry(')) { const id = String(++state.next); save('orders', { id, clientId: params[1] }); return [{ insertId: id, affectedRows: 1 }]; }
+        if (sql.startsWith('INSERT INTO inquiry_item')) return [{ insertId: String(++state.next), affectedRows: 1 }];
+        if (sql.startsWith('INSERT INTO document')) { const id = String(++state.next); save('files', { id, params }); return [{ insertId: id, affectedRows: 1 }]; }
+        if (sql.startsWith('UPDATE inquiry_item SET sketch_document_id')) { if (options.linkFails) throw new Error('Link failure'); save('links', params); return [{ affectedRows: 1 }]; }
+        if (sql.includes('FROM document d JOIN inquiry_item')) {
+          const isClient = sql.includes('AND i.client_id=?');
           if (isClient && params[2] !== '21') return [[]];
-          if (params[0] !== '91' || params[1] !== '201' || (sql.includes('AND f.id=?') && params.at(-1) !== '301')) return [[]];
-          return [[{ id: '301', originalFilename: 'drawing.pdf', mimeType: 'application/pdf', sizeBytes: 10, bucket: 'private-test', objectKey: 'private/path', generation: '7' }]];
+          if (params[0] !== '91' || params[1] !== '201' || (sql.includes('AND d.document_id=?') && params.at(-1) !== '301')) return [[]];
+          return [[{ id: '301', originalFilename: 'drawing.pdf', mimeType: 'application/pdf', sizeBytes: 10, bucketName: 'private-test', objectKey: 'private/path', generation: '7' }]];
         }
+        if(sql.startsWith('SELECT DATE_FORMAT(created_at'))return [[{submittedAt:'2026-11-22T00:00:00.000Z'}]];
+        if(sql.includes('FROM filter_type'))return [[{id:'1'}]];
+        if(sql.includes('FROM user_account u JOIN role r'))return [[]];
+        if(sql.startsWith('INSERT INTO notification'))return [{affectedRows:1,insertId:'1'}];
         throw new Error(`Unexpected SQL: ${sql}`);
       }
     };
@@ -100,7 +105,7 @@ test('one sketch commits inquiry, metadata, link and receipt together with no ob
   assert.equal(h.state.files[0].params[5], '7');
   assert.equal(h.state.files[0].params[6].length, 64);
   assert.deepEqual(Object.keys(result.data).sort(), ['id', 'itemCount', 'reference', 'stageCode', 'submittedAt']);
-  assert.match(result.data.reference, /^INQ-\d{4}-\d{6}$/);
+  assert.match(result.data.reference, /^INQ-[a-f0-9-]{36}$/);
 });
 
 test('multiple optional sketches map by line, not filename or upload order', async () => {
@@ -253,14 +258,14 @@ test('concurrent changed payload cannot create a second inquiry for an existing 
 
 test('Client/Sales retrieval resolves the complete parent chain and pins bucket/generation', async () => {
   const h = harness();
-  const args = { orderId: '91', itemId: '201', fileId: '301', actor: { accountType: 'client', roleCode: 'client', clientId: '21' } };
+  const args = { orderId: '91', itemId: '201', fileId: '301', actor: { userId:'9',accountType: 'client', roleCode: 'client', clientId: '21' } };
   const list = await h.service.listSketches(args);
   assert.deepEqual(Object.keys(list.data[0]).sort(), ['id', 'mimeType', 'originalFilename', 'sizeBytes']);
   assert.equal((await h.service.retrieveSketch(args)).success, true);
   assert.deepEqual(h.state.read, { bucketName: 'private-test', objectKey: 'private/path', generation: '7' });
-  assert.equal((await h.service.retrieveSketch({ ...args, actor: { ...args.actor, clientId: '22' } })).code, 'NOT_FOUND');
+  assert.equal((await h.service.retrieveSketch({ ...args, actor: { ...args.actor,userId:'10', clientId: '22' } })).code, 'NOT_FOUND');
   assert.equal((await h.service.retrieveSketch({ ...args, itemId: '202' })).code, 'NOT_FOUND');
   assert.equal((await h.service.retrieveSketch({ ...args, fileId: '302' })).code, 'NOT_FOUND');
-  assert.equal((await h.service.retrieveSketch({ ...args, actor: { accountType: 'employee', roleCode: 'sales' } })).success, true);
+  assert.equal((await h.service.retrieveSketch({ ...args, actor: {userId:'11', accountType: 'employee', roleCode: 'sales' } })).success, true);
   assert.equal((await h.service.retrieveSketch({ ...args, actor: { accountType: 'employee', roleCode: 'owner' } })).code, 'FORBIDDEN');
 });

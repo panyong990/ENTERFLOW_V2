@@ -9,7 +9,7 @@ import { hasPermission } from '../config/permissions.js';
 const actor={userId:'7',roleCode:'sales',accountType:'employee'};
 const context={requestId:'11111111-1111-4111-8111-111111111111'};
 function harness(options={}) {
-  const state={order:{id:'91',reference:'INQ-91',clientId:'2',stageCode:'inquiry',archiveReason:null,archiveNote:null,archivedAt:null,archivedBy:null,updatedAt:'2026-11-17T00:00:00.000000Z',...options.order},
+  const state={order:{id:'91',reference:'INQ-91',clientId:'2',stageCode:'inquiry',archiveReason:null,archiveNote:null,archivedAt:null,archivedBy:null,updatedAt:'2026-11-17T00:00:00.000000Z',...options.order,status:options.order?.archiveReason??options.order?.stageCode??'inquiry'},
     requests:[{id:'8',kind:'cancellation',reason:'Original cancellation',requestedBy:'2',requestedAt:'original-time',status:'pending'},
       {id:'9',kind:'cancellation',reason:'Earlier decision',requestedBy:'2',requestedAt:'earlier-time',status:'declined'}],audits:[],notifications:[],recipients:[]};
   const calls=[]; let commits=0,rollbacks=0,destroyed=0,chain=Promise.resolve();
@@ -17,17 +17,17 @@ function harness(options={}) {
     async beginTransaction(){const previous=chain;chain=new Promise(resolve=>{unlock=resolve;});await previous;snapshot=structuredClone(state);calls.push(['BEGIN']);},
     async execute(sql,params=[]){calls.push([sql,params]);
       if(options.fail && sql.includes(options.fail)) throw Object.assign(new Error('SYNTHETIC_PRIVATE_SQL_PASSWORD'),{sql:'SYNTHETIC_SQL'});
-      if(sql.startsWith('SELECT id FROM users')) return [options.inactive?[]:[{id:'7'}]];
-      if(sql.includes('FROM users WHERE active=TRUE')) return [options.noClient?[{id:'7',accountType:'employee'}]:[{id:'2',accountType:'client'},{id:'7',accountType:'employee'},{id:'7',accountType:'employee'}]];
+      if(sql.includes('FROM user_account u JOIN role r')&&sql.includes('FOR SHARE'))return [options.inactive?[]:[{userId:'7',roleCode:'sales',status:'active',clientId:null,mustChangePassword:0}]];
+      if(sql.includes('FROM client_user WHERE'))return [options.noClient?[]:[{id:'2'}]];
+      if(sql.includes('FROM user_account u JOIN role r'))return [[{id:'7'}]];
       if(sql.startsWith('SELECT COUNT(*) total')) return [[{total:state.order.archivedAt?1:0}]];
-      if(sql.includes('FROM orders o JOIN clients')) return [[{id:'91',reference:'INQ-91',companyName:'Synthetic',archiveNote:state.order.archiveNote,archivedAt:state.order.archivedAt}]];
-      if(sql.includes('FROM orders o WHERE o.id=?')) {assert.deepEqual(params,['91']);return [options.missing?[]:[structuredClone(state.order)]];}
-      if(sql.includes('FROM order_requests WHERE')) {assert.deepEqual(params,['91']);assert.match(sql,/ORDER BY id FOR UPDATE$/);return [state.requests.filter(r=>r.kind==='cancellation'&&r.status==='pending').map(r=>({...r}))];}
-      if(sql.startsWith('UPDATE orders SET')) {assert.match(sql,/stage_code='inquiry' AND archived_at IS NULL AND archive_reason IS NULL/);assert.deepEqual(params.slice(1),['7','91']);Object.assign(state.order,{archiveReason:'rejected',archiveNote:params[0],archivedBy:params[1],archivedAt:'2026-11-17T01:00:00.000000Z',updatedAt:'2026-11-17T01:00:00.001000Z'});return [{affectedRows:1}];}
-      if(sql.startsWith('UPDATE order_requests SET')) {assert.deepEqual(params,['7','91']);let n=0;for(const r of state.requests)if(r.kind==='cancellation'&&r.status==='pending'){Object.assign(r,{status:'completed',response:'Resolved due to inquiry rejection.',decidedBy:'7',decidedAt:'server-time'});n++;}return [{affectedRows:n}];}
-      if(sql.startsWith('INSERT INTO notifications')) {assert.deepEqual(params.slice(2),['91','2','7']);state.notifications.push(params);return [{affectedRows:1,insertId:'9007199254740993'}];}
-      if(sql.startsWith('INSERT INTO notification_recipients')) {state.recipients.push(params);return [{affectedRows:1}];}
-      if(sql.startsWith('INSERT INTO audit_events')) {assert.match(sql,/inquiry.rejected/);state.audits.push(params);return [{affectedRows:1}];}
+      if(sql.includes('FROM inquiry i JOIN client')) return [[{id:'91',reference:'INQ-91',companyName:'Synthetic',archiveNote:state.order.archiveNote,archivedAt:state.order.archivedAt}]];
+      if(sql.includes('FROM inquiry WHERE inquiry_id=?')) {assert.deepEqual(params,['91']);return [options.missing?[]:[structuredClone(state.order)]];}
+      if(sql.includes('FROM cancellation_request WHERE')) {assert.deepEqual(params,['91']);assert.match(sql,/ORDER BY request_id FOR UPDATE$/);return [state.requests.filter(r=>r.kind==='cancellation'&&r.status==='pending').map(r=>({...r,request_id:r.id}))];}
+      if(sql.startsWith('UPDATE inquiry SET')){assert.deepEqual(params.slice(1),['91']);Object.assign(state.order,{status:'rejected',stageCode:'rejected',archiveReason:'rejected',archiveNote:params[0],archivedAt:'2026-11-22T00:00:00Z',updatedAt:'2026-11-22T00:00:00.001Z'});return [{affectedRows:1}];}
+      if(sql.startsWith('UPDATE cancellation_request SET')){const request=state.requests.find(r=>r.id===params[2]);assert(request);Object.assign(request,{status:'rejected',response:params[1],decidedBy:params[0],decidedAt:'server-time'});return [{affectedRows:1}];}
+      if(sql.startsWith('INSERT INTO notification')){if(options.fail==='employee_notification'&&params[0]==='7')throw new Error('Synthetic employee notification failure');state.notifications.push(params);return [{affectedRows:1,insertId:String(9007199254740992n+BigInt(state.notifications.length))}];}
+      if(sql.startsWith('INSERT INTO audit_event')){state.audits.push(params);return [{affectedRows:1,insertId:String(state.audits.length)}];}
       assert.fail(`Unexpected synthetic query: ${sql}`);
     },
     async commit(){calls.push(['COMMIT']);if(options.commitFailure)throw new Error('SYNTHETIC_COMMIT_SECRET');commits++;unlock();unlock=null;},
@@ -56,9 +56,10 @@ test('revision is deterministic and changes with order or pending cancellation s
 test('actual Sales detail revision uses the same snapshot as locked rejection, independent of unrelated collections',async()=>{
   const h=harness(),calls=[];
   const connection={async execute(sql,params){calls.push(sql);
-    if(sql.includes('FROM orders o JOIN clients'))return [[{...h.state.order}]];
-    if(sql.includes('FROM order_requests r'))return [h.state.requests];
-    assert.match(sql,/FROM (order_items|quotations|quotation_lines|purchase_orders|job_orders|invoices|payments|shipments)\b/);
+    if(sql.includes('FROM inquiry i JOIN client'))return [[{...h.state.order}]];
+    if(sql.includes('FROM cancellation_request'))return [h.state.requests];
+    if(sql.includes('FROM quotation_revision_request'))return [[]];
+    assert.match(sql,/FROM (inquiry_item|quotation|quotation_item|purchase_order|job_order|sales_invoice|proof_of_payment|delivery)\b/);
     return [[]];
   },release(){}};
   const service=createSalesOrdersService({db:{getConnection:async()=>connection}});
@@ -68,13 +69,13 @@ test('actual Sales detail revision uses the same snapshot as locked rejection, i
 test('rejection preserves order and history, completes only pending cancellation, and commits audit/notifications once',async()=>{
   const h=harness(),before=structuredClone(h.state),body=h.body();
   const result=await h.service.rejectInquiry('91',body,actor,context);
-  assert.equal(result.success,true);assert.equal(result.data.stageCode,'inquiry');assert.equal(result.data.archiveNote,body.reason.trim());
+  assert.equal(result.success,true);assert.equal(result.data.stageCode,'rejected');assert.equal(result.data.archiveNote,body.reason.trim());
   assert.equal(h.state.order.id,before.order.id);assert.equal(h.state.order.clientId,before.order.clientId);
-  assert.equal(h.state.requests[0].status,'completed');assert.equal(h.state.requests[0].reason,before.requests[0].reason);assert.equal(h.state.requests[0].requestedAt,before.requests[0].requestedAt);
+  assert.equal(h.state.requests[0].status,'rejected');assert.equal(h.state.requests[0].reason,before.requests[0].reason);assert.equal(h.state.requests[0].requestedAt,before.requests[0].requestedAt);
   assert.deepEqual(h.state.requests[1],before.requests[1]);assert.deepEqual(result.data.resolvedCancellationIds,['8']);
-  assert.deepEqual(h.state.recipients,[['9007199254740993','2'],['9007199254740993','7']]);
-  assert.equal(h.state.audits.length,1);assert.equal(h.state.audits[0][5],context.requestId);
-  assert.equal(JSON.parse(h.state.audits[0][3]).resolvedCancellationStatus,'completed');
+  assert.deepEqual(h.state.notifications.map(p=>p[0]),['2','7']);
+  assert.equal(h.state.audits.length,2);assert.equal(JSON.parse(h.state.audits.find(a=>a[1]==='inquiry.rejected')[5]).requestId,context.requestId);
+  assert.equal(JSON.parse(h.state.audits.find(a=>a[1]==='inquiry.rejected')[5]).resolvedCancellationStatus,'rejected');
   assert.equal(h.counts().commits,1);assert.equal(h.counts().rollbacks,0);
   assert.ok(h.calls.findIndex(([sql])=>sql.startsWith('INSERT INTO audit'))<h.calls.findIndex(([sql])=>sql==='COMMIT'));
   assert.equal(h.calls.some(([sql])=>/DELETE|UPDATE order_items|UPDATE quotations/.test(sql)),false);
@@ -83,7 +84,7 @@ test('rejection preserves order and history, completes only pending cancellation
 });
 test('concurrent identical requests produce one commit and preserve first evidence',async()=>{
   const h=harness(),body=h.body();const results=await Promise.all([h.service.rejectInquiry('91',body,actor,context),h.service.rejectInquiry('91',{...body,reason:'Second reason'},actor,context)]);
-  assert.deepEqual(results.map(r=>r.success),[true,false]);assert.equal(results[1].code,'INQUIRY_ALREADY_REJECTED');assert.equal(h.state.audits.length,1);assert.equal(h.state.notifications.length,1);assert.equal(h.counts().commits,1);
+  assert.deepEqual(results.map(r=>r.success),[true,false]);assert.equal(results[1].code,'INQUIRY_ALREADY_REJECTED');assert.equal(h.state.audits.length,2);assert.equal(h.state.notifications.length,2);assert.equal(h.counts().commits,1);
 });
 for(const [name,options,code]of [['missing',{missing:true},'NOT_FOUND'],['wrong stage',{order:{stageCode:'po'}},'INVALID_STATE'],['archived cancelled',{order:{archiveReason:'cancelled',archivedAt:'earlier'}},'INVALID_STATE'],['inactive actor',{inactive:true},'FORBIDDEN']]){
   test(`${name} rejects before writes`,async()=>{const h=harness(options);const result=await h.service.rejectInquiry('91',h.body(),actor,context);assert.equal(result.code,code);assert.equal(h.state.audits.length,0);assert.equal(h.calls.some(([sql])=>/^(INSERT|UPDATE)/.test(sql)),false);assert.equal(h.counts().rollbacks,1);});
@@ -92,7 +93,7 @@ for(const change of ['order','request'])test(`stale ${change} snapshot returns S
   const h=harness(),body=h.body();if(change==='order')h.state.order.updatedAt='changed';else h.state.requests[0].reason='Changed cancellation';
   assert.equal((await h.service.rejectInquiry('91',body,actor,context)).code,'STALE_RECORD');assert.equal(h.calls.some(([sql])=>/^(INSERT|UPDATE)/.test(sql)),false);
 });
-for(const fail of ['UPDATE orders','UPDATE order_requests','INSERT INTO notifications','INSERT INTO notification_recipients','INSERT INTO audit_events'])test(`${fail} failure rolls back every change without exposing private details`,async()=>{
+for(const fail of ['UPDATE inquiry','UPDATE cancellation_request','INSERT INTO notification','employee_notification','INSERT INTO audit_event'])test(`${fail} failure rolls back every change without exposing private details`,async()=>{
   const h=harness({fail}),before=structuredClone(h.state);const result=await h.service.rejectInquiry('91',h.body(),actor,context);
   assert.deepEqual(result,{success:false,code:'SERVICE_UNAVAILABLE'});assert.deepEqual(h.state,before);assert.equal(h.counts().commits,0);assert.equal(h.counts().rollbacks,1);
 });
@@ -114,7 +115,7 @@ async function http(t,{role='sales',accountType='employee',denied,active=1}={}){
 }
 test('HTTP rejection correlates response request ID with audit and ignores client header',async t=>{
   const h=await http(t);const response=await h.request('/orders/91/rejection',{method:'POST',body:JSON.stringify(h.body()),headers:{'X-Request-ID':'client-secret'}});
-  assert.equal(response.status,200);assert.equal((await response.json()).success,true);assert.equal(h.state.audits[0][5],response.headers.get('x-request-id'));assert.notEqual(response.headers.get('x-request-id'),'client-secret');
+  assert.equal(response.status,200);assert.equal((await response.json()).success,true);assert.equal(JSON.parse(h.state.audits.find(a=>a[1]==='inquiry.rejected')[5]).requestId,response.headers.get('x-request-id'));assert.notEqual(response.headers.get('x-request-id'),'client-secret');
 });
 for(const [name,options,status]of [['client',{role:'client',accountType:'client'},403],['owner',{role:'owner'},403],['inactive',{active:0},401],['missing inquiries permission',{denied:'inquiries'},403],['missing orders permission',{denied:'orders'},403]])test(`HTTP ${name} cannot reject`,async t=>{
   const h=await http(t,options);const response=await h.request('/orders/91/rejection',{method:'POST',body:JSON.stringify(h.body())});assert.equal(response.status,status);assert.equal(h.state.audits.length,0);

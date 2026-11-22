@@ -21,14 +21,14 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   }
   if (!response.ok || result.success!==true) {
     if(response.status===401 && !options.public) window.dispatchEvent(new Event('enterflow:session-expired'));
-    if(response.status===403 && !options.public) window.dispatchEvent(new Event('enterflow:session-recheck'));
+    if(response.status===403 && !options.public && result.code !== 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event('enterflow:session-recheck'));
     throw new ApiError(response.status,result.message ?? 'Request failed.',result.code,result.errors);
   }
   return result.data;
 }
 export function adminChanged() { window.dispatchEvent(new Event('enterflow:admin-changed')); }
 export function queryString(values: Record<string,string|number>) { return new URLSearchParams(Object.entries(values).map(([k,v])=>[k,String(v)])).toString(); }
-export interface RealIdentity { userId:string;roleCode:import('../components/Login').Role;accountType:'employee'|'client';displayName:string }
+export interface RealIdentity { userId:string;roleCode:import('../components/Login').Role;accountType:'employee'|'client';displayName:string;mustChangePassword:boolean }
 export interface DirectoryRow { id:string;name?:string;companyName?:string;employeeId?:string;department?:string;jobTitle?:string;email:string;username:string|null;phone:string|null;roleCode?:string;active:boolean|null;accountId?:string|null;joinedOn:string|null;createdAt:string;revision:string }
 export interface DirectoryResult { items:DirectoryRow[];total:number;page:number;pageSize:number;summary?:{total:number;active:number;departments:string[]} }
 export interface OwnerEmployeeDirectoryRow { id:string;employeeId:string|null;name:string;department:string|null;jobTitle:string|null;email:string|null;phone:string|null;roleCode:string|null;active:boolean|null }
@@ -36,5 +36,5 @@ export interface OwnerEmployeeDirectoryResult { items:OwnerEmployeeDirectoryRow[
 export function accountFromRow(row:DirectoryRow, type:'employee'|'client') {
   return {...row,type,name:row.name??row.companyName??'',email:row.email??'',username:row.username??'',phone:row.phone??'',
     role:(type==='client'?'client':row.roleCode) as import('../store/accounts').AccountRole,active:row.active===true,
-    joined:row.joinedOn??row.createdAt.slice(0,10)};
+    joined:row.joinedOn??row.createdAt?.slice(0,10)??''};
 }

@@ -1080,6 +1080,17 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
       if (file) productSketches[productId] = file;
     });
     let code: string;
+    const missingSketchIndex = products.findIndex(
+  (product) => !sketchFiles[product.id]
+);
+
+if (missingSketchIndex !== -1) {
+  setActiveIdx(missingSketchIndex);
+  toast.error(
+    `Please attach an engineering sketch for Product ${missingSketchIndex + 1}.`
+  );
+  return;
+}
     submissionStarted.current = true;
     setIsSubmitting(true);
     try {
@@ -1108,6 +1119,17 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
   const submit = async () => {
     if (!realMode) { await submitDemo(); return; }
     if (submissionStarted.current) return;
+    const missingSketchIndex = products.findIndex(
+  (product) => !sketchFiles[product.id]
+);
+
+if (missingSketchIndex !== -1) {
+  setActiveIdx(missingSketchIndex);
+  toast.error(
+    `Please attach an engineering sketch for Product ${missingSketchIndex + 1}.`
+  );
+  return;
+}
     const input: ClientInquiryInput = {
         contactPerson: contactPerson.trim(),
         paymentTermCode: paymentTerms === "30-Day Terms" ? "NET30" : "NET15",
@@ -1335,7 +1357,7 @@ function NewOrderWizardModal({ clientName, reorderSource, reorderQuantities, onC
                 </div>
               </div>
               <div className="rounded-lg p-3" style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>📎 Engineer Sketch (Optional)</div>
+                <div className="font-dm mb-1" style={{ fontSize: 11, fontWeight: 700, color: "#1E3A8A", letterSpacing: 0.4, textTransform: "uppercase" }}>📎 Engineer Sketch (Required)</div>
                 <div className="font-dm mb-2" style={{ fontSize: 10, color: "#3B82F6" }}>
                   Sketch for <span style={{ fontWeight: 700 }}>Filter #{activeIdx + 1}{active.filterName ? ` · ${active.filterName}` : ""}</span> only — each filter has its own sketch.
                 </div>

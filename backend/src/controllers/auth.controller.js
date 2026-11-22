@@ -107,7 +107,10 @@ export function createAuthController({
         userId: request.auth.userId,
         roleCode: request.auth.roleCode,
         accountType: request.auth.accountType,
-        displayName: request.auth.displayName
+        displayName: request.auth.displayName,
+        ...(typeof request.auth.mustChangePassword === 'boolean'
+  ? { mustChangePassword: request.auth.mustChangePassword }
+  : {})
       }
     });
   }

@@ -351,8 +351,12 @@ test('Client registration, Admin decision, authentication, and Portal ownership 
   assert.equal(adminLoginBody.success, true);
   assert.equal(adminLoginBody.token, undefined);
   const adminCookie = cookie(adminLogin);
-  assert.deepEqual((await (await h.request('/api/auth/me', { cookie: adminCookie })).json()).data, {
-    userId: '1', roleCode: 'admin', accountType: 'employee', displayName: 'Synthetic Admin'
+    assert.deepEqual((await (await h.request('/api/auth/me', { cookie: adminCookie })).json()).data, {
+    userId: '1',
+    roleCode: 'admin',
+    accountType: 'employee',
+    displayName: 'Synthetic Admin',
+    mustChangePassword: false
   });
   const list = await responseJson(await h.request('/api/client-applications', { cookie: adminCookie }), 200);
   const applicationId = list.data.applications[0].id;
@@ -388,9 +392,12 @@ test('Client registration, Admin decision, authentication, and Portal ownership 
   assert.equal(clientLoginBody.token, undefined);
   const clientCookie = cookie(clientLogin);
   const me = await responseJson(await h.request('/api/auth/me', { cookie: clientCookie }), 200);
-  assert.deepEqual(me.data, {
-    userId: clientUser.id, roleCode: 'client', accountType: 'client',
-    displayName: APPLICANT.contactPerson
+    assert.deepEqual(me.data, {
+    userId: clientUser.id,
+    roleCode: 'client',
+    accountType: 'client',
+    displayName: APPLICANT.contactPerson,
+    mustChangePassword: false
   });
   const profile = await responseJson(await h.request('/api/client/profile', { cookie: clientCookie }), 200);
   assert.equal(profile.data.id, client.id);

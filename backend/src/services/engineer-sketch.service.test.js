@@ -108,22 +108,54 @@ test('one sketch commits inquiry, metadata, link and receipt together with no ob
   assert.match(result.data.reference, /^INQ-[a-f0-9-]{36}$/);
 });
 
-test('multiple optional sketches map by line, not filename or upload order', async () => {
+test('every product requires exactly one sketch, regardless of upload order', async () => {
   const h = harness();
-  const result = await h.submit({ input: { ...input, products: [input.products[0], input.products[0], input.products[0]] }, files: [pdf(3), pdf(1)] });
-  assert.equal(result.success, true);
-  assert.equal(h.state.links.length, 2);
-  assert.notEqual(h.state.links[0][0], h.state.links[1][0]);
+  const products = [
+    input.products[0],
+    input.products[0],
+    input.products[0]
+  ];
+
+  const missingSketch = await h.submit({
+    input: { ...input, products },
+    files: [pdf(3), pdf(1)]
+  });
+
+  assert.equal(missingSketch.code, 'INVALID_DOCUMENT');
+  assert.equal(h.state.orders.length, 0);
+  assert.equal(h.state.files.length, 0);
+
+  const completeSubmission = await h.submit({
+    input: { ...input, products },
+    files: [pdf(3), pdf(1), pdf(2)]
+  });
+
+  assert.equal(completeSubmission.success, true);
+  assert.equal(h.state.links.length, 3);
+
   assert.match(h.state.files[0].params[4], /\/1\.pdf$/);
-  assert.match(h.state.files[1].params[4], /\/3\.pdf$/);
+  assert.match(h.state.files[1].params[4], /\/2\.pdf$/);
+  assert.match(h.state.files[2].params[4], /\/3\.pdf$/);
 });
 
-test('tokenized JSON/no-sketch submissions need no storage and retain legacy response shape', async () => {
+test('tokenized submissions without sketches are rejected', async () => {
   const h = harness();
-  const service = createEngineerSketchService({ db: h.db, bucketName: '' });
-  const result = await service.submit({ clientId: '21', userId: '9', input, submissionKey: key });
-  assert.equal(result.success, true);
+  const service = createEngineerSketchService({
+    db: h.db,
+    bucketName: '',
+    storageDriver: 'local'
+  });
+
+  const result = await service.submit({
+    clientId: '21',
+    userId: '9',
+    input,
+    submissionKey: key
+  });
+
+  assert.equal(result.code, 'INVALID_DOCUMENT');
   assert.equal(h.state.files.length, 0);
+  assert.equal(h.state.orders.length, 0);
 });
 
 test('invalid MIME, signature, empty/oversized files, filename and associations fail before any DB access', async () => {
@@ -144,8 +176,21 @@ test('missing idempotency key and invalid inquiry fail without DB or storage cal
 
 test('GCS unconfigured fails closed even when NODE_ENV is test', async () => {
   const h = harness();
-  const service = createEngineerSketchService({ db: h.db, bucketName: '' });
-  const result = await service.submit({ clientId: '21', userId: '9', input, files: [pdf()], submissionKey: key });
+
+  const service = createEngineerSketchService({
+    db: h.db,
+    bucketName: '',
+    storageDriver: 'gcs'
+  });
+
+  const result = await service.submit({
+    clientId: '21',
+    userId: '9',
+    input,
+    files: [pdf()],
+    submissionKey: key
+  });
+
   assert.equal(result.code, 'STORAGE_NOT_CONFIGURED');
   assert.equal(h.state.orders.length, 0);
   assert.equal(h.state.files.length, 0);

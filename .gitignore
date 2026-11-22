@@ -26,3 +26,6 @@ node_modules
 # Task 002 isolated integration-test identities, approvals, evidence and journals
 /backend/test/local/task-002/
 /backend/certs/local/task-002/
+
+# Local document uploads (development storage)
+/backend/storage/documents/

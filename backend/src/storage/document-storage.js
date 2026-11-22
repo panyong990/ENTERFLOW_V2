@@ -1,5 +1,8 @@
 import { Storage } from '@google-cloud/storage';
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const MIME_EXTENSIONS = Object.freeze({
   'application/pdf': 'pdf',
@@ -46,6 +49,110 @@ export function createMockDocumentStorage() {
     async get({ objectKey }) { const object = objects.get(objectKey); if (!object) { const error = new Error('Object not found.'); error.code = 'NOT_FOUND'; throw error; } return object; },
     async delete({ objectKey }) { objects.delete(objectKey); },
     has(objectKey) { return objects.has(objectKey); }
+  };
+}
+
+export function createLocalDocumentStorage({
+  rootDir = process.env.DOCUMENT_STORAGE_LOCAL_DIR
+} = {}) {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const baseDir = path.resolve(
+    rootDir || path.resolve(moduleDir, '../../storage/documents')
+  );
+
+  function resolveObject(objectKey) {
+    if (
+      typeof objectKey !== 'string' ||
+      !objectKey ||
+      objectKey.includes('\\') ||
+      objectKey.split('/').some(part =>
+        !part || part === '.' || part === '..'
+      )
+    ) {
+      throw new Error('Invalid document storage key.');
+    }
+
+    const target = path.resolve(baseDir, objectKey);
+    const relative = path.relative(baseDir, target);
+
+    if (
+      relative.startsWith('..') ||
+      path.isAbsolute(relative)
+    ) {
+      throw new Error('Invalid document storage path.');
+    }
+
+    return target;
+  }
+
+  return {
+    async put({ objectKey, buffer, mimeType }) {
+      const target = resolveObject(objectKey);
+      const metadataPath = `${target}.metadata.json`;
+      const generation = randomUUID();
+
+      await mkdir(path.dirname(target), { recursive: true });
+
+      try {
+        await writeFile(target, buffer, { flag: 'wx' });
+        await writeFile(
+          metadataPath,
+          JSON.stringify({ generation, mimeType }),
+          { flag: 'wx' }
+        );
+      } catch (error) {
+        await unlink(target).catch(() => {});
+        throw error;
+      }
+
+      return { generation, sha256: null };
+    },
+
+    async get({ objectKey, generation }) {
+      const target = resolveObject(objectKey);
+      const metadataPath = `${target}.metadata.json`;
+
+      const metadata = JSON.parse(
+        await readFile(metadataPath, 'utf8')
+      );
+
+      if (generation && metadata.generation !== String(generation)) {
+        throw Object.assign(new Error('Document version not found.'), {
+          code: 'NOT_FOUND'
+        });
+      }
+
+      return {
+        buffer: await readFile(target),
+        mimeType: metadata.mimeType,
+        generation: metadata.generation
+      };
+    },
+
+    async delete({ objectKey, generation }) {
+      const target = resolveObject(objectKey);
+      const metadataPath = `${target}.metadata.json`;
+
+      try {
+        const metadata = JSON.parse(
+          await readFile(metadataPath, 'utf8')
+        );
+
+        if (generation && metadata.generation !== String(generation)) {
+          return;
+        }
+
+        await unlink(target).catch(error => {
+          if (error.code !== 'ENOENT') throw error;
+        });
+
+        await unlink(metadataPath).catch(error => {
+          if (error.code !== 'ENOENT') throw error;
+        });
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
   };
 }
 

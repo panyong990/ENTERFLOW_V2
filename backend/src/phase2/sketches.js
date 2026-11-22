@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { validateApplicationId } from '../validation/client-applications.validation.js';
 import { validateClientInquiry } from '../validation/client-inquiry.validation.js';
-import { createGcsDocumentStorage, validateDocumentBuffer } from '../storage/document-storage.js';
+import { createLocalDocumentStorage, createGcsDocumentStorage, validateDocumentBuffer } from '../storage/document-storage.js';
 import { insertInquiry } from './workflows.js';
 import { auditRequestId } from '../services/audit-request-id.js';
 import { authorize } from './core.js';
@@ -16,16 +16,23 @@ const validId = id => validateApplicationId(id).success;
 export function createEngineerSketchService({
   db,
   storage,
-  bucketName = process.env.GCS_BUCKET
+  bucketName = process.env.GCS_BUCKET,
+  storageDriver = process.env.DOCUMENT_STORAGE_DRIVER || 'gcs'
 } = {}) {
   if (!db?.getConnection) throw new TypeError('A database pool is required.');
-  // Never select storageForEnvironment: NODE_ENV=test must not change Real Mode storage.
-  const objects = storage ?? createGcsDocumentStorage({
-    bucketName
-  });
+
+const objects = storage ?? (
+  storageDriver === 'local'
+    ? createLocalDocumentStorage()
+    : storageDriver === 'gcs'
+      ? createGcsDocumentStorage({ bucketName })
+      : (() => {
+          throw new Error(`Unsupported document storage driver: ${storageDriver}`);
+        })()
+);
   async function audit(connection, userId, action, subjectType, subject, value, context) {
     const [row] = await connection.execute(`INSERT INTO audit_event(actor_user_id,action,subject_type,subject_id,after_value,occurred_at)
-       VALUES (?,?,?,?,?,UTC_TIMESTAMP(3))`, [userId, action, subjectType, value.result?.id ?? null, JSON.stringify({
+       VALUES (?,?,?,?,?,UTC_TIMESTAMP(3))`, [userId, action, subjectType, value.result?.id ?? userId, JSON.stringify({
       ...value,
       submissionSubject: subject,
       requestId: auditRequestId(context)
@@ -91,19 +98,36 @@ export function createEngineerSketchService({
       connection.release();
     }
   }
-  async function cleanup(staged, userId, attemptId, context) {
+    async function cleanup(staged, userId, attemptId, context) {
+    const storageBucket = storageDriver === 'local' ? 'local' : bucketName;
     const confirmed = staged.filter(file => file.generation);
-    const results = await Promise.allSettled(confirmed.map(file => objects.delete({
-      bucketName,
-      objectKey: file.objectKey,
-      generation: file.generation
-    })));
-    const complete = confirmed.length === staged.length && results.every(result => result.status === 'fulfilled');
+
+    const results = await Promise.allSettled(
+      confirmed.map(file => objects.delete({
+        bucketName: storageBucket,
+        objectKey: file.objectKey,
+        generation: file.generation
+      }))
+    );
+
+    const complete =
+      confirmed.length === staged.length &&
+      results.every(result => result.status === 'fulfilled');
+
     try {
-      await journal(userId, complete ? 'inquiry.upload_cleaned' : 'inquiry.upload_cleanup_required', attemptId, {
-        complete
-      }, context);
-    } catch {/* The pre-upload journal remains the durable reconciliation inventory. */}
+      await journal(
+        userId,
+        complete ? 'inquiry.upload_cleaned' : 'inquiry.upload_cleanup_required',
+        attemptId,
+        {
+          complete,
+          bucket: storageBucket
+        },
+        context
+      );
+    } catch {
+      // The pre-upload journal remains the durable reconciliation inventory.
+    }
   }
   async function submit({
     clientId,
@@ -117,7 +141,9 @@ export function createEngineerSketchService({
     if (!validSubmissionKey(submissionKey)) return fail('INVALID_SUBMISSION_KEY');
     const validated = validateClientInquiry(input);
     if (!validated.success) return validated;
-    if (!Array.isArray(files) || files.length > validated.data.products.length) return fail('INVALID_DOCUMENT');
+    if (!Array.isArray(files) || files.length !== validated.data.products.length) {
+  return fail('INVALID_DOCUMENT');
+}
     const seen = new Set();
     const sketches = [];
     let totalBytes = 0;
@@ -165,7 +191,12 @@ export function createEngineerSketchService({
       data: existing.data.result
     } : fail('SUBMISSION_CONFLICT');
     if (context.signal?.aborted) return fail('SUBMISSION_ABORTED');
-    if (sketches.length && (!bucketName || !storage && process.env.GCS_STORAGE_ENABLED !== undefined && process.env.GCS_STORAGE_ENABLED !== 'true')) return fail('STORAGE_NOT_CONFIGURED');
+    if (sketches.length && !['local', 'gcs'].includes(storageDriver)) {
+  return fail('STORAGE_NOT_CONFIGURED');
+}
+if (storageDriver === 'gcs' && sketches.length && !bucketName) {
+  return fail('STORAGE_NOT_CONFIGURED');
+}
     const attemptId = randomUUID();
     const planned = sketches.map(file => ({
       ...file,
@@ -175,7 +206,7 @@ export function createEngineerSketchService({
     if (planned.length) {
       // Autocommitted internal audit inventory survives request/process failure. Never public.
       await journal(userId, 'inquiry.upload_planned', attemptId, {
-        bucket: bucketName,
+        bucket: storageDriver === 'local' ? 'local' : bucketName,
         objects: planned.map(file => ({
           objectKey: file.objectKey,
           sha256: file.sha256
@@ -226,8 +257,21 @@ export function createEngineerSketchService({
             items
           } = await insertInquiry(connection, clientId, userId, validated.data);
           for (const file of staged) {
-            const [created] = await connection.execute(`INSERT INTO document (file_name,mime_type,size_bytes,storage_bucket,storage_key,object_generation,sha256,storage_status,uploaded_by_user_id)
-               VALUES (?,?,?,?,?,?,?,'available',?)`, [file.filename, file.mimeType, file.sizeBytes, bucketName, file.objectKey, file.generation, file.sha256, userId]);
+            const [created] = await connection.execute(
+  `INSERT INTO document
+   (file_name,mime_type,size_bytes,storage_bucket,storage_key,object_generation,sha256,storage_status,uploaded_by_user_id)
+   VALUES (?,?,?,?,?,?,?,'available',?)`,
+  [
+    file.filename,
+    file.mimeType,
+    file.sizeBytes,
+    storageDriver === 'local' ? 'local' : bucketName,
+    file.objectKey,
+    file.generation,
+    file.sha256,
+    userId
+  ]
+);
             if (created.affectedRows !== 1) throw new Error('File metadata could not be saved.');
             const [linked] = await connection.execute(`UPDATE inquiry_item SET sketch_document_id=? WHERE inquiry_item_id=?`, [String(created.insertId), items[file.lineNumber - 1].id]);
             if (linked.affectedRows !== 1) throw new Error('Sketch link could not be saved.');
@@ -251,7 +295,13 @@ export function createEngineerSketchService({
         await connection.commit();
         committed = true;
       }
-    } catch {
+        } catch (error) {
+      console.error('[ENGINEER SKETCH SUBMISSION ERROR]', {
+        code: error?.code,
+        message: error?.message,
+        stack: error?.stack
+      });
+
       if (!commitAttempted && connection) {
         try {
           await connection.rollback();

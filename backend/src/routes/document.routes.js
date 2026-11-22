@@ -52,7 +52,14 @@ export function createDocumentRouter({ service = createDocumentWorkflowsService(
     const close = () => { if (!res.writableEnded) controller.abort(); };
     res.once('close', close);
     try { return respond(res, await sketchService.submit({ clientId: req.auth.clientId, userId: req.auth.userId, ...req.inquiryUpload, submissionKey: req.get('Idempotency-Key'), context: { requestId: req.requestId, signal: controller.signal } }), 201); }
-    catch { return respond(res, { code: 'SUBMISSION_FAILED' }); }
+    catch (error) {
+  console.error('[INQUIRY ROUTE SUBMISSION ERROR]', {
+    code: error?.code,
+    message: error?.message,
+    stack: error?.stack
+  });
+  return respond(res, { code: 'SUBMISSION_FAILED' });
+}
     finally { res.off('close', close); }
   });
   router.get('/client/inquiry-submissions/:key', createClientAccountMiddleware(), permission('inquiries', 'create'), async (req, res) => {

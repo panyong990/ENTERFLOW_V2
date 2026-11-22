@@ -206,11 +206,12 @@ test('authentication endpoints work together over HTTP', async () => {
 
   const currentUserBody = await currentUser.json();
 
-  assert.deepEqual(currentUserBody.data, {
+    assert.deepEqual(currentUserBody.data, {
     userId: testUser.userId,
     roleCode: testUser.roleCode,
     accountType: testUser.accountType,
-    displayName: testUser.displayName
+    displayName: testUser.displayName,
+    mustChangePassword: false
   });
 
   // 8. Reject /me without authentication.

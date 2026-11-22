@@ -179,8 +179,12 @@ test('login and registration budgets are independent; login, logout, and me stil
     method: 'GET', body: undefined, headers: { Cookie: `enterflow_session=${TOKEN}` }
   });
   assert.equal(me.status, 200);
-  assert.deepEqual((await me.json()).data, {
-    userId: '1', roleCode: 'client', accountType: 'client', displayName: 'Applicant'
+    assert.deepEqual((await me.json()).data, {
+    userId: '1',
+    roleCode: 'client',
+    accountType: 'client',
+    displayName: 'Applicant',
+    mustChangePassword: false
   });
   const logout = await h.request('/logout', { headers: { Cookie: `enterflow_session=${TOKEN}` } });
   assert.equal(logout.status, 200);

@@ -111,7 +111,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
   const [busy,setBusy]=useState(false);
   const submitLocked=useRef(false);
   const [fieldErrors,setFieldErrors]=useState<Record<string,string>>({});
-  const [page, setPage] = useState<"staff" | "client">("staff");
+  const [page, setPage] = useState<"staff" | "client">("client");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -305,12 +305,12 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
           <div className="flex items-center gap-3 mb-5">
             <span style={{ fontSize: 30, color: "#C8102E", fontWeight: 800 }}>▲</span>
             <div>
-              <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>ENTER-FIL</div>
+              <div className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>ENTER-FLOW</div>
               <div className="font-dm" style={{ fontSize: 11, color: "#64748B", letterSpacing: 0.5 }}>Industrial Products · Client Portal</div>
             </div>
           </div>
-          <div className="font-syne" style={{ fontSize: 22, fontWeight: 700, color: "#0F172A", lineHeight: 1.1 }}>Access Portal</div>
-          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>{isRegistering ? "Submit your company details for account review." : "Track your orders, status, and invoices."}</p>
+          <div className="font-syne" style={{ fontSize: 22, fontWeight: 700, color: "#0F172A", lineHeight: 1.1 }}>Sign In</div>
+          <p className="font-dm mt-1" style={{ fontSize: 13, color: "#64748B" }}>{isRegistering ? "Submit your company details for account review." : "Access your ERP workspace or Client Portal."}</p>
         </div>
 
         <div className="px-8 py-6">
@@ -343,7 +343,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
               </>
             )}
             <div className="flex flex-col gap-1.5">
-              <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email</label>
+              <label className="font-dm" style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Email or username</label>
               <input aria-label="Email or username" type={isRegistering?"email":"text"} required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com"
                 className="font-dm px-3 py-2.5 rounded-md border border-slate-200 outline-none focus:border-slate-400" style={{ fontSize: 13 }} />
             </div>
@@ -359,7 +359,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
 
             <button disabled={busy} aria-busy={busy} type="submit" className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 mt-1"
               style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-              {busy?"Submitting...":isRegistering ? "Submit registration" : "Access Portal"} <ArrowRight size={15} strokeWidth={2.5} />
+              {busy?"Submitting...":isRegistering ? "Submit registration" : "Sign In"} <ArrowRight size={15} strokeWidth={2.5} />
             </button>
           </form>
 
@@ -379,11 +379,7 @@ export function Login({ onLogin, onRealLogin, sessionError }: Props) {
               </button>
             </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-200 text-center">
-            <button onClick={() => switchPage("staff")} className="font-dm hover:underline" style={{ fontSize: 12, color: "#64748B" }}>
-              Enter-Fil staff? <span style={{ color: "#1A2B4A", fontWeight: 600 }}>Sign in here →</span>
-            </button>
-          </div>
+
         </div>
       </div>
     </div>

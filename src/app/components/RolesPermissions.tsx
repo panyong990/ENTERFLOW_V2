@@ -34,7 +34,9 @@ export function RolesPermissions() {
   const real=mode==='real';const [metadata,setMetadata]=useState<RoleMetadata|null>(null);const [error,setError]=useState('');const [loading,setLoading]=useState(real);const [version,setVersion]=useState(0);
   useEffect(()=>{if(!real)return;let live=true;setLoading(true);setError('');api<RoleMetadata>('/api/admin/roles').then(result=>{if(live)setMetadata(result);}).catch(cause=>{if(live)setError(cause.message);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[real,version]);
   const mismatches=[...(metadata?.mismatches??[])];
-  if(real&&metadata)for(const row of metadata.roles){const expected=allowedFor[row.code as Exclude<Role,'client'>];if(!expected){mismatches.push(`Unknown frontend role: ${row.code}`);continue;}if(!hasMatchingDatabaseModules(row.code as Exclude<Role,'client'>,row.modules.map(item=>item.code)))mismatches.push(`Frontend/database module mapping differs for ${row.label}.`);if(roleMetas[row.code as Role]?.label!==row.label)mismatches.push(`Role label differs for ${row.code}.`);}
+  if(real&&metadata?.roles?.some(row=>!Array.isArray(row.modules)))
+    mismatches.push('Backend role response does not include module lists. Module access information is unavailable.');
+  if(real&&metadata)for(const row of metadata.roles){const expected=allowedFor[row.code as Exclude<Role,'client'>];if(!expected){mismatches.push(`Unknown frontend role: ${row.code}`);continue;}if(!hasMatchingDatabaseModules(row.code as Exclude<Role,'client'>,(Array.isArray(row.modules)?row.modules:[]).map(item=>item.code)))mismatches.push(`Frontend/database module mapping differs for ${row.label}.`);if(roleMetas[row.code as Role]?.label!==row.label)mismatches.push(`Role label differs for ${row.code}.`);}
   if (role !== "admin") return <Unauthorized />;
 
   return (
@@ -69,7 +71,7 @@ export function RolesPermissions() {
               <tbody>{(real?metadata?.roles.map(row=>row.code)??[]:employeeRoles).map((staffRole) => {
                 const source=metadata?.roles.find(row=>row.code===staffRole);
                 const meta = roleMetas[staffRole as Role]??{label:staffRole,bg:'#F1F5F9',fg:'#475569'};
-                const modules = real?source?.modules.map(item=>item.code)??[]:allowedFor[staffRole as Exclude<Role,'client'>];
+                const modules = real?(Array.isArray(source?.modules)?source.modules:[]).map(item=>item.code)??[]:allowedFor[staffRole as Exclude<Role,'client'>];
                 return <tr key={staffRole} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
                     <td className="px-4 py-4 align-middle sm:px-5">
                       <div className="flex flex-col items-start gap-1.5">
@@ -79,7 +81,7 @@ export function RolesPermissions() {
                     </td>
                     <td className="px-4 py-4 align-middle sm:px-5">
                       <div className="flex flex-wrap gap-2">
-                        {modules.map((module) => <span key={module} className="inline-flex items-center whitespace-nowrap rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 font-dm text-[11px] font-semibold leading-4 text-slate-700">{real?source?.modules.find(item=>item.code===module)?.label??module:moduleNames[module] || module}</span>)}
+                        {modules.map((module) => <span key={module} className="inline-flex items-center whitespace-nowrap rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 font-dm text-[11px] font-semibold leading-4 text-slate-700">{real?(Array.isArray(source?.modules)?source.modules:[]).find(item=>item.code===module)?.label??module:moduleNames[module] || module}</span>)}
                       </div>
                     </td>
                     {real&&<td className="px-4 py-4 text-xs text-slate-600">{Object.entries(source?.permissions??{}).map(([resource,actions])=><p key={resource} className="mb-2 break-words"><strong>{resource}</strong>: {actions.join(', ')}</p>)}</td>}

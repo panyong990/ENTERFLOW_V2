@@ -166,6 +166,32 @@ test('accepts the isolated Phase 2 runtime target', () => {
   assert.equal(config.absoluteTimeoutHours, 8);
 });
 
+test('accepts explicitly approved independent Phase 2 server', () => {
+  const config = validateRuntimeConfig(phase2Environment({
+    PHASE2_SERVER_UUID: 'be8fec6b-e6db-11f1-9b34-06d4adf80920'
+  }));
+
+  assert.equal(
+    config.phase2.serverUuid,
+    'be8fec6b-e6db-11f1-9b34-06d4adf80920'
+  );
+});
+
+test('rejects unapproved Phase 2 server identities', () => {
+  for (const uuid of [
+    '',
+    '00000000-0000-4000-8000-000000000000',
+    'BE8FEC6B-E6DB-11F1-9B34-06D4ADF80920'
+  ]) {
+    assert.throws(
+      () => validateRuntimeConfig(phase2Environment({
+        PHASE2_SERVER_UUID: uuid
+      })),
+      /Unapproved Phase 2 server UUID/
+    );
+  }
+});
+
 test('rejects Phase 2 runtime target substitutions', () => {
   for (const overrides of [
     { DB_HOST: 'localhost' },

@@ -140,9 +140,19 @@ function validatePhase2Runtime(env, database, appOrigin) {
     throw new Error('Phase 2 API must bind to 127.0.0.1:3107.');
   }
 
-  return Object.freeze({
-    serverUuid: '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8'
-  });
+  const approvedServerUuids = new Set([
+    '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8',
+    'be8fec6b-e6db-11f1-9b34-06d4adf80920'
+  ]);
+
+  const serverUuid = env.PHASE2_SERVER_UUID ??
+    '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8';
+
+  if (!approvedServerUuids.has(serverUuid)) {
+    throw new Error('Unapproved Phase 2 server UUID.');
+  }
+
+  return Object.freeze({ serverUuid });
 }
 
 export function validateRuntimeConfig(env = process.env) {

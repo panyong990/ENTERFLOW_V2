@@ -17,7 +17,7 @@ export function createEngineerSketchService({
   db,
   storage,
   bucketName = process.env.GCS_BUCKET,
-  storageDriver = process.env.DOCUMENT_STORAGE_DRIVER || 'gcs'
+  storageDriver = process.env.DOCUMENT_STORAGE_DRIVER || (process.env.NODE_ENV === 'development' ? 'local' : 'gcs')
 } = {}) {
   if (!db?.getConnection) throw new TypeError('A database pool is required.');
 

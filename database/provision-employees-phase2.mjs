@@ -18,7 +18,7 @@ const TARGET = Object.freeze({
   host: '127.0.0.1',
   port: 62286,
   database: 'enterflow_phase2_db',
-  serverUuid: '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8'
+
 });
 
 const ROLE_NAMES = Object.freeze({
@@ -42,7 +42,7 @@ function assertTarget(config, identity) {
 config?.database?.host !== TARGET.host ||
 Number(config?.database?.port) !== TARGET.port ||
 Number(identity?.serverPort) !== 3306 ||
-identity?.serverUuid !== TARGET.serverUuid ||
+(!config?.phase2?.serverUuid || identity?.serverUuid !== config.phase2.serverUuid) ||
     !/^8\.4\./u.test(identity?.serverVersion ?? '')
   ) {
     throw Object.assign(new Error('Unauthorized Phase 2 target'), {

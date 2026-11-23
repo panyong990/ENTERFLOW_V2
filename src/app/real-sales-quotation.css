@@ -1,0 +1,25 @@
+
+/* Real Sales quotation typography only.
+   No changes to MAIN Demo mode or quotation calculations. */
+
+.real-sales-quotation-typography .font-dm {
+  font-size: max(12px, 1em);
+}
+
+.real-sales-quotation-typography select {
+  font-size: 13px !important;
+  min-height: 32px;
+}
+
+.real-sales-quotation-typography input {
+  font-size: 13px !important;
+  min-height: 30px;
+}
+
+.real-sales-quotation-typography h4 {
+  font-size: 14px !important;
+}
+
+.real-sales-quotation-typography button {
+  font-size: 12px;
+}

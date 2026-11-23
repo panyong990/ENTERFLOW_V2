@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import "../real-sales-quotation.css";
 import { Pencil, Plus, Sparkles, Trash2, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -53,15 +54,29 @@ interface Props {
 }
 
 export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = false, onDraftChange }: Props) {
-  const { rawMaterials, templates, findBOMTemplate } = useMaterials();
+  const { rawMaterials: allRawMaterials, templates, findBOMTemplate } = useMaterials();
+  const rawMaterials = serverCosting
+    ? allRawMaterials
+        .filter((material) => material.source === "database")
+        .map((material) => ({
+          ...material,
+          unitPrice:
+            typeof material.referenceUnitPrice === "number" &&
+            Number.isFinite(material.referenceUnitPrice) &&
+            material.referenceUnitPrice >= 0
+              ? material.referenceUnitPrice
+              : Number.NaN,
+        }))
+    : allRawMaterials;
   const [activeProductIndex, setActiveProductIndex] = useState(0);
+  const materialDrafts = useRef<Record<number, BOMLine[]>>({});
   const product = inquiry.products[activeProductIndex] ?? inquiry.products[0];
   const filterType = product?.type ?? "Air Filter";
   const size = inferSize(product);
 
   /* Resolve a usable BOM before showing availability; empty category placeholders have no consumption quantities. */
   const initial = useMemo(() => {
-    if (serverCosting) return [];
+    if (serverCosting) return materialDrafts.current[activeProductIndex] ?? [];
     const savedProductBom = resolveProductBOM(inquiry, activeProductIndex);
     if (savedProductBom && savedProductBom.length > 0) return savedProductBom;
     const tpl = findBOMTemplate(filterType, size);
@@ -95,12 +110,27 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
     if (serverCosting) onDraftChange?.(activeProductIndex);
   };
   const selectProduct = (index: number) => {
-    if (serverCosting) costingDrafts.current[activeProductIndex] = cfg;
+    if (serverCosting) {
+      costingDrafts.current[activeProductIndex] = cfg;
+      materialDrafts.current[activeProductIndex] = bom.map((line) => ({ ...line }));
+    }
     setActiveProductIndex(index);
   };
   /* Section I — tplName/showSaveTpl state removed */
 
   const matchingTemplate = findBOMTemplate(filterType, size);
+  const pricingReady =
+    bom.some((line) => Number.isFinite(line.qtyConsumed) && line.qtyConsumed > 0) &&
+    bom.every((line) =>
+      Number.isFinite(line.qtyConsumed) &&
+      line.qtyConsumed >= 0 &&
+      (line.qtyConsumed === 0 ||
+        rawMaterials.some((material) =>
+          material.id === line.materialId &&
+          Number.isFinite(material.unitPrice) &&
+          material.unitPrice >= 0
+        ))
+    );
   const computed = computeUnitPrice(bom, cfg, rawMaterials);
   const selectedQty = product?.qty ?? qty;
   const orderTotal = computed.withVat * selectedQty;
@@ -131,7 +161,14 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
     material: rawMaterials.find((item) => item.id === materialId),
     requiredQuantity,
   })).filter((entry): entry is { material: RawMaterial; requiredQuantity: number } => !!entry.material);
-  const hasShortage = materialAvailability.some(({ material, requiredQuantity }) => material.qtyInStock < requiredQuantity);
+  const hasShortage = materialAvailability.some(({ material, requiredQuantity }) =>
+    assessMaterialStock(
+      requiredQuantity,
+      serverCosting && material.quantityStatus !== "verified"
+        ? Number.NaN
+        : material.qtyInStock
+    ).status === "insufficient"
+  );
 
   const updateLine = (idx: number, patch: Partial<BOMLine>) => {
     setBom((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -171,8 +208,9 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      {serverCosting && <p className="font-dm text-xs text-slate-500">Material requirements and prices are calculated from saved records when the quotation is saved. Material edits are unavailable here; labor, markup, discount and VAT inputs apply to the quotation.</p>}
+    <div className={`flex flex-col gap-4 ${serverCosting ? "real-sales-quotation-typography" : ""}`}>
+      {serverCosting && <p className="font-dm text-xs text-slate-500">Material estimates use reference unit prices from Warehouse Inventory. These are draft estimates only; official quotation prices and BOM requirements still require backend approval.</p>}
+
       {inquiry.products.length > 1 && (
         <div className="rounded-lg p-3 flex flex-wrap items-center gap-2" style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}>
           <span className="font-dm mr-1" style={{ fontSize: 11, fontWeight: 800, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Product</span>
@@ -207,22 +245,20 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
 
       <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
         {/* ─────────── LEFT PANEL — Raw Materials in this BOM ─────────── */}
-        <fieldset disabled={serverCosting} className="min-w-0 rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
+        <fieldset className="min-w-0 rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
             <div className="flex items-center gap-2">
               <h4 className="font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Raw Materials</h4>
               <span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#E2E8F0", color: "#475569" }}>{bom.length} parts</span>
             </div>
-            <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8", fontStyle: "italic" }}>
-              Fill quantities manually · hover ⓘ for reference values
-            </span>
+
           </div>
 
           {/* Filter Part rows */}
           <div className="flex flex-col">
             {bom.length === 0 && (
               <div className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>
-                {serverCosting ? "Approved material requirements are resolved by the server. Use Inquiry Details for the authenticated stock check; catalog suggestions are not an approved BOM." : "No filter parts yet. Add parts using the chips below — staff enters quantities manually."}
+                {serverCosting ? "No materials selected yet. Add parts below to prepare a draft using Warehouse inventory." : "No filter parts yet. Add parts using the chips below — staff enters quantities manually."}
               </div>
             )}
             {bom.map((line, idx) => {
@@ -252,17 +288,18 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                     )}
                     <button onClick={() => removeLine(idx)} className="ml-auto text-slate-400 hover:text-red-500" title="Remove this part"><Trash2 size={12} /></button>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <select
+                      title={m.name}
                       value={line.materialId}
                       onChange={(e) => updateLine(idx, { materialId: e.target.value })}
-                      className="font-dm flex-1 px-2 py-1.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
-                      style={{ fontSize: 12 }}
+                      className="font-dm block w-full min-w-0 max-w-full px-2 py-1.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
+                      style={{ fontSize: 12, textOverflow: "ellipsis" }}
                     >
                       {rawMaterials
                         .filter((mat) => mat.category === line.partCategory)
                         .map((mat) => (
-                          <option key={mat.id} value={mat.id}>{mat.name} ({serverCosting ? "price calculated on save" : `₱${mat.unitPrice}/${mat.unit}`})</option>
+                          <option key={mat.id} value={mat.id}>{mat.name} ({serverCosting && !Number.isFinite(mat.unitPrice) ? "Warehouse price unavailable" : `?${mat.unitPrice}/${mat.unit}`})</option>
                         ))}
                     </select>
                   </div>
@@ -270,11 +307,23 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                     <div className="flex items-center gap-1">
                       <span className="font-dm" style={{ fontSize: 10, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700 }}>Qty</span>
                       <input
-                        type="number" step="0.001" value={line.qtyConsumed}
-                        onChange={(e) => updateLine(idx, { qtyConsumed: Number(e.target.value) })}
-                        className="font-mono-jb px-2 py-1 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white w-20"
-                        style={{ fontSize: 12 }}
-                      />
+                          type="number"
+                          step="0.001"
+                          value={line.qtyConsumed}
+                          onChange={(e) => {
+                          const input = e.currentTarget;
+                          const normalized = input.value.replace(/^0+(?=\d)/, "");
+                          if (normalized !== input.value) input.value = normalized;
+                          updateLine(idx, { qtyConsumed: Number(normalized) });
+                        }}
+                          onFocus={(e) => {
+                            if (Number(e.currentTarget.value) === 0) {
+                              e.currentTarget.select();
+                            }
+                          }}
+                          className="font-mono-jb px-2 py-1 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white w-20"
+                          style={{ fontSize: 12 }}
+                        />
                       <span className="font-dm" style={{ fontSize: 11, color: "#475569" }}>{m.unit}/filter</span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -299,13 +348,13 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                         </>
                       ) : (
                         <>
-                          <span className="font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>₱{serverCosting ? "—" : m.unitPrice}</span>
-                          <button onClick={() => { setEditingPriceId(m.id); setEditPrice(m.unitPrice); }} className="text-slate-400 hover:text-slate-700"><Pencil size={10} /></button>
+                          <span className="font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>₱{serverCosting && !Number.isFinite(m.unitPrice) ? "?" : m.unitPrice}</span>
+                          <button disabled={serverCosting} onClick={() => { setEditingPriceId(m.id); setEditPrice(m.unitPrice); }} className="text-slate-400 hover:text-slate-700"><Pencil size={10} /></button>
                         </>
                       )}
                     </div>
                     <div className="ml-auto font-syne" style={{ fontSize: 13, fontWeight: 700, color: "#C8102E" }}>
-                      ₱{serverCosting || !Number.isFinite(cost) ? "—" : cost.toFixed(2)}
+                      ₱{(serverCosting && !pricingReady) || !Number.isFinite(cost) ? "—" : cost.toFixed(2)}
                     </div>
                   </div>
                   {line.wastePct !== undefined && (
@@ -327,7 +376,12 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
             ) : (
               <div className="flex flex-col gap-2">
                 {materialAvailability.map(({ material, requiredQuantity }) => {
-                  const assessment = assessMaterialStock(requiredQuantity, material.qtyInStock);
+                  const assessment = assessMaterialStock(
+                    requiredQuantity,
+                    serverCosting && material.quantityStatus !== "verified"
+                      ? Number.NaN
+                      : material.qtyInStock
+                  );
                   const shortage = assessment.shortage;
                   const insufficient = assessment.status === "insufficient";
                   const unavailable = assessment.status === "unavailable";
@@ -360,7 +414,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
             )}
           </div>
 
-          {/* Add Filter Part — only shows categories not yet added; falls back to custom input */}
+          {/* Add Filter Part ? only shows categories not yet added; falls back to custom input */}
           <AddPartFooter bom={bom} onAdd={addLine} />
         </fieldset>
 
@@ -376,13 +430,23 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Labor Cost / Unit</label>
                 <div className="flex items-center gap-1">
                   <span className="font-mono-jb" style={{ fontSize: 12, color: "#64748B" }}>₱</span>
-                  <input aria-label="Labor cost per unit" type="number" value={cfg.laborCost} onChange={(e) => changeCfg({ ...cfg, laborCost: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input aria-label="Labor cost per unit" type="number" value={cfg.laborCost} onChange={(e) => {
+      const input = e.currentTarget;
+      const normalized = input.value.replace(/^0+(?=\d)/, "");
+      if (normalized !== input.value) input.value = normalized;
+      changeCfg({ ...cfg, laborCost: Number(normalized) });
+    }} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                 </div>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Markup</label>
                 <div className="flex items-center gap-1">
-                  <input aria-label="Markup percentage" type="number" value={cfg.markupPct} onChange={(e) => changeCfg({ ...cfg, markupPct: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input aria-label="Markup percentage" type="number" value={cfg.markupPct} onChange={(e) => {
+      const input = e.currentTarget;
+      const normalized = input.value.replace(/^0+(?=\d)/, "");
+      if (normalized !== input.value) input.value = normalized;
+      changeCfg({ ...cfg, markupPct: Number(normalized) });
+    }} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                   <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>%</span>
                 </div>
               </div>
@@ -397,8 +461,16 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                     step={0.01}
                     value={cfg.discountPct ?? 0}
                     onChange={(e) => {
-                      const value = Number(e.target.value);
-                      changeCfg({ ...cfg, discountPct: Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0 });
+                      const input = e.currentTarget;
+      const normalized = input.value.replace(/^0+(?=\d)/, "");
+      if (normalized !== input.value) input.value = normalized;
+      const value = Number(normalized);
+      changeCfg({
+        ...cfg,
+        discountPct: Number.isFinite(value)
+          ? Math.min(100, Math.max(0, value))
+          : 0
+      });
                     }}
                     className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white"
                     style={{ fontSize: 13 }}
@@ -417,7 +489,12 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
               <div className="flex flex-col gap-1">
                 <label className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>VAT Rate</label>
                 <div className="flex items-center gap-1">
-                  <input type="number" value={cfg.vatRate} onChange={(e) => changeCfg({ ...cfg, vatRate: Number(e.target.value) })} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
+                  <input type="number" value={cfg.vatRate} onChange={(e) => {
+      const input = e.currentTarget;
+      const normalized = input.value.replace(/^0+(?=\d)/, "");
+      if (normalized !== input.value) input.value = normalized;
+      changeCfg({ ...cfg, vatRate: Number(normalized) });
+    }} className="font-mono-jb flex-1 px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
                   <span className="font-dm" style={{ fontSize: 12, color: "#64748B" }}>%</span>
                 </div>
               </div>
@@ -434,25 +511,25 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
             <div className="rounded-lg overflow-hidden" style={{ border: "1.5px solid #1A2B4A" }}>
               <div className="px-3 py-2 flex items-center justify-between font-dm" style={{ fontSize: 12, backgroundColor: "#F8FAFC" }}>
                 <span style={{ color: "#475569", fontWeight: 600 }}>Material</span>
-                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{serverCosting || !Number.isFinite(computed.material) ? "—" : computed.material.toFixed(2)}</span>
+                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{(serverCosting && !pricingReady) || !Number.isFinite(computed.material) ? "—" : computed.material.toFixed(2)}</span>
               </div>
               <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 12 }}>
                 <span style={{ color: "#475569", fontWeight: 600 }}>Total Cost {cfg.applyMarkup ? "with markup" : ""}</span>
-                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{serverCosting || !Number.isFinite(computed.withMarkup) ? "—" : computed.withMarkup.toFixed(2)}</span>
+                <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{(serverCosting && !pricingReady) || !Number.isFinite(computed.withMarkup) ? "—" : computed.withMarkup.toFixed(2)}</span>
               </div>
               {(cfg.discountPct ?? 0) > 0 && (
                 <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 12 }}>
                   <span style={{ color: "#475569", fontWeight: 600 }}>After {cfg.discountPct}% discount</span>
-                  <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{serverCosting || !Number.isFinite(computed.afterDiscount) ? "—" : computed.afterDiscount.toFixed(2)}</span>
+                  <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>₱{(serverCosting && !pricingReady) || !Number.isFinite(computed.afterDiscount) ? "—" : computed.afterDiscount.toFixed(2)}</span>
                 </div>
               )}
               <div className="px-3 py-2.5 flex items-center justify-between font-dm border-t border-slate-200" style={{ fontSize: 13, backgroundColor: "#FEF2F2" }}>
                 <span style={{ color: "#991B1B", fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", fontSize: 11 }}>With VAT</span>
-                <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#C8102E" }}>₱{serverCosting || !Number.isFinite(computed.withVat) ? "—" : computed.withVat.toFixed(2)}</span>
+                <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#C8102E" }}>₱{(serverCosting && !pricingReady) || !Number.isFinite(computed.withVat) ? "—" : computed.withVat.toFixed(2)}</span>
               </div>
               <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 11, backgroundColor: "#1A2B4A", color: "white" }}>
                 <span style={{ opacity: 0.7 }}>× {selectedQty} pcs = Product Total</span>
-                <span className="font-syne" style={{ fontSize: 16, fontWeight: 800 }}>₱{serverCosting || !Number.isFinite(orderTotal) ? "—" : orderTotal.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</span>
+                <span className="font-syne" style={{ fontSize: 16, fontWeight: 800 }}>₱{(serverCosting && !pricingReady) || !Number.isFinite(orderTotal) ? "—" : orderTotal.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</span>
               </div>
             </div>
 

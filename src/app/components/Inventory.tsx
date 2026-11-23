@@ -25,8 +25,8 @@ const STOCK_REASONS = [
 
 const UNITS: Unit[] = ["roll", "plate", "sheet", "kg", "gal", "pcs", "set", "m"];
 type EditableMaterialFields = Pick<RawMaterial, "name" | "category" | "unit" | "unitPrice" | "qtyInStock" | "threshold" | "supplier">;
-type RealMaterialUpdate = Partial<Pick<RawMaterial, "name" | "category" | "unit">> & { quantityOnHand?: string | null; threshold?: string | null; supplier?: string | null };
-type RealMaterialCreate = { itemCode: string | null; name: string; category: PartCategory | null; unit: string; threshold: string | null; supplier: string | null };
+type RealMaterialUpdate = Partial<Pick<RawMaterial, "name" | "category" | "unit">> & { quantityOnHand?: string | null; threshold?: string | null; supplier?: string | null; reason?: string; referenceUnitPrice?: string | null };
+type RealMaterialCreate = { name: string; category: PartCategory | null; unit: string; threshold: string | null; supplier: string | null; referenceUnitPrice?: string; quantityOnHand?: string; reason?: string };
 
 /* ─────────── Component ─────────── */
 
@@ -399,6 +399,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
               );
               const lowCount = items.filter((m) => ["low-stock", "out-of-stock"].includes(getRawMaterialStockStatus(m).key)).length;
               const collapsed = collapsedCats.has(cat);
+              if (cat === "uncategorized" && grouped.unclassified.length === 0) return null;
               if (items.length === 0 && (query !== "" || (readOnly && (categoryFilter || statusFilter)))) return null;
               if (readOnly && categoryFilter && categoryFilter !== sectionCategory) return null;
               return (
@@ -417,7 +418,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                     <table className="w-full">
                       <thead style={{ backgroundColor: "#F4F6F9" }}>
                         <tr>
-                          {["Material Name", "Unit", "Qty in Stock", "Unit Price", "Threshold", "Status"].map((h) => (
+                          {(realMode ? ["Material Name", "Qty in Stock", "Unit", "Unit Price", "Threshold", "Status"] : ["Material Name", "Unit", "Qty in Stock", "Unit Price", "Threshold", "Status"]).map((h) => (
                             <th key={h} className="font-dm text-left px-4 py-2.5" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>{h}</th>
                           ))}
                         </tr>
@@ -426,16 +427,12 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                         {items.map((m) => {
                           const s = getRawMaterialStockStatus(m);
                           const quantity = Number.isFinite(m.qtyInStock) && (!realMode || m.quantityStatus === "verified" || m.quantityStatus === "provisional_sample")
-                            ? `${m.qtyInStock.toFixed(2)} ${m.unit}${m.quantityStatus === "provisional_sample" ? " · sample" : ""}`
+                            ? `${realMode ? m.qtyInStock.toLocaleString("en-PH", { maximumFractionDigits: 4 }) : `${m.qtyInStock.toFixed(2)} ${m.unit}`}${m.quantityStatus === "provisional_sample" ? " · sample" : ""}`
                             : "Not recorded";
-                          const priceValue = realMode ? m.approvedCostingPrice : m.unitPrice;
-                          const referencePrice = m.referencePriceText
-                            ?? (Number.isFinite(m.referenceUnitPrice) ? `₱${m.referenceUnitPrice.toLocaleString("en-PH")}` : "Not listed");
+                          const priceValue = realMode ? m.referenceUnitPrice : m.unitPrice;
                           const price = Number.isFinite(priceValue)
-                            ? `₱${priceValue!.toLocaleString("en-PH")}`
-                            : realMode && referencePrice !== "Not listed"
-                              ? `Reference only: ${referencePrice}`
-                              : "Not recorded";
+                            ? `\u20B1${priceValue!.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+                            : "Not recorded";
                           return (
                             <tr
                               key={m.id}
@@ -465,8 +462,17 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                                 {realMode && <div className="font-dm mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{m.source === "database" ? "Authenticated material" : "Catalog reference"}</div>}
                                 {m.supplier && <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8", marginTop: 1 }}>{m.supplier}</div>}
                               </td>
-                              <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{m.unit}</td>
-                              <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 700, color: s.fg }}>{quantity}</td>
+                              {realMode ? (
+                                <>
+                                  <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 700, color: s.fg }}>{quantity}</td>
+                                  <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{m.unit}</td>
+                                </>
+                              ) : (
+                                <>
+                                  <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{m.unit}</td>
+                                  <td className="px-4 py-3 font-syne" style={{ fontSize: 14, fontWeight: 700, color: s.fg }}>{quantity}</td>
+                                </>
+                              )}
                               <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#0F172A" }}>{price}</td>
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#64748B" }}>{Number.isFinite(m.threshold) ? `${m.threshold}${m.thresholdStatus === "provisional_sample" ? " · sample" : ""}` : "Not recorded"}</td>
                               <td className="px-4 py-3"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, backgroundColor: s.bg, color: s.fg }}>{m.quantityStatus === "provisional_sample" ? `Sample · ${s.label}` : s.label}</span></td>
@@ -512,7 +518,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
       {/* Add Material Modal */}
       {showAdd && (
         realMode
-          ? <AddMaterialModal realMode onClose={() => setShowAdd(false)} onAdd={createRealMaterial} />
+          ? <AddMaterialModal realMode units={[...new Set(rawMaterials.filter((m) => m.source === "database").map((m) => m.unit))].sort()} onClose={() => setShowAdd(false)} onAdd={createRealMaterial} />
           : <AddMaterialModal
               onClose={() => setShowAdd(false)}
               onAdd={(m) => {
@@ -715,6 +721,12 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
   const [category, setCategory] = useState<PartCategory | null>(m.category);
   const [unit, setUnit] = useState<string>(m.unit);
   const [unitPrice, setUnitPrice] = useState(m.unitPrice);
+  const [realPrice, setRealPrice] = useState(
+    Number.isFinite(m.referenceUnitPrice)
+      ? String(m.referenceUnitPrice)
+      : ""
+  );
+  const [priceEdited, setPriceEdited] = useState(false);
   const [qtyInStock, setQtyInStock] = useState(m.qtyInStock);
   const [realQtyInStock, setRealQtyInStock] = useState(Number.isFinite(m.qtyInStock) ? String(m.qtyInStock) : "");
   const [quantityObserved, setQuantityObserved] = useState(false);
@@ -737,6 +749,12 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
         toast.error("Stock quantity must be a non-negative number with at most four decimals");
         return;
       }
+      if (realMode && realQtyInStock !== "" &&
+          ["pc","sheet","box","bag","sack","sets","bundle","roll","pc/gal"].includes(unit.trim().toLowerCase()) &&
+          !Number.isInteger(Number(realQtyInStock))) {
+        toast.error("Stock quantity must be a whole number for this unit");
+        return;
+      }
       if (realThreshold && (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(realThreshold) || Number(realThreshold) > 1000000000)) {
         toast.error("Threshold must be blank or a non-negative number with at most four decimals");
         return;
@@ -744,6 +762,16 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
       const updates: RealMaterialUpdate = materialObservationFields({
         quantity: realQtyInStock, threshold: realThreshold, quantityObserved, thresholdObserved,
       });
+      if (priceEdited && realPrice !== "" &&
+        (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(realPrice) ||
+         Number(realPrice) > 1000000000)) {
+        toast.error("Unit Price must be a non-negative amount with up to four decimals");
+        return;
+      }
+      if (priceEdited) {
+        updates.referenceUnitPrice = realPrice === "" ? null : realPrice;
+      }
+      if (quantityObserved || priceEdited) updates.reason = reason;
       if (name.trim() !== m.name) updates.name = name.trim();
       if (category !== m.category) updates.category = category;
       if (unit !== m.unit) updates.unit = unit;
@@ -836,7 +864,16 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit Price (₱)</label>
-                  <input type="number" min="0" step="0.01" value={realMode ? "" : unitPrice} disabled={realMode} onChange={(e) => setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} placeholder={realMode ? "Not available" : undefined} />
+                  <input type="number" min="0" step="0.01" value={realMode ? realPrice : unitPrice}
+                  disabled={saving}
+                  onChange={(e) => {
+                    if (realMode) {
+                      setRealPrice(e.target.value);
+                      setPriceEdited(true);
+                    } else {
+                      setUnitPrice(Number(e.target.value));
+                    }
+                  }} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} placeholder={realMode ? "Not available" : undefined} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Low Stock Threshold</label>
@@ -849,7 +886,7 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
             {!editingDetails && (
               <div className="col-span-2 flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Stock Quantity</label>
-                <input type="number" min="0" max="1000000000" step="0.0001" value={realMode ? realQtyInStock : qtyInStock} disabled={saving} onChange={(e) => { if (realMode) { setRealQtyInStock(e.target.value); setQuantityObserved(true); } else setQtyInStock(Number(e.target.value)); }} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 15, fontWeight: 700 }} placeholder={realMode ? "Not recorded" : undefined} />
+                <input type="number" min="0" max="1000000000" step={realMode && ["pc","sheet","box","bag","sack","sets","bundle","roll","pc/gal"].includes(unit.trim().toLowerCase()) ? "1" : "0.0001"} value={realMode ? realQtyInStock : qtyInStock} disabled={saving} onChange={(e) => { if (realMode) { setRealQtyInStock(e.target.value); setQuantityObserved(true); } else setQtyInStock(Number(e.target.value)); }} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 15, fontWeight: 700 }} placeholder={realMode ? "Not recorded" : undefined} />
               </div>
             )}
             <div className="col-span-2 flex flex-col gap-1.5">
@@ -858,12 +895,10 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
             </div>
           </div>
           <div className="border-t border-slate-200 pt-4 flex flex-col gap-3">
-            <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Stock adjustment audit</div>
-            {realMode && <p className="font-dm text-xs text-slate-500">Saving an entered stock quantity or threshold records it as verified and replaces any provisional sample value.</p>}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reason</label>
-                <select value={reason} disabled={realMode} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400 disabled:bg-slate-100" style={{ fontSize: 13, color: "#0F172A" }}>
+                <select value={reason} onChange={(e) => setReason(e.target.value)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400 disabled:bg-slate-100" style={{ fontSize: 13, color: "#0F172A" }}>
                   {STOCK_REASONS.map((r) => <option key={r}>{r}</option>)}
                 </select>
               </div>
@@ -871,9 +906,6 @@ function UpdateStockModal({ m, onClose, onSave, realMode = false, onRealSave }: 
                 <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Reference <span style={{ fontWeight: 400, color: "#94A3B8" }}>(PO #)</span></label>
                 <input value={ref} disabled={realMode} onChange={(e) => setRef(e.target.value)} placeholder="e.g. PO-SUPP-2026-041" className="font-mono-jb px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
               </div>
-            </div>
-            <div className="rounded-md p-2 font-dm" style={{ fontSize: 11, color: "#92400E", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
-              ℹ️ Changes are logged to the material audit history.
             </div>
           </div>
         </div>
@@ -890,7 +922,7 @@ type DemoMaterialCreate = { name: string; category: PartCategory; unit: Unit; un
 type AddMaterialModalProps = {
   onClose: () => void;
 } & (
-  | { realMode: true; onAdd: (input: RealMaterialCreate) => Promise<void> }
+  | { realMode: true; units: string[]; onAdd: (input: RealMaterialCreate) => Promise<void> }
   | { realMode?: false; onAdd: (material: DemoMaterialCreate) => void }
 );
 
@@ -902,6 +934,8 @@ function AddMaterialModal(props: AddMaterialModalProps) {
   const [unit, setUnit] = useState<Unit>("roll");
   const [unitPrice, setUnitPrice] = useState(0);
   const [qtyInStock, setQtyInStock] = useState(0);
+  const [realUnitPrice, setRealUnitPrice] = useState("");
+  const [realOpeningQty, setRealOpeningQty] = useState("");
   const [threshold, setThreshold] = useState(realMode ? "" : "0");
   const [supplier, setSupplier] = useState("");
   const [saving, setSaving] = useState(false);
@@ -910,6 +944,25 @@ function AddMaterialModal(props: AddMaterialModalProps) {
   const submit = async () => {
     if (!name.trim()) { toast.error("Name is required"); return; }
     if (props.realMode) {
+      const validNumber = (value: string) =>
+        /^(?:0|[1-9][0-9]*)(?:[.][0-9]{1,4})?$/.test(value) &&
+        Number(value) <= 1000000000;
+
+      const wholeUnits = new Set(["pc","pcs","sheet","plate","box","bag","sack","set","sets","bundle","roll","pc/gal"]);
+
+      if (realUnitPrice !== "" && !validNumber(realUnitPrice)) {
+        setError("Enter a valid Unit Price (maximum four decimals).");
+        return;
+      }
+
+      if (realOpeningQty !== "" &&
+          (!validNumber(realOpeningQty) ||
+           (wholeUnits.has(unit.trim().toLowerCase()) &&
+            !Number.isInteger(Number(realOpeningQty))))) {
+        setError("Enter a valid Initial Stock Qty for the selected unit.");
+        return;
+      }
+
       if (threshold && (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(threshold) || Number(threshold) > 1000000000)) {
         setError("Threshold must be blank or a non-negative number with at most four decimals.");
         return;
@@ -918,12 +971,16 @@ function AddMaterialModal(props: AddMaterialModalProps) {
       setError("");
       try {
         await props.onAdd({
-          itemCode: null,
           name: name.trim(),
           category,
           unit,
           threshold: threshold || null,
           supplier: supplier.trim() || null,
+          referenceUnitPrice: realUnitPrice || undefined,
+          quantityOnHand: realOpeningQty || undefined,
+          reason: realOpeningQty !== "" || realUnitPrice !== ""
+            ? "Initial raw material registration"
+            : undefined,
         });
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Material creation failed.");
@@ -961,16 +1018,31 @@ function AddMaterialModal(props: AddMaterialModalProps) {
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit</label>
               <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)} className="font-dm px-3 py-2 rounded-md border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 13, color: "#0F172A" }}>
-                {UNITS.map((u) => <option key={u}>{u}</option>)}
+                {(props.realMode ? props.units : UNITS).map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Unit Price (₱)</label>
-              <input type="number" value={realMode ? "" : unitPrice} disabled={realMode} placeholder={realMode ? "Not available" : undefined} onChange={(e) => setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
+              <input type="number" min="0" max="1000000000" step={realMode ? "0.0001" : undefined}
+                value={realMode ? realUnitPrice : unitPrice}
+                disabled={saving}
+                placeholder={realMode ? "Not recorded" : undefined}
+                onChange={(e) => realMode
+                  ? setRealUnitPrice(e.target.value)
+                  : setUnitPrice(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Initial Stock Qty</label>
-              <input type="number" step="0.01" value={realMode ? "" : qtyInStock} disabled={realMode} placeholder={realMode ? "Not recorded" : undefined} onChange={(e) => setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
+              <input type="number" min="0" max="1000000000"
+                step={realMode
+                  ? (["pc","pcs","sheet","plate","box","bag","sack","set","sets","bundle","roll","pc/gal"].includes(unit.toLowerCase()) ? "1" : "0.0001")
+                  : "0.01"}
+                value={realMode ? realOpeningQty : qtyInStock}
+                disabled={saving}
+                placeholder={realMode ? "Not recorded" : undefined}
+                onChange={(e) => realMode
+                  ? setRealOpeningQty(e.target.value)
+                  : setQtyInStock(Number(e.target.value))} className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white disabled:bg-slate-100" style={{ fontSize: 13 }} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: 0.4, textTransform: "uppercase" }}>Low Stock Threshold</label>
@@ -981,7 +1053,6 @@ function AddMaterialModal(props: AddMaterialModalProps) {
               <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Optional" className="font-dm px-3 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white" style={{ fontSize: 13 }} />
             </div>
           </div>
-          {realMode && <p className="font-dm text-xs text-slate-500">Material creation does not record stock or unit-price values.</p>}
           {error && <p role="alert" className="font-dm text-sm text-red-800">{error}</p>}
         </div>
         <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">

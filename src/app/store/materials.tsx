@@ -543,7 +543,7 @@ const MaterialsContext = createContext<Ctx | null>(null);
 
 export function MaterialsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
   const realMode = mode === "real";
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? seedMaterials.map(material => ({ ...material, catalogCode:material.id, source:"catalog_reference" as const, qtyInStock: Number.NaN, history: [] })) : loadPersistedRawMaterials());
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? [] : loadPersistedRawMaterials());
   const [inventoryLoading, setInventoryLoading] = useState(realMode);
   const [inventoryError, setInventoryError] = useState("");
   const [inventoryVersion, setInventoryVersion] = useState(0);
@@ -562,10 +562,10 @@ export function MaterialsProvider({ children, mode = "demo" }: { children: React
     setInventoryLoading(true); setInventoryError("");
     void getInventory(controller.signal).then((result: any) => {
       if (controller.signal.aborted) return;
-      const normalized = mergeInventoryCatalog(seedMaterials, result, materialIdentities.ids);
+      const normalized = mergeInventoryCatalog([], result, materialIdentities.ids);
       setRawMaterials(normalized.materials as RawMaterial[]);
       setFinishedGoods(normalized.finishedGoods as FinishedGood[]);
-    }).catch(cause => { if (!controller.signal.aborted) { setInventoryError(cause instanceof Error ? cause.message : "Inventory is unavailable."); setRawMaterials(seedMaterials.map(material=>({...material,catalogCode:material.id,source:"catalog_reference" as const,qtyInStock:Number.NaN,history:[]}))); setFinishedGoods([]); } }).finally(() => { if (!controller.signal.aborted) setInventoryLoading(false); });
+    }).catch(cause => { if (!controller.signal.aborted) { setInventoryError(cause instanceof Error ? cause.message : "Inventory is unavailable."); setRawMaterials([]); setFinishedGoods([]); } }).finally(() => { if (!controller.signal.aborted) setInventoryLoading(false); });
     return () => controller.abort();
   }, [realMode, inventoryVersion]);
 

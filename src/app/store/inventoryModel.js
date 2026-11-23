@@ -24,26 +24,84 @@ export function materialObservationFields({ quantity, threshold, quantityObserve
   };
 }
 export function normalizeOperationalAvailability(response) {
-  if (!response || !Array.isArray(response.assessments) || !Array.isArray(response.unmappedItems)) {
+  if (!response || !Array.isArray(response.assessments)) {
     throw new Error('Stock availability is unavailable.');
   }
+
+  // Current authenticated Sales backend returns materials and assessments,
+  // but does not yet supply the legacy unmappedItems collection.
+  const backendShape =
+    Array.isArray(response.materials) &&
+    typeof response.overallStatus === 'string';
+
+  if (!Array.isArray(response.unmappedItems) && !backendShape) {
+    throw new Error('Stock availability is unavailable.');
+  }
+
+  const unmappedItems = Array.isArray(response.unmappedItems)
+    ? response.unmappedItems
+    : [];
+
   const assessments = response.assessments.map(item => {
-    if (item.classification !== 'raw_material') return item;
-    const available = operationalInventoryNumber(item.availableQuantity, item.quantityStatus);
-    const required = inventoryNumber(item.requiredQuantity);
-    if (!Number.isFinite(available) || !Number.isFinite(required) || required <= 0) {
-      return { ...item, availableQuantity: null, shortageQuantity: null, inventoryState: 'inventory_unavailable', status: 'inventory_unavailable' };
+    const mapped = {
+      ...item,
+      inventoryId: item.inventoryId ?? item.materialId ?? null,
+      description: item.description ?? item.materialName ?? 'Raw material',
+      unit: item.unit ?? item.unitCode ?? null
+    };
+
+    if (mapped.classification !== 'raw_material') return mapped;
+
+    const available = operationalInventoryNumber(
+      mapped.availableQuantity,
+      mapped.quantityStatus
+    );
+    const required = inventoryNumber(mapped.requiredQuantity);
+
+    if (!Number.isFinite(available) ||
+        !Number.isFinite(required) ||
+        required <= 0) {
+      return {
+        ...mapped,
+        availableQuantity: null,
+        shortageQuantity: null,
+        inventoryState: 'inventory_unavailable',
+        status: 'inventory_unavailable'
+      };
     }
+
     const shortage = Math.max(0, required - available);
-    return { ...item, availableQuantity: available, shortageQuantity: shortage,
-      inventoryState: available === 0 ? 'zero_stock' : 'recorded', status: shortage > 0 ? 'insufficient' : 'available' };
+
+    return {
+      ...mapped,
+      availableQuantity: available,
+      shortageQuantity: shortage,
+      inventoryState: available === 0 ? 'zero_stock' : 'recorded',
+      status: shortage > 0 ? 'insufficient' : 'available'
+    };
   });
-  const available = assessments.some(item => item.status === 'available');
-  const insufficient = assessments.some(item => item.status === 'insufficient');
-  const overallStatus = response.unmappedItems.length ? 'unmapped'
-    : !assessments.length || assessments.some(item => item.status === 'inventory_unavailable') ? 'unavailable'
-    : insufficient ? available ? 'partially_available' : 'insufficient' : 'available';
-  return { ...response, assessments, overallStatus };
+
+  const hasAvailable = assessments.some(item => item.status === 'available');
+  const hasInsufficient = assessments.some(item => item.status === 'insufficient');
+
+  const overallStatus = unmappedItems.length ||
+      response.overallStatus === 'unmapped'
+    ? 'unmapped'
+    : !assessments.length
+      ? backendShape ? 'unmapped' : 'unavailable'
+      : assessments.some(item => item.status === 'inventory_unavailable')
+        ? 'unavailable'
+        : hasInsufficient
+          ? hasAvailable ? 'partially_available' : 'insufficient'
+          : 'available';
+
+  return {
+    ...response,
+    assessments,
+    unmappedItems,
+    overallStatus,
+    checkedAt: response.checkedAt ?? new Date().toISOString()
+  };
 }
 export function stockAvailabilityQuantityLabel(assessment) {
   if (assessment.quantityStatus === 'provisional_sample') return 'Sample · Quantity unavailable';

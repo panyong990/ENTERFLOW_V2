@@ -5,8 +5,9 @@ export function createInventoryService({
 }) {
   const list = actor => read(db, async c => {
     requireThat(actor?.accountType === 'employee' && ['sales', 'production', 'warehouse', 'admin', 'owner', 'operations'].includes(actor.roleCode), 'FORBIDDEN');
-    const materials = await rows(c, `SELECT CAST(m.material_id AS CHAR) id,m.material_name name,mc.category_name category,CAST(m.material_category_id AS CHAR) categoryId,CAST(m.uom_id AS CHAR) uomId,u.abbreviation unit,m.qty_in_stock qtyInStock,m.quantity_status quantityStatus,m.reorder_threshold threshold,m.threshold_status thresholdStatus,m.supplier_name supplier,m.unit_price approvedCostingPrice,m.reference_unit_price referenceUnitPrice,m.created_at createdAt,m.updated_at updatedAt FROM raw_material m JOIN unit_of_measure u ON u.uom_id=m.uom_id LEFT JOIN material_category mc ON mc.material_category_id=m.material_category_id WHERE m.is_active=1 ORDER BY m.material_name,m.material_id`);
-    if (!['warehouse', 'admin'].includes(actor.roleCode)) for (const m of materials) for (const key of ['referenceUnitPrice', 'referencePriceText', 'referencePriceSource', 'referencePriceStatus']) m[key] = null;
+    const materials = await rows(c, `SELECT CAST(m.material_id AS CHAR) id,m.item_code itemCode,m.material_name name,mc.category_name category,CAST(m.material_category_id AS CHAR) categoryId,CAST(m.uom_id AS CHAR) uomId,u.abbreviation unit,m.qty_in_stock qtyInStock,m.quantity_status quantityStatus,m.reorder_threshold threshold,m.threshold_status thresholdStatus,m.supplier_name supplier,m.unit_price approvedCostingPrice,m.reference_unit_price referenceUnitPrice,m.created_at createdAt,m.updated_at updatedAt FROM raw_material m JOIN unit_of_measure u ON u.uom_id=m.uom_id LEFT JOIN material_category mc ON mc.material_category_id=m.material_category_id WHERE m.is_active=1 ORDER BY m.material_name,m.material_id`);
+    if (!['warehouse', 'admin'].includes(actor.roleCode)) for (const m of materials) for (const key of ['referencePriceText', 'referencePriceSource', 'referencePriceStatus']) m[key] = null;
+    if (!['sales', 'warehouse', 'admin'].includes(actor.roleCode)) for (const m of materials) m.referenceUnitPrice = null;
     const finishedGoods = await rows(c, `SELECT CAST(finished_good_id AS CHAR) id,item_code itemCode,enterfil_pn enterFilPN,item_name name,CAST(client_id AS CHAR) clientId,qty_in_stock qtyInStock,quantity_status quantityStatus,buffer_min bufferMin,threshold_status thresholdStatus,demand_level demand FROM finished_good WHERE is_active=1 ORDER BY item_code`);
     return ok({
       materials,
@@ -24,7 +25,8 @@ export function createInventoryService({
     threshold: m.reorder_threshold,
     thresholdStatus: m.threshold_status,
     supplier: m.supplier_name,
-    approvedCostingPrice: m.unit_price ?? null
+    approvedCostingPrice: m.unit_price ?? null,
+    referenceUnitPrice: m.reference_unit_price ?? null
   });
   const maintain = (actor, target, body) => {
     if (actor?.accountType !== 'employee' || !['warehouse', 'admin'].includes(actor.roleCode) || !id(actor.userId)) return Promise.resolve({
@@ -32,9 +34,19 @@ export function createInventoryService({
       code: 'FORBIDDEN'
     });
     try {
-      object(body, ['name', 'materialCategoryId', 'uomId', 'threshold', 'supplier', 'quantityOnHand', 'reason']);
+      object(body, ['name', 'materialCategoryId', 'uomId', 'threshold', 'supplier', 'quantityOnHand', 'reason', 'referenceUnitPrice', 'category', 'unit']);
       if (target) requireThat(id(target));
-      if (!target) requireThat(body.quantityOnHand === undefined);
+      requireThat(
+        !(body.category !== undefined && body.materialCategoryId !== undefined)
+      );
+      requireThat(
+        !(body.unit !== undefined && body.uomId !== undefined)
+      );
+      if (body.referenceUnitPrice !== undefined &&
+          body.referenceUnitPrice !== null) {
+        const price = decimal(body.referenceUnitPrice);
+        requireThat(price >= 0n && price <= 10000000000000n);
+      }
       if (body.quantityOnHand !== undefined && body.quantityOnHand !== null) decimal(body.quantityOnHand);
       if (body.threshold !== undefined && body.threshold !== null) decimal(body.threshold);
     } catch {
@@ -48,21 +60,74 @@ export function createInventoryService({
       if (target) requireThat(old, 'NOT_FOUND');
       const name = body.name !== undefined ? text(body.name, 200) : old?.material_name;
       requireThat(name);
-      const uomId = body.uomId ?? (old && String(old.uom_id));
+      const matchedUom = body.unit === undefined ? null : await one(
+        c,
+        'SELECT CAST(uom_id AS CHAR) uom_id FROM unit_of_measure WHERE abbreviation=?',
+        [text(body.unit, 32)]
+      );
+
+      requireThat(
+        body.unit === undefined || matchedUom,
+        'REFERENCE_DATA_MISSING'
+      );
+
+      const uomId = body.uomId ??
+        matchedUom?.uom_id ??
+        (old && String(old.uom_id));
       requireThat(id(uomId));
-      requireThat(await one(c, 'SELECT uom_id FROM unit_of_measure WHERE uom_id=?', [uomId]), 'REFERENCE_DATA_MISSING');
-      const categoryId = body.materialCategoryId === undefined ? old?.material_category_id == null ? null : String(old.material_category_id) : body.materialCategoryId;
+
+      const selectedUom = await one(
+        c,
+        'SELECT uom_id,abbreviation FROM unit_of_measure WHERE uom_id=?',
+        [uomId]
+      );
+      requireThat(selectedUom, 'REFERENCE_DATA_MISSING');
+
+      const wholeQuantityUnits = new Set(["pc","pcs","sheet","plate","box","bag","sack","set","sets","bundle","roll","pc/gal"]);
+      if (
+        body.quantityOnHand !== undefined &&
+        body.quantityOnHand !== null &&
+        wholeQuantityUnits.has(String(selectedUom.abbreviation).trim().toLowerCase())
+      ) {
+        requireThat(decimal(body.quantityOnHand) % 10000n === 0n);
+      }
+      const matchedCategory = body.category == null ? null : await one(
+        c,
+        'SELECT CAST(material_category_id AS CHAR) material_category_id FROM material_category WHERE category_name=?',
+        [text(body.category, 80)]
+      );
+
+      requireThat(
+        body.category == null || matchedCategory,
+        'REFERENCE_DATA_MISSING'
+      );
+
+      const categoryId = body.materialCategoryId !== undefined
+        ? body.materialCategoryId
+        : body.category === null
+          ? null
+          : matchedCategory
+            ? String(matchedCategory.material_category_id)
+            : old?.material_category_id == null
+              ? null
+              : String(old.material_category_id);
       if (categoryId !== null) requireThat(id(categoryId) && (await one(c, 'SELECT material_category_id FROM material_category WHERE material_category_id=?', [categoryId])), 'REFERENCE_DATA_MISSING');
       const threshold = body.threshold === undefined ? old?.reorder_threshold ?? null : body.threshold === null ? null : format(decimal(body.threshold)),
         thresholdStatus = body.threshold === undefined ? old?.threshold_status ?? 'unknown' : threshold === null ? 'unknown' : 'verified';
       const supplier = body.supplier === undefined ? old?.supplier_name ?? null : body.supplier === null ? null : text(body.supplier, 200, false) || null;
+      const referencePrice = body.referenceUnitPrice === undefined
+        ? old?.reference_unit_price ?? null
+        : body.referenceUnitPrice === null
+          ? null
+          : format(decimal(body.referenceUnitPrice));
       const desired = {
         material_name: name,
         material_category_id: categoryId,
         uom_id: uomId,
         reorder_threshold: threshold,
         threshold_status: thresholdStatus,
-        supplier_name: supplier
+        supplier_name: supplier,
+        reference_unit_price: referencePrice
       };
       let next = {
           ...old,
@@ -70,12 +135,32 @@ export function createInventoryService({
         },
         materialId = target;
       if (!target) {
-        materialId = await insert(c, 'INSERT INTO raw_material(material_name,material_category_id,uom_id,reorder_threshold,threshold_status,supplier_name) VALUES (?,?,?,?,?,?)', [name, categoryId, uomId, threshold, thresholdStatus, supplier]);
+        const openingQty = body.quantityOnHand == null
+          ? null
+          : format(decimal(body.quantityOnHand));
+
+        const openingReason = openingQty === null
+          ? null
+          : text(body.reason, 200);
+
+        materialId = await insert(
+          c,
+          'INSERT INTO raw_material(material_name,material_category_id,uom_id,reorder_threshold,threshold_status,supplier_name,reference_unit_price) VALUES (?,?,?,?,?,?,?)',
+          [name, categoryId, uomId, threshold, thresholdStatus, supplier, referencePrice]
+        );
+
+        if (openingQty !== null) {
+          await recordObservation(
+            c, a, materialId,
+            { quantity_status: 'unknown', qty_in_stock: null },
+            openingQty, openingReason, uomId
+          );
+        }
         next = {
           ...desired,
           material_id: materialId,
-          qty_in_stock: null,
-          quantity_status: 'unknown',
+          qty_in_stock: openingQty,
+          quantity_status: openingQty === null ? 'unknown' : 'verified',
           unit_price: null
         };
       } else {
@@ -88,8 +173,10 @@ export function createInventoryService({
           requireThat(old.quantity_status === 'unknown' && old.qty_in_stock === null, 'UNIT_RECONCILIATION_REQUIRED');
           requireThat(!(await one(c, 'SELECT movement_id FROM stock_movement WHERE raw_material_id=? LIMIT 1', [target])), 'UNIT_RECONCILIATION_REQUIRED');
         }
-        if (quantityChanged) text(body.reason);
-        if (detailsChanged) await changed(c, 'UPDATE raw_material SET material_name=?,material_category_id=?,uom_id=?,reorder_threshold=?,threshold_status=?,supplier_name=? WHERE material_id=?', [name, categoryId, uomId, threshold, thresholdStatus, supplier, target]);
+        const priceChanged =
+          String(referencePrice ?? '') !== String(old.reference_unit_price ?? '');
+        if (quantityChanged || priceChanged) text(body.reason);
+        if (detailsChanged) await changed(c, 'UPDATE raw_material SET material_name=?,material_category_id=?,uom_id=?,reorder_threshold=?,threshold_status=?,supplier_name=?,reference_unit_price=? WHERE material_id=?', [name, categoryId, uomId, threshold, thresholdStatus, supplier, referencePrice, target]);
         if (quantityChanged) {
           if (qty === null) await changed(c, "UPDATE raw_material SET qty_in_stock=NULL,quantity_status='unknown' WHERE material_id=?", [target]);else await recordObservation(c, a, target, old, qty, text(body.reason), uomId);
           next.qty_in_stock = qty;

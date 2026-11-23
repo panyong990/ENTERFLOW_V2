@@ -107,3 +107,44 @@ test('Q02 Sales adapter cannot show legacy, sample, unknown or contradictory ava
   assert.equal(normalizeOperationalAvailability({ ...base, unmappedItems: [{ itemId: '1' }] }).overallStatus, 'unmapped');
   assert.equal(base.assessments[0].availableQuantity, 10);
 });
+
+
+test('Sales backend response without legacy unmappedItems', () => {
+  const unmapped = normalizeOperationalAvailability({
+    orderId: '13',
+    overallStatus: 'unmapped',
+    requirementsAvailable: false,
+    stockChanged: false,
+    materials: [],
+    assessments: []
+  });
+
+  assert.equal(unmapped.overallStatus, 'unmapped');
+  assert.deepEqual(unmapped.unmappedItems, []);
+  assert.equal(unmapped.assessments.length, 0);
+
+  const available = normalizeOperationalAvailability({
+    orderId: '13',
+    overallStatus: 'available',
+    stockChanged: false,
+    materials: [],
+    assessments: [{
+      materialId: '1',
+      materialName: 'Test material',
+      unitCode: 'pc',
+      classification: 'raw_material',
+      quantityStatus: 'verified',
+      requiredQuantity: '10.0000',
+      availableQuantity: '200.0000',
+      shortageQuantity: '0.0000',
+      status: 'available'
+    }]
+  });
+
+  assert.equal(available.overallStatus, 'available');
+  assert.equal(available.assessments[0].inventoryId, '1');
+  assert.equal(available.assessments[0].description, 'Test material');
+  assert.equal(available.assessments[0].unit, 'pc');
+  assert.equal(available.assessments[0].availableQuantity, 200);
+  assert.equal(available.assessments[0].shortageQuantity, 0);
+});

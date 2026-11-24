@@ -141,9 +141,10 @@ function validatePhase2Runtime(env, database, appOrigin) {
   }
 
   const approvedServerUuids = new Set([
-    '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8',
-    'be8fec6b-e6db-11f1-9b34-06d4adf80920'
-  ]);
+  '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8',
+  'be8fec6b-e6db-11f1-9b34-06d4adf80920',
+  'f6eaf2aa-e72d-11f1-85f7-3a3647785403'
+]);
 
   const serverUuid = env.PHASE2_SERVER_UUID ??
     '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8';

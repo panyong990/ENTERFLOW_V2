@@ -56,7 +56,87 @@ export function RealQuotationPreparation({ orderId, detail, onClose, onSaved }: 
 function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }: Props & { history: SalesQuotation[] }) {
   const restored = useMemo(() => restoreQuotationInputs(history, detail.items), [history, detail.items]);
   const { rawMaterials } = useMaterials();
-  const [appliedBoms, setAppliedBoms] = useState<Record<number, BOMLine[]>>({});
+    const restoredBoms = useMemo<Record<number, BOMLine[]>>(() => {
+    const result: Record<number, BOMLine[]> = {};
+
+    detail.items.forEach((item, index) => {
+      const estimate = restored.latest?.costing?.find(
+        row => String(row.orderItemId) === String(item.id)
+      );
+
+      const saved = (estimate as typeof estimate & {
+        materials?: Array<{
+          rawMaterialId: string;
+          qtyPerFilter: string | number;
+          uomId?: string;
+        }>;
+      })?.materials;
+
+      if (!saved?.length) return;
+
+      const lines: BOMLine[] = [];
+      let valid = true;
+      const seen = new Set<string>();
+
+      for (const entry of saved) {
+        const material = rawMaterials.find(
+          candidate =>
+            candidate.source === "database" &&
+            String(candidate.databaseId) === String(entry.rawMaterialId)
+        );
+
+        const qty = Number(entry.qtyPerFilter);
+
+        if (
+          !material ||
+          !material.category ||
+          !Number.isFinite(qty) ||
+          qty <= 0 ||
+          seen.has(String(entry.rawMaterialId)) ||
+          (entry.uomId && String(material.uomId) !== String(entry.uomId))
+        ) {
+          valid = false;
+          break;
+        }
+
+        seen.add(String(entry.rawMaterialId));
+
+        lines.push({
+          materialId: material.id,
+          partCategory: material.category,
+          qtyConsumed: qty
+        });
+      }
+
+      // Never silently restore a partial BOM.
+      if (valid && lines.length === saved.length) {
+        result[index] = lines;
+      }
+    });
+
+    return result;
+  }, [restored.latest, detail.items, rawMaterials]);
+
+  const [appliedBoms, setAppliedBoms] =
+    useState<Record<number, BOMLine[]>>(() => restoredBoms);
+
+  useEffect(() => {
+    setAppliedBoms(current => {
+      let changed = false;
+      const next = { ...current };
+
+      for (const [key, bom] of Object.entries(restoredBoms)) {
+        const index = Number(key);
+
+        if (!next[index]?.length) {
+          next[index] = bom.map(line => ({ ...line }));
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [restoredBoms]);
   const [pcsUomId, setPcsUomId] = useState<string | null>(null);
 const [uomLoading, setUomLoading] = useState(true);
 
@@ -87,7 +167,8 @@ const pcs = data.units.find(
 
   return () => controller.abort();
 }, []);
-  const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">("inquiry");
+  const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">(() => restored.latest?.status === "draft" ? "quote" : "inquiry");
+
   const [costs, setCosts] = useState<Record<number, CostConfig>>(restored.costs);
   const [dirtyProducts, setDirtyProducts] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
@@ -254,7 +335,7 @@ for (let index = 0; index < detail.items.length; index++) {
     </div>
     <div hidden={activeTab!=="cost"}>
       {restored.latest?.costing?.some((row: any) => row.bomLines?.length) && <section aria-label="Saved material breakdown" className="mb-4 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-bold">Saved material breakdown · Revision {restored.latest.revisionNumber}</h3><p className="mt-1 text-xs text-slate-500">Historical prices and quantities. A new save recalculates from the current approved BOM and inventory prices.</p>{restored.latest.costing.map((row: any) => <div key={row.id ?? row.orderItemId} className="mt-3 text-xs"><b>{detail.items.find(item=>item.id===row.orderItemId)?.filterName || "Product"}</b>{row.bomLines?.map((line: any)=><p key={line.lineNumber}>{line.materialName} · {line.quantityPerFilter} {line.unit} per product · Unit price ₱{line.unitPrice} · Waste {line.wastePercent}%</p>)}</div>)}</section>}
-      <CostEstimationPanel inquiry={inquiry} qty={detail.items.reduce((sum,item)=>sum+item.quantity,0)} serverCosting onDraftChange={index => setDirtyProducts(current => new Set(current).add(index))} onApply={data => {
+      <CostEstimationPanel initialBoms={restoredBoms} inquiry={inquiry} qty={detail.items.reduce((sum,item)=>sum+item.quantity,0)} serverCosting onDraftChange={index => setDirtyProducts(current => new Set(current).add(index))} onApply={data => {
   setCosts(current => ({
     ...current,
     [data.productIndex]: data.costConfig

@@ -48,12 +48,13 @@ interface Props {
   inquiry: Inquiry;
   qty: number;
   serverCosting?: boolean;
+  initialBoms?: Record<number, BOMLine[]>;
   onDraftChange?: (productIndex: number) => void;
   /* Returns the final BOM + cost config + computed prices when user clicks "Apply to Quotation" */
   onApply: (data: { bom: BOMLine[]; costConfig: CostConfig; unitPrice: number; total: number; productIndex: number }) => void;
 }
 
-export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = false, onDraftChange }: Props) {
+export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = false, initialBoms, onDraftChange }: Props) {
   const { rawMaterials: allRawMaterials, templates, findBOMTemplate } = useMaterials();
   const rawMaterials = serverCosting
     ? allRawMaterials
@@ -76,7 +77,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
 
   /* Resolve a usable BOM before showing availability; empty category placeholders have no consumption quantities. */
   const initial = useMemo(() => {
-    if (serverCosting) return materialDrafts.current[activeProductIndex] ?? [];
+    if (serverCosting) return materialDrafts.current[activeProductIndex] ?? initialBoms?.[activeProductIndex] ?? [];
     const savedProductBom = resolveProductBOM(inquiry, activeProductIndex);
     if (savedProductBom && savedProductBom.length > 0) return savedProductBom;
     const tpl = findBOMTemplate(filterType, size);
@@ -88,7 +89,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
     }, rawMaterials).map((x) => x.line);
     if (auto.length > 0) return auto;
     return [];
-  }, [activeProductIndex, filterType, size, inquiry, findBOMTemplate, product, rawMaterials, serverCosting]);
+  }, [activeProductIndex, filterType, size, inquiry, findBOMTemplate, product, rawMaterials, serverCosting, initialBoms]);
 
   const [bom, setBom] = useState<BOMLine[]>(initial);
   const [cfg, setCfg] = useState<CostConfig>(
@@ -146,7 +147,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
       applyMarkup: true,
       applyVAT: true,
     });
-  }, [activeProductIndex, serverCosting ? inquiry.id : initial, serverCosting ? undefined : inquiry.productsCostConfig, serverCosting ? undefined : inquiry.costConfig]);
+  }, [activeProductIndex, serverCosting ? initialBoms : initial, serverCosting ? undefined : inquiry.productsCostConfig, serverCosting ? undefined : inquiry.costConfig]);
 
   /* All materials referenced by the current BOM (for the left "Raw Materials" panel) */
   const bomMaterials = bom

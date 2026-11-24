@@ -177,6 +177,41 @@ test('accepts the verified local Phase 2 database server', () => {
   );
 });
 
+function sharedPhase2Environment(overrides = {}) {
+  return phase2Environment({
+    PHASE2_SHARED_DB: '1',
+    DB_HOST: '100.106.246.17',
+    DB_PORT: '63306',
+    DB_USER: 'enterflow_dev_amiaz',
+    PHASE2_SERVER_UUID: 'be8fec6b-e6db-11f1-9b34-06d4adf80920',
+    ...overrides
+  });
+}
+
+test('accepts only the approved shared Phase 2 endpoint/account/UUID combination', () => {
+  const environment = sharedPhase2Environment();
+  assert.deepEqual(loadRuntimeEnvironment(environment), { error: null });
+  assert.deepEqual(validateRuntimeConfig(environment).phase2, {
+    serverUuid: environment.PHASE2_SERVER_UUID,
+    databaseUser: 'enterflow_dev_amiaz',
+    shared: true
+  });
+  for (const overrides of [
+    { DB_HOST: '127.0.0.1' }, { DB_HOST: '100.106.246.18' },
+    { DB_PORT: '62286' }, { DB_USER: 'enterflow_phase2_app' },
+    { DB_USER: 'root' }, { DB_NAME: 'enterflow_db' },
+    { PHASE2_SERVER_UUID: undefined },
+    { PHASE2_SERVER_UUID: 'f6eaf2aa-e72d-11f1-85f7-3a3647785403' },
+    { DB_SSL_CA_PATH: '' }, { DB_SSL_SERVER_NAME: '100.106.246.17' },
+    { HOST: '0.0.0.0' }, { PORT: '3108' },
+    { APP_ORIGIN: 'http://localhost:5173' }, { NODE_ENV: 'production' },
+    { DB_TIMEZONE: 'local' }, { BROWSER_TEST_RUNTIME: '1' },
+    { INTEGRATION_TEST_RUNTIME: '1' }
+  ]) {
+    assert.throws(() => validateRuntimeConfig(sharedPhase2Environment(overrides)));
+  }
+});
+
 test('rejects unapproved Phase 2 server identities', () => {
   for (const uuid of [
     '',
@@ -220,7 +255,7 @@ test('rejects Phase 2 runtime combined with browser or integration modes', () =>
   ), /Phase 2 runtime/);
 });
 
-function sharedPhase2Environment(overrides = {}) {
+function sharedPhase2LawaEnvironment(overrides = {}) {
   return phase2Environment({
     PHASE2_SHARED_DB: '1',
     DB_HOST: '100.106.246.17',
@@ -232,7 +267,7 @@ function sharedPhase2Environment(overrides = {}) {
 }
 
 test('accepts the pinned shared Phase 2 runtime without loading local dotenv', () => {
-  const environment = sharedPhase2Environment();
+  const environment = sharedPhase2LawaEnvironment();
   assert.deepEqual(loadRuntimeEnvironment(environment), { error: null });
   const config = validateRuntimeConfig(environment);
   assert.equal(config.phase2.shared, true);
@@ -252,6 +287,6 @@ test('shared Phase 2 runtime rejects local fallback and identity substitutions',
     { DB_SSL_SERVER_NAME: '100.106.246.17' },
     { DB_SSL_CA_PATH: '' }
   ]) {
-    assert.throws(() => validateRuntimeConfig(sharedPhase2Environment(overrides)));
+    assert.throws(() => validateRuntimeConfig(sharedPhase2LawaEnvironment(overrides)));
   }
 });

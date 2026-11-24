@@ -424,3 +424,5 @@ test('D07 Sales summaries retain independent verified totals and do not mark a d
 test('JO compares actual DECIMAL quotation quantities exactly and rejects a mismatched snapshot',async()=>{const h=jobOrderDatabase({quotedQuantity:'9.0000'});const result=await createSalesOrdersService(h).createJobOrders('91',{userId:'8',roleCode:'sales',accountType:'employee'},{productionDueDate:'2026-12-31',poVerified:true,specsVerified:true,termsVerified:true});assert.equal(result.code,'ORDER_QUOTATION_CONFLICT');assert(!h.calls.some(c=>c.sql.startsWith('INSERT')));assert(h.calls.some(c=>c.sql==='ROLLBACK'));});
 
 test('A highlighted quotation note persists in the actual highlight_tag field',async()=>{const h=quotationDatabase();const r=await createSalesOrdersService(h).createQuotation('91',{...quotationBody,noteHighlighted:true},{userId:'8',roleCode:'sales',accountType:'employee'});assert.equal(r.success,true);assert.equal(r.data.noteHighlighted,true);const insert=h.calls.find(c=>c.sql.startsWith('INSERT INTO quotation('));assert.match(insert.sql,/sent_at,highlight_tag/);assert.equal(insert.params.at(-1),'NOTE');});
+
+

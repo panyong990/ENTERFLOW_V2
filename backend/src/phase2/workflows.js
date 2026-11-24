@@ -702,6 +702,76 @@ export function createSalesOrdersService({
   s.stockAvailability = inquiryId => read(db, async c => {
     requireThat(id(inquiryId));
     requireThat(await one(c, 'SELECT inquiry_id FROM inquiry WHERE inquiry_id=?', [inquiryId]), 'NOT_FOUND');
+    // Confirm the current quotation covers every inquiry product.
+    // Missing or invalid BOMs must never be interpreted as zero demand.
+    const inquiryItems = await rows(c,
+      'SELECT CAST(inquiry_item_id AS CHAR) itemId FROM inquiry_item WHERE inquiry_id=?',
+      [inquiryId]);
+
+    const currentQuote = await one(c,
+      'SELECT CAST(quotation_id AS CHAR) id FROM quotation WHERE inquiry_id=? AND is_current=1',
+      [inquiryId]);
+
+    const coverage = currentQuote ? await rows(c, `
+      SELECT CAST(qi.inquiry_item_id AS CHAR) itemId,
+        COUNT(cm.estimate_material_id) materialCount,
+        SUM(CASE
+          WHEN cm.estimate_material_id IS NULL
+            OR m.material_id IS NULL
+            OR m.is_active <> 1
+            OR cm.qty_per_filter <= 0
+            OR cm.uom_id <> m.uom_id
+          THEN 1 ELSE 0 END) invalidCount
+      FROM quotation_item qi
+      LEFT JOIN cost_estimate ce
+        ON ce.quotation_item_id=qi.quotation_item_id
+        AND ce.estimate_id=(
+          SELECT MAX(cx.estimate_id)
+          FROM cost_estimate cx
+          WHERE cx.quotation_item_id=qi.quotation_item_id
+        )
+      LEFT JOIN cost_estimate_material cm
+        ON cm.estimate_id=ce.estimate_id
+      LEFT JOIN raw_material m
+        ON m.material_id=cm.raw_material_id
+      WHERE qi.quotation_id=?
+      GROUP BY qi.quotation_item_id,qi.inquiry_item_id
+    `, [currentQuote.id]) : [];
+
+    const coverageByItem = new Map();
+    for (const row of coverage) {
+      const itemId = String(row.itemId);
+      const records = coverageByItem.get(itemId) ?? [];
+      records.push(row);
+      coverageByItem.set(itemId, records);
+    }
+
+    const inquiryIds = new Set(inquiryItems.map(item => String(item.itemId)));
+
+    const unmappedItems = inquiryItems.flatMap(item => {
+      const itemId = String(item.itemId);
+      const records = coverageByItem.get(itemId) ?? [];
+
+      if (records.length !== 1) {
+        return [{ itemId, reason: 'Missing or duplicate quotation BOM' }];
+      }
+
+      const record = records[0];
+      if (Number(record.materialCount) < 1 ||
+          Number(record.invalidCount) !== 0) {
+        return [{ itemId, reason: 'Incomplete or invalid material requirements' }];
+      }
+
+      return [];
+    });
+
+    if (!inquiryItems.length ||
+        coverage.some(row => !inquiryIds.has(String(row.itemId)))) {
+      unmappedItems.push({
+        itemId: '',
+        reason: 'Quotation items do not match the inquiry'
+      });
+    }
     const materials = await rows(c, `SELECT CAST(m.material_id AS CHAR) materialId,m.material_name materialName,m.qty_in_stock quantityOnHand,m.quantity_status quantityStatus,u.abbreviation unitCode,m.unit_price unitPrice,SUM(cm.qty_per_filter*qi.quantity) requiredQuantity FROM quotation q JOIN quotation_item qi ON qi.quotation_id=q.quotation_id JOIN cost_estimate ce ON ce.quotation_item_id=qi.quotation_item_id AND ce.estimate_id=(SELECT MAX(cx.estimate_id) FROM cost_estimate cx WHERE cx.quotation_item_id=qi.quotation_item_id) JOIN cost_estimate_material cm ON cm.estimate_id=ce.estimate_id JOIN raw_material m ON m.material_id=cm.raw_material_id JOIN unit_of_measure u ON u.uom_id=m.uom_id WHERE q.inquiry_id=? AND q.is_current=1 GROUP BY m.material_id,m.material_name,m.qty_in_stock,m.quantity_status,u.abbreviation,m.unit_price`, [inquiryId]);
     const assessments = materials.map(m => {
       let available = null;
@@ -722,11 +792,12 @@ export function createSalesOrdersService({
     });
     return ok({
       orderId: inquiryId,
-      requirementsAvailable: materials.length > 0,
+      requirementsAvailable: unmappedItems.length === 0 && inquiryItems.length > 0 && materials.length > 0,
       stockChanged: false,
+      unmappedItems,
       materials: assessments,
       assessments,
-      overallStatus: !assessments.length ? 'unmapped' : assessments.some(m => m.status === 'inventory_unavailable') ? 'unavailable' : assessments.some(m => m.status === 'insufficient') ? 'insufficient' : 'available'
+      overallStatus: unmappedItems.length || !assessments.length ? 'unmapped' : assessments.some(m => m.status === 'inventory_unavailable') ? 'unavailable' : assessments.some(m => m.status === 'insufficient') ? 'insufficient' : 'available'
     });
   });
   const prepare = s.createQuotation;

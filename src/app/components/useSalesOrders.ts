@@ -109,6 +109,9 @@ export type SalesOrderDetail = SalesOrderRow & {
 };
 
 export interface SalesStockAssessment {
+  materialId?: string;
+  materialName?: string;
+  unitCode?: string | null;
   quantityStatus?: "unknown" | "provisional_sample" | "verified";
   inventoryId: string | null; description: string; classification: "raw_material" | "finished_good";
   categoryCode: string | null; requiredQuantity: number | null; availableQuantity: number | null;
@@ -118,6 +121,7 @@ export interface SalesStockAssessment {
   checkedAt: string; itemCode?: string; partNumber?: string; bufferMinimum?: number | null; demand?: string;
 }
 export interface SalesStockAvailability {
+  requirementsAvailable?: boolean;
   orderId: string; checkedAt: string;
   overallStatus: "available" | "insufficient" | "partially_available" | "unavailable" | "unmapped";
   assessments: SalesStockAssessment[];

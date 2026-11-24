@@ -123,18 +123,19 @@ function validatePhase2Runtime(env, database, appOrigin) {
   if (env.NODE_ENV !== 'development') {
     throw new Error('Phase 2 runtime requires NODE_ENV=development.');
   }
-  const shared = env.PHASE2_SHARED_DB === '1';
-  const validTarget = shared
-    ? database.host === '100.106.246.17' &&
-      database.port === 63306 &&
-      database.name === 'enterflow_phase2_db' &&
-      env.DB_USER === 'enterflow_dev_lawa'
-    : database.host === '127.0.0.1' &&
-      database.port === 62286 &&
-      database.name === 'enterflow_phase2_db' &&
-      env.DB_USER === 'enterflow_phase2_app';
-  if (!validTarget) {
-    throw new Error('Phase 2 database target does not match the approved isolated target.');
+  const localTarget = database.host === '127.0.0.1' &&
+    database.port === 62286 &&
+    database.name === 'enterflow_phase2_db' &&
+    env.DB_USER === 'enterflow_phase2_app';
+
+  const sharedTarget = database.host === '100.106.246.17' &&
+    database.port === 63306 &&
+    database.name === 'enterflow_phase2_db' &&
+    ['enterflow_dev_amiaz', 'enterflow_dev_lawa'].includes(env.DB_USER);
+
+  if ((!localTarget && !sharedTarget) ||
+      ((env.PHASE2_SHARED_DB === '1') !== sharedTarget)) {
+    throw new Error('Phase 2 database target does not match an approved target.');
   }
   if (database.timezone !== 'Z') {
     throw new Error('Phase 2 database timezone must be UTC.');
@@ -158,14 +159,16 @@ function validatePhase2Runtime(env, database, appOrigin) {
   const serverUuid = env.PHASE2_SERVER_UUID ??
     '0d25d92c-e5cf-11f1-8149-0ae55c5c9ea8';
 
-  if (shared && serverUuid !== 'be8fec6b-e6db-11f1-9b34-06d4adf80920') {
-    throw new Error('Shared Phase 2 server UUID mismatch.');
-  }
-  if (!approvedServerUuids.has(serverUuid)) {
+  if (!approvedServerUuids.has(serverUuid) ||
+      (sharedTarget && serverUuid !== 'be8fec6b-e6db-11f1-9b34-06d4adf80920')) {
     throw new Error('Unapproved Phase 2 server UUID.');
   }
 
-  return Object.freeze({ serverUuid, shared });
+  return Object.freeze({
+    serverUuid,
+    shared: sharedTarget,
+    databaseUser: env.DB_USER
+  });
 }
 
 export function validateRuntimeConfig(env = process.env) {

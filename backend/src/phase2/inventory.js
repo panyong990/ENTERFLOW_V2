@@ -223,12 +223,95 @@ export function createStockRequestsService({
         quote = await one(c, 'SELECT CAST(quotation_id AS CHAR) id,quotation_no reference FROM quotation WHERE quotation_id=? AND inquiry_id=?', [body.quotationId, i.id]);
         requireThat(quote, 'NOT_FOUND');
       }
+      // Derive requirements from the current persisted quotation, not the client.
+      const currentQuote = await one(c,
+        'SELECT CAST(quotation_id AS CHAR) id FROM quotation WHERE inquiry_id=? AND is_current=1 FOR UPDATE',
+        [i.id]);
+      requireThat(currentQuote, 'MATERIAL_COSTING_INCOMPLETE');
+      requireThat(!body.quotationId || body.quotationId === currentQuote.id, 'QUOTATION_STALE');
+
+      const inquiryItems = await rows(c,
+        'SELECT CAST(inquiry_item_id AS CHAR) id FROM inquiry_item WHERE inquiry_id=?',
+        [i.id]);
+
+      const coverage = await rows(c, `
+        SELECT CAST(qi.inquiry_item_id AS CHAR) itemId,
+          COUNT(cm.estimate_material_id) materialCount,
+          SUM(CASE WHEN cm.estimate_material_id IS NULL
+            OR m.material_id IS NULL OR m.is_active <> 1
+            OR cm.qty_per_filter <= 0
+            OR cm.uom_id <> m.uom_id
+            THEN 1 ELSE 0 END) invalidCount
+        FROM quotation_item qi
+        LEFT JOIN cost_estimate ce
+          ON ce.quotation_item_id=qi.quotation_item_id
+          AND ce.estimate_id=(
+            SELECT MAX(cx.estimate_id) FROM cost_estimate cx
+            WHERE cx.quotation_item_id=qi.quotation_item_id
+          )
+        LEFT JOIN cost_estimate_material cm ON cm.estimate_id=ce.estimate_id
+        LEFT JOIN raw_material m ON m.material_id=cm.raw_material_id
+        WHERE qi.quotation_id=?
+        GROUP BY qi.quotation_item_id,qi.inquiry_item_id
+      `, [currentQuote.id]);
+
+      const expectedItems = new Set(inquiryItems.map(x => x.id));
+      requireThat(expectedItems.size > 0 &&
+        coverage.length === expectedItems.size &&
+        coverage.every(x =>
+          expectedItems.has(x.itemId) &&
+          Number(x.materialCount) > 0 &&
+          Number(x.invalidCount) === 0
+        ) &&
+        new Set(coverage.map(x => x.itemId)).size === coverage.length,
+        'MATERIAL_COSTING_INCOMPLETE');
+
+      const requirements = await rows(c, `
+        SELECT CAST(cm.raw_material_id AS CHAR) materialId,
+          SUM(cm.qty_per_filter * qi.quantity) requiredQuantity,
+          m.qty_in_stock quantityOnHand,
+          m.quantity_status quantityStatus
+        FROM quotation_item qi
+        JOIN cost_estimate ce
+          ON ce.quotation_item_id=qi.quotation_item_id
+          AND ce.estimate_id=(
+            SELECT MAX(cx.estimate_id) FROM cost_estimate cx
+            WHERE cx.quotation_item_id=qi.quotation_item_id
+          )
+        JOIN cost_estimate_material cm ON cm.estimate_id=ce.estimate_id
+        JOIN raw_material m ON m.material_id=cm.raw_material_id
+        WHERE qi.quotation_id=?
+        GROUP BY cm.raw_material_id,m.qty_in_stock,m.quantity_status
+      `, [currentQuote.id]);
+
+      const expectedRequests = new Map();
+      for (const requirement of requirements) {
+        requireThat(requirement.quantityStatus === 'verified' &&
+          requirement.quantityOnHand !== null,
+          'INVENTORY_UNAVAILABLE');
+
+        const required = (decimal(String(requirement.requiredQuantity), 8) + 9999n) / 10000n;
+        const available = decimal(requirement.quantityOnHand);
+        requireThat(required > 0n && available >= 0n, 'INVENTORY_UNAVAILABLE');
+
+        // The request records total requirements; shortage is recorded separately.
+        if (required > available) {
+          expectedRequests.set(requirement.materialId, required);
+        }
+      }
+
+      requireThat(expectedRequests.size > 0 &&
+        body.lines.length === expectedRequests.size &&
+        body.lines.every(line =>
+          expectedRequests.has(line.materialId) &&
+          decimal(line.quantity) === expectedRequests.get(line.materialId)
+        ), 'STOCK_REQUIREMENTS_MISMATCH');
       const prepared = [];
       for (const line of [...body.lines].sort((a, b) => BigInt(a.materialId) > BigInt(b.materialId) ? 1 : -1)) {
         const qty = decimal(line.quantity),
           m = await one(c, 'SELECT * FROM raw_material WHERE material_id=? AND is_active=1 FOR SHARE', [line.materialId]);
         requireThat(m, 'MATERIAL_NOT_FOUND');
-        requireThat(['verified', 'unknown', 'provisional_sample'].includes(m.quantity_status) && !(m.quantity_status === 'verified' && m.qty_in_stock === null), 'INVENTORY_UNAVAILABLE');
+        requireThat(m.quantity_status === 'verified' && m.qty_in_stock !== null, 'INVENTORY_UNAVAILABLE');
         let stock = null;
         if (m.quantity_status === 'verified' && m.qty_in_stock !== null) {
           try {

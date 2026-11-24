@@ -34,6 +34,14 @@ export function normalizeOperationalAvailability(response) {
     Array.isArray(response.materials) &&
     typeof response.overallStatus === 'string';
 
+  // The Phase 2 backend must explicitly report BOM completeness.
+  // Missing coverage metadata is never equivalent to an empty BOM gap list.
+  if (backendShape &&
+      (typeof response.requirementsAvailable !== 'boolean' ||
+       !Array.isArray(response.unmappedItems))) {
+    throw new Error('Stock availability completeness could not be verified.');
+  }
+
   if (!Array.isArray(response.unmappedItems) && !backendShape) {
     throw new Error('Stock availability is unavailable.');
   }

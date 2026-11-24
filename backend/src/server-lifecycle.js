@@ -52,7 +52,9 @@ export function createServerLifecycle({ app, testDatabaseConnection, pool, host,
     if (stopping) return completion;
     startup = (async () => {
       try {
+        logger.log('STARTUP_CHECK=DATABASE_CONNECTION');
         await testDatabaseConnection();
+        logger.log('STARTUP_CHECK=DATABASE_PASSED');
         if (stopping) return;
         await new Promise((resolve, reject) => {
           let settled = false;

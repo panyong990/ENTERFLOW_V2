@@ -30,3 +30,6 @@ node_modules
 
 # Local document uploads (development storage)
 /backend/storage/documents/
+
+# Machine-local shared Phase 2 launcher
+/backend/scripts/local/Start-SharedPhase2.ps1

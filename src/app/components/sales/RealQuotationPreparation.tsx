@@ -6,7 +6,7 @@ import { ApiError } from "../../api/client";
 import { useSalesStockAvailability, type SalesOrderDetail, type SalesStockAssessment } from "../useSalesOrders";
 import { CostEstimationPanel } from "../CostEstimationPanel";
 import { QuotationBuilder } from "../QuotationBuilder";
-import type { CostConfig } from "../../store/materials";
+import { useMaterials, type BOMLine, type CostConfig } from "../../store/materials";
 import type { QuotationDoc } from "../../store/orders";
 import { ModalShell } from "./QuotationModalShell";
 import { InquiryDetailsTab } from "./OriginalSalesForms";
@@ -15,6 +15,7 @@ import { listSalesQuotations } from "../../api/salesOrderDocuments.js";
 import type { SalesQuotation } from "../useSalesOrderDocuments";
 import { restoreQuotationInputs } from "./quotationDraft.js";
 import { uncertainWrite } from './cancellationModel.mjs';
+import { getReferenceData } from "../../api/referenceData";
 
 type QuotationResult = { totalAmount: string; rawMaterialCost: string; laborCost: string; markupAmount: string; downpaymentPercent: number; downpaymentAmount: string; status: "draft" | "sent"; reference: string; revisionNumber: number };
 type Props = { orderId: string; detail: SalesOrderDetail; onClose: () => void; onSaved: (status: "draft" | "sent", result: QuotationResult) => void };
@@ -54,6 +55,38 @@ export function RealQuotationPreparation({ orderId, detail, onClose, onSaved }: 
 
 function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }: Props & { history: SalesQuotation[] }) {
   const restored = useMemo(() => restoreQuotationInputs(history, detail.items), [history, detail.items]);
+  const { rawMaterials } = useMaterials();
+  const [appliedBoms, setAppliedBoms] = useState<Record<number, BOMLine[]>>({});
+  const [pcsUomId, setPcsUomId] = useState<string | null>(null);
+const [uomLoading, setUomLoading] = useState(true);
+
+useEffect(() => {
+  const controller = new AbortController();
+
+  getReferenceData(controller.signal)
+    .then(data => {
+const pcs = data.units.find(
+  unit =>
+    unit.abbreviation?.trim().toLowerCase() === "pc" ||
+    unit.name.trim().toLowerCase() === "pc"
+);
+
+      setPcsUomId(pcs?.id ?? null);
+      if (!pcs) {
+  setError("The required 'pcs' unit was not found in reference data.");
+}
+    })
+    .catch(() => {
+      if (!controller.signal.aborted) {
+        setError("Unable to load unit-of-measure reference data.");
+      }
+    })
+    .finally(() => {
+      if (!controller.signal.aborted) setUomLoading(false);
+    });
+
+  return () => controller.abort();
+}, []);
   const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">("inquiry");
   const [costs, setCosts] = useState<Record<number, CostConfig>>(restored.costs);
   const [dirtyProducts, setDirtyProducts] = useState<Set<number>>(new Set());
@@ -66,10 +99,23 @@ function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }
   const inquiry = useMemo(() => ({ ...inquiryDraft(detail), quotationDoc: restored.document as QuotationDoc | undefined, productsCostConfig: detail.items.map((_, index) => costs[index] ?? null) }), [detail, costs, restored]);
   const prepare = async (status: "draft" | "sent", doc: QuotationDoc) => {
     if (lock.current || uncertain) return;
+    if (uomLoading) {
+  setError("Unit-of-measure data is still loading. Please try again.");
+  return;
+}
+
+if (!pcsUomId) {
+  setError("The required 'pcs' unit is unavailable. Please refresh and try again.");
+  return;
+}
     setError("");
     if (restored.latest?.addons?.length) { setError("This quotation has saved additional charges. Revising those charges is not yet supported; this quotation cannot be saved without preserving them."); return; }
     if (dirtyProducts.size) { setError("Apply your changed cost inputs for every edited product before saving or sending."); return; }
     if (detail.items.some((_, index) => !costs[index])) { setError("Apply cost inputs for every product in Cost & Material Estimation."); return; }
+    if (detail.items.some((_, index) => !appliedBoms[index]?.length)) {
+      setError("Apply a BOM for every product in Cost & Material Estimation before saving or sending.");
+      return;
+    }
     if (!doc.placeOfDelivery.trim()) { setError("Place of delivery is required."); return; }
     if (!doc.timeOfDelivery.trim()) { setError("Time of delivery is required."); return; }
     if (![20, 50].includes(doc.downpaymentPercent ?? 0)) { setError("Select the required 20% or 50% downpayment."); return; }
@@ -79,6 +125,83 @@ function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }
     if (configs.some(config => !Number.isFinite(config.laborCost) || config.laborCost < 0 || !Number.isFinite(config.markupPct) || config.markupPct < 0)) { setError("Enter non-negative labor cost and markup."); return; }
     const config = configs[0];
     if (configs.some(row => row.vatType !== config.vatType || row.vatRate !== config.vatRate || row.includeLabor !== config.includeLabor || row.applyMarkup !== config.applyMarkup || row.applyVAT !== config.applyVAT || (row.discountPct ?? 0) !== (config.discountPct ?? 0))) { setError("Use the same VAT, discount and costing switches for every product. Labor and markup may differ per product."); return; }
+    
+    const costingMaterials: Array<
+  Array<{
+    rawMaterialId: string;
+    qtyPerFilter: number;
+    uomId: string;
+  }>
+> = [];
+
+for (let index = 0; index < detail.items.length; index++) {
+  const seen = new Set<string>();
+  const materials: typeof costingMaterials[number] = [];
+
+  for (const line of appliedBoms[index] ?? []) {
+    const qty = Number(line.qtyConsumed);
+
+    if (!Number.isFinite(qty) || qty < 0) {
+      setError(`Product ${index + 1}: Invalid material quantity.`);
+      return;
+    }
+
+    // Ignore zero-quantity placeholder lines.
+    if (qty === 0) continue;
+
+    const material = rawMaterials.find(
+      item => item.id === line.materialId
+    );
+
+    if (
+      !material ||
+      material.source !== "database" ||
+      !material.databaseId ||
+      !material.uomId
+    ) {
+      setError(
+        `Product ${index + 1}: A selected material is missing its database ID or unit of measure.`
+      );
+      return;
+    }
+
+    if (!/^\d+$/.test(material.databaseId) ||
+        !/^\d+$/.test(material.uomId)) {
+      setError(
+        `Product ${index + 1}: A selected material has an invalid database reference.`
+      );
+      return;
+    }
+
+    if (seen.has(material.databaseId)) {
+      setError(
+        `Product ${index + 1}: Duplicate materials were found in the BOM.`
+      );
+      return;
+    }
+
+    seen.add(material.databaseId);
+
+    materials.push({
+      rawMaterialId: material.databaseId,
+      qtyPerFilter: qty,
+      uomId: material.uomId
+    });
+  }
+
+  if (materials.length === 0) {
+    setError(`Product ${index + 1}: Add at least one valid material to the BOM.`);
+    return;
+  }
+
+  if (materials.length > 100) {
+    setError(`Product ${index + 1}: Maximum of 100 materials per product.`);
+    return;
+  }
+
+  costingMaterials.push(materials);
+}
+
     lock.current = true; setSaving(true);
     try {
       const result = await createSalesQuotation(orderId, {
@@ -87,7 +210,13 @@ function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }
         note: doc.note || undefined, noteHighlighted: doc.noteHighlighted, downpaymentPercent: doc.downpaymentPercent,
         vatType: config.vatType, vatRate: config.vatRate, includeLabor: config.includeLabor, applyMarkup: config.applyMarkup,
         applyVat: config.applyVAT, discountPercent: config.discountPct ?? 0,
-        costing: detail.items.map((item,index) => ({orderItemId: item.id, laborCost: costs[index].laborCost, markupPercent: costs[index].markupPct}))
+         costing: detail.items.map((item, index) => ({
+          orderItemId: item.id,
+          uomId: pcsUomId!,
+          laborCost: costs[index].laborCost,
+          markupPercent: costs[index].markupPct,
+          materials: costingMaterials[index]
+        }))
       });
       onSaved(status, result as QuotationResult);
     } catch (cause) {
@@ -125,7 +254,25 @@ function QuotationPreparationForm({ orderId, detail, onClose, onSaved, history }
     </div>
     <div hidden={activeTab!=="cost"}>
       {restored.latest?.costing?.some((row: any) => row.bomLines?.length) && <section aria-label="Saved material breakdown" className="mb-4 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-bold">Saved material breakdown · Revision {restored.latest.revisionNumber}</h3><p className="mt-1 text-xs text-slate-500">Historical prices and quantities. A new save recalculates from the current approved BOM and inventory prices.</p>{restored.latest.costing.map((row: any) => <div key={row.id ?? row.orderItemId} className="mt-3 text-xs"><b>{detail.items.find(item=>item.id===row.orderItemId)?.filterName || "Product"}</b>{row.bomLines?.map((line: any)=><p key={line.lineNumber}>{line.materialName} · {line.quantityPerFilter} {line.unit} per product · Unit price ₱{line.unitPrice} · Waste {line.wastePercent}%</p>)}</div>)}</section>}
-      <CostEstimationPanel inquiry={inquiry} qty={detail.items.reduce((sum,item)=>sum+item.quantity,0)} serverCosting onDraftChange={index => setDirtyProducts(current => new Set(current).add(index))} onApply={data => { setCosts(current => ({...current,[data.productIndex]:data.costConfig})); setDirtyProducts(current => { const next = new Set(current); next.delete(data.productIndex); return next; }); setActiveTab("quote"); }} /></div>
+      <CostEstimationPanel inquiry={inquiry} qty={detail.items.reduce((sum,item)=>sum+item.quantity,0)} serverCosting onDraftChange={index => setDirtyProducts(current => new Set(current).add(index))} onApply={data => {
+  setCosts(current => ({
+    ...current,
+    [data.productIndex]: data.costConfig
+  }));
+
+  setAppliedBoms(current => ({
+    ...current,
+    [data.productIndex]: data.bom.map(line => ({ ...line }))
+  }));
+
+  setDirtyProducts(current => {
+    const next = new Set(current);
+    next.delete(data.productIndex);
+    return next;
+  });
+
+  setActiveTab("quote");
+}} /></div>
     <div hidden={activeTab!=="quote"}><QuotationBuilder inquiry={inquiry} manufacturingUnitCost={Number.NaN} vatType={costs[0]?.vatType ?? "Exclusive"} onSendToClient={() => {}} serverPreparation={{busy:saving,onPrepare:(status,doc) => void prepare(status,doc)}} /></div>
     </fieldset>
   </ModalShell>;

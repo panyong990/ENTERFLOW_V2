@@ -172,17 +172,19 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
 
   const updateLine = (idx: number, patch: Partial<BOMLine>) => {
     setBom((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    if (serverCosting) onDraftChange?.(activeProductIndex);
   };
 
   const removeLine = (idx: number) => {
     setBom((prev) => prev.filter((_, i) => i !== idx));
+    if (serverCosting) onDraftChange?.(activeProductIndex);
   };
 
   const addLine = (category: PartCategory) => {
-    /* Add the first available material in that category */
     const candidate = rawMaterials.find((m) => m.category === category);
     if (!candidate) return;
     setBom((prev) => [...prev, { materialId: candidate.id, partCategory: category, qtyConsumed: 0 }]);
+    if (serverCosting) onDraftChange?.(activeProductIndex);
   };
 
   const handleApplyTemplate = (templateId: string) => {

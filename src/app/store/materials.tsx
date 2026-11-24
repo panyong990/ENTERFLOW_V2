@@ -42,6 +42,7 @@ export interface AuditEntry {
 
 export interface RawMaterial {
   databaseId?: string;
+  uomId?: string;
   itemCode?: string | null;
   catalogCode?: string;
   source?: "catalog_reference" | "database";

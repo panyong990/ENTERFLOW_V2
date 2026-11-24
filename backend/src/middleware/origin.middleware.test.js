@@ -117,3 +117,52 @@ test('rejects requests when application origin is not configured', () => {
 
   assert.equal(response.statusCode, 503);
 });
+
+test('Phase 2 permits Vite proxy origins while retaining request protections', () => {
+  const previous = process.env.PHASE2_RUNTIME;
+  process.env.PHASE2_RUNTIME = '1';
+  try {
+    const middleware = createOriginMiddleware({ appOrigin: 'http://127.0.0.1:3107' });
+    for (const origin of ['http://127.0.0.1:5173', 'http://localhost:5173']) {
+      let allowed = false;
+      middleware(createRequest({ origin }), createResponse(), () => { allowed = true; });
+      assert.equal(allowed, true);
+    }
+    for (const [options, status] of [
+      [{ origin: 'http://127.0.0.1:5174' }, 403],
+      [{ origin: 'https://attacker.example' }, 403],
+      [{ origin: null }, 403],
+      [{ origin: 'http://127.0.0.1:5173', fetchSite: 'cross-site' }, 403],
+      [{ origin: 'http://127.0.0.1:5173', fetchSite: 'same-site' }, 403],
+      [{ origin: 'http://127.0.0.1:5173', contentType: 'text/plain' }, 415]
+    ]) {
+      const response = createResponse();
+      middleware(createRequest(options), response, () => assert.fail('must reject'));
+      assert.equal(response.statusCode, status);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.PHASE2_RUNTIME;
+    else process.env.PHASE2_RUNTIME = previous;
+  }
+});
+
+test('Vite origin exception requires Phase 2 and configured app origin', () => {
+  const previous = process.env.PHASE2_RUNTIME;
+  try {
+    for (const [phase2, appOrigin, status] of [
+      ['0', 'http://127.0.0.1:3107', 403],
+      ['1', '', 503]
+    ]) {
+      process.env.PHASE2_RUNTIME = phase2;
+      const response = createResponse();
+      createOriginMiddleware({ appOrigin })(
+        createRequest({ origin: 'http://127.0.0.1:5173' }), response,
+        () => assert.fail('must reject')
+      );
+      assert.equal(response.statusCode, status);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.PHASE2_RUNTIME;
+    else process.env.PHASE2_RUNTIME = previous;
+  }
+});

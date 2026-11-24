@@ -175,7 +175,7 @@ test('accepts the verified local Phase 2 database server', () => {
     config.phase2.serverUuid,
     'f6eaf2aa-e72d-11f1-85f7-3a3647785403'
   );
-});S
+});
 
 test('rejects unapproved Phase 2 server identities', () => {
   for (const uuid of [
@@ -218,4 +218,40 @@ test('rejects Phase 2 runtime combined with browser or integration modes', () =>
   assert.throws(() => loadRuntimeEnvironment(
     phase2Environment({ INTEGRATION_TEST_RUNTIME: '1' })
   ), /Phase 2 runtime/);
+});
+
+function sharedPhase2Environment(overrides = {}) {
+  return phase2Environment({
+    PHASE2_SHARED_DB: '1',
+    DB_HOST: '100.106.246.17',
+    DB_PORT: '63306',
+    DB_USER: 'enterflow_dev_lawa',
+    PHASE2_SERVER_UUID: 'be8fec6b-e6db-11f1-9b34-06d4adf80920',
+    ...overrides
+  });
+}
+
+test('accepts the pinned shared Phase 2 runtime without loading local dotenv', () => {
+  const environment = sharedPhase2Environment();
+  assert.deepEqual(loadRuntimeEnvironment(environment), { error: null });
+  const config = validateRuntimeConfig(environment);
+  assert.equal(config.phase2.shared, true);
+  assert.equal(config.database.host, '100.106.246.17');
+  assert.equal(config.database.port, 63306);
+});
+
+test('shared Phase 2 runtime rejects local fallback and identity substitutions', () => {
+  for (const overrides of [
+    { PHASE2_SHARED_DB: '0' },
+    { DB_HOST: '127.0.0.1', DB_PORT: '62286', DB_USER: 'enterflow_phase2_app' },
+    { DB_PORT: '3308' },
+    { DB_NAME: 'enterflow_db' },
+    { DB_USER: 'enterflow_phase2_app' },
+    { PHASE2_SERVER_UUID: undefined },
+    { PHASE2_SERVER_UUID: 'f6eaf2aa-e72d-11f1-85f7-3a3647785403' },
+    { DB_SSL_SERVER_NAME: '100.106.246.17' },
+    { DB_SSL_CA_PATH: '' }
+  ]) {
+    assert.throws(() => validateRuntimeConfig(sharedPhase2Environment(overrides)));
+  }
 });

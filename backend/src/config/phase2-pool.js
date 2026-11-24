@@ -8,7 +8,9 @@ export function guardPhase2Pool(rawPool, runtime) {
         const stream = c.connection?.stream;
         if (!stream?.encrypted || stream.authorized !== true) throw new Error('Phase 2 TLS validation failed');
         const [[row]] = await c.query('SELECT DATABASE() AS name,VERSION() AS version,@@server_uuid AS serverUuid,CURRENT_USER() AS account,@@SESSION.sql_mode AS sqlMode');
-        if (row.name !== 'enterflow_phase2_db' || row.version !== '8.4.13' || row.serverUuid !== runtime.phase2.serverUuid || !row.account.startsWith('enterflow_phase2_app@') || !String(row.sqlMode).split(',').includes('STRICT_TRANS_TABLES')) throw new Error('Phase 2 connection identity failed');
+        if (row.name !== 'enterflow_phase2_db' || row.version !== '8.4.13' || row.serverUuid !== runtime.phase2.serverUuid || !(runtime.phase2.shared
+          ? row.account === 'enterflow_dev_lawa@172.17.0.1'
+          : row.account.startsWith('enterflow_phase2_app@')) || !String(row.sqlMode).split(',').includes('STRICT_TRANS_TABLES')) throw new Error('Phase 2 connection identity failed');
         await c.query("SET SESSION time_zone='+00:00'");
         return c;
       } catch {

@@ -1,4 +1,4 @@
-﻿
+
 export function createOriginMiddleware({
   appOrigin = process.env.APP_ORIGIN,
   allowedOrigins = [],
@@ -12,6 +12,7 @@ export function createOriginMiddleware({
   // Only add the Vite frontend when the application origin is configured.
   if (appOrigin && process.env.PHASE2_RUNTIME === '1') {
     trustedOrigins.add('http://localhost:5173');
+    trustedOrigins.add('http://127.0.0.1:5173');
   }
 
   return function requireSameOrigin(request, response, next) {

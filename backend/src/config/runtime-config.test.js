@@ -166,16 +166,16 @@ test('accepts the isolated Phase 2 runtime target', () => {
   assert.equal(config.absoluteTimeoutHours, 8);
 });
 
-test('accepts explicitly approved independent Phase 2 server', () => {
+test('accepts the verified local Phase 2 database server', () => {
   const config = validateRuntimeConfig(phase2Environment({
-    PHASE2_SERVER_UUID: 'be8fec6b-e6db-11f1-9b34-06d4adf80920'
+    PHASE2_SERVER_UUID: 'f6eaf2aa-e72d-11f1-85f7-3a3647785403'
   }));
 
   assert.equal(
     config.phase2.serverUuid,
-    'be8fec6b-e6db-11f1-9b34-06d4adf80920'
+    'f6eaf2aa-e72d-11f1-85f7-3a3647785403'
   );
-});
+});S
 
 test('rejects unapproved Phase 2 server identities', () => {
   for (const uuid of [

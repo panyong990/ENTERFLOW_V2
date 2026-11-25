@@ -124,9 +124,10 @@ function quotationDatabase({missingPrice=false,unitPrice='10',existingQuotes=[],
   if(sql.includes('FROM quotation WHERE inquiry_id='))return [savedQuotes.filter(q=>q.isCurrent)];
   if(sql.includes('FROM inquiry_item WHERE'))return [[{inquiry_item_id:'11',inquiry_id:'91',line_no:1,quantity:2,filter_name:'Oil separator'}]];
   if(sql.includes('FROM unit_of_measure'))return [[{uom_id:'1'}]];
-  if(sql.includes('FROM raw_material WHERE'))return [[{material_id:'61',uom_id:'1',material_category_id:null,reference_unit_price:missingPrice?null:unitPrice}]];
+  if(sql.includes('FROM raw_material m JOIN material_category'))return [[{materialId:'71',materialName:'Carton Box',referenceUnitPrice:'5.5000',categoryName:'packaging'}]];
+   if(sql.includes('FROM raw_material WHERE'))return [[{material_id:'61',uom_id:'1',material_category_id:null,reference_unit_price:missingPrice?null:unitPrice}]];
   if(sql.startsWith('UPDATE quotation SET is_current')){savedQuotes.find(q=>q.id===params[0]).isCurrent=false;return [{affectedRows:1}];}
-  if(sql.startsWith('INSERT INTO quotation(')){const id=String(serial++);savedQuotes.push({id,reference:params[0],revisionNumber:params[2],status:params[14],isCurrent:true});return [{affectedRows:1,insertId:id}];}
+  if(sql.startsWith('INSERT INTO quotation(')){const id=String(serial++);savedQuotes.push({id,reference:params[0],revisionNumber:params[2],status:params[15],isCurrent:true});return [{affectedRows:1,insertId:id}];}
   if(sql.includes('FROM client_user'))return [[]];
   if(sql.startsWith('INSERT'))return [{affectedRows:1,insertId:String(serial++)}];
   if(sql.startsWith('UPDATE'))return [{affectedRows:1}];
@@ -158,8 +159,8 @@ test('Sales quotation preparation calculates server-side costing, persists a sen
 });
 
 test('Sales quotation history returns only the selected estimate material snapshots with exact decimal strings',async()=>{
- const calls=[],c={release(){},async execute(sql,p){calls.push({sql,params:p});if(sql.includes('FROM inquiry i JOIN client'))return [[{id:'91',status:'quotation'}]];if(sql.includes('FROM quotation WHERE'))return [[{id:'31',reference:'Q-1',totalAmount:'100.00',downpaymentPercent:'20',downpaymentAmount:'20.00'}]];if(sql.includes('FROM cost_estimate ce JOIN quotation_item'))return [[{id:'61',orderItemId:'11'}]];if(sql.includes('FROM cost_estimate_material')){assert.deepEqual(p,['61']);return [[{rawMaterialId:'9007199254740993',qtyPerFilter:'0.5000',unitPriceSnapshot:'10819.0000'}]];}return [[]];}};
- const r=await createSalesOrdersService({db:{getConnection:async()=>c}}).quotations('91');assert.equal(r.success,true);assert.equal(r.data[0].costing[0].materials.length,1);assert.equal(r.data[0].costing[0].materials[0].rawMaterialId,'9007199254740993');assert.equal(r.data[0].costing[0].materials[0].unitPriceSnapshot,'10819.0000');assert(calls.every(c=>c.sql.startsWith('SELECT')));
+ const calls=[],c={release(){},async execute(sql,p){calls.push({sql,params:p});if(sql.includes('FROM inquiry i JOIN client'))return [[{id:'91',status:'quotation'}]];if(sql.includes('FROM quotation WHERE'))return [[{id:'31',reference:'Q-1',totalAmount:'100.00',downpaymentPercent:'20',downpaymentAmount:'20.00'}]];if(sql.includes("FROM audit_event")&&sql.includes("subject_type='quotation'"))return [[{discountPercent:'5.0000'}]];if(sql.includes('FROM cost_estimate ce JOIN quotation_item'))return [[{id:'61',orderItemId:'11'}]];if(sql.includes('FROM cost_estimate_material')){assert.deepEqual(p,['61']);return [[{rawMaterialId:'9007199254740993',qtyPerFilter:'0.5000',unitPriceSnapshot:'10819.0000'}]];}return [[]];}};
+ const r=await createSalesOrdersService({db:{getConnection:async()=>c}}).quotations('91');assert.equal(r.success,true);assert.equal(r.data[0].discountPercent,'5.0000');assert.equal(r.data[0].costing[0].materials.length,1);assert.equal(r.data[0].costing[0].materials[0].rawMaterialId,'9007199254740993');assert.equal(r.data[0].costing[0].materials[0].unitPriceSnapshot,'10819.0000');assert(calls.every(c=>c.sql.startsWith('SELECT')));
 });
 
 for (const [label, overrides, total] of [
@@ -175,6 +176,43 @@ for (const [label, overrides, total] of [
   const result = await createSalesOrdersService(h).createQuotation('91', { ...quotationBody, ...overrides }, { userId: '8', roleCode: 'sales', accountType: 'employee' });
   assert.equal(result.success, true);
   assert.equal(result.data.totalAmount, total);
+});
+
+test('Sales quotation add-ons use server pricing and count each charge exactly once', async () => {
+  const h = quotationDatabase();
+
+  const result = await createSalesOrdersService(h).createQuotation('91', {
+    ...quotationBody,
+    packaging: { materialId: '71', quantity: '2', includeInUnitPrice: true },
+    shipping: { label: 'Lalamove', amount: '15.50', includeInUnitPrice: false }
+  }, { userId: '8', roleCode: 'sales', accountType: 'employee' });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.totalAmount, '81.50');
+  assert.equal(result.data.downpaymentAmount, '16.30');
+
+  const packageLookup = h.calls.find(call =>
+    call.sql.includes('FROM raw_material m JOIN material_category')
+  );
+  assert.ok(packageLookup);
+  assert.deepEqual(packageLookup.params, ['71']);
+
+  const header = h.calls.find(call => call.sql.startsWith('INSERT INTO quotation('));
+  assert.equal(header.params[12], '66.00');
+  assert.equal(header.params[13], '15.50');
+  assert.equal(header.params[14], '81.50');
+
+  const item = h.calls.find(call => call.sql.startsWith('INSERT INTO quotation_item('));
+  assert.equal(item.params[6], '33.0000');
+
+  const writes = h.calls.filter(call =>
+    call.sql.startsWith('INSERT INTO quotation_addon')
+  );
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0].params.slice(1),
+    ['packaging', '71', 'Carton Box', '2.0000', '5.5000', 1]);
+  assert.deepEqual(writes[1].params.slice(1),
+    ['shipping', null, 'Lalamove', '1.0000', '15.50', 0]);
 });
 
 test('draft edits append revisions and sending preserves history', async () => {

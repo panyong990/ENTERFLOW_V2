@@ -32,9 +32,23 @@ export function product(item: ClientOrderDetail['items'][number]): ProductLine {
   return result as unknown as ProductLine;
 }
 function quote(q: ClientQuotation): QuotationDoc {
+  const packagingAddon = q.addons?.find(addon => addon.kind === "packaging");
+  const shippingAddon = q.addons?.find(addon => addon.kind === "shipping");
   return { quotationNo: q.reference, date: q.issuedOn ?? '—', validUntil: q.validUntil ?? '—',
     termsOfPayment: q.paymentTermLabel ?? '—', timeOfDelivery: q.timeOfDelivery ?? '—', placeOfDelivery: q.placeOfDelivery ?? '—',
     total: draftMoney(q.totalAmount), downpaymentPercent: Number(q.downpaymentPercent), downpaymentAmount: draftMoney(q.downpaymentAmount),
+    packaging: packagingAddon ? {
+      materialId: packagingAddon.materialId ?? "",
+      materialName: packagingAddon.label,
+      qty: Number(packagingAddon.quantity),
+      unitPrice: Number(packagingAddon.unitPrice),
+      includeInUnit: Boolean(packagingAddon.includeInUnitPrice),
+    } : undefined,
+    shipping: shippingAddon ? {
+      label: shippingAddon.label,
+      amount: Number(shippingAddon.quantity) * Number(shippingAddon.unitPrice),
+      includeInUnit: Boolean(shippingAddon.includeInUnitPrice),
+    } : undefined,
     lineItems: q.lines.map(line => ({ no: line.lineNumber, qty: Number(line.quantity), unit: line.unitLabel ?? '—', description: line.description, subDescription: line.subDescription ?? undefined, unitPrice: draftMoney(line.unitPrice) })),
   } as QuotationDoc;
 }

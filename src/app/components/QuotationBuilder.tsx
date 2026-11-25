@@ -84,9 +84,12 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   const [noteHighlighted, setNoteHighlighted] = useState(inquiry.quotationDoc?.noteHighlighted ?? false);
 
   /* Packaging */
-  const packagingOptions = rawMaterials.filter((m) => m.category === "packaging");
+  const packagingOptions = rawMaterials.filter((m) =>
+    m.category === "packaging" &&
+    (!serverPreparation || (m.source === "database" && !!m.databaseId && Number.isFinite(m.referenceUnitPrice)))
+  );
   const [packagingOpen, setPackagingOpen] = useState(!!inquiry.quotationDoc?.packaging);
-  const [packagingId, setPackagingId] = useState<string>(inquiry.quotationDoc?.packaging?.materialId ?? packagingOptions[0]?.id ?? "");
+  const [packagingId, setPackagingId] = useState<string>(inquiry.quotationDoc?.packaging?.materialId ?? packagingOptions[0]?.databaseId ?? packagingOptions[0]?.id ?? "");
   const [packagingQty, setPackagingQty] = useState(inquiry.quotationDoc?.packaging?.qty ?? 1);
   const [packagingInUnit, setPackagingInUnit] = useState(inquiry.quotationDoc?.packaging?.includeInUnit ?? true);
 
@@ -115,13 +118,16 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   const [showPreview, setShowPreview] = useState(false);
 
   /* Selected packaging material */
-  const selectedPackaging: RawMaterial | undefined = packagingOptions.find((m) => m.id === packagingId);
+  const selectedPackaging: RawMaterial | undefined = packagingOptions.find((m) => (m.databaseId ?? m.id) === packagingId);
+  const packagingUnitPrice = serverPreparation
+    ? (selectedPackaging?.referenceUnitPrice ?? Number.NaN)
+    : (selectedPackaging?.unitPrice ?? Number.NaN);
   const selectedShippingMethod = shippingMethod || savedShippingLabel;
   const selectedShippingTransitEstimate = getDeliveryTransitEstimate(selectedShippingMethod);
 
   /* ─── Computed values ─── */
 
-  const packagingCostPerOrder = packagingOpen && selectedPackaging ? selectedPackaging.unitPrice * packagingQty : 0;
+  const packagingCostPerOrder = packagingOpen && selectedPackaging && Number.isFinite(packagingUnitPrice) ? packagingUnitPrice * packagingQty : 0;
   const shippingCost = shippingOpen ? shippingAmount : 0;
   const totalQty = lineItems.reduce((s, li) => s + li.qty, 0);
   const materialAvailability = lineItems.map((lineItem, productIndex) => {
@@ -169,7 +175,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   const separateAddons =
     (packagingOpen && !packagingInUnit ? packagingCostPerOrder : 0) +
     (shippingOpen && !shippingInUnit ? shippingCost : 0);
-  const grandTotal = serverPreparation ? lineSubtotal : lineSubtotal + separateAddons;
+  const grandTotal = lineSubtotal + separateAddons;
   const discountRates = [...new Set(discounts.filter((discount) => discount.percent > 0).map((discount) => discount.percent))];
   const quotationDiscounts = discountRates.length === 1
     ? [{ label: "Discount", percent: discountRates[0] }]
@@ -219,7 +225,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
     note,
     noteHighlighted,
     packaging: packagingOpen && selectedPackaging
-      ? { materialId: selectedPackaging.id, materialName: selectedPackaging.name, qty: packagingQty, unitPrice: selectedPackaging.unitPrice, includeInUnit: packagingInUnit }
+      ? { materialId: selectedPackaging.databaseId ?? selectedPackaging.id, materialName: selectedPackaging.name, qty: packagingQty, unitPrice: packagingUnitPrice, includeInUnit: packagingInUnit }
       : undefined,
     shipping: shippingOpen
       ? {
@@ -260,6 +266,14 @@ const handlePreview = () => {
       toast.error("Each line item needs a description, qty > 0, and a non-negative unit price");
       return false;
     }
+    if (packagingOpen && (!selectedPackaging || !Number.isFinite(packagingQty) || packagingQty <= 0 || !Number.isFinite(packagingUnitPrice) || packagingUnitPrice < 0)) {
+      toast.error("Select a packaging material with a valid price and quantity");
+      return false;
+    }
+    if (shippingOpen && (!Number.isFinite(shippingAmount) || shippingAmount < 0)) {
+      toast.error("Enter a valid non-negative shipping amount");
+      return false;
+    }
     if (shippingOpen && !shippingMethod && (!savedShippingLabel || savedShippingLabel === "Shipping")) {
       toast.error("Select a delivery method");
       return false;
@@ -271,7 +285,7 @@ const handlePreview = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      {serverPreparation && <p className="font-dm text-xs text-slate-500">Order lines are read-only. Prices before saving are Step 2 estimates, including configured VAT. The server recalculates official prices when saving. Packaging and freight charges cannot currently be saved.</p>}
+      {serverPreparation && <p className="font-dm text-xs text-slate-500">Order lines are read-only. Prices before saving are Step 2 estimates, including configured VAT. The server recalculates official prices when saving.</p>}
       {/* ── Quotation builder ── */}
       <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
@@ -321,7 +335,7 @@ const handlePreview = () => {
                     <td className="px-2 py-2 font-mono-jb" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", textAlign: "right" }}>
                       ₱{(Number.isFinite(finalTotal) ? finalTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—")}
                       {inclusivePerUnit > 0 && (
-                        <div className="font-mono-jb" style={{ fontSize: 10, color: "#94A3B8" }}>(base ₱{(Number.isFinite(total) ? total.toFixed(2) : "—")})</div>
+                        <div className="font-mono-jb" style={{ fontSize: 10, color: "#94A3B8" }}>(base ₱{((finalUnit - inclusivePerUnit) * li.qty).toFixed(2)})</div>
                       )}
                     </td>
                   </tr>
@@ -361,14 +375,14 @@ const handlePreview = () => {
           {/* Packaging */}
           <AddonRow
             open={packagingOpen}
-            onToggle={() => { if (serverPreparation) { toast.info("Packaging charges cannot be saved by the current quotation service."); return; } setPackagingOpen(v => !v); }}
+            onToggle={() => setPackagingOpen(v => !v)}
             label="📦 Add packaging cost"
             color="#1A2B4A"
           >
             <div className="grid grid-cols-3 gap-3 items-end">
               <Field label="Box Type">
                 <select value={packagingId} onChange={(e) => setPackagingId(e.target.value)} className="font-dm w-full px-2 py-1.5 rounded border border-slate-200 bg-white outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
-                  {packagingOptions.map((m) => <option key={m.id} value={m.id}>{m.name} (₱{m.unitPrice}/{m.unit})</option>)}
+                  {packagingOptions.map((m) => <option key={m.databaseId ?? m.id} value={m.databaseId ?? m.id}>{m.name} (₱{serverPreparation ? m.referenceUnitPrice : m.unitPrice}/{m.unit})</option>)}
                 </select>
               </Field>
               <Field label="Qty (boxes)">
@@ -385,7 +399,7 @@ const handlePreview = () => {
           {/* Shipping */}
           <AddonRow
             open={shippingOpen}
-            onToggle={() => { if (serverPreparation) { toast.info("Freight charges cannot be saved by the current quotation service."); return; } setShippingOpen(v => !v); }}
+            onToggle={() => setShippingOpen(v => !v)}
             label="🚚 Add shipping / freight cost"
             color="#7C3AED"
           >

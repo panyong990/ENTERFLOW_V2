@@ -195,7 +195,6 @@ if (!pcsUomId) {
   return;
 }
     setError("");
-    if (restored.latest?.addons?.length) { setError("This quotation has saved additional charges. Revising those charges is not yet supported; this quotation cannot be saved without preserving them."); return; }
     if (dirtyProducts.size) { setError("Apply your changed cost inputs for every edited product before saving or sending."); return; }
     if (detail.items.some((_, index) => !costs[index])) { setError("Apply cost inputs for every product in Cost & Material Estimation."); return; }
     if (detail.items.some((_, index) => !appliedBoms[index]?.length)) {
@@ -296,6 +295,16 @@ for (let index = 0; index < detail.items.length; index++) {
         note: doc.note || undefined, noteHighlighted: doc.noteHighlighted, downpaymentPercent: doc.downpaymentPercent,
         vatType: config.vatType, vatRate: config.vatRate, includeLabor: config.includeLabor, applyMarkup: config.applyMarkup,
         applyVat: config.applyVAT, discountPercent: config.discountPct ?? 0,
+        packaging: doc.packaging ? {
+          materialId: doc.packaging.materialId,
+          quantity: doc.packaging.qty,
+          includeInUnitPrice: doc.packaging.includeInUnit,
+        } : undefined,
+        shipping: doc.shipping ? {
+          label: doc.shipping.label,
+          amount: doc.shipping.amount,
+          includeInUnitPrice: doc.shipping.includeInUnit,
+        } : undefined,
          costing: detail.items.map((item, index) => ({
           orderItemId: item.id,
           uomId: pcsUomId!,

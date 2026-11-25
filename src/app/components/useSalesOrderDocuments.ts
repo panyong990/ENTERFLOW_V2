@@ -20,6 +20,7 @@ export interface SalesQuotation {
   totalAmount: string | number | null;
   downpaymentPercent: string | number | null;
   downpaymentAmount: string | number | null;
+  discountPercent?: string | number | null;
   stockCheckedAt: string | null;
   sentAt: string | null;
   downpaymentValid?: boolean;

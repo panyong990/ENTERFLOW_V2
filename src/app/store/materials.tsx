@@ -542,10 +542,11 @@ interface Ctx {
 
 const MaterialsContext = createContext<Ctx | null>(null);
 
-export function MaterialsProvider({ children, mode = "demo" }: { children: ReactNode; mode?: "demo" | "real" }) {
+export function MaterialsProvider({ children, mode = "demo", loadInventory = true }: { children: ReactNode; mode?: "demo" | "real"; loadInventory?: boolean }) {
   const realMode = mode === "real";
+  const shouldLoadInventory = realMode && loadInventory;
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(() => realMode ? [] : loadPersistedRawMaterials());
-  const [inventoryLoading, setInventoryLoading] = useState(realMode);
+  const [inventoryLoading, setInventoryLoading] = useState(shouldLoadInventory);
   const [inventoryError, setInventoryError] = useState("");
   const [inventoryVersion, setInventoryVersion] = useState(0);
   const refreshInventory = () => setInventoryVersion(value => value + 1);
@@ -558,17 +559,35 @@ export function MaterialsProvider({ children, mode = "demo" }: { children: React
     persistRawMaterials(mode, rawMaterials);
   }, [rawMaterials, mode]);
   useEffect(() => {
-    if (!realMode) return undefined;
+    if (!shouldLoadInventory) {
+      setInventoryLoading(false);
+      setInventoryError("");
+      setRawMaterials([]);
+      setFinishedGoods([]);
+      return undefined;
+    }
+
     const controller = new AbortController();
-    setInventoryLoading(true); setInventoryError("");
+    setInventoryLoading(true);
+    setInventoryError("");
+
     void getInventory(controller.signal).then((result: any) => {
       if (controller.signal.aborted) return;
       const normalized = mergeInventoryCatalog([], result, materialIdentities.ids);
       setRawMaterials(normalized.materials as RawMaterial[]);
       setFinishedGoods(normalized.finishedGoods as FinishedGood[]);
-    }).catch(cause => { if (!controller.signal.aborted) { setInventoryError(cause instanceof Error ? cause.message : "Inventory is unavailable."); setRawMaterials([]); setFinishedGoods([]); } }).finally(() => { if (!controller.signal.aborted) setInventoryLoading(false); });
+    }).catch(cause => {
+      if (!controller.signal.aborted) {
+        setInventoryError(cause instanceof Error ? cause.message : "Inventory is unavailable.");
+        setRawMaterials([]);
+        setFinishedGoods([]);
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setInventoryLoading(false);
+    });
+
     return () => controller.abort();
-  }, [realMode, inventoryVersion]);
+  }, [shouldLoadInventory, inventoryVersion]);
 
   const commitRawMaterials = (update: (current: RawMaterial[]) => RawMaterial[]) => {
     const next = update(rawMaterialsRef.current);

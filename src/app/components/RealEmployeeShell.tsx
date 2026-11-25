@@ -47,7 +47,7 @@ export function RealEmployeeShell({ identity, onLogout }: { identity: RealIdenti
     <SessionProvider mode="real" role={role} name={identity.displayName} userId={identity.userId} navigate={navigate}>
       <SettingsProvider mode="real">
       <OrdersProvider mode="real">
-      <MaterialsProvider mode="real">
+      <MaterialsProvider mode="real" loadInventory={role !== "accounting"}>
       <NotificationsProvider mode="real">
       <StockRequestsProvider mode="real">
       <div className="flex h-full min-h-0 bg-[#F5F7FB]">

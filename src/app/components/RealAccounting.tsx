@@ -12,12 +12,12 @@ export function accountingMoney(value: string | number | null | undefined) {
 
 export function accountingInvoiceRow(invoice: AccountingInvoice, payments: AccountingPayment[]): Invoice {
   const records = payments.filter(payment => payment.invoiceId === invoice.id && payment.orderId === invoice.orderId);
-  const types = [...new Set(records.map(payment => payment.paymentType))];
+  const types = [...new Set(records.map(payment => payment.paymentType).filter((value): value is string => Boolean(value)))];
   return {
     id: invoice.id, date: invoice.issuedOn ?? '', inv: invoice.reference,
     po: '—', client: invoice.companyName, item: '—', amount: Number(invoice.amount),
     payment: invoice.paymentTermCode ?? 'Unavailable',
-    paymentType: types.length === 1 ? types[0].replaceAll('_', ' ') : 'Payment setup',
+    paymentType: types.length === 1 ? types[0].replaceAll('_', ' ') : types.length > 1 ? 'Payment history' : 'Payment proof submitted',
     status: 'unavailable', fulfillmentCompleted: null, downpaymentPercent: Number.NaN,
     dueDate: invoice.dueOn ?? undefined,
     // The legacy model uses numbers. NaN marks unavailable fields; Real rendering
@@ -30,7 +30,7 @@ export function accountingInvoiceRow(invoice: AccountingInvoice, payments: Accou
       currentPaymentType: null, state: 'UNAVAILABLE',
     },
     paymentRecords: records.map(payment => ({
-      id: payment.id, invoiceNo: invoice.reference, paymentType: payment.paymentType,
+      id: payment.id, invoiceNo: invoice.reference, paymentType: payment.paymentType ?? 'PAYMENT_PROOF',
       submittedAmount: Number(payment.submittedAmount),
       verifiedAmount: payment.verifiedAmount == null ? undefined : Number(payment.verifiedAmount),
       method: payment.method ?? undefined, referenceNumber: payment.referenceNumber ?? undefined,

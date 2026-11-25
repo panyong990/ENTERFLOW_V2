@@ -19,7 +19,7 @@ export interface AccountingPayment {
   id: string;
   orderId: string;
   invoiceId: string;
-  paymentType: string;
+  paymentType: string | null;
   submittedAmount: string;
   verifiedAmount: string | null;
   method: string | null;

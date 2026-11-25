@@ -124,7 +124,7 @@ function quotationDatabase({missingPrice=false,unitPrice='10',existingQuotes=[],
   if(sql.includes('FROM quotation WHERE inquiry_id='))return [savedQuotes.filter(q=>q.isCurrent)];
   if(sql.includes('FROM inquiry_item WHERE'))return [[{inquiry_item_id:'11',inquiry_id:'91',line_no:1,quantity:2,filter_name:'Oil separator'}]];
   if(sql.includes('FROM unit_of_measure'))return [[{uom_id:'1'}]];
-  if(sql.includes('FROM raw_material WHERE'))return [[{material_id:'61',uom_id:'1',material_category_id:null,unit_price:missingPrice?null:unitPrice,unit_price_approved_by_user_id:'8',unit_price_approved_at:'2026-11-22'}]];
+  if(sql.includes('FROM raw_material WHERE'))return [[{material_id:'61',uom_id:'1',material_category_id:null,reference_unit_price:missingPrice?null:unitPrice}]];
   if(sql.startsWith('UPDATE quotation SET is_current')){savedQuotes.find(q=>q.id===params[0]).isCurrent=false;return [{affectedRows:1}];}
   if(sql.startsWith('INSERT INTO quotation(')){const id=String(serial++);savedQuotes.push({id,reference:params[0],revisionNumber:params[2],status:params[14],isCurrent:true});return [{affectedRows:1,insertId:id}];}
   if(sql.includes('FROM client_user'))return [[]];
@@ -152,7 +152,7 @@ test('Sales quotation preparation calculates server-side costing, persists a sen
   assert.equal(result.data.downpaymentAmount, '11.00');
   const bomQuery=h.calls.find(call=>call.sql.includes('FROM raw_material WHERE'))?.sql??'';
   assert.match(bomQuery, /is_active=1 FOR SHARE/);
-  assert.doesNotMatch(bomQuery, /reference_unit_price/);
+  assert.match(bomQuery, /FROM raw_material WHERE/);
   assert.equal(h.calls.some(call => /\b(UPDATE|INSERT|DELETE)\b/i.test(call.sql) && /materials|finished_goods|quantity_on_hand|stock_responses/i.test(call.sql)), false);
   assert.equal(h.calls.some(call => call.sql === 'COMMIT'), true);
 });

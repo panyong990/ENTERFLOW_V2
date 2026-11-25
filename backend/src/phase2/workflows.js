@@ -522,13 +522,13 @@ export function createSalesOrdersService({
       for (const material of cost.materials) {
         requireThat(id(material.rawMaterialId));
         const rm = await one(c, 'SELECT * FROM raw_material WHERE material_id=? AND is_active=1 FOR SHARE', [material.rawMaterialId]);
-        requireThat(rm && rm.unit_price !== null && rm.unit_price_approved_by_user_id && rm.unit_price_approved_at, 'MATERIAL_COSTING_INCOMPLETE');
+        requireThat(rm && rm.reference_unit_price !== null, 'MATERIAL_COSTING_INCOMPLETE');
         const qty = decimal(material.qtyPerFilter);
         requireThat(qty > 0n);
         if (material.uomId) requireThat(material.uomId === String(rm.uom_id));
         let unit;
         try {
-          unit = decimal(rm.unit_price);
+          unit = decimal(rm.reference_unit_price);
         } catch {
           requireThat(false, 'MATERIAL_COSTING_INCOMPLETE');
         }

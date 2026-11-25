@@ -132,9 +132,10 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
           material.unitPrice >= 0
         ))
     );
-  const computed = computeUnitPrice(bom, cfg, rawMaterials);
-  const selectedQty = product?.qty ?? qty;
-  const orderTotal = computed.withVat * selectedQty;
+const computed = computeUnitPrice(bom, cfg, rawMaterials);
+const selectedQty = product?.qty ?? qty;
+const roundedUnitPrice = Number(computed.withVat.toFixed(2));
+const orderTotal = roundedUnitPrice * selectedQty;
 
   useEffect(() => {
     setBom(initial);
@@ -203,8 +204,8 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
     onApply({
       bom,
       costConfig: cfg,
-      unitPrice: computed.withVat,
-      total: orderTotal,
+unitPrice: roundedUnitPrice,
+total: orderTotal,
       productIndex: activeProductIndex,
     });
     if (!serverCosting) toast.success("Cost configuration applied to quotation");
@@ -302,7 +303,7 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                       {rawMaterials
                         .filter((mat) => mat.category === line.partCategory)
                         .map((mat) => (
-                          <option key={mat.id} value={mat.id}>{mat.name} ({serverCosting && !Number.isFinite(mat.unitPrice) ? "Warehouse price unavailable" : `?${mat.unitPrice}/${mat.unit}`})</option>
+                          <option key={mat.id} value={mat.id}>{mat.name} ({serverCosting && !Number.isFinite(mat.unitPrice) ? "Warehouse price unavailable" : `₱${mat.unitPrice}/${mat.unit}`})</option>
                         ))}
                     </select>
                   </div>
@@ -527,7 +528,9 @@ export function CostEstimationPanel({ inquiry, qty, onApply, serverCosting = fal
                 </div>
               )}
               <div className="px-3 py-2.5 flex items-center justify-between font-dm border-t border-slate-200" style={{ fontSize: 13, backgroundColor: "#FEF2F2" }}>
-                <span style={{ color: "#991B1B", fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", fontSize: 11 }}>With VAT</span>
+                <span style={{ color: "#991B1B", fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", fontSize: 11 }}>
+  {cfg.applyVAT ? "With VAT" : "Without VAT"}
+</span>
                 <span className="font-syne" style={{ fontSize: 18, fontWeight: 800, color: "#C8102E" }}>₱{(serverCosting && !pricingReady) || !Number.isFinite(computed.withVat) ? "—" : computed.withVat.toFixed(2)}</span>
               </div>
               <div className="px-3 py-2 flex items-center justify-between font-dm border-t border-slate-100" style={{ fontSize: 11, backgroundColor: "#1A2B4A", color: "white" }}>

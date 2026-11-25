@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Eye, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { useMaterials, type BOMLine, type RawMaterial } from "../store/materials";
@@ -59,6 +59,27 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   }));
 
   const [lineItems, setLineItems] = useState<QuotationLineItem[]>(initialLineItems);
+
+  useEffect(() => {
+    if (!serverPreparation || !productsManufacturingUnitCosts) return;
+
+    setLineItems(current => {
+      let changed = false;
+
+      const next = current.map((line, index) => {
+        const price = productsManufacturingUnitCosts[index];
+
+        if (price == null || Object.is(line.unitPrice, price)) {
+          return line;
+        }
+
+        changed = true;
+        return { ...line, unitPrice: price };
+      });
+
+      return changed ? next : current;
+    });
+  }, [serverPreparation, productsManufacturingUnitCosts]);
   const [note, setNote] = useState(inquiry.quotationDoc?.note ?? "");
   const [noteHighlighted, setNoteHighlighted] = useState(inquiry.quotationDoc?.noteHighlighted ?? false);
 
@@ -148,7 +169,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
   const separateAddons =
     (packagingOpen && !packagingInUnit ? packagingCostPerOrder : 0) +
     (shippingOpen && !shippingInUnit ? shippingCost : 0);
-  const grandTotal = serverPreparation ? Number.NaN : lineSubtotal + separateAddons;
+  const grandTotal = serverPreparation ? lineSubtotal : lineSubtotal + separateAddons;
   const discountRates = [...new Set(discounts.filter((discount) => discount.percent > 0).map((discount) => discount.percent))];
   const quotationDiscounts = discountRates.length === 1
     ? [{ label: "Discount", percent: discountRates[0] }]
@@ -218,11 +239,13 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
     downpaymentAmount: grandTotal * (downpaymentPercent / 100),
   });
 
-  const handlePreview = () => {
-    if (serverPreparation) { toast.info("Save a draft, then open its saved document from quotation history."); return; }
-    if (!validateBeforeSend()) return;
-    setShowPreview(true);
-  };
+const handlePreview = () => {
+  if (serverPreparation?.busy) return;
+
+  if (!validateBeforeSend()) return;
+
+  setShowPreview(true);
+};
 
   const handleSend = () => {
     if (serverPreparation) { serverPreparation.onPrepare("sent", buildDoc()); return; }
@@ -248,7 +271,7 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
 
   return (
     <div className="flex flex-col gap-4">
-      {serverPreparation && <p className="font-dm text-xs text-slate-500">Order lines are read-only. Save a draft to calculate prices and view the saved quotation in document history. Packaging and freight charges cannot currently be saved.</p>}
+      {serverPreparation && <p className="font-dm text-xs text-slate-500">Order lines are read-only. Prices before saving are Step 2 estimates, including configured VAT. The server recalculates official prices when saving. Packaging and freight charges cannot currently be saved.</p>}
       {/* ── Quotation builder ── */}
       <div className="rounded-xl border border-slate-200 overflow-hidden" style={{ backgroundColor: "white" }}>
         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between" style={{ backgroundColor: "#F8FAFC" }}>
@@ -274,10 +297,9 @@ export function QuotationBuilder({ inquiry, productBoms, manufacturingUnitCost, 
               </tr>
             </thead>
             <tbody>
-              {lineItems.map((li, idx) => {
-                const total = li.unitPrice * li.qty;
-                const finalUnit = li.unitPrice + inclusivePerUnit;
-                const finalTotal = finalUnit * li.qty;
+{adjustedItems.map((li, idx) => {
+  const finalUnit = li.unitPrice;
+  const finalTotal = finalUnit * li.qty;
                 return (
                   <tr key={idx} style={{ borderBottom: "1px solid #E2E8F0" }}>
                     <td className="px-2 py-2 font-mono-jb" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A", textAlign: "center" }}>{li.no}</td>

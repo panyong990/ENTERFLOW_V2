@@ -170,6 +170,11 @@ const pcs = data.units.find(
   const [activeTab, setActiveTab] = useState<"inquiry" | "cost" | "quote">(() => restored.latest?.status === "draft" ? "quote" : "inquiry");
 
   const [costs, setCosts] = useState<Record<number, CostConfig>>(restored.costs);
+  const [estimatedUnitPrices, setEstimatedUnitPrices] = useState<Record<number, number>>({});
+  const previewUnitPrices = useMemo(
+    () => detail.items.map((_, index) => estimatedUnitPrices[index] ?? null),
+    [detail.items, estimatedUnitPrices]
+  );
   const [dirtyProducts, setDirtyProducts] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -335,7 +340,10 @@ for (let index = 0; index < detail.items.length; index++) {
     </div>
     <div hidden={activeTab!=="cost"}>
       {restored.latest?.costing?.some((row: any) => row.bomLines?.length) && <section aria-label="Saved material breakdown" className="mb-4 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-bold">Saved material breakdown · Revision {restored.latest.revisionNumber}</h3><p className="mt-1 text-xs text-slate-500">Historical prices and quantities. A new save recalculates from the current approved BOM and inventory prices.</p>{restored.latest.costing.map((row: any) => <div key={row.id ?? row.orderItemId} className="mt-3 text-xs"><b>{detail.items.find(item=>item.id===row.orderItemId)?.filterName || "Product"}</b>{row.bomLines?.map((line: any)=><p key={line.lineNumber}>{line.materialName} · {line.quantityPerFilter} {line.unit} per product · Unit price ₱{line.unitPrice} · Waste {line.wastePercent}%</p>)}</div>)}</section>}
-      <CostEstimationPanel initialBoms={restoredBoms} inquiry={inquiry} qty={detail.items.reduce((sum,item)=>sum+item.quantity,0)} serverCosting onDraftChange={index => setDirtyProducts(current => new Set(current).add(index))} onApply={data => {
+      <CostEstimationPanel initialBoms={restoredBoms} inquiry={inquiry} qty={detail.items.reduce((sum,item)=>sum+item.quantity,0)} serverCosting onDraftChange={index => {
+    setDirtyProducts(current => new Set(current).add(index));
+    setEstimatedUnitPrices(current => ({ ...current, [index]: Number.NaN }));
+  }} onApply={data => {
   setCosts(current => ({
     ...current,
     [data.productIndex]: data.costConfig
@@ -346,6 +354,11 @@ for (let index = 0; index < detail.items.length; index++) {
     [data.productIndex]: data.bom.map(line => ({ ...line }))
   }));
 
+  setEstimatedUnitPrices(current => ({
+    ...current,
+    [data.productIndex]: data.unitPrice
+  }));
+
   setDirtyProducts(current => {
     const next = new Set(current);
     next.delete(data.productIndex);
@@ -354,7 +367,7 @@ for (let index = 0; index < detail.items.length; index++) {
 
   setActiveTab("quote");
 }} /></div>
-    <div hidden={activeTab!=="quote"}><QuotationBuilder inquiry={inquiry} manufacturingUnitCost={Number.NaN} vatType={costs[0]?.vatType ?? "Exclusive"} onSendToClient={() => {}} serverPreparation={{busy:saving,onPrepare:(status,doc) => void prepare(status,doc)}} /></div>
+    <div hidden={activeTab!=="quote"}><QuotationBuilder inquiry={inquiry} manufacturingUnitCost={Number.NaN} productsManufacturingUnitCosts={previewUnitPrices} vatType={costs[0]?.vatType ?? "Exclusive"} onSendToClient={() => {}} serverPreparation={{busy:saving,onPrepare:(status,doc) => void prepare(status,doc)}} /></div>
     </fieldset>
   </ModalShell>;
 }

@@ -37,10 +37,24 @@ import {
 } from "./ui/alert-dialog";
 
 const columns: { id: Stage | "readyForJobOrder"; title: string; tint: string }[] = [
-  { id: "inquiry", title: "NEW INQUIRY", tint: "#64748B" },
+  { id: "inquiry", title: "NEW INQUIRY / DRAFT", tint: "#64748B" },
   { id: "quotation", title: "QUOTATION SENT", tint: "#D97706" },
   { id: "readyForJobOrder", title: "READY FOR JOB ORDER", tint: "#C9A84C" },
 ];
+
+const isLiveQuotationDraft = (inquiry: Inquiry) => {
+  if (!("salesRecord" in inquiry) || inquiry.stage !== "quotation") {
+    return false;
+  }
+
+  const live = inquiry as LiveInquiry;
+  const current = live.salesDetail?.quotations?.find(
+    row => (row as { isCurrent?: number | boolean }).isCurrent === 1 ||
+           (row as { isCurrent?: number | boolean }).isCurrent === true
+  ) as { status?: string } | undefined;
+
+  return (current?.status ?? live.salesRecord.latestQuotationStatus) === "draft";
+};
 
 const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;
 const hasPORecord = (inquiry: Inquiry) => Boolean(inquiry.poFileDataUrl || (inquiry.poUploaded && inquiry.poFileName));
@@ -1351,12 +1365,21 @@ export function OriginalSalesOrders({ targetInquiryId, demo, live }: { targetInq
             /* Part 4B will provide the payment-verified source for the ready-for-job-order column. */
             const isCollapsibleColumn = col.id === "quotation" || col.id === "readyForJobOrder";
              const colCards = col.id === "readyForJobOrder"
-               ? filtered.filter((c) => !c.pendingCancellation && isReadyForJobOrder(c))
-               : filtered.filter((c) => !c.pendingCancellation && (
-                 col.id === "quotation"
-                   ? (c.stage === "quotation" || (c.stage === "po" && !isReadyForJobOrder(c)))
-                   : c.stage === col.id
-               ));
+               ? filtered.filter((c) =>
+                   !c.pendingCancellation && isReadyForJobOrder(c))
+               : filtered.filter((c) => {
+                   if (c.pendingCancellation) return false;
+
+                   if (col.id === "quotation") {
+                     return (
+                       (c.stage === "quotation" && !isLiveQuotationDraft(c)) ||
+                       (c.stage === "po" && !isReadyForJobOrder(c))
+                     );
+                   }
+
+                   return c.stage === col.id ||
+                     (col.id === "inquiry" && isLiveQuotationDraft(c));
+                 });
             return (
               <div key={col.id} className="rounded-xl border border-slate-200/70 flex flex-col bg-white" style={{ minHeight: 600 }}>
                 <div className="px-5 py-4 border-b border-slate-200/70 flex items-center justify-between rounded-t-xl" style={{ backgroundColor: "#F4F6F9" }}>

@@ -252,6 +252,9 @@ export function createClientPortalService({
     }, reason);
     return ok({
       id: quoteId,
+      quotationId: quoteId,
+      orderId: inquiryId,
+      decision,
       status: decision
     });
   }, context);
@@ -286,13 +289,14 @@ export function createClientPortalService({
     });
   }, context);
   service.requestQuotationRevision = (clientId, userId, inquiryId, body, context = {}) => write(clientId, userId, async (c, a) => {
-    object(body, ['reason']);
+    object(body, ['reason', 'quotationId']);
     const reason = text(body.reason, 2000);
     requireThat(reason.length >= 5);
     const inquiry = await lockInquiry(c, inquiryId, a.clientId);
     requireThat(inquiry.status === 'quotation', 'INVALID_STATE');
-    const q = await one(c, "SELECT CAST(quotation_id AS CHAR) id,revision_no revisionNumber FROM quotation WHERE inquiry_id=? AND is_current=1 AND status='sent' FOR UPDATE", [inquiryId]);
+    const q = await one(c, "SELECT CAST(quotation_id AS CHAR) id,quotation_no reference,revision_no revisionNumber FROM quotation WHERE inquiry_id=? AND is_current=1 AND status='sent' FOR UPDATE", [inquiryId]);
     requireThat(q, 'QUOTATION_NOT_ELIGIBLE');
+    requireThat(!body.quotationId || body.quotationId === q.id, 'QUOTATION_NOT_ELIGIBLE');
     requireThat(!(await one(c, "SELECT request_id FROM quotation_revision_request WHERE quotation_id=? AND status='pending' LIMIT 1", [q.id])), 'REVISION_ALREADY_PENDING');
     const requestId = await insert(c, 'INSERT INTO quotation_revision_request(quotation_id,requested_by_client_user_id,reason) VALUES (?,?,?)', [q.id, a.userId, reason]);
     await audit(c, a, 'quotation.revision_requested', 'quotation_revision_request', requestId, null, {
@@ -304,7 +308,9 @@ export function createClientPortalService({
     await notifyRole(c, 'sales', 'Quotation revision requested', inquiryId, 'quotation');
     return ok({
       id: requestId,
+      orderId: inquiryId,
       quotationId: q.id,
+      quotationReference: q.reference,
       revisionNumber: q.revisionNumber,
       status: 'pending',
       reason
@@ -330,6 +336,7 @@ export function createClientPortalService({
     });
     return ok({
       id: poId,
+      orderId: inquiryId,
       reference: ref,
       acceptedQuotationId: q.id,
       status: 'received',
@@ -555,6 +562,7 @@ export function createSalesOrdersService({
         raw,
         labor,
         withMarkup,
+        discounted,
         final
       });
     }
@@ -617,15 +625,15 @@ export function createSalesOrdersService({
 
     if (includedAddonCents > 0n) requireThat(totalQuantity > 0n);
 
-    const inclusivePerUnitCents = includedAddonCents > 0n
-      ? rounded(includedAddonCents, totalQuantity)
+    const inclusivePerUnit = includedAddonCents > 0n
+      ? rounded(includedAddonCents * 100n, totalQuantity)
       : 0n;
 
     let subtotal = 0n;
 
     for (const item of prepared) {
       item.quotationUnitPrice = includedAddonCents > 0n
-        ? (rounded(item.final, 100n) + inclusivePerUnitCents) * 100n
+        ? item.final + inclusivePerUnit
         : item.final;
 
       subtotal += rounded(
@@ -667,20 +675,25 @@ export function createSalesOrdersService({
       revisionNumber: rev,
       totalAmount:amount,noteHighlighted:body.noteHighlighted??false,
       discountPercent: body.discountPercent ?? 0,
+      pricingSummary: {
+        discountPercent: format(discount),
+        discountAmount: money(prepared.reduce((sum,p)=>sum+(p.withMarkup-p.discounted)*BigInt(p.item.quantity),0n)),
+        vatType: body.vatType,
+        vatRate: format(vat),
+        applyVat: body.applyVat,
+        vatAmount: money(prepared.reduce((sum,p)=>sum+(body.applyVat && body.vatType === 'Inclusive' ? p.final-rounded(p.final*1000000n,1000000n+vat) : p.final-p.discounted)*BigInt(p.item.quantity),0n)),
+      },
       specifications: prepared.map(p => ({
         inquiryItemId: String(p.item.inquiry_item_id),
         templateSpecifications: p.item.template_specifications
       }))
     });
     if (body.status === 'sent') await notifyClient(c, i.clientId, 'Quotation sent', ref, 'quotation');
+    const saved = await one(c, 'SELECT CAST(quotation_id AS CHAR) id,quotation_no reference,revision_no revisionNumber,status,is_current isCurrent,sent_at sentAt,subtotal,addons_total addonsTotal,total_amount totalAmount,downpayment_percent downpaymentPercent,downpayment_amount downpaymentAmount FROM quotation WHERE quotation_id=?', [quote]);
+    requireThat(saved && saved.status === body.status && Number(saved.isCurrent) === 1 && (body.status !== 'sent' || saved.sentAt), 'SERVICE_UNAVAILABLE');
     return ok({
-      id: quote,
-      reference: ref,
-      revisionNumber:rev,noteHighlighted:body.noteHighlighted??false,
-      status:body.status,
-      totalAmount: amount,
-      downpaymentPercent: body.downpaymentPercent,
-      downpaymentAmount: downpayment,
+      ...saved,
+      noteHighlighted:body.noteHighlighted??false,
       rawMaterialCost: money(prepared.reduce((n, p) => n + p.raw * BigInt(p.item.quantity), 0n)),
       laborCost: money(prepared.reduce((n, p) => n + (body.includeLabor ? p.labor : 0n) * BigInt(p.item.quantity), 0n)),
       markupAmount: money(prepared.reduce((n, p) => n + (p.withMarkup - p.raw - (body.includeLabor ? p.labor : 0n)) * BigInt(p.item.quantity), 0n))

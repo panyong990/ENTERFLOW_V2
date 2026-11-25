@@ -1,7 +1,7 @@
 // Restore editable inputs only. Saved monetary strings stay in document history;
 // the server recalculates prices for every newly saved revision.
 export function restoreQuotationInputs(quotations, items) {
-  const latest = [...quotations].filter(q => ['draft', 'sent', 'superseded'].includes(q.status))
+  const latest = [...quotations].filter(q => ['draft', 'sent', 'superseded', 'rejected'].includes(q.status))
     .sort((a, b) => b.revisionNumber - a.revisionNumber)[0];
   if (!latest) return { costs: {}, document: undefined, latest: undefined };
   const costs = {};

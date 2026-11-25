@@ -35,6 +35,10 @@ export interface WarehouseStockResponseSnapshot {
 }
 
 export interface QuotationDoc {
+  revisionNumber?: number;
+  subtotal?: number;
+  addonsTotal?: number;
+  pricingSummary?: {discountAmount:number;vatType:string;vatRate:string;applyVat:boolean;vatAmount:number};
   quotationNo: string;       // "Q-2026-001"
   date: string;              // "Apr 26, 2026"
   validUntil: string;        // "May 26, 2026"
@@ -341,7 +345,7 @@ export interface Inquiry {
   /* — formal quotation document (Tab 3 output) — */
   quotationDoc?: QuotationDoc;
   quotationId?: string;
-  quotationStatus?: "draft" | "approved" | "sent" | "superseded" | null;
+  quotationStatus?: "draft" | "approved" | "sent" | "superseded" | "accepted" | "rejected" | "expired" | null;
   quotationIsLatestRevision?: boolean;
   quotationDecision?: "accepted" | "rejected" | null;
   quotationDecisionReason?: string | null;

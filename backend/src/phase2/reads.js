@@ -1,4 +1,6 @@
-import { ok, read, rows, one, id, requireThat, paging, paymentTermLabel, decimal, revision, inquiryRevision, validDownpayment } from './core.js';
+import { ok, read as databaseRead, rows, one, id, requireThat, paging, paymentTermLabel, decimal, revision, inquiryRevision, validDownpayment } from './core.js';
+import { logServiceFailure } from '../controllers/service-failure-log.js';
+import { currentRequestId } from '../config/request-context.js';
 import { validateSalesOrderListQuery } from '../validation/sales.validation.js';
 export function termDisplay(row) {
   return {
@@ -62,8 +64,10 @@ const clientShipment = row => ({
 });
 export function createPhase2Reads({
   db,
-  clientId = null
+  clientId = null,
+  logger = console
 }) {
+  const read = (database, work, operation) => databaseRead(database, work, error => logServiceFailure({logger, operation: `orders.read.${operation}`, requestId: currentRequestId(), stage: 'related_read', error}));
   const scope = (alias = 'i') => clientId ? ` AND ${alias}.client_id=?` : '';
   const params = extra => [...extra, ...(clientId ? [clientId] : [])];
   async function owned(c, inquiryId) {
@@ -128,7 +132,7 @@ export function createPhase2Reads({
     detail: inquiryId => read(db, async c => {
       const inquiry = await owned(c, inquiryId);
       const items = await rows(c, `SELECT CAST(ii.inquiry_item_id AS CHAR) id,CAST(ii.inquiry_item_id AS CHAR) specificationId,CAST(ii.inquiry_id AS CHAR) orderId,ii.line_no lineNumber,CAST(ii.filter_type_id AS CHAR) filterTypeId,ft.filter_type_name filterTypeCode,ii.filter_name filterName,ii.quantity,ii.od1_mm od1,ii.od2_mm od2,ii.id1_mm id1,ii.id2_mm id2,ii.height_mm height,ii.overall_height_mm overallHeight,ii.filter_media media,ii.inner_core innerCore,ii.outer_core outerCore,ii.o_ring oring,ii.gasket,ii.filtration_rating filtrationRating,ii.template_specifications templateSpecifications,CAST(ii.sketch_document_id AS CHAR) sketchDocumentId FROM inquiry_item ii JOIN filter_type ft ON ft.filter_type_id=ii.filter_type_id WHERE ii.inquiry_id=? ORDER BY ii.line_no`, [inquiryId]);
-      const revisionRequests = await rows(c, 'SELECT CAST(rr.request_id AS CHAR) id,CAST(rr.quotation_id AS CHAR) quotationId,q.revision_no revisionNumber,rr.reason,rr.status,rr.submitted_at requestedAt,rr.reviewed_at decidedAt,rr.review_note reviewNote FROM quotation_revision_request rr JOIN quotation q ON q.quotation_id=rr.quotation_id WHERE q.inquiry_id=? ORDER BY rr.request_id', [inquiryId]);
+      const revisionRequests = await rows(c, 'SELECT CAST(rr.request_id AS CHAR) id,CAST(rr.quotation_id AS CHAR) quotationId,q.quotation_no quotationReference,q.revision_no revisionNumber,rr.reason,rr.status,rr.submitted_at requestedAt,rr.reviewed_at decidedAt,rr.review_note reviewNote FROM quotation_revision_request rr JOIN quotation q ON q.quotation_id=rr.quotation_id WHERE q.inquiry_id=? ORDER BY rr.request_id', [inquiryId]);
       const cancellationHistory = await rows(c, `SELECT CAST(request_id AS CHAR) id,CAST(quotation_id AS CHAR) quotationId,CAST(po_id AS CHAR) purchaseOrderId,reason,'client' requestedBy,status resolution,submitted_at requestedAt,reviewed_at resolvedAt,review_note response FROM cancellation_request WHERE inquiry_id=? ORDER BY request_id`, [inquiryId]);
       const result = {
         ...publicInquiry(inquiry, clientId),
@@ -145,7 +149,8 @@ export function createPhase2Reads({
             release() {}
           })
         },
-        clientId
+        clientId,
+        logger
       });
       for (const [key, method] of [['quotations', 'quotations'], ['purchaseOrder', 'purchaseOrder'], ['jobOrders', 'jobOrders'], ['deliveries', 'delivery'], ['invoices', 'invoices'], ['payments', 'payments']]) {
         const value = await related[method](inquiryId);
@@ -153,7 +158,7 @@ export function createPhase2Reads({
         result[key] = value.success ? key === 'jobOrders' ? value.data.jobOrders : key === 'deliveries' ? value.data.shipments : value.data : null;
       }
       return ok(result);
-    }),
+    }, 'detail'),
     quotations: inquiryId => read(db, async c => {
       await owned(c, inquiryId);
       const quotes = await rows(c, `SELECT CAST(quotation_id AS CHAR) id,quotation_no reference,revision_no revisionNumber,is_current isCurrent,status,quotation_date issuedOn,valid_until validUntil,terms_of_payment paymentTermCode,total_amount totalAmount,subtotal,addons_total addonsTotal,downpayment_percent downpaymentPercent,downpayment_amount downpaymentAmount,sent_at sentAt,time_of_delivery timeOfDelivery,place_of_delivery placeOfDelivery,highlight_note note,highlight_tag highlightTag,requires_downpayment requiresDownpayment FROM quotation WHERE inquiry_id=?${clientId ? " AND status NOT IN ('draft','approved')" : ''} ORDER BY revision_no,quotation_id`, [inquiryId]);
@@ -162,22 +167,38 @@ export function createPhase2Reads({
           for (const key of Object.keys(q)) if (!['id', 'reference', 'revisionNumber', 'isCurrent', 'isLatestRevision', 'status', 'issuedOn', 'validUntil', 'paymentTermCode', 'totalAmount', 'subtotal', 'addonsTotal', 'downpaymentPercent', 'downpaymentAmount', 'sentAt', 'timeOfDelivery', 'placeOfDelivery', 'note', 'highlightTag', 'requiresDownpayment'].includes(key)) delete q[key];
         }
         q.noteHighlighted=q.highlightTag==='NOTE';
+        q.decision = ['accepted', 'rejected'].includes(q.status) ? q.status : null;
+        q.sent = Boolean(q.sentAt);
         q.isLatestRevision = Boolean(Number(q.isCurrent ?? q.isLatestRevision));
         q.downpaymentValid = validDownpayment(q.downpaymentPercent, q.downpaymentAmount, q.totalAmount);
         q.paymentTermLabel = paymentTermLabel(q.paymentTermCode);
-        q.lines = await rows(c, `SELECT CAST(quotation_item_id AS CHAR) id,CAST(quotation_id AS CHAR) quotationId,CAST(inquiry_item_id AS CHAR) orderItemId,line_no lineNumber,description,quantity,unit_price unitPrice,line_total lineTotal,CAST(uom_id AS CHAR) uomId FROM quotation_item WHERE quotation_id=? ORDER BY line_no`, [q.id]);
-        for (const line of q.lines) for (const key of Object.keys(line)) if (!['id', 'quotationId', 'orderItemId', 'lineNumber', 'description', 'quantity', 'unitPrice', 'lineTotal', 'uomId'].includes(key)) delete line[key];
-        q.addons = await rows(c, 'SELECT CAST(quotation_addon_id AS CHAR) id,CAST(quotation_id AS CHAR) quotationId,addon_type kind,CAST(raw_material_id AS CHAR) materialId,label,quantity,unit_price unitPrice,include_in_unit_price includeInUnitPrice FROM quotation_addon WHERE quotation_id=? ORDER BY quotation_addon_id', [q.id]);
-        for (const addon of q.addons) addon.includeInUnitPrice = Boolean(Number(addon.includeInUnitPrice));
+        q.lines = await rows(c, `SELECT CAST(qi.quotation_item_id AS CHAR) id,CAST(qi.quotation_id AS CHAR) quotationId,CAST(qi.inquiry_item_id AS CHAR) orderItemId,qi.line_no lineNumber,qi.description,qi.quantity,qi.unit_price unitPrice,qi.line_total lineTotal,CAST(qi.uom_id AS CHAR) uomId,u.abbreviation unitLabel FROM quotation_item qi JOIN unit_of_measure u ON u.uom_id=qi.uom_id WHERE qi.quotation_id=? ORDER BY qi.line_no`, [q.id]);
+        for (const line of q.lines) for (const key of Object.keys(line)) if (!['id', 'quotationId', 'orderItemId', 'lineNumber', 'description', 'quantity', 'unitPrice', 'lineTotal', 'uomId', 'unitLabel'].includes(key)) delete line[key];
+        try {
+  q.addons = await rows(c,
+    'SELECT CAST(quotation_addon_id AS CHAR) id,CAST(quotation_id AS CHAR) quotationId,addon_type kind,CAST(raw_material_id AS CHAR) materialId,label,quantity,unit_price unitPrice,include_in_unit_price includeInUnitPrice FROM quotation_addon WHERE quotation_id=? ORDER BY quotation_addon_id',
+    [q.id]
+  );
+} catch (error) {
+  if (error?.code !== 'ER_NO_SUCH_TABLE') throw error;
+  q.addons = [];
+}
+for (const addon of q.addons) {
+  addon.includeInUnitPrice = Boolean(Number(addon.includeInUnitPrice));
+}
+        // Read only commercial presentation fields, never audit actors or costing.
+        const pricing = await one(c, "SELECT JSON_UNQUOTE(JSON_EXTRACT(after_value,'$.discountPercent')) discountPercent,JSON_EXTRACT(after_value,'$.pricingSummary') pricingSummary FROM audit_event WHERE subject_type='quotation' AND subject_id=? AND action IN ('quotation.drafted','quotation.sent') AND JSON_EXTRACT(after_value,'$.discountPercent') IS NOT NULL ORDER BY audit_event_id DESC LIMIT 1", [q.id]);
+        q.discountPercent = pricing?.discountPercent ?? null;
+        let summary = pricing?.pricingSummary;
+        if (typeof summary === 'string') try { summary = JSON.parse(summary); } catch { summary = null; }
+        q.pricingSummary = summary && typeof summary === 'object' ? pick(summary, ['discountPercent','discountAmount','vatType','vatRate','applyVat','vatAmount']) : null;
         if (!clientId) {
-          const discount = await one(c, "SELECT JSON_UNQUOTE(JSON_EXTRACT(after_value,'$.discountPercent')) discountPercent FROM audit_event WHERE subject_type='quotation' AND subject_id=? AND action IN ('quotation.drafted','quotation.sent') ORDER BY audit_event_id DESC LIMIT 1", [q.id]);
-          q.discountPercent = discount?.discountPercent ?? 0;
           q.costing = await rows(c, 'SELECT CAST(ce.estimate_id AS CHAR) id,CAST(ce.quotation_item_id AS CHAR) quotationItemId,CAST(qi.inquiry_item_id AS CHAR) orderItemId,ce.labor_cost_per_unit laborCost,ce.include_labor includeLabor,ce.markup_percent markupPercent,ce.apply_markup applyMarkup,ce.vat_type vatType,ce.vat_rate vatRate,ce.apply_vat applyVat,ce.material_cost_per_unit materialCostPerUnit,ce.unit_cost_with_vat unitPrice,ce.is_locked isLocked FROM cost_estimate ce JOIN quotation_item qi ON qi.quotation_item_id=ce.quotation_item_id WHERE qi.quotation_id=? ORDER BY qi.line_no,ce.estimate_id', [q.id]);
           for (const estimate of q.costing) estimate.materials = await rows(c, 'SELECT CAST(raw_material_id AS CHAR) rawMaterialId,qty_per_filter qtyPerFilter,CAST(uom_id AS CHAR) uomId,unit_price_snapshot unitPriceSnapshot FROM cost_estimate_material WHERE estimate_id=? ORDER BY estimate_material_id', [estimate.id]);
         }
       }
       return ok(quotes);
-    }),
+    }, 'quotations'),
     purchaseOrder: inquiryId => read(db, async c => {
       await owned(c, inquiryId);
       const row = await one(c, `SELECT CAST(p.po_id AS CHAR) id,p.po_no reference,CAST(p.quotation_id AS CHAR) acceptedQuotationId,p.received_date receivedAt,p.payment_terms paymentTermCode,CAST(p.delivery_method_id AS CHAR) deliveryMethodId,CAST(p.po_document_id AS CHAR) fileId,d.storage_status documentStatus,d.file_name originalFilename,d.mime_type mimeType,d.size_bytes sizeBytes,q.quotation_no acceptedQuotationReference,(SELECT e.action FROM audit_event e WHERE e.subject_type='purchase_order' AND e.subject_id=p.po_id AND e.action IN ('purchase_order.validated','purchase_order.rejected') ORDER BY e.audit_event_id DESC LIMIT 1) decisionAction FROM purchase_order p JOIN quotation q ON q.quotation_id=p.quotation_id JOIN document d ON d.document_id=p.po_document_id WHERE q.inquiry_id=? ORDER BY p.po_id DESC LIMIT 1`, [inquiryId]);
@@ -200,7 +221,7 @@ export function createPhase2Reads({
           sizeBytes: row.sizeBytes
         }] : []
       });
-    }),
+    }, 'purchaseOrder'),
     jobOrders: inquiryId => read(db, async c => {
       await owned(c, inquiryId);
       const jobs = await rows(c, `SELECT CAST(j.jo_id AS CHAR) id,j.jo_no reference,CAST(j.po_id AS CHAR) purchaseOrderId,j.status,j.payment_terms paymentTermCode,CASE j.payment_terms WHEN 'NET15' THEN '15-Day Terms' WHEN 'NET30' THEN '30-Day Terms' END paymentTermLabel,j.jo_date joDate,j.due_date productionDueDate,j.completed_at completedAt,(SELECT SUM(ji.quantity) FROM job_order_item ji WHERE ji.jo_id=j.jo_id) quantity,(SELECT ps.stage_order-1 FROM job_order_stage js JOIN production_stage ps ON ps.stage_id=js.stage_id WHERE js.jo_id=j.jo_id AND js.status<>'completed' ORDER BY ps.stage_order LIMIT 1) currentStageCursor,(SELECT ps.stage_name FROM job_order_stage js JOIN production_stage ps ON ps.stage_id=js.stage_id WHERE js.jo_id=j.jo_id AND js.status<>'completed' ORDER BY ps.stage_order LIMIT 1) currentStageLabel,(SELECT COUNT(*) FROM cost_estimate_material cm JOIN cost_estimate ce ON ce.estimate_id=cm.estimate_id JOIN job_order_item ji ON ji.quotation_item_id=ce.quotation_item_id WHERE ji.jo_id=j.jo_id) bomLineCount FROM job_order j JOIN purchase_order p ON p.po_id=j.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE q.inquiry_id=? ORDER BY j.jo_id`, [inquiryId]);
@@ -221,7 +242,7 @@ export function createPhase2Reads({
           completed: Boolean(j.completedAt)
         })) : jobs
       });
-    }),
+    }, 'jobOrders'),
     delivery: inquiryId => read(db, async c => {
       await owned(c, inquiryId);
       let shipments = await rows(c, `SELECT ${deliveryColumns} FROM ${deliveryFrom} WHERE i.inquiry_id=? ORDER BY d.delivery_id`, [inquiryId]);
@@ -240,17 +261,17 @@ export function createPhase2Reads({
         waybills,
         deliveryReceipts
       });
-    }),
+    }, 'delivery'),
     invoices: inquiryId => read(db, async c => {
       await owned(c, inquiryId);
       return ok(await rows(c, `SELECT ${invoiceColumns} FROM ${invoiceFrom} WHERE i.inquiry_id=?${clientId ? " AND v.status IN ('issued','partially_paid','paid')" : ''} ORDER BY v.invoice_id`, [inquiryId]).then(data => data.map(r => invoiceDisplay(clientId ? pick(r, ['id', 'orderId', 'reference', 'issuedOn', 'dueOn', 'amount', 'paymentTermCode', 'status', 'requiredDownpayment', 'verifiedAmount', 'outstandingAmount']) : r))));
-    }),
+    }, 'invoices'),
     payments: inquiryId => read(db, async c => {
       await owned(c, inquiryId);
       const proofs = await rows(c, `SELECT CAST(r.receipt_id AS CHAR) id,CAST(r.invoice_id AS CHAR) invoiceId,r.amount_declared submittedAmount,r.review_status verificationStatus,r.review_note rejectionReason,r.sent_at submittedAt,r.reviewed_at reviewedAt,CASE WHEN r.review_status='verified' THEN (SELECT SUM(t.amount) FROM payment_transaction t WHERE t.client_receipt_id=r.receipt_id AND t.approval_status='approved') ELSE NULL END verifiedAmount,(SELECT CAST(MIN(f.document_id) AS CHAR) FROM proof_of_payment_file f JOIN document d ON d.document_id=f.document_id AND d.storage_status='available' WHERE f.receipt_id=r.receipt_id) proofFileId FROM proof_of_payment r JOIN sales_invoice v ON v.invoice_id=r.invoice_id JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE q.inquiry_id=? ORDER BY r.receipt_id DESC`, [inquiryId]);
       for (const r of proofs) r.files = await rows(c, 'SELECT CAST(document_id AS CHAR) fileId FROM proof_of_payment_file WHERE receipt_id=?', [r.id]);
       return ok(clientId ? proofs.map(r => pick(r, ['id', 'invoiceId', 'submittedAmount', 'verificationStatus', 'rejectionReason', 'submittedAt', 'reviewedAt', 'verifiedAmount', 'proofFileId', 'files'])) : proofs);
-    }),
+    }, 'payments'),
     dashboard: () => read(db, async c => {
       requireThat(clientId, 'FORBIDDEN');
       const counts = await one(c, `SELECT

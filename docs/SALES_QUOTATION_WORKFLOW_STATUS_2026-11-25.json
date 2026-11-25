@@ -1,0 +1,134 @@
+{
+  "date": "2026-11-25",
+  "status": "IMPLEMENTED_OFFLINE; LIVE_WORKFLOW_NOT_COMPLETE",
+  "changed_files": [
+    "backend/src/controllers/service-failure-log.js",
+    "backend/src/phase2/core.js",
+    "backend/src/phase2/reads.js",
+    "backend/src/phase2/workflows.js",
+    "backend/src/phase2/quotation-workflow.test.js",
+    "backend/src/services/client-portal.service.test.js",
+    "backend/src/services/sales-orders.service.test.js",
+    "backend/src/validation/sales.validation.js",
+    "backend/test/quotation-workflow-readonly.mjs",
+    "backend/test/quotation-workflow-readonly.test.mjs",
+    "backend/scripts/local/Start-SharedPhase2.ps1 (ignored local launcher)",
+    "src/app/api/clientPortal.ts",
+    "src/app/api/clientPortal.test.mjs",
+    "src/app/api/referenceData.ts",
+    "src/app/api/salesOrderDocuments.js",
+    "src/app/api/salesOrders.js",
+    "src/app/api/salesOrders.test.mjs",
+    "src/app/components/ClientPortal.tsx",
+    "src/app/components/client/QuotationPreviewModal.tsx",
+    "src/app/components/client/adapters.ts",
+    "src/app/components/client/adapters.test.mjs",
+    "src/app/components/client/data.tsx",
+    "src/app/components/client/model.ts",
+    "src/app/components/sales/LiveSalesActions.tsx",
+    "src/app/components/sales/RealQuotationPreparation.tsx (pre-existing user edit preserved)",
+    "src/app/components/sales/quotationDraft.js",
+    "src/app/components/useSalesOrders.ts"
+  ],
+  "completed": [
+    "Quotation save response reads persisted header values and verifies sent/current state; frontend blocks retries on an unexpected response shape.",
+    "Included add-ons retain four-decimal allocation precision; separate add-ons remain separate charges.",
+    "Client projection preserves four-decimal unit prices, units, notes, revision numbers, discounts and safe commercial VAT summaries.",
+    "Acceptance and canonical Sales detail collections are mapped into existing UI contracts.",
+    "Client PO upload includes the accepted quotation and a selected configured delivery method.",
+    "Sales revision requests show reference/revision and can be reviewed through the existing authorized API.",
+    "Related-read failures retain safe operation-specific backend diagnostics; optional absent PO remains null.",
+    "Read-only schema diagnostic reports missing tables/columns and uses query() for START TRANSACTION READ ONLY."
+  ],
+  "confirmed_runtime_evidence": {
+    "source": "User-operated shared launcher; no credentials supplied to the agent",
+    "database": "enterflow_phase2_db",
+    "version": "8.4.13",
+    "tables_inspected_by_initial_diagnostic": [
+      "inquiry",
+      "inquiry_item",
+      "quotation",
+      "quotation_item"
+    ],
+    "next_missing_table": "quotation_addon",
+    "unsupported_prepared_operation": "START TRANSACTION READ ONLY",
+    "correction": "Transaction command now uses the text query protocol; regression verifies execute() rejects transaction control.",
+    "latest_shared_diagnostic": "Awaiting corrected run; actual alternate table mapping and further schema gaps unconfirmed"
+  },
+  "tests": [
+    {
+      "scope": "Relevant backend routes, document workflows, reads, requests, diagnostics, core",
+      "passed": 198,
+      "failed": 0,
+      "proof": "Offline doubles and HTTP tests; not live MySQL proof"
+    },
+    {
+      "scope": "Latest quotation/client/revision/diagnostic tests",
+      "passed": 58,
+      "failed": 0
+    },
+    {
+      "scope": "Targeted Sales quotation tests",
+      "passed": 27,
+      "failed": 0
+    },
+    {
+      "scope": "Frontend quotation/API adapters",
+      "passed": 21,
+      "failed": 0
+    },
+    {
+      "scope": "Full backend regression",
+      "passed": 1096,
+      "failed": 52,
+      "total": 1148,
+      "note": "Failures remain in client directory, server lifecycle, inventory, Sales availability and stock requests. 24 Sales availability failures were observed before edits. No complete full-suite baseline was run."
+    },
+    {
+      "scope": "Final frontend build",
+      "result": "PASS",
+      "command": "npm.cmd run build",
+      "note": "Existing large-chunk warning"
+    },
+    {
+      "scope": "git diff --check and JavaScript syntax checks",
+      "result": "PASS"
+    }
+  ],
+  "limitations": [
+    "No authenticated live create/send/revision/accept/PO persistence or browser acceptance has been demonstrated.",
+    "Missing quotation_addon remains an explicit schema blocker; no empty-success fallback or guessed replacement table was introduced.",
+    "Original sent-versus-draft and array-versus-object runtime discrepancies still require verification after running source and schema agree.",
+    "The local shared launcher is ignored by Git; its diagnostic switch exists locally and is not tracked."
+  ],
+  "databaseChangeReport": {
+    "tables_reviewed_in_source": [
+      "inquiry",
+      "inquiry_item",
+      "quotation",
+      "quotation_item",
+      "quotation_addon",
+      "cost_estimate",
+      "cost_estimate_material",
+      "quotation_revision_request",
+      "purchase_order",
+      "document",
+      "audit_event",
+      "notification",
+      "job_order",
+      "sales_invoice",
+      "proof_of_payment",
+      "payment_transaction",
+      "delivery",
+      "unit_of_measure"
+    ],
+    "live_schema_evidence": "User-confirmed initial inspection of four tables; quotation_addon is absent. Full shared schema output pending.",
+    "schema_changes_proposed": [],
+    "schema_changes_performed": [],
+    "data_changes_performed": [],
+    "migrations_created": [],
+    "migrations_applied": [],
+    "pending_approvals": "If no existing add-on table can be mapped, an exact reviewed schema proposal and separate approval are required before any DDL.",
+    "migration_007": "Untouched: not accessed, inspected, executed, modified or hashed; migration metadata not queried."
+  }
+}

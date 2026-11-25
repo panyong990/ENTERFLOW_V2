@@ -115,12 +115,13 @@ export async function changed(c, sql, params = []) {
   requireThat(r.affectedRows === 1 && !r.warningStatus, 'STALE_RECORD');
   return r;
 }
-export async function read(db, work) {
+export async function read(db, work, onError) {
   let c;
   try {
     c = await db.getConnection();
     return await work(c);
   } catch (e) {
+    if (!e?.business && onError) try { onError(e); } catch { /* Diagnostics cannot alter results. */ }
     return failure(e);
   } finally {
     c?.release();

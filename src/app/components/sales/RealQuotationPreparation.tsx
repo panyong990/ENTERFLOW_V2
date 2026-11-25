@@ -293,8 +293,12 @@ for (let index = 0; index < detail.items.length; index++) {
         status, baseQuotationId: restored.latest?.id ?? null, issuedOn: new Date().toISOString().slice(0, 10), validUntil: /^\d{4}-\d{2}-\d{2}$/.test(doc.validUntil) ? doc.validUntil : `${validity.getFullYear()}-${String(validity.getMonth()+1).padStart(2,"0")}-${String(validity.getDate()).padStart(2,"0")}`,
         paymentTermCode: doc.termsOfPayment === "15-Day Terms" ? "NET15" : "NET30", timeOfDelivery: doc.timeOfDelivery, placeOfDelivery: doc.placeOfDelivery,
         note: doc.note || undefined, noteHighlighted: doc.noteHighlighted, downpaymentPercent: doc.downpaymentPercent,
-        vatType: config.vatType, vatRate: config.vatRate, includeLabor: config.includeLabor, applyMarkup: config.applyMarkup,
-        applyVat: config.applyVAT, discountPercent: config.discountPct ?? 0,
+        vatType: config.vatType,
+vatRate: config.vatRate,
+includeLabor: Boolean(config.includeLabor),
+applyMarkup: Boolean(config.applyMarkup),
+applyVat: Boolean(config.applyVAT),
+discountPercent: config.discountPct ?? 0,
         packaging: doc.packaging ? {
           materialId: doc.packaging.materialId,
           quantity: doc.packaging.qty,
@@ -313,7 +317,12 @@ for (let index = 0; index < detail.items.length; index++) {
           materials: costingMaterials[index]
         }))
       });
-      onSaved(status, result as QuotationResult);
+      if (!result || Array.isArray(result) || result.status !== status || !result.id) {
+        setUncertain(true);
+        setError('The server returned an unexpected quotation result. Check saved quotation history before submitting again.');
+        return;
+      }
+      onSaved(result.status, result as QuotationResult);
     } catch (cause) {
       if (uncertainWrite(cause)) setUncertain(true);
       setError(quotationFailureMessage(cause, detail));

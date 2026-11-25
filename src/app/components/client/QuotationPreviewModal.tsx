@@ -41,7 +41,7 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
         <div className="px-6 py-3 border-b border-slate-200 flex items-center justify-between shrink-0 print:hidden">
           <div>
             <h3 className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Quotation Preview</h3>
-            <p className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{doc.quotationNo} · ready to send to client</p>
+            <p className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{doc.quotationNo}{doc.revisionNumber != null && ` · Revision ${doc.revisionNumber}`}</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-slate-100" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A", border: "1px solid #CBD5E1" }}>
@@ -210,6 +210,12 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
               </div>
               {/* Totals */}
               <div className="flex flex-col gap-2">
+              {doc.pricingSummary && <div className="font-dm text-xs text-slate-600">
+                <p>Product subtotal (discount and applicable VAT included): ₱{displayNumber(doc.subtotal ?? NaN, {minimumFractionDigits:2,maximumFractionDigits:2})}</p>
+                <p>Discount applied: ₱{displayNumber(doc.pricingSummary.discountAmount, {minimumFractionDigits:2,maximumFractionDigits:2})}</p>
+                <p>{doc.pricingSummary.applyVat ? doc.pricingSummary.vatType : 'VAT not applied'} · VAT amount: ₱{displayNumber(doc.pricingSummary.vatAmount, {minimumFractionDigits:2,maximumFractionDigits:2})}</p>
+                <p>Separate packaging and shipping: ₱{displayNumber(doc.addonsTotal ?? NaN, {minimumFractionDigits:2,maximumFractionDigits:2})}</p>
+              </div>}
                 <div className="rounded w-full" style={{ backgroundColor: "#1A2B4A", color: "white", padding: "12px 16px" }}>
                   <div className="font-dm" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", opacity: 0.7 }}>
                     <span>Total</span>
@@ -311,7 +317,10 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
 }
 
 export function quotationVatLabel(inquiry: Inquiry): string {
-  if ("source" in inquiry) return "VAT information unavailable";
+  if ("source" in inquiry) {
+    const summary = inquiry.quotationDoc?.pricingSummary;
+    return !summary ? 'VAT information unavailable' : !summary.applyVat ? 'VAT NOT APPLIED' : summary.vatType === 'Zero-Rated' ? 'ZERO-RATED' : `VAT ${summary.vatType.toUpperCase()}`;
+  }
   const vatType = inquiry.productsCostConfig?.find((config) => config?.vatType)?.vatType
     ?? inquiry.costConfig?.vatType;
   if (vatType === "Exclusive") return "VAT EXCLUSIVE";

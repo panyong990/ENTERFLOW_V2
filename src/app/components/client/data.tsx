@@ -87,14 +87,18 @@ export function useOrderAdapter({ profile, bundles, refresh }: State, surface: S
     refresh();
     return result;
   };
-  const submitPurchaseOrder = async (orderId: string, reference: string, file?: File) => {
-    if (file) { const result = await clientPortalApi.uploadPurchaseOrderDocument(orderId, { reference, file }); refresh(); return result; }
-    const result = await clientPortalApi.submitPurchaseOrder(orderId, { reference });
+  const submitPurchaseOrder = async (orderId: string, reference: string, file?: File, deliveryMethodId?: string) => {
+    const quotations = bundles.find(bundle => bundle.order.id === orderId)?.quotations;
+    const quotation = quotations?.find(quote => quote.isLatestRevision && (quote.decision === 'accepted' || quote.status === 'accepted'));
+    if (!file || !deliveryMethodId || !quotation) throw new Error('An accepted current quotation, delivery method and PO document are required.');
+    const result = await clientPortalApi.uploadPurchaseOrderDocument(orderId, { reference, file, deliveryMethodId, quotationId: quotation.id });
     refresh();
     return result;
   };
   const requestQuotationRevision = async (orderId: string, reason: string) => {
-    const result = await clientPortalApi.requestQuotationRevision(orderId, { reason });
+    const quotationId = bundles.find(bundle => bundle.order.id === orderId)?.quotations.find(quote => quote.isLatestRevision)?.id;
+    if (!quotationId) throw new Error('Reload the current quotation before requesting a revision.');
+    const result = await clientPortalApi.requestQuotationRevision(orderId, { reason, quotationId });
     refresh();
     return result;
   };

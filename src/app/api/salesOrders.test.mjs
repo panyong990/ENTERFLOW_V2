@@ -5,6 +5,14 @@ import { createRequire, Module } from 'node:module';
 import { transformSync } from 'esbuild';
 
 const require = createRequire(import.meta.url);
+test('Sales detail maps canonical PO and request collections without discarding revision identity',()=>{
+  const {mapSalesOrder}=adapter();
+  const row=mapSalesOrder({id:'19',items:[],purchaseOrder:{id:'71'},revisionRequests:[{id:'81',quotationId:'9007199254740993',revisionNumber:3,reason:'Revise delivery',status:'pending'}],cancellationHistory:[],deliveries:[]});
+  assert.equal(row.requests[0].kind,'quotation_revision');
+  assert.equal(row.requests[0].quotationId,'9007199254740993');
+  assert.deepEqual(row.purchaseOrders,[{id:'71'}]);
+  assert.deepEqual(row.shipments,[]);
+});
 
 function adapter() {
   const source = readFileSync(new URL('./salesOrders.js', import.meta.url), 'utf8');

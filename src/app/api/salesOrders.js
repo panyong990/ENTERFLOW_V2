@@ -45,12 +45,21 @@ export function sumVerifiedPaymentAmounts(payments = []) {
 }
 
 export function mapSalesOrder(row) {
+  const requests = row.requests ?? [
+    ...(row.revisionRequests ?? []).map(request => ({...request,kind:'quotation_revision'})),
+    ...(row.cancellationHistory ?? []).map(request => ({...request,kind:'cancellation',status:request.resolution})),
+  ];
   return {
     ...row,
     id: String(row.id),
     clientId: row.clientId == null ? null : String(row.clientId),
     archived: Boolean(row.archived),
     urgent: Boolean(row.urgent),
+    ...(Array.isArray(row.items) ? {
+      requests,
+      purchaseOrders: row.purchaseOrders ?? (row.purchaseOrder ? [row.purchaseOrder] : []),
+      shipments: row.shipments ?? row.deliveries ?? [],
+    } : {}),
     ...(Array.isArray(row.payments) ? { payments: row.payments.map(mapSalesPayment) } : {}),
   };
 }

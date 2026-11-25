@@ -19,12 +19,14 @@ const categories = new Map([
 ]);
 
 const operations = new Set([
+  ...['quotations','purchaseOrder','jobOrders','delivery','invoices','payments','detail'].map(operation => `orders.read.${operation}`),
   'sales.dashboard', 'inventory.list', 'auth.register',
   ...['list', 'detail', 'rejectInquiry', 'createQuotation', 'rejectionHistory', 'quotations',
     'processPurchaseOrder', 'generateInvoice', 'createJobOrders', 'purchaseOrder',
     'jobOrders', 'delivery', 'stockAvailability'].map(operation => `sales.orders.${operation}`)
 ]);
 const stages = new Set(['service_call', 'service_result', 'response',
+  'related_read',
   'password_hash', 'password_hash_result', 'connection_acquire', 'database_identity',
   'identity_lock_acquire', 'identity_lock_result', 'transaction_begin', 'user_identity_lookup',
   'application_identity_lookup', 'application_insert', 'application_insert_result',

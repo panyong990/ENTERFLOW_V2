@@ -8,6 +8,7 @@ export interface ReferenceUnit {
 
 interface ReferenceData {
   units: ReferenceUnit[];
+  deliveryMethods: { id: string; name: string }[];
 }
 
 export function getReferenceData(signal?: AbortSignal) {

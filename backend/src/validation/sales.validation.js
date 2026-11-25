@@ -145,10 +145,11 @@ export function validateJobOrderCreation(body) {
 export function validateQuotationRevisionRequest(body) {
   const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
   const errors = {};
-  for (const key of Object.keys(input)) if (key !== 'reason') errors[key] = 'Unexpected field.';
+  for (const key of Object.keys(input)) if (!['reason','quotationId'].includes(key)) errors[key] = 'Unexpected field.';
+  if (input.quotationId !== undefined && !validateSalesOrderId(input.quotationId).success) errors.quotationId = 'A valid quotation ID is required.';
   const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
   if (reason.length < 5 || reason.length > 2000) errors.reason = 'A revision reason between 5 and 2000 characters is required.';
-  return Object.keys(errors).length ? { success: false, code: 'VALIDATION_ERROR', errors } : { success: true, data: { reason } };
+  return Object.keys(errors).length ? { success: false, code: 'VALIDATION_ERROR', errors } : { success: true, data: { reason, ...(input.quotationId === undefined ? {} : {quotationId:input.quotationId}) } };
 }
 
 export function validateCancellationRequest(body) {

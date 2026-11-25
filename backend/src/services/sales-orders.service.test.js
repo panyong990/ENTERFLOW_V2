@@ -127,7 +127,8 @@ function quotationDatabase({missingPrice=false,unitPrice='10',existingQuotes=[],
   if(sql.includes('FROM raw_material m JOIN material_category'))return [[{materialId:'71',materialName:'Carton Box',referenceUnitPrice:'5.5000',categoryName:'packaging'}]];
    if(sql.includes('FROM raw_material WHERE'))return [[{material_id:'61',uom_id:'1',material_category_id:null,reference_unit_price:missingPrice?null:unitPrice}]];
   if(sql.startsWith('UPDATE quotation SET is_current')){savedQuotes.find(q=>q.id===params[0]).isCurrent=false;return [{affectedRows:1}];}
-  if(sql.startsWith('INSERT INTO quotation(')){const id=String(serial++);savedQuotes.push({id,reference:params[0],revisionNumber:params[2],status:params[15],isCurrent:true});return [{affectedRows:1,insertId:id}];}
+  if(sql.startsWith('INSERT INTO quotation(')){const id=String(serial++);savedQuotes.push({id,reference:params[0],revisionNumber:params[2],status:params[15],isCurrent:true,subtotal:params[12],addonsTotal:params[13],totalAmount:params[14],downpaymentPercent:params[10],downpaymentAmount:params[11],sentAt:params[15]==='sent'?'2026-11-25T00:00:00Z':null});return [{affectedRows:1,insertId:id}];}
+  if(sql.includes('FROM quotation WHERE quotation_id=?'))return [savedQuotes.filter(q=>q.id===params[0])];
   if(sql.includes('FROM client_user'))return [[]];
   if(sql.startsWith('INSERT'))return [{affectedRows:1,insertId:String(serial++)}];
   if(sql.startsWith('UPDATE'))return [{affectedRows:1}];

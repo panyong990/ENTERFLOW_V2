@@ -23,6 +23,9 @@ export function processSalesPurchaseOrder(orderId, body, signal) {
 export function generateSalesInvoice(orderId, signal) {
   return api(`/api/sales/orders/${encodeURIComponent(orderId)}/invoice`, { method: 'POST', body: {}, signal });
 }
+export function reviewSalesQuotationRevision(orderId, requestId, body) {
+  return api(`/api/phase2/sales/orders/${encodeURIComponent(orderId)}/revisions/${encodeURIComponent(requestId)}/review`, {method:'POST',body});
+}
 
 function stringId(value) {
   return value == null ? value : String(value);

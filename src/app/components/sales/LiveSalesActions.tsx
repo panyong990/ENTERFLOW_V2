@@ -6,7 +6,7 @@ import type { SalesOrderDetail } from "../useSalesOrders";
 import { useSalesOrderDetail } from "../useSalesOrders";
 import { useSalesOrderDocuments } from "../useSalesOrderDocuments";
 import { getSalesOrder, mapSalesOrder, sumVerifiedPaymentAmounts } from "../../api/salesOrders.js";
-import { generateSalesInvoice, getSalesPurchaseOrder, processSalesPurchaseOrder } from "../../api/salesOrderDocuments.js";
+import { generateSalesInvoice, getSalesPurchaseOrder, processSalesPurchaseOrder, reviewSalesQuotationRevision } from "../../api/salesOrderDocuments.js";
 import { createSalesJobOrders } from "../../api/salesJobOrders.js";
 import { RealQuotationPreparation } from "./RealQuotationPreparation";
 import { ModalShell } from "./QuotationModalShell";
@@ -22,18 +22,31 @@ const unresolvedWrites = new Set<string>();
 export function LiveSalesCardActions({ inquiry, adapter, onAction, onReject }: { inquiry: LiveInquiry; adapter: OriginalSalesAdapter; onAction: (action: string) => void; onReject: (reason: string) => void | Promise<void> }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
+  const [revisionBusy, setRevisionBusy] = useState(false);
+  const revisionLock = useRef(false);
+  const reviewRevision = async (requestId: string) => {
+    if (revisionLock.current) return;
+    revisionLock.current = true; setRevisionBusy(true);
+    try {
+      await reviewSalesQuotationRevision(inquiry.id, requestId, {decision:'approved'});
+      adapter.refresh();
+      toast.success('Revision request approved. Prepare and send the revised quotation.');
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Revision review failed.'); }
+    finally { revisionLock.current = false; setRevisionBusy(false); }
+  };
   const row = inquiry.salesRecord, detail = inquiry.salesDetail;
   const ready = readyForJobOrder(detail);
-  const latestQuotation = detail?.quotations?.[0] as { totalAmount?: string; status?: string; reference?: string } | undefined;
+  const latestQuotation = detail?.quotations?.at(-1) as { totalAmount?: string; status?: string; reference?: string } | undefined;
   const invoice = detail?.invoices?.[0] as { reference?: string; amount?: string; requiredDownpayment?: string; sentAt?: string } | undefined;
   const error = adapter.details.errors[inquiry.id];
-  const canQuote = Boolean(detail?.items.length && !row.archivedAt && ["inquiry", "quotation"].includes(detail.stageCode) && !inquiry.pendingCancellation);
+  const canQuote = Boolean(detail?.items.length && !row.archivedAt && ["inquiry", "quotation"].includes(detail.stageCode) && latestQuotation?.status !== 'accepted' && !inquiry.pendingCancellation);
   return <div className="flex flex-col gap-3">
     {!detail && (error ? <p role="alert" className="text-xs text-red-700">Product details unavailable. {error} <button onClick={adapter.refresh} className="underline">Retry details</button></p> : <p role="status" className="text-xs text-slate-500">Loading product specifications…</p>)}
     <button onClick={() => onAction("history")} className={`${actionClass} self-start border border-red-200 text-red-700`}><FileText size={12} /> View Quotation, PO &amp; Document History</button>
     {row.latestQuotationReference && <p className="text-xs text-slate-600">Quotation: {row.latestQuotationReference} · {row.latestQuotationStatus || "Status unavailable"}</p>}
     {latestQuotation && <p className="font-syne text-sm font-bold text-slate-900">Quotation total: ₱{latestQuotation.totalAmount ?? "Unavailable"}</p>}
     {!!inquiry.revisionRequests?.length && <section className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950"><b>Quotation Revision &amp; Document History</b>{inquiry.revisionRequests.map(request => <div key={request.id} className="mt-2"><b>{request.status === "pending" ? "Revision Requested" : "Processed"}</b> · {request.requestedAt || "Date unavailable"}<p className="mt-1 whitespace-pre-wrap">{request.note}</p></div>)}</section>}
+    {detail?.revisionRequests?.map(request => <div key={request.id} className="text-xs text-slate-600"><p>{request.quotationReference || 'Quotation'} · Revision {request.revisionNumber} · {request.status}</p>{request.status === 'pending' && <button type="button" disabled={revisionBusy || adapter.busy} onClick={() => void reviewRevision(request.id)} className={`${actionClass} border border-amber-300 text-amber-950`}>Approve revision request</button>}</div>)}
     {!inquiry.pendingCancellation && ["inquiry", "quotation"].includes(row.stageCode) && <button disabled={!canQuote} onClick={() => onAction("quotation")} className={`${actionClass} bg-[#1A2B4A] text-white`}><Calculator size={13} />{row.stageCode === "inquiry" ? "REVIEW & SEND QUOTATION" : "PREPARE QUOTATION REVISION"}<ArrowRight size={14} /></button>}
     {row.stageCode === "quotation" && <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-center text-xs font-bold text-amber-900">{row.latestQuotationStatus === "sent" ? "QUOTATION SENT · AWAITING CLIENT PO" : "QUOTATION DRAFT · AWAITING SALES REVIEW"}</p>}
     {row.stageCode === "po" && !inquiry.pendingCancellation && <>

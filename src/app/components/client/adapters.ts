@@ -27,6 +27,14 @@ export function draftMoney(value: unknown): number {
 export function displayNumber(value: number, options?: Intl.NumberFormatOptions): string {
   return Number.isFinite(value) ? value.toLocaleString('en-PH', options) : 'Unavailable';
 }
+export function quotationUnitPrice(value: unknown): number {
+  if (value == null || !/^\d+(?:\.\d{1,4})?$/.test(String(value))) return NaN;
+  const [whole, fraction = ''] = String(value).split('.');
+  const scaled = BigInt(whole) * 10000n + BigInt(fraction.padEnd(4, '0'));
+  if (scaled > BigInt(Number.MAX_SAFE_INTEGER)) return NaN;
+  const number = Number(scaled) / 10000;
+  return Math.round(number * 10000) === Number(scaled) ? number : NaN;
+}
 export function product(item: ClientOrderDetail['items'][number]): ProductLine {
   const result: Record<string, unknown> = { ...item, id: item.id, type: item.filterTypeCode ?? '', oem: item.oemPartNumber ?? '', qty: Number(item.quantity) };
   return result as unknown as ProductLine;
@@ -37,6 +45,12 @@ function quote(q: ClientQuotation): QuotationDoc {
   return { quotationNo: q.reference, date: q.issuedOn ?? '—', validUntil: q.validUntil ?? '—',
     termsOfPayment: q.paymentTermLabel ?? '—', timeOfDelivery: q.timeOfDelivery ?? '—', placeOfDelivery: q.placeOfDelivery ?? '—',
     total: draftMoney(q.totalAmount), downpaymentPercent: Number(q.downpaymentPercent), downpaymentAmount: draftMoney(q.downpaymentAmount),
+    note: q.note ?? '', noteHighlighted: Boolean(q.noteHighlighted),
+    revisionNumber: q.revisionNumber,
+    subtotal: q.subtotal == null ? undefined : draftMoney(q.subtotal),
+    addonsTotal: q.addonsTotal == null ? undefined : draftMoney(q.addonsTotal),
+    discounts: q.discountPercent == null ? undefined : [{label:'Discount',percent:Number(q.discountPercent)}],
+    pricingSummary: q.pricingSummary ? {...q.pricingSummary,discountAmount:draftMoney(q.pricingSummary.discountAmount),vatAmount:draftMoney(q.pricingSummary.vatAmount)} : undefined,
     packaging: packagingAddon ? {
       materialId: packagingAddon.materialId ?? "",
       materialName: packagingAddon.label,
@@ -49,7 +63,7 @@ function quote(q: ClientQuotation): QuotationDoc {
       amount: Number(shippingAddon.quantity) * Number(shippingAddon.unitPrice),
       includeInUnit: Boolean(shippingAddon.includeInUnitPrice),
     } : undefined,
-    lineItems: q.lines.map(line => ({ no: line.lineNumber, qty: Number(line.quantity), unit: line.unitLabel ?? '—', description: line.description, subDescription: line.subDescription ?? undefined, unitPrice: draftMoney(line.unitPrice) })),
+    lineItems: q.lines.map(line => ({ no: line.lineNumber, qty: Number(line.quantity), unit: line.unitLabel ?? '—', description: line.description, subDescription: line.subDescription ?? undefined, unitPrice: quotationUnitPrice(line.unitPrice) })),
   } as QuotationDoc;
 }
 // Public Client contracts expose labels rather than internal stage codes. Unknown labels stay unknown.
@@ -62,7 +76,7 @@ export function project(bundle: OrderBundle, profile: ClientProfile, surface: Su
     paymentTerms: order.paymentTermLabel ?? '—', submittedDate: order.submittedAt ? new Date(order.submittedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : 'Unavailable',
     stage: stages[order.stageLabel ?? ''] ?? 'unavailable', products: order.items.map(product),
     dueDate: order.requestedDeliveryDate ?? undefined, quotationDoc: latest ? quote(latest) : undefined,
-    quotationId: latest?.id, quotationStatus: order.latestQuotationStatus ?? latest?.status, quotationIsLatestRevision: latest?.isLatestRevision, quotationDecision: latest?.decision ?? null, quotationDecisionReason: latest?.decisionReason ?? null, quotationDecidedAt: latest?.decidedAt ?? null,
+    quotationId: latest?.id, quotationStatus: latest?.isLatestRevision === false ? 'superseded' : (order.latestQuotationStatus ?? latest?.status), quotationIsLatestRevision: latest?.isLatestRevision, quotationDecision: latest?.decision ?? (latest?.status === 'accepted' || latest?.status === 'rejected' ? latest.status : null), quotationDecisionReason: latest?.decisionReason ?? null, quotationDecidedAt: latest?.decidedAt ?? null,
     quotationDownpaymentValid: latest?.downpaymentValid,
     quotationHistory: quotations.slice(0, -1).map(quote), quotedTotal: latest ? draftMoney(latest.totalAmount) : NaN,
     revisionRequests: order.revisionRequests?.map(request => ({

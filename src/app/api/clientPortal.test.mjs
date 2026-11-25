@@ -56,11 +56,21 @@ test("Client cancellation adapter uses the encoded owned-order endpoint and expl
   assert.equal(adapter().requestCancellation('91/other', body).path, '/api/client/orders/91%2Fother/cancellation');
 });
 
-test("client portal adapter submits only a purchase-order reference", () => {
-  const result = adapter().submitPurchaseOrder("21", { reference: "PO-CLIENT-1" });
+test("client portal adapter submits an existing document and its eligible quotation and delivery references", () => {
+  const input={ reference: "PO-CLIENT-1", quotationId:'34', documentId:'90', deliveryMethodId:'1' };
+  const result = adapter().submitPurchaseOrder("21", input);
   assert.equal(result.path, "/api/client/orders/21/purchase-order");
   assert.equal(result.options.method, "POST");
-  assert.deepEqual(result.options.body, { reference: "PO-CLIENT-1" });
+  assert.deepEqual(result.options.body, input);
+});
+test('purchase-order upload carries the selected delivery method and accepted revision with the actual document',()=>{
+  const file=new File(['%PDF-1.4 synthetic'],'po.pdf',{type:'application/pdf'});
+  const result=adapter().uploadPurchaseOrderDocument('19',{reference:'PO-19',quotationId:'9007199254740993',deliveryMethodId:'4',file});
+  assert.equal(result.path,'/api/documents/client/orders/19/purchase-order');
+  assert.equal(result.options.body.get('quotationId'),'9007199254740993');
+  assert.equal(result.options.body.get('deliveryMethodId'),'4');
+  assert.equal(result.options.body.get('reference'),'PO-19');
+  assert.equal(result.options.body.get('document').name,'po.pdf');
 });
 
 test("client portal adapter encodes query parameters without accepting ownership parameters", () => {

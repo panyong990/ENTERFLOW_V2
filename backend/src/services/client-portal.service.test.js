@@ -90,6 +90,7 @@ function harness({ profileRows = [], orderRows = [], itemRows = [], quotationRow
       if (/FROM quotation_revision_request/.test(sql)) return [revisionRequestRows];
       if (/FROM audit_event/.test(sql)) return [[]];
       if (/FROM quotation_item/.test(sql)) return [quotationLineRows];
+      if (/FROM quotation_addon/.test(sql)) return [[]];
       if (/FROM quotation WHERE/.test(sql)) return [quotationRows];
       if (/FROM job_order/.test(sql)) return [jobOrderRows];
       if (/FROM delivery/.test(sql)) return [shipmentRows];

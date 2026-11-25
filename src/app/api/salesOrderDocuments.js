@@ -35,6 +35,7 @@ export function mapSalesQuotation(quotation) {
     lines: (quotation.lines ?? []).map(line => ({ ...line, id: stringId(line.id), quotationId: stringId(line.quotationId), orderItemId: stringId(line.orderItemId) })),
     costing: (quotation.costing ?? []).map(item => ({ ...item, id: stringId(item.id), quotationId: stringId(item.quotationId), orderItemId: stringId(item.orderItemId) })),
     discounts: quotation.discounts ?? [],
+    discountPercent: quotation.discountPercent ?? 0,
     addons: (quotation.addons ?? []).map(addon => ({ ...addon, id: stringId(addon.id), quotationId: stringId(addon.quotationId), materialId: stringId(addon.materialId) })),
     files: (quotation.files ?? []).map(file => ({ ...file, id: stringId(file.id), quotationId: stringId(file.quotationId) })),
   };

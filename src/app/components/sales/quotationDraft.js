@@ -9,17 +9,30 @@ export function restoreQuotationInputs(quotations, items) {
     const row = latest.costing?.find(cost => String(cost.orderItemId) === String(item.id));
     if (row) costs[index] = {
       laborCost: Number(row.laborCost), markupPct: Number(row.markupPercent),
-      discountPct:
-  row.discountPercent == null || row.discountPercent === ''
-    ? 0
-    : Number.isFinite(Number(row.discountPercent))
-      ? Number(row.discountPercent)
-      : 0, vatType: row.vatType,
+      discountPct: (() => {
+        const value = latest.discountPercent ?? row.discountPercent;
+        const parsed = Number(value);
+        return value == null || value === '' || !Number.isFinite(parsed) ? 0 : parsed;
+      })(), vatType: row.vatType,
       vatRate: Number(row.vatRate), includeLabor: row.includeLabor,
       applyMarkup: row.applyMarkup, applyVAT: row.applyVat,
     };
   });
+  const packagingAddon = latest.addons?.find(addon => addon.kind === "packaging");
+  const shippingAddon = latest.addons?.find(addon => addon.kind === "shipping");
   return { costs, latest, document: {
+    packaging: packagingAddon ? {
+      materialId: String(packagingAddon.materialId ?? ""),
+      materialName: packagingAddon.label,
+      qty: Number(packagingAddon.quantity),
+      unitPrice: Number(packagingAddon.unitPrice),
+      includeInUnit: Boolean(Number(packagingAddon.includeInUnitPrice)),
+    } : undefined,
+    shipping: shippingAddon ? {
+      label: shippingAddon.label,
+      amount: Number(shippingAddon.quantity) * Number(shippingAddon.unitPrice),
+      includeInUnit: Boolean(Number(shippingAddon.includeInUnitPrice)),
+    } : undefined,
     quotationNo: latest.reference, date: latest.issuedOn ?? '', validUntil: latest.validUntil ?? '',
     lineItems: items.map((item, index) => ({
       no: index + 1, qty: item.quantity, unit: 'pcs',

@@ -490,7 +490,7 @@ export function createSalesOrdersService({
     });
   });
   s.createQuotation = (inquiryId, body, actor) => transaction(db, actor, ['sales'], async (c, a) => {
-    object(body, ['status', 'reference', 'baseQuotationId', 'issuedOn', 'validUntil', 'paymentTermCode', 'timeOfDelivery', 'placeOfDelivery', 'note', 'noteHighlighted', 'downpaymentPercent', 'vatType', 'vatRate', 'includeLabor', 'applyMarkup', 'applyVat', 'discountPercent', 'costing']);
+    object(body, ['status', 'reference', 'baseQuotationId', 'issuedOn', 'validUntil', 'paymentTermCode', 'timeOfDelivery', 'placeOfDelivery', 'note', 'noteHighlighted', 'downpaymentPercent', 'vatType', 'vatRate', 'includeLabor', 'applyMarkup', 'applyVat', 'discountPercent', 'packaging', 'shipping', 'costing']);
     requireThat(['draft', 'sent'].includes(body.status));
     requireThat([20, 50].includes(Number(body.downpaymentPercent)));
     paymentTerm(body.paymentTermCode);
@@ -558,16 +558,106 @@ export function createSalesOrdersService({
         final
       });
     }
+    const addonRecords = [];
+
+    if (body.packaging) {
+      const material = await one(c,
+        'SELECT m.material_id materialId,m.material_name materialName,m.reference_unit_price referenceUnitPrice,mc.category_name categoryName FROM raw_material m JOIN material_category mc ON mc.material_category_id=m.material_category_id WHERE m.material_id=? AND m.is_active=1 FOR SHARE',
+        [body.packaging.materialId]
+      );
+
+      requireThat(
+        material &&
+        String(material.categoryName).toLowerCase() === 'packaging' &&
+        material.referenceUnitPrice !== null,
+        'PACKAGING_PRICE_UNAVAILABLE'
+      );
+
+      const quantity = decimal(body.packaging.quantity);
+      let unitPrice;
+      try {
+        unitPrice = decimal(material.referenceUnitPrice);
+      } catch {
+        requireThat(false, 'PACKAGING_PRICE_UNAVAILABLE');
+      }
+
+      addonRecords.push({
+        kind: 'packaging',
+        materialId: String(material.materialId),
+        label: text(material.materialName, 200),
+        quantity: format(quantity),
+        unitPrice: format(unitPrice),
+        includeInUnitPrice: body.packaging.includeInUnitPrice,
+        totalCents: rounded(multiply(quantity, unitPrice), 100n)
+      });
+    }
+
+    if (body.shipping) {
+      const shippingAmount = decimal(body.shipping.amount, 2);
+
+      addonRecords.push({
+        kind: 'shipping',
+        materialId: null,
+        label: text(body.shipping.label, 80),
+        quantity: '1.0000',
+        unitPrice: format(shippingAmount, 2),
+        includeInUnitPrice: body.shipping.includeInUnitPrice,
+        totalCents: shippingAmount
+      });
+    }
+
+    const includedAddonCents = addonRecords
+      .filter(addon => addon.includeInUnitPrice)
+      .reduce((sum, addon) => sum + addon.totalCents, 0n);
+
+    const totalQuantity = prepared.reduce(
+      (sum, item) => sum + BigInt(item.item.quantity),
+      0n
+    );
+
+    if (includedAddonCents > 0n) requireThat(totalQuantity > 0n);
+
+    const inclusivePerUnitCents = includedAddonCents > 0n
+      ? rounded(includedAddonCents, totalQuantity)
+      : 0n;
+
+    let subtotal = 0n;
+
+    for (const item of prepared) {
+      item.quotationUnitPrice = includedAddonCents > 0n
+        ? (rounded(item.final, 100n) + inclusivePerUnitCents) * 100n
+        : item.final;
+
+      subtotal += rounded(
+        item.quotationUnitPrice * BigInt(item.item.quantity),
+        100n
+      );
+    }
+
+    const separateAddonTotal = addonRecords
+      .filter(addon => !addon.includeInUnitPrice)
+      .reduce((sum, addon) => sum + addon.totalCents, 0n);
+
+    total = subtotal + separateAddonTotal;
     requireThat(total <= 9999999999999999999n);
     const rev = Number(current?.revisionNumber ?? 0) + 1;
     requireThat(rev <= 65535);
     if (current) await changed(c, 'UPDATE quotation SET is_current=0 WHERE quotation_id=?', [current.id]);
     const ref = body.reference ? text(body.reference, 45) + `-R${rev}` : reference('QT');
-    const amount = format(total, 2),
+    const subtotalAmount = format(subtotal, 2),
+      addonAmount = format(separateAddonTotal, 2),
+      amount = format(total, 2),
       downpayment = format(rounded(total * BigInt(body.downpaymentPercent), 100n), 2);
-    const quote = await insert(c, `INSERT INTO quotation(quotation_no,inquiry_id,revision_no,quotation_date,valid_until,terms_of_payment,time_of_delivery,place_of_delivery,vat_type,highlight_note,downpayment_percent,downpayment_amount,subtotal,addons_total,total_amount,status,prepared_by_user_id,approved_by_user_id,sent_at,highlight_tag) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,IF(?='sent',UTC_TIMESTAMP(3),NULL),?)`, [ref, inquiryId, rev, body.issuedOn, body.validUntil, body.paymentTermCode, text(body.timeOfDelivery, 255), text(body.placeOfDelivery), body.vatType, body.note ?? null, body.downpaymentPercent, downpayment, amount, amount, body.status, a.userId, body.status === 'sent' ? a.userId : null,body.status,body.noteHighlighted===true?'NOTE':null]);
+    const quote = await insert(c, `INSERT INTO quotation(quotation_no,inquiry_id,revision_no,quotation_date,valid_until,terms_of_payment,time_of_delivery,place_of_delivery,vat_type,highlight_note,downpayment_percent,downpayment_amount,subtotal,addons_total,total_amount,status,prepared_by_user_id,approved_by_user_id,sent_at,highlight_tag) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,IF(?='sent',UTC_TIMESTAMP(3),NULL),?)`, [ref, inquiryId, rev, body.issuedOn, body.validUntil, body.paymentTermCode, text(body.timeOfDelivery, 255), text(body.placeOfDelivery), body.vatType, body.note ?? null, body.downpaymentPercent, downpayment, subtotalAmount, addonAmount, amount, body.status, a.userId, body.status === 'sent' ? a.userId : null,body.status,body.noteHighlighted===true?'NOTE':null]);
+    for (const addon of addonRecords) {
+      await insert(c,
+        'INSERT INTO quotation_addon(quotation_id,addon_type,raw_material_id,label,quantity,unit_price,include_in_unit_price) VALUES (?,?,?,?,?,?,?)',
+        [quote, addon.kind, addon.materialId, addon.label, addon.quantity, addon.unitPrice, addon.includeInUnitPrice ? 1 : 0]
+      );
+    }
+
     for (const p of prepared) {
-      const qi = await insert(c, 'INSERT INTO quotation_item(quotation_id,inquiry_item_id,line_no,description,quantity,uom_id,unit_price) VALUES (?,?,?,?,?,?,?)', [quote, String(p.item.inquiry_item_id), p.item.line_no, p.item.filter_name, String(p.item.quantity), p.cost.uomId, format(p.final)]);
+      const qi = await insert(c, 'INSERT INTO quotation_item(quotation_id,inquiry_item_id,line_no,description,quantity,uom_id,unit_price) VALUES (?,?,?,?,?,?,?)', [quote, String(p.item.inquiry_item_id), p.item.line_no, p.item.filter_name, String(p.item.quantity), p.cost.uomId, format(p.quotationUnitPrice)]);
       const estimate = await insert(c, `INSERT INTO cost_estimate(quotation_item_id,labor_cost_per_unit,include_labor,markup_percent,apply_markup,vat_type,vat_rate,apply_vat,material_cost_per_unit,unit_cost_with_markup,unit_cost_with_vat,is_locked,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, [qi, format(p.labor), body.includeLabor ? 1 : 0, format(decimal(p.cost.markupPercent)), body.applyMarkup ? 1 : 0, body.vatType, format(vat), body.applyVat ? 1 : 0, format(p.raw), format(p.withMarkup), format(p.final), body.status === 'sent' ? 1 : 0, a.userId]);
       for (const line of p.materialLines) await insert(c, 'INSERT INTO cost_estimate_material(estimate_id,material_category_id,raw_material_id,qty_per_filter,uom_id,unit_price_snapshot) VALUES (?,?,?,?,?,?)', [estimate, line.material.material_category_id, String(line.material.material_id), line.quantity, String(line.material.uom_id), line.unitPrice]);
     }

@@ -1,7 +1,7 @@
 import { object, id, requireThat, text, date, paymentTerm, decimal } from '../phase2/core.js';
 export function validatePhase2Quotation(input) {
   try {
-    object(input, ['status', 'reference', 'baseQuotationId', 'issuedOn', 'validUntil', 'paymentTermCode', 'timeOfDelivery', 'placeOfDelivery', 'note', 'noteHighlighted', 'downpaymentPercent', 'vatType', 'vatRate', 'includeLabor', 'applyMarkup', 'applyVat', 'discountPercent', 'costing']);
+    object(input, ['status', 'reference', 'baseQuotationId', 'issuedOn', 'validUntil', 'paymentTermCode', 'timeOfDelivery', 'placeOfDelivery', 'note', 'noteHighlighted', 'downpaymentPercent', 'vatType', 'vatRate', 'includeLabor', 'applyMarkup', 'applyVat', 'discountPercent', 'packaging', 'shipping', 'costing']);
     requireThat(['draft', 'sent'].includes(input.status));
     requireThat(input.baseQuotationId == null || id(input.baseQuotationId));
     if (input.reference != null) text(input.reference, 45);
@@ -17,6 +17,18 @@ export function validatePhase2Quotation(input) {
     requireThat(['Exclusive', 'Inclusive', 'Zero-Rated'].includes(input.vatType));
     for (const key of ['includeLabor', 'applyMarkup', 'applyVat']) requireThat(typeof input[key] === 'boolean');
     requireThat(decimal(input.vatRate) <= 1000000n && decimal(input.discountPercent ?? 0) <= 1000000n);
+    if (input.packaging != null) {
+      object(input.packaging, ['materialId', 'quantity', 'includeInUnitPrice']);
+      requireThat(id(input.packaging.materialId));
+      requireThat(decimal(input.packaging.quantity) > 0n && decimal(input.packaging.quantity) <= 999999999999999n);
+      requireThat(typeof input.packaging.includeInUnitPrice === 'boolean');
+    }
+    if (input.shipping != null) {
+      object(input.shipping, ['label', 'amount', 'includeInUnitPrice']);
+      requireThat(['Company Vehicle', 'Lalamove', 'AP Cargo', 'Fast Cargo', 'Client Pick-up'].includes(input.shipping.label));
+      requireThat(decimal(input.shipping.amount, 2) <= 9999999999999n);
+      requireThat(typeof input.shipping.includeInUnitPrice === 'boolean');
+    }
     requireThat(Array.isArray(input.costing) && input.costing.length > 0 && input.costing.length <= 50);
     const seen = new Set();
     for (const row of input.costing) {

@@ -178,9 +178,6 @@ export function RealSalesStockRequests({
   const existingRequest = requests.find((request) => request.orderId === orderId);
 
   const submit = async () => {
-    // Safety gate: enable only after the backend validates complete
-    // saved BOM coverage and requested quantities independently.
-    return;
     if (
       !orderId ||
       !assessmentReady ||
@@ -211,8 +208,16 @@ export function RealSalesStockRequests({
       setOrderId("");
       await load();
     } catch (cause) {
-      const failure = cause as { status?: number; message?: string };
-      const unknown = !failure.status || failure.status >= 500;
+      const failure = cause as {
+  status?: number;
+  message?: string;
+  code?: string;
+};
+
+const unknown =
+  !failure.status ||
+  failure.status >= 500 ||
+  failure.code === "INVALID_RESPONSE";
       setUncertain(unknown);
       setSubmitError(
         unknown
@@ -349,7 +354,7 @@ export function RealSalesStockRequests({
               type="button"
               onClick={() => void submit()}
               disabled={
-                true || submitting ||
+                submitting ||
                 loading ||
                 checking ||
                 !assessmentReady ||

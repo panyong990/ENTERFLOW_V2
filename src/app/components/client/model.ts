@@ -341,7 +341,7 @@ export interface Inquiry {
   /* — formal quotation document (Tab 3 output) — */
   quotationDoc?: QuotationDoc;
   quotationId?: string;
-  quotationStatus?: "sent" | "superseded";
+  quotationStatus?: "draft" | "approved" | "sent" | "superseded" | null;
   quotationIsLatestRevision?: boolean;
   quotationDecision?: "accepted" | "rejected" | null;
   quotationDecisionReason?: string | null;

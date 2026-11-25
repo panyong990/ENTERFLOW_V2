@@ -112,7 +112,30 @@ test('profile projection excludes internal notes and preserves BIGINT id', async
   assert.doesNotMatch(h.calls[0].sql, /internal_notes/);
   assert.deepEqual(h.calls[0].params, ['9007199254740993']);
 });
+test('client order exposes current quotation status without exposing quotation details', async () => {
+  const h = harness({
+    orderRows: [{
+      id: '91',
+      reference: 'INQ-91',
+      stageCode: 'quotation',
+      stageLabel: 'Quotation',
+      itemCount: '1',
+      latestQuotationStatus: 'draft',
+      internalNote: 'private'
+    }]
+  });
 
+  const result = await h.service.listOrders('21', {});
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.items[0].latestQuotationStatus, 'draft');
+  assert.equal('internalNote' in result.data.items[0], false);
+  assert.equal('stageCode' in result.data.items[0], false);
+
+  const query = h.calls.find(call => call.sql.includes('LIMIT ? OFFSET ?'));
+  assert.match(query.sql, /q\.is_current=1/);
+  assert.match(query.sql, /latestQuotationStatus/);
+});
 test('order list is scoped by authenticated client, supports pagination, and hides stage code', async () => {
   const h = harness({ total: 1, orderRows: [{ id: '9007199254740993', stageCode: 'inquiry', stageLabel: 'Inquiry', itemCount: '2', generalNotes: 'private' }] });
   const result = await h.service.listOrders('21', { page: '1', pageSize: '10', sort: 'id-desc' });

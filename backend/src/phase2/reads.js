@@ -13,7 +13,11 @@ export function invoiceDisplay(row) {
     isOverdue: row.status !== 'cancelled' && outstanding > 0n && Boolean(row.dueOn) && String(row.dueOn instanceof Date ? row.dueOn.toISOString().slice(0, 10) : row.dueOn).slice(0, 10) < new Date().toISOString().slice(0, 10)
   };
 }
-export const inquiryColumns = `CAST(i.inquiry_id AS CHAR) id,i.inquiry_no reference,CAST(i.client_id AS CHAR) clientId,c.company_name companyName,i.status stageCode,i.status,i.contact_person contactPerson,i.payment_terms paymentTermCode,i.required_by_date requestedDeliveryDate,i.general_notes generalNotes,i.rejection_reason rejectionReason,i.created_at createdAt,i.updated_at updatedAt,(SELECT COALESCE(SUM(t.amount),0) FROM payment_transaction t JOIN sales_invoice sv ON sv.invoice_id=t.invoice_id JOIN purchase_order sp ON sp.po_id=sv.po_id JOIN quotation sq ON sq.quotation_id=sp.quotation_id WHERE sq.inquiry_id=i.inquiry_id AND t.approval_status='approved') verifiedPaymentAmount,(SELECT v.total_amount FROM sales_invoice v JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE q.inquiry_id=i.inquiry_id ORDER BY v.invoice_id DESC LIMIT 1) invoiceAmount,(SELECT COUNT(*) FROM inquiry_item ci WHERE ci.inquiry_id=i.inquiry_id) itemCount`;
+export const inquiryColumns = `CAST(i.inquiry_id AS CHAR) id,i.inquiry_no reference,CAST(i.client_id AS CHAR) clientId,c.company_name companyName,i.status stageCode,i.status,i.contact_person contactPerson,i.payment_terms paymentTermCode,i.required_by_date requestedDeliveryDate,i.general_notes generalNotes,i.rejection_reason rejectionReason,i.created_at createdAt,i.updated_at updatedAt,(SELECT COALESCE(SUM(t.amount),0) FROM payment_transaction t JOIN sales_invoice sv ON sv.invoice_id=t.invoice_id JOIN purchase_order sp ON sp.po_id=sv.po_id JOIN quotation sq ON sq.quotation_id=sp.quotation_id WHERE sq.inquiry_id=i.inquiry_id AND t.approval_status='approved') verifiedPaymentAmount,(SELECT v.total_amount FROM sales_invoice v JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id WHERE q.inquiry_id=i.inquiry_id ORDER BY v.invoice_id DESC LIMIT 1) invoiceAmount,(SELECT COUNT(*) FROM inquiry_item ci WHERE ci.inquiry_id=i.inquiry_id) itemCount,(SELECT q.status
+  FROM quotation q
+  WHERE q.inquiry_id=i.inquiry_id
+    AND q.is_current=1
+  LIMIT 1) latestQuotationStatus`;
 export const invoiceFrom = 'sales_invoice v JOIN purchase_order p ON p.po_id=v.po_id JOIN quotation q ON q.quotation_id=p.quotation_id JOIN inquiry i ON i.inquiry_id=q.inquiry_id';
 export const invoiceColumns = `CAST(v.invoice_id AS CHAR) id,CAST(i.inquiry_id AS CHAR) orderId,v.invoice_no reference,v.invoice_date issuedOn,v.due_date dueOn,v.total_amount amount,v.payment_terms paymentTermCode,v.status,q.downpayment_amount requiredDownpayment,
   COALESCE((SELECT SUM(t.amount) FROM payment_transaction t WHERE t.invoice_id=v.invoice_id AND t.approval_status='approved'),0) verifiedAmount,
@@ -22,7 +26,15 @@ export const deliveryFrom = 'delivery d JOIN job_order j ON j.jo_id=d.jo_id JOIN
 export const deliveryColumns = `CAST(d.delivery_id AS CHAR) id,CAST(d.jo_id AS CHAR) jobOrderId,CAST(i.inquiry_id AS CHAR) orderId,i.inquiry_no orderReference,c.company_name companyName,j.jo_no jobOrderReference,dm.method_name deliveryMethodLabel,CAST(dm.delivery_method_id AS CHAR) deliveryMethodId,d.status,d.tracking_link trackingLink,d.dispatch_date dispatchedAt,d.delivered_date deliveredAt,d.estimated_delivery_date estimatedDeliveryDate,d.driver_name driverName,d.driver_contact driverPhone,d.vehicle_plate vehiclePlate,d.received_by receivedBy`;
 const pick = (row, keys) => Object.fromEntries(keys.filter(k => Object.hasOwn(row, k)).map(k => [k, row[k]]));
 const publicInquiry = (row, client) => {
-  const value = pick(row, ['id', 'reference', 'clientId', 'companyName', 'contactPerson', 'paymentTermCode', 'requestedDeliveryDate', 'rejectionReason', 'createdAt', 'updatedAt', 'status', 'stageLabel', 'archiveReason', 'archiveNote', 'archivedAt', 'itemCount', ...(client ? [] : ['stageCode', 'generalNotes', 'verifiedPaymentAmount', 'invoiceAmount'])]);
+const value = pick(row, [
+  'id', 'reference', 'clientId', 'companyName', 'contactPerson',
+  'paymentTermCode', 'requestedDeliveryDate', 'rejectionReason',
+  'createdAt', 'updatedAt', 'status', 'stageLabel',
+  'archiveReason', 'archiveNote', 'archivedAt', 'itemCount',
+  ...(client
+    ? ['latestQuotationStatus']
+    : ['stageCode', 'generalNotes', 'verifiedPaymentAmount', 'invoiceAmount'])
+]);
   if (value.itemCount !== undefined) value.itemCount = Number(value.itemCount);
   value.stageLabel ??= {
     inquiry: 'Inquiry',

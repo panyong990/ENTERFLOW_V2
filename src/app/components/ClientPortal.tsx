@@ -206,6 +206,19 @@ const clientOrderStatus = (inquiry: Inquiry): ClientOrderStatus => {
         message: "Quotation revision requested — awaiting Sales review.",
       };
     }
+if (
+  inquiry.quotationStatus === "draft" ||
+  inquiry.quotationStatus === "approved"
+) {
+  return {
+    id: "awaitingQuotation",
+    label: "AWAITING QUOTATION",
+    bg: "#E2E8F0",
+    fg: "#475569",
+    message: "Your quotation is currently being prepared.",
+  };
+}
+
     return {
       id: "quotationSent",
       label: "QUOTATION SENT",

@@ -431,7 +431,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
                   </div>
                   <table className="w-full text-left">
                     <thead>
-                      <tr>{["Material", "Required", ...(apiMode ? ["Stock at Request", "Shortage at Request"] : []), "Current Stock", "Status", "Shortage", ...(mode === "warehouse" && adapter?.respond ? ["Observed Quantity"] : [])].map((heading) => (
+                      <tr>{["Material", "Required", ...(apiMode ? ["Stock at Request", "Shortage at Request"] : []), "Current Stock", ...(mode === "warehouse" && adapter?.respond ? ["Observed Quantity"] : []), "Status", "Shortage"].map((heading) => (
                         <th key={heading} className="px-3 py-2 font-dm" style={{ backgroundColor: "#F1F5F9", fontSize: 10, fontWeight: 800, color: "#64748B" }}>{heading}</th>
                       ))}</tr>
                     </thead>

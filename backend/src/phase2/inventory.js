@@ -216,6 +216,14 @@ export function createStockRequestsService({
         requireThat(id(line.materialId) && decimal(line.quantity) > 0n);
       }
       const i = await lockInquiry(c, body.orderId);
+
+const existingRequest = await one(
+  c,
+  'SELECT CAST(stock_request_id AS CHAR) id FROM stock_request WHERE inquiry_id=? LIMIT 1 FOR UPDATE',
+  [i.id]
+);
+requireThat(!existingRequest, 'DUPLICATE_REQUEST');
+
       requireThat(!['cancelled', 'rejected', 'archived'].includes(i.status), 'INVALID_STATE');
       let quote = null;
       if (body.quotationId) {
@@ -366,7 +374,11 @@ export function createStockRequestsService({
       requireThat(parent, 'NOT_FOUND');
       await lockInquiry(c, parent.id);
       const request = await one(c, 'SELECT * FROM stock_request WHERE stock_request_id=? FOR UPDATE', [requestId]);
-      requireThat(request.status === 'pending' || body.status === 'updated' && request.status === 'responded', 'INVALID_STATE');
+      requireThat(
+  request.status === 'pending' ||
+  (request.status === 'responded' && ['responded', 'updated'].includes(body.status)),
+  'INVALID_STATE'
+);
       const lines = await rows(c, 'SELECT * FROM stock_request_item WHERE stock_request_id=? ORDER BY raw_material_id FOR UPDATE', [requestId]);
       requireThat(Array.isArray(body.lines) && body.lines.length === lines.length && new Set(body.lines.map(l => l.lineId)).size === lines.length);
       if (body.status === 'updated') requireThat(Array.isArray(body.inventoryUpdates) && body.inventoryUpdates.length === lines.length && new Set(body.inventoryUpdates.map(l => l.materialId)).size === lines.length);

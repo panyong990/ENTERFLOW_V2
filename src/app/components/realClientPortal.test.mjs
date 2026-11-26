@@ -48,7 +48,7 @@ test("Client inquiry form validates API limits and keeps sketch retries within u
 
 test("Real Client Portal keeps populated sections while making unsupported writes explicit", () => {
   for (const marker of ["Order Status Tracker", "Delivery &amp; Tracking", "My Invoices", "Company Settings", "Transaction History"]) assert.match(portal, new RegExp(marker));
-  for (const marker of ["Client PO reference", "Drop your PO here or click to browse", "Sales will review the uploaded PO document", "Payment methods and bank instructions are unavailable", "Profile details are read-only in Real Mode", "Change password", "Signed Delivery Receipt submission is unavailable."]) assert.match(portal, new RegExp(marker));
+  for (const marker of ["Internal reference assigned after upload", "Drop your PO here or click to browse", "Sales will review the uploaded PO document", "Payment methods and bank instructions are unavailable", "Profile details are read-only in Real Mode", "Change password", "Signed Delivery Receipt submission is unavailable."]) assert.match(portal, new RegExp(marker));
   assert.match(portal, /changeClientPassword\(currentPwd, newPwd\)/);
   assert.match(portal, /Submit Inquiry/);
   assert.doesNotMatch(portal, /Order creation and reorder submission are unavailable/);

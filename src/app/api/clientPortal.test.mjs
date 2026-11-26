@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire, Module } from "node:module";
 import { transformSync } from "esbuild";
+import { parse } from "@babel/parser";
 
 const require = createRequire(import.meta.url);
 function adapter() {
@@ -63,14 +64,93 @@ test("client portal adapter submits an existing document and its eligible quotat
   assert.equal(result.options.method, "POST");
   assert.deepEqual(result.options.body, input);
 });
-test('purchase-order upload carries the selected delivery method and accepted revision with the actual document',()=>{
+test('purchase-order upload carries only the accepted revision and actual document',async()=>{
   const file=new File(['%PDF-1.4 synthetic'],'po.pdf',{type:'application/pdf'});
-  const result=adapter().uploadPurchaseOrderDocument('19',{reference:'PO-19',quotationId:'9007199254740993',deliveryMethodId:'4',file});
+  const result=adapter().uploadPurchaseOrderDocument('19',{quotationId:'9007199254740993',file});
   assert.equal(result.path,'/api/documents/client/orders/19/purchase-order');
+  assert.equal(result.options.method,'POST');
+  assert.deepEqual([...result.options.body.keys()],['quotationId','document']);
   assert.equal(result.options.body.get('quotationId'),'9007199254740993');
-  assert.equal(result.options.body.get('deliveryMethodId'),'4');
-  assert.equal(result.options.body.get('reference'),'PO-19');
-  assert.equal(result.options.body.get('document').name,'po.pdf');
+  const document=result.options.body.get('document');
+  assert.ok(document instanceof Blob);
+  assert.equal(document.name,'po.pdf');
+  assert.equal(document.type,file.type);
+  assert.equal(await document.text(),await file.text());
+});
+
+// Execute the actual modal callback and data adapter without mounting the full portal
+// or contacting a backend. Native FormData enforces the File/Blob contract.
+function poSubmission(quotations) {
+  const api = adapter();
+  const requests = [];
+  const refreshes = [];
+  const messages = [];
+  const closed = [];
+  const dataSource = readFileSync(new URL('../components/client/data.tsx', import.meta.url), 'utf8');
+  const dataModule = new Module('clientData.fixture.cjs');
+  dataModule.require = request => {
+    if (request === 'react') return { createContext: () => ({}), useMemo: factory => factory() };
+    if (request === 'sonner') return { toast: {} };
+    if (request === '../../api/clientPortal') return { clientPortalApi: {
+      uploadPurchaseOrderDocument: (...args) => { const result = api.uploadPurchaseOrderDocument(...args); requests.push(result); return result; },
+    } };
+    if (request === './adapters' || request === '../../store/attachments') return {};
+    return require(request);
+  };
+  dataModule._compile(transformSync(dataSource, { loader: 'tsx', format: 'cjs' }).code, 'clientData.fixture.cjs');
+  const orders = dataModule.exports.useOrderAdapter({ profile: null, bundles: [{ order: { id: '19' }, quotations }], refresh: () => refreshes.push(true) });
+  const portal = readFileSync(new URL('../components/ClientPortal.tsx', import.meta.url), 'utf8');
+  const tree = parse(portal, { sourceType: 'module', plugins: ['typescript', 'jsx'] });
+  let callback;
+  function visit(node) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'JSXOpeningElement' && node.name.name === 'POUploadOverlay') {
+      callback = node.attributes.find(attribute => attribute.name?.name === 'onSubmit').value.expression;
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(visit);
+      else if (value && typeof value === 'object') visit(value);
+    }
+  }
+  visit(tree);
+  assert.ok(callback, 'PO modal submission callback must exist');
+  const submit = new Function('submitPurchaseOrder', 'realMode', 'poForId', 'setPoForId', 'toast', `return (${portal.slice(callback.start, callback.end)});`)(
+    orders.submitPurchaseOrder, true, '19', value => closed.push(value),
+    { success: message => messages.push(message), error: message => messages.push(message) },
+  );
+  return { submit, requests, refreshes, messages, closed };
+}
+
+test('PO modal callback preserves the selected File through the data layer into FormData', async () => {
+  const flow = poSubmission([{ id: '9007199254740993', isLatestRevision: true, decision: 'accepted' }]);
+  const file = new File(['%PDF-1.4 selected PO'], 'official-po.pdf', { type: 'application/pdf' });
+  assert.equal(await flow.submit({ fileName: file.name, fileDataUrl: '', poNumber: 'Assigned by backend on submission', file }), true);
+  assert.equal(flow.requests.length, 1);
+  const body = flow.requests[0].options.body;
+  assert.deepEqual([...body.keys()], ['quotationId', 'document']);
+  assert.equal(body.get('quotationId'), '9007199254740993');
+  assert.ok(body.get('document') instanceof Blob);
+  assert.equal(body.get('document').name, file.name);
+  assert.equal(await body.get('document').text(), await file.text());
+  assert.equal(flow.refreshes.length, 1);
+  assert.deepEqual(flow.closed, [null]);
+  assert.deepEqual(flow.messages, ['Purchase Order submitted']);
+});
+
+test('PO modal submission still requires a file and an accepted current quotation', async () => {
+  const file = new File(['%PDF-1.4 selected PO'], 'official-po.pdf', { type: 'application/pdf' });
+  for (const [quotations, selected] of [
+    [[{ id: '34', isLatestRevision: true, status: 'sent' }], file],
+    [[{ id: '34', isLatestRevision: false, status: 'accepted' }], file],
+    [[{ id: '34', isLatestRevision: true, status: 'accepted' }], undefined],
+  ]) {
+    const flow = poSubmission(quotations);
+    assert.equal(await flow.submit({ file: selected }), false);
+    assert.equal(flow.requests.length, 0);
+    assert.equal(flow.refreshes.length, 0);
+    assert.deepEqual(flow.closed, []);
+    assert.deepEqual(flow.messages, ['An accepted current quotation and PO document are required.']);
+  }
 });
 
 test("client portal adapter encodes query parameters without accepting ownership parameters", () => {

@@ -34,12 +34,47 @@ export function LiveSalesCardActions({ inquiry, adapter, onAction, onReject }: {
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Revision review failed.'); }
     finally { revisionLock.current = false; setRevisionBusy(false); }
   };
-  const row = inquiry.salesRecord, detail = inquiry.salesDetail;
+    const row = inquiry.salesRecord, detail = inquiry.salesDetail;
   const ready = readyForJobOrder(detail);
-  const latestQuotation = detail?.quotations?.at(-1) as { totalAmount?: string; status?: string; reference?: string } | undefined;
+
+  const quotations = (detail?.quotations ?? []) as {
+    id?: string;
+    totalAmount?: string;
+    status?: string;
+    reference?: string;
+    isCurrent?: boolean;
+    isLatestRevision?: boolean;
+  }[];
+
+  const latestQuotation =
+    quotations.find(quote => quote.isCurrent || quote.isLatestRevision)
+    ?? quotations.at(-1);
+
   const invoice = detail?.invoices?.[0] as { reference?: string; amount?: string; requiredDownpayment?: string; sentAt?: string } | undefined;
   const error = adapter.details.errors[inquiry.id];
-  const canQuote = Boolean(detail?.items.length && !row.archivedAt && ["inquiry", "quotation"].includes(detail.stageCode) && latestQuotation?.status !== 'accepted' && !inquiry.pendingCancellation);
+
+  const latestRevisionRequest = detail?.revisionRequests?.at(-1);
+
+const approvedRevisionAwaitingQuote = Boolean(
+  latestRevisionRequest?.status === "approved" &&
+  Number(latestRevisionRequest.fulfilled ?? 0) !== 1
+);
+
+  const effectiveStageCode = detail?.stageCode ?? row.stageCode;
+  const effectiveQuotationStatus =
+    latestQuotation?.status ?? detail?.latestQuotationStatus ?? row.latestQuotationStatus;
+
+  const canQuote = Boolean(
+    detail?.items.length &&
+    !row.archivedAt &&
+    (
+      effectiveStageCode === "inquiry" ||
+      (effectiveStageCode === "quotation" &&
+        approvedRevisionAwaitingQuote)
+    ) &&
+    latestQuotation?.status !== "accepted" &&
+    !inquiry.pendingCancellation
+  );
   return <div className="flex flex-col gap-3">
     {!detail && (error ? <p role="alert" className="text-xs text-red-700">Product details unavailable. {error} <button onClick={adapter.refresh} className="underline">Retry details</button></p> : <p role="status" className="text-xs text-slate-500">Loading product specifications…</p>)}
     <button onClick={() => onAction("history")} className={`${actionClass} self-start border border-red-200 text-red-700`}><FileText size={12} /> View Quotation, PO &amp; Document History</button>
@@ -47,8 +82,14 @@ export function LiveSalesCardActions({ inquiry, adapter, onAction, onReject }: {
     {latestQuotation && <p className="font-syne text-sm font-bold text-slate-900">Quotation total: ₱{latestQuotation.totalAmount ?? "Unavailable"}</p>}
     {!!inquiry.revisionRequests?.length && <section className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950"><b>Quotation Revision &amp; Document History</b>{inquiry.revisionRequests.map(request => <div key={request.id} className="mt-2"><b>{request.status === "pending" ? "Revision Requested" : "Processed"}</b> · {request.requestedAt || "Date unavailable"}<p className="mt-1 whitespace-pre-wrap">{request.note}</p></div>)}</section>}
     {detail?.revisionRequests?.map(request => <div key={request.id} className="text-xs text-slate-600"><p>{request.quotationReference || 'Quotation'} · Revision {request.revisionNumber} · {request.status}</p>{request.status === 'pending' && <button type="button" disabled={revisionBusy || adapter.busy} onClick={() => void reviewRevision(request.id)} className={`${actionClass} border border-amber-300 text-amber-950`}>Approve revision request</button>}</div>)}
-    {!inquiry.pendingCancellation && ["inquiry", "quotation"].includes(row.stageCode) && <button disabled={!canQuote} onClick={() => onAction("quotation")} className={`${actionClass} bg-[#1A2B4A] text-white`}><Calculator size={13} />{row.stageCode === "inquiry" ? "REVIEW & SEND QUOTATION" : "PREPARE QUOTATION REVISION"}<ArrowRight size={14} /></button>}
-    {row.stageCode === "quotation" && <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-center text-xs font-bold text-amber-900">{row.latestQuotationStatus === "sent" ? "QUOTATION SENT · AWAITING CLIENT PO" : "QUOTATION DRAFT · AWAITING SALES REVIEW"}</p>}
+    {!inquiry.pendingCancellation && effectiveStageCode === 'inquiry' && <button disabled={!canQuote} onClick={() => onAction("quotation")} className={`${actionClass} bg-[#1A2B4A] text-white`}><Calculator size={13} />REVIEW &amp; SEND QUOTATION<ArrowRight size={14} /></button>}
+    {!inquiry.pendingCancellation && effectiveStageCode === 'quotation' && approvedRevisionAwaitingQuote && <button disabled={!canQuote} onClick={() => onAction("quotation")} className={`${actionClass} bg-[#1A2B4A] text-white`}><Calculator size={13} />PREPARE QUOTATION REVISION<ArrowRight size={14} /></button>}
+    {effectiveStageCode === "quotation" &&
+  ["sent", "accepted"].includes(effectiveQuotationStatus ?? "") && (
+    <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-center text-xs font-bold text-amber-900">
+      QUOTATION SENT · AWAITING PO SUBMISSION
+    </p>
+  )}
     {row.stageCode === "po" && !inquiry.pendingCancellation && <>
       <div className="flex gap-2"><button disabled={!detail} onClick={() => onAction("approve")} className={`${actionClass} flex-1 bg-green-600 text-white`}><CheckCircle2 size={13} /> APPROVE PO</button><button disabled={!detail} onClick={() => onAction("reject")} className={`${actionClass} flex-1 border border-red-200 text-red-700`}><X size={13} /> REJECT PO</button></div>
       <p className="text-xs text-slate-500">PO: {row.purchaseOrderReference || "Reference unavailable"}. Open the PO to review its current server status and submission history.</p>

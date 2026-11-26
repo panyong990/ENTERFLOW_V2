@@ -1,0 +1,86 @@
+[35morigin/main:src/app/components/Accounting.tsx[m[36m:[m[32m502[m[36m:[m    updateInquiry(id, { [1;31mstage:[m "paid", paidAt: new Date().toISOString(), amountPaid: inv.amount });
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m19[m[36m:[m  [1;31mstageLabel[m, useOrders, type Inquiry, [1;31mtype Stage[m,
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m410[m[36m:[m      .map((stage) => ({ stage, name: [1;31mstageLabel[m[stage], orders: allOrders.filter((inquiry) => inquiry.stage === stage).length }))
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m518[m[36m:[m        inquiry.submittedDate, inquiry.joNumber ?? inquiry.code, inquiry.clientName, [1;31mstageLabel[m[inquiry.stage],
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m527[m[36m:[m          inquiry.submittedDate, inquiry.joNumber ?? "", inquiry.clientName, [1;31mstageLabel[m[inquiry.stage],
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m537[m[36m:[m        [1;31mstageLabel[m[inquiry.stage], inquiry.trackingRef ?? inquiry.waybillNumber ?? "",
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m1094[m[36m:[mfunction PipelinePanel({ data }: { data: { [1;31mstage:[m Stage; name: string; orders: number }[] }) {
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m1396[m[36m:[m                      <td className="px-2.5 py-2.5 font-dm" style={{ fontSize: 10, color: palette.text }}>{[1;31mstageLabel[m[inquiry.stage]}</td>
+[35morigin/main:src/app/components/AnalyticsFullView.tsx[m[36m:[m[32m1402[m[36m:[m                      <td className="px-2.5 py-2.5 font-dm" style={{ fontSize: 10, color: palette.text }}>{[1;31mstageLabel[m[inquiry.stage]}</td>
+[35morigin/main:src/app/components/ClientPortal.tsx[m[36m:[m[32m21[m[36m:[m  [1;31mstageLabel[m,
+[35morigin/main:src/app/components/ClientPortal.tsx[m[36m:[m[32m848[m[36m:[m                    {fullyPaid ? "✅ Paid" : `📦 ${[1;31mstageLabel[m[inq.stage]}`}
+[35morigin/main:src/app/components/Clients.tsx[m[36m:[m[32m22[m[36m:[m  id: string; jo: string; product: string; qty: number; [1;31mstage:[m string;
+[35morigin/main:src/app/components/Clients.tsx[m[36m:[m[32m80[m[36m:[m        [1;31mstage:[m "Quality / Product Inspection", status: "active", progress: 90,
+[35morigin/main:src/app/components/Clients.tsx[m[36m:[m[32m86[m[36m:[m        [1;31mstage:[m "Completed", status: "completed", progress: 100,
+[35morigin/main:src/app/components/Clients.tsx[m[36m:[m[32m104[m[36m:[m      { id: "j1", jo: "JO-2026-002", product: "Filter KF-OF.175.20.87", qty: 100, [1;31mstage:[m "Assembling", status: "active", progress: 40, specs: { od1: "175", id1: "20", height: "87", media: "Pleated ZS20 w/ Double Alum Screen", oem: "KF-OF.175.20.87" } },
+[35morigin/main:src/app/components/Clients.tsx[m[36m:[m[32m117[m[36m:[m      { id: "j1", jo: "JO-2026-003", product: "Oil Separator KF-OS.200/167", qty: 30, [1;31mstage:[m "Molding", status: "active", progress: 10, specs: { od1: "200", id1: "108", height: "160", media: "Microglass Fiber", outerCore: "Perfo 6mm", oem: "KF-OS.200/167.108.160" } },
+[35morigin/main:src/app/components/Clients.tsx[m[36m:[m[32m127[m[36m:[m    jobs: [{ id: "j1", jo: "JO-2026-004", product: "Column Filter", qty: 20, [1;31mstage:[m "Holding", status: "active", progress: 5 }],
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m10[m[36m:[mimport { PRODUCTION_STAGES, [1;31mstageLabel[m, useOrders, type Inquiry } from "../store/orders";
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m45[m[36m:[m  { jo: "JO-2026-001", client: "B.E. Aerospace", item: "Air Filter 115×103×500mm", status: "in-progress" as const, [1;31mstage:[m "Quality Inspection", due: "Apr 30" },
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m46[m[36m:[m  { jo: "JO-2026-002", client: "Maynilad", item: "Filter KF-OF.175.20.87", status: "pending" as const, [1;31mstage:[m "Assembling", due: "May 02" },
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m47[m[36m:[m  { jo: "JO-2026-003", client: "G.U. Engineering", item: "Oil Separator KF-OS.200", status: "in-progress" as const, [1;31mstage:[m "Molding", due: "May 05" },
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m48[m[36m:[m  { jo: "JO-2026-004", client: "Emerald Vinyl", item: "Column Filter", status: "pending" as const, [1;31mstage:[m "Holding — Awaiting Material", due: "May 10" },
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m194[m[36m:[m      const stage = [1;31mstageLabel[m[order.stage];
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m213[m[36m:[m        status: [1;31mstageLabel[m[order.stage],
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m1117[m[36m:[m                      <td className="px-3 py-2"><span className="font-dm px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 600, backgroundColor: inquiry.stage === "dispatched" ? "#DBEAFE" : "#E2E8F0", color: inquiry.stage === "dispatched" ? "#1D4ED8" : "#475569" }}>{[1;31mstageLabel[m[inquiry.stage]}</span></td>
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m1220[m[36m:[m                    [1;31mstage:[m inquiry.currentStage === undefined
+[35morigin/main:src/app/components/Dashboard.tsx[m[36m:[m[32m1221[m[36m:[m                      ? [1;31mstageLabel[m[inquiry.stage]
+[35morigin/main:src/app/components/Logistics.tsx[m[36m:[m[32m57[m[36m:[mconst [1;31mstageLabel[m: Record<string, string> = {
+[35morigin/main:src/app/components/Logistics.tsx[m[36m:[m[32m1172[m[36m:[m          [1;31mstageLabel[m[inquiry.stage],
+[35morigin/main:src/app/components/Logistics.tsx[m[36m:[m[32m1287[m[36m:[m                    ? [1;31mstageLabel[m[inquiry.stage]
+[35morigin/main:src/app/components/Logistics.tsx[m[36m:[m[32m1384[m[36m:[m                        {[1;31mstageLabel[m[inquiry.stage]}
+[35morigin/main:src/app/components/Logistics.tsx[m[36m:[m[32m1545[m[36m:[m      [1;31mstage:[m "delivered",
+[35morigin/main:src/app/components/Logistics.tsx[m[36m:[m[32m2031[m[36m:[m                value={[1;31mstageLabel[m[inquiry.stage] ?? inquiry.stage}
+[35morigin/main:src/app/components/Logistics.tsx[m[36m:[m[32m2469[m[36m:[m                          {[1;31mstageLabel[m[inquiry.stage] ?? inquiry.stage}
+[35morigin/main:src/app/components/OperationsProductionFloor.tsx[m[36m:[m[32m6[m[36m:[mimport { useOrders, PRODUCTION_STAGES, poNumberForDisplay, stageColor, [1;31mstageLabel[m, type Inquiry } from "../store/orders";
+[35morigin/main:src/app/components/OperationsProductionFloor.tsx[m[36m:[m[32m15[m[36m:[m  [1;31mstage:[m string;
+[35morigin/main:src/app/components/OperationsProductionFloor.tsx[m[36m:[m[32m21[m[36m:[m  [1;31mstage:[m "all",
+[35morigin/main:src/app/components/OperationsProductionFloor.tsx[m[36m:[m[32m79[m[36m:[m    label: inquiry.stage === "jo" ? "Active" : [1;31mstageLabel[m[inquiry.stage],
+[35morigin/main:src/app/components/OperationsProductionFloor.tsx[m[36m:[m[32m290[m[36m:[m                        onChange={(event) => setDraftFilters({ ...draftFilters, [1;31mstage:[m event.target.value })}
+[35morigin/main:src/app/components/ProductionFloor.tsx[m[36m:[m[32m10[m[36m:[mimport { PRODUCTION_STAGES, poNumberForDisplay, useOrders, [1;31mtype Stage[m, type Inquiry } from "../store/orders";
+[35morigin/main:src/app/components/ProductionFloor.tsx[m[36m:[m[32m290[m[36m:[m      { [1;31mstage:[m currentIdx, completedAt: new Date().toISOString(), completedBy: "F. Santos · Warehouse", status: "done" as const },
+[35morigin/main:src/app/components/ProductionFloor.tsx[m[36m:[m[32m294[m[36m:[m    updateInquiry(id, { currentStage: newIdx, [1;31mstage:[m stageForIndex(newIdx), stageHistory: newHistory });
+[35morigin/main:src/app/components/ProductionFloor.tsx[m[36m:[m[32m319[m[36m:[m    updateInquiry(job.id, { [1;31mstage:[m "ready_for_dispatch", currentStage: STAGES.length, joCompletedAt: completedAt });
+[35morigin/main:src/app/components/ProductionFloor.tsx[m[36m:[m[32m781[m[36m:[m              [1;31mstage:[m stageForIndex(updatedJob.stageIndex),
+[35morigin/main:src/app/components/SalesOrders.tsx[m[36m:[m[32m4[m[36m:[mimport { useOrders, unitPrice, quotationTotal, paymentState, verifiedPayments, resolveProductBOM, poNumberForDisplay, poReviewStatus, [1;31mstageLabel[m, type Inquiry, type ProductLine, type Quotation, type QuotationLine, [1;31mtype Stage[m, type FinalizeJOData, type JOSpecs } from "../store/orders";
+[35morigin/main:src/app/components/SalesOrders.tsx[m[36m:[m[32m437[m[36m:[m                      const [1;31mstageLabel[mValue = [1;31mstageLabel[m[inquiry.stage] ?? "Open";
+[35morigin/main:src/app/components/SalesOrders.tsx[m[36m:[m[32m504[m[36m:[m                            <span className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#475569", letterSpacing: 0.4, textTransform: "uppercase" }}>{[1;31mstageLabel[mValue}</span>
+[35morigin/main:src/app/components/SalesOrders.tsx[m[36m:[m[32m875[m[36m:[m                  <FieldRow label="Current Status" value={[1;31mstageLabel[m[joRecord.stage] || "Open"} />
+[35morigin/main:src/app/components/waybillData.ts[m[36m:[m[32m46[m[36m:[mconst stageStatus = ([1;31mstage:[m Inquiry["stage"]): DispatchRow["status"] => {
+[35morigin/main:src/app/store/demoOrders.ts[m[36m:[m[32m5[m[36m:[m  [1;31mstage:[m Stage;
+[35morigin/main:src/app/store/demoOrders.ts[m[36m:[m[32m101[m[36m:[m    { id: "demo-invoice-partial", [1;31mstage:[m "delivered", productType: "Pleated Filter ZS20", quantity: 30, materialCost: 1_000, labor: 250, markupPct: 28, deliveryMethod: "Fast Cargo", clientName: "B.E. Aerospace", contactPerson: "M. Rivera", paymentTerms: "30-Day Terms", daysAgo: 8, invoiceStatus: "partial" },
+[35morigin/main:src/app/store/demoOrders.ts[m[36m:[m[32m102[m[36m:[m    { id: "demo-invoice-paid", [1;31mstage:[m "paid", productType: "Air Filter", quantity: 20, materialCost: 1_600, labor: 400, markupPct: 25, deliveryMethod: "Client Pick-up", clientName: "B.E. Aerospace", contactPerson: "M. Rivera", paymentTerms: "30-Day Terms", daysAgo: 20, invoiceStatus: "paid" },
+[35morigin/main:src/app/store/demoOrders.ts[m[36m:[m[32m103[m[36m:[m    { id: "demo-invoice-paid-second", [1;31mstage:[m "paid", productType: "Oil Filter", quantity: 24, materialCost: 950, labor: 250, markupPct: 30, deliveryMethod: "AP Cargo", clientName: "B.E. Aerospace", contactPerson: "M. Rivera", paymentTerms: "30-Day Terms", daysAgo: 15, invoiceStatus: "paid" },
+[35morigin/main:src/app/store/demoOrders.ts[m[36m:[m[32m153[m[36m:[m      [1;31mstage:[m plan.stage,
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m79[m[36m:[mexport [1;31mtype Stage[m =
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m92[m[36m:[mexport const [1;31mstageLabel[m: Record<Stage, string> = {
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m249[m[36m:[m  [1;31mstage:[m number;            // 0-8 (9 production stages, see PRODUCTION_STAGES below)
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m277[m[36m:[mexport [1;31minterface Inquiry[m {
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m285[m[36m:[m  [1;31mstage:[m Stage;
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m681[m[36m:[m    paymentTerms: "30-Day Terms", submittedDate: "Apr 10, 2026", [1;31mstage:[m "po", poUploaded: true,
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m690[m[36m:[m    paymentTerms: "15-Day Terms", submittedDate: "Apr 12, 2026", [1;31mstage:[m "po", poUploaded: true,
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m699[m[36m:[m    paymentTerms: "30-Day Terms", submittedDate: "Apr 20, 2026", [1;31mstage:[m "quotation",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m707[m[36m:[m    paymentTerms: "15-Day Terms", submittedDate: "Apr 22, 2026", [1;31mstage:[m "inquiry",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m715[m[36m:[m    paymentTerms: "15-Day Terms", submittedDate: "Apr 25, 2026", [1;31mstage:[m "inquiry",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m723[m[36m:[m    paymentTerms: "30-Day Terms", submittedDate: "Mar 28, 2026", [1;31mstage:[m "in_production",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m736[m[36m:[m      [1;31mstage:[m i, completedAt: new Date(Date.now() - (8 - i) * 24 * 60 * 60 * 1000).toISOString(),
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m746[m[36m:[m    paymentTerms: "30-Day Terms", submittedDate: "Mar 25, 2026", [1;31mstage:[m "ready_for_dispatch",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m756[m[36m:[m    stageHistory: Array.from({ length: 9 }, (_, i) => ({ [1;31mstage:[m i, completedAt: new Date(Date.now() - (9 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m764[m[36m:[m    paymentTerms: "30-Day Terms", submittedDate: "Mar 18, 2026", [1;31mstage:[m "delivered",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m773[m[36m:[m    stageHistory: Array.from({ length: 9 }, (_, i) => ({ [1;31mstage:[m i, completedAt: new Date(Date.now() - (14 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m792[m[36m:[m    [1;31mstage:[m "delivered",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m806[m[36m:[m    stageHistory: Array.from({ length: 9 }, (_, i) => ({ [1;31mstage:[m i, completedAt: new Date(Date.now() - (9 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m818[m[36m:[m    paymentTerms: "30-Day Terms", submittedDate: "Apr 2, 2026", [1;31mstage:[m "delivered",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m832[m[36m:[m    stageHistory: Array.from({ length: 9 }, (_, i) => ({ [1;31mstage:[m i, completedAt: new Date(Date.now() - (11 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: "F. Santos", status: "done" as const })),
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m846[m[36m:[m    [1;31mstage:[m "in_production",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m862[m[36m:[m    stageHistory: Array.from({ length: 4 }, (_, i) => ({ [1;31mstage:[m i, completedAt: new Date(Date.now() - (4 - i) * 24 * 60 * 60 * 1000).toISOString(), completedBy: ["F. Santos", "J. Reyes", "M. Tan", "J. Reyes"][i], status: "done" as const })),
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m920[m[36m:[m  setStage: (id: string, [1;31mstage:[m Stage) => void;
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1183[m[36m:[m        id, code, [1;31mstage:[m "inquiry",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1210[m[36m:[m        id, code, [1;31mstage:[m "inquiry",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1218[m[36m:[m    setAllInquiries((prev) => prev.map((x) => (x.id === id ? { ...x, [1;31mstage:[m "quotation", quotation: q } : x)));
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1240[m[36m:[m      [1;31mstage:[m "po",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1305[m[36m:[m              [1;31mstage:[m "jo",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1579[m[36m:[m          [1;31mstage:[m "jo" as Stage,
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1830[m[36m:[m        [1;31mstage:[m "delivered",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m1961[m[36m:[m      [1;31mstage:[m "jo",
+[35morigin/main:src/app/store/orders.tsx[m[36m:[m[32m2005[m[36m:[m        [1;31mstage:[m "jo",

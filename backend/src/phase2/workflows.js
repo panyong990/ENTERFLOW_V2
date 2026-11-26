@@ -298,6 +298,11 @@ export function createClientPortalService({
     requireThat(q, 'QUOTATION_NOT_ELIGIBLE');
     requireThat(!body.quotationId || body.quotationId === q.id, 'QUOTATION_NOT_ELIGIBLE');
     requireThat(!(await one(c, "SELECT request_id FROM quotation_revision_request WHERE quotation_id=? AND status='pending' LIMIT 1", [q.id])), 'REVISION_ALREADY_PENDING');
+    requireThat(!(await one(c, `SELECT rr.request_id FROM quotation_revision_request rr
+      WHERE rr.quotation_id=? AND rr.status='approved'
+        AND NOT EXISTS (SELECT 1 FROM audit_event ae
+          WHERE ae.subject_type='quotation_revision_request' AND ae.subject_id=rr.request_id
+            AND ae.action='quotation.revision_fulfilled') LIMIT 1`, [q.id])), 'REVISION_ALREADY_PENDING');
     const requestId = await insert(c, 'INSERT INTO quotation_revision_request(quotation_id,requested_by_client_user_id,reason) VALUES (?,?,?)', [q.id, a.userId, reason]);
     await audit(c, a, 'quotation.revision_requested', 'quotation_revision_request', requestId, null, {
       inquiryId,
@@ -317,17 +322,16 @@ export function createClientPortalService({
     });
   }, context);
   service.submitPurchaseOrder = (clientId, userId, inquiryId, body, context = {}) => write(clientId, userId, async (c, a) => {
-    object(body, ['reference', 'quotationId', 'documentId', 'deliveryMethodId']);
+    object(body, ['quotationId', 'documentId']);
     const i = await lockInquiry(c, inquiryId, a.clientId);
     requireThat(!['cancelled', 'rejected', 'archived'].includes(i.status), 'INVALID_STATE');
-    requireThat(id(body.documentId) && id(body.deliveryMethodId));
+    requireThat(id(body.documentId));
     const q = await one(c, "SELECT CAST(quotation_id AS CHAR) id,terms_of_payment paymentTermCode,downpayment_percent downpaymentPercent,downpayment_amount downpaymentAmount FROM quotation WHERE inquiry_id=? AND is_current=1 AND status='accepted' FOR UPDATE", [inquiryId]);
     requireThat(q && (!body.quotationId || body.quotationId === q.id), 'QUOTATION_NOT_ACCEPTED');
     requireThat(await one(c, "SELECT document_id FROM document WHERE document_id=? AND uploaded_by_user_id=? AND storage_status='available'", [body.documentId, a.userId]), 'NOT_FOUND');
-    requireThat(await one(c, 'SELECT delivery_method_id FROM delivery_method WHERE delivery_method_id=? AND is_active=1', [body.deliveryMethodId]), 'REFERENCE_DATA_MISSING');
     await allowPurchaseOrderSubmission(c, inquiryId);
-    const ref = text(body.reference, 80),
-      poId = await insert(c, 'INSERT INTO purchase_order(po_no,quotation_id,po_document_id,received_date,payment_terms,delivery_method_id,recorded_by_user_id) VALUES (?,?,?,UTC_DATE(),?,?,?)', [ref, q.id, body.documentId, paymentTerm(q.paymentTermCode), body.deliveryMethodId, a.userId]);
+    const ref = reference('PO'),
+      poId = await insert(c, 'INSERT INTO purchase_order(po_no,quotation_id,po_document_id,received_date,payment_terms,recorded_by_user_id) VALUES (?,?,?,UTC_DATE(),?,?)', [ref, q.id, body.documentId, paymentTerm(q.paymentTermCode), a.userId]);
     await changed(c, "UPDATE inquiry SET status='po' WHERE inquiry_id=?", [inquiryId]);
     await audit(c, a, 'purchase_order.received', 'purchase_order', poId, null, {
       inquiryId,
@@ -341,7 +345,7 @@ export function createClientPortalService({
       acceptedQuotationId: q.id,
       status: 'received',
       downpaymentPercent: Number(q.downpaymentPercent),
-      downpaymentAmount: q.downpaymentAmount
+      downpaymentAmount: Number(q.downpaymentAmount)
     });
   }, context);
   for (const [name, index, validate] of [['decideQuotation', 4, validateQuotationDecision], ['requestQuotationRevision', 3, validateQuotationRevisionRequest], ['submitPurchaseOrder', 3, validatePurchaseOrderSubmission], ['requestCancellation', 3, validateCancellationRequest]]) {
@@ -510,6 +514,22 @@ export function createSalesOrdersService({
     const current = await one(c, 'SELECT CAST(quotation_id AS CHAR) id,revision_no revisionNumber,status FROM quotation WHERE inquiry_id=? AND is_current=1 FOR UPDATE', [inquiryId]);
     requireThat((body.baseQuotationId ?? null) === (current?.id ?? null), 'QUOTATION_STALE');
     requireThat(!current || ['draft', 'sent', 'rejected'].includes(current.status), 'INVALID_STATE');
+    // A sent quotation can only be revised against an approved, not-yet-fulfilled
+    // client request. The request row is immutable after review, so fulfillment
+    // is represented by an audit event on that exact request.
+    const approvedRevision = await one(c, `SELECT rr.request_id requestId,rr.quotation_id quotationId
+      FROM quotation_revision_request rr
+      JOIN quotation rq ON rq.quotation_id=rr.quotation_id
+      WHERE rq.inquiry_id=? AND rr.status='approved'
+        AND NOT EXISTS (
+          SELECT 1 FROM audit_event ae
+          WHERE ae.subject_type='quotation_revision_request'
+            AND ae.subject_id=rr.request_id
+            AND ae.action='quotation.revision_fulfilled'
+        )
+      ORDER BY rr.request_id DESC LIMIT 1 FOR UPDATE`, [inquiryId]);
+    const isRevisionDraft = Boolean(current && current.status === 'draft' && Number(current.revisionNumber) > 1);
+    if (current?.status === 'sent' || isRevisionDraft) requireThat(approvedRevision, 'REVISION_REQUEST_REQUIRED');
     const items = await rows(c, 'SELECT * FROM inquiry_item WHERE inquiry_id=? ORDER BY line_no', [inquiryId]);
     requireThat(items.length && Array.isArray(body.costing) && body.costing.length === items.length, 'MATERIAL_COSTING_INCOMPLETE');
     requireThat(new Set(body.costing.map(x => x.orderItemId)).size === items.length);
@@ -669,7 +689,7 @@ export function createSalesOrdersService({
       const estimate = await insert(c, `INSERT INTO cost_estimate(quotation_item_id,labor_cost_per_unit,include_labor,markup_percent,apply_markup,vat_type,vat_rate,apply_vat,material_cost_per_unit,unit_cost_with_markup,unit_cost_with_vat,is_locked,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, [qi, format(p.labor), body.includeLabor ? 1 : 0, format(decimal(p.cost.markupPercent)), body.applyMarkup ? 1 : 0, body.vatType, format(vat), body.applyVat ? 1 : 0, format(p.raw), format(p.withMarkup), format(p.final), body.status === 'sent' ? 1 : 0, a.userId]);
       for (const line of p.materialLines) await insert(c, 'INSERT INTO cost_estimate_material(estimate_id,material_category_id,raw_material_id,qty_per_filter,uom_id,unit_price_snapshot) VALUES (?,?,?,?,?,?)', [estimate, line.material.material_category_id, String(line.material.material_id), line.quantity, String(line.material.uom_id), line.unitPrice]);
     }
-    await changed(c, "UPDATE inquiry SET status='quotation' WHERE inquiry_id=?", [inquiryId]);
+    if (body.status === 'sent') await changed(c, "UPDATE inquiry SET status='quotation' WHERE inquiry_id=?", [inquiryId]);
     await audit(c, a, body.status === 'sent' ? 'quotation.sent' : 'quotation.drafted', 'quotation', quote, null, {
       inquiryId,
       revisionNumber: rev,
@@ -688,7 +708,17 @@ export function createSalesOrdersService({
         templateSpecifications: p.item.template_specifications
       }))
     });
-    if (body.status === 'sent') await notifyClient(c, i.clientId, 'Quotation sent', ref, 'quotation');
+    if (body.status === 'sent') {
+      if (approvedRevision) {
+        await audit(c, a, 'quotation.revision_fulfilled', 'quotation_revision_request', approvedRevision.requestId, null, {
+          inquiryId,
+          requestedQuotationId: String(approvedRevision.quotationId),
+          revisedQuotationId: String(quote),
+          revisionNumber: rev
+        });
+      }
+      await notifyClient(c, i.clientId, 'Quotation sent', ref, 'quotation');
+    }
     const saved = await one(c, 'SELECT CAST(quotation_id AS CHAR) id,quotation_no reference,revision_no revisionNumber,status,is_current isCurrent,sent_at sentAt,subtotal,addons_total addonsTotal,total_amount totalAmount,downpayment_percent downpaymentPercent,downpayment_amount downpaymentAmount FROM quotation WHERE quotation_id=?', [quote]);
     requireThat(saved && saved.status === body.status && Number(saved.isCurrent) === 1 && (body.status !== 'sent' || saved.sentAt), 'SERVICE_UNAVAILABLE');
     return ok({

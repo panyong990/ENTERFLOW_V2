@@ -48,6 +48,11 @@ function workflow() {
     }
     if (sql.includes('FROM quotation_addon WHERE')) return addons.filter(q=>q.quotationId===p[0]).map(q=>({...q}));
     if (sql.startsWith('INSERT INTO audit_event')) {audits.push({action:p[1],subjectId:p[3],after:p[5]});return {affectedRows:1,insertId:String(++serial)};}
+    if (sql.startsWith('SELECT rr.request_id')) return requests.filter(r=>r.status==='approved' && !audits.some(e=>e.subjectId===r.id && e.action==='quotation.revision_fulfilled')).map(r=>({requestId:r.id,quotationId:r.quotationId})).slice(-1);
+    if (sql.startsWith('SELECT CAST(rr.request_id')) return requests.map(r=>({...r,revisionNumber:quotes.find(q=>q.id===r.quotationId).revisionNumber,fulfilled:audits.some(e=>e.subjectId===r.id && e.action==='quotation.revision_fulfilled')}));
+    if (sql.includes("subject_type='quotation_revision_request'") && sql.includes('FROM audit_event') && sql.includes('WHERE ae.subject_type')) {
+      return audits.some(e=>e.subjectId===String(p[0]) && e.action==='quotation.revision_fulfilled') ? [{audit_event_id:'1'}] : [];
+    }
     if (sql.includes('FROM audit_event') && !sql.includes('FROM purchase_order')) {
       const event=audits.filter(e=>e.subjectId===p[0] && (!sql.includes("action='purchase_order.validated'") || e.action==='purchase_order.validated') && (!sql.includes("action IN ('purchase_order.validated'") || ['purchase_order.validated','purchase_order.rejected'].includes(e.action))).at(-1);
       return event?[{action:event.action,decisionAction:event.action,discountPercent:JSON.parse(event.after)?.discountPercent??null,pricingSummary:JSON.parse(event.after)?.pricingSummary}]:[];
@@ -56,6 +61,7 @@ function workflow() {
     if (sql.startsWith('SELECT request_id FROM quotation_revision_request')) return requests.filter(r=>r.quotationId===p[0]&&r.status==='pending');
     if (sql.startsWith('SELECT rr.*')) return requests.filter(r=>r.id===p[0]).map(r=>({...r,request_id:r.id,quotation_id:r.quotationId}));
     if (sql.startsWith('UPDATE quotation_revision_request')) {requests.find(r=>r.id===p[3]).status=p[0];return {affectedRows:1};}
+    if (sql.includes('FROM quotation_revision_request rr') && sql.includes('NOT EXISTS')) return requests.filter(r=>r.status==='approved' && !audits.some(e=>e.subjectId===r.id && e.action==='quotation.revision_fulfilled')).map(r=>({requestId:r.id,quotationId:r.quotationId})).slice(-1);
     if (sql.includes('FROM quotation_revision_request rr')) return requests.map(r=>({...r,revisionNumber:quotes.find(q=>q.id===r.quotationId).revisionNumber}));
     if (sql.includes('FROM document WHERE document_id=')) return [{document_id:p[0]}];
     if (sql.includes('FROM delivery_method WHERE')) return [{delivery_method_id:p[0]}];
@@ -77,7 +83,7 @@ const body={status:'sent',issuedOn:'2026-11-25',validUntil:'2099-12-31',paymentT
 test('connected offline quotation draft/send, client revision, revised send, acceptance and PO processing preserve history',async()=>{
   const h=workflow();
   const draft=result(await h.sales.createQuotation('19',{...body,status:'draft'},actor('sales')));
-  assert.equal(draft.status,'draft');assert.equal(draft.sentAt,null);
+  assert.equal(draft.status,'draft');assert.equal(draft.sentAt,null);assert.equal(h.state.inquiry.status,'inquiry');
   h.as('client');assert.deepEqual(result(await h.client.quotations('29','19')),[]);
   h.as('sales');const sent=result(await h.sales.createQuotation('19',{...body,baseQuotationId:draft.id},actor('sales')));
   assert.equal(sent.status,'sent');assert.ok(sent.sentAt);assert.equal(sent.addonsTotal,'10.00');
@@ -91,21 +97,32 @@ test('connected offline quotation draft/send, client revision, revised send, acc
   result(await h.client.requestQuotationRevision('29','9','19',{quotationId:sent.id,reason:'Please revise again'}),'REVISION_ALREADY_PENDING');
   h.as('sales');const detail=result(await h.sales.detail('19'));assert.equal(detail.purchaseOrder,null);assert.equal(detail.revisionRequests[0].quotationId,sent.id);
   result(await h.sales.reviewRevision('19',request.id,{decision:'approved'},actor('sales')));
+  h.as('client');result(await h.client.requestQuotationRevision('29','9','19',{quotationId:sent.id,reason:'Another change before revised quote'}),'REVISION_ALREADY_PENDING');
+  h.as('sales');
   const revised=result(await h.sales.createQuotation('19',{...body,baseQuotationId:sent.id,timeOfDelivery:'10 days'},actor('sales')));
   assert.equal(h.quotes.find(q=>q.id===sent.id).status,'sent');assert.equal(h.quotes.find(q=>q.id===sent.id).isCurrent,0);
+  assert(h.audits.some(e=>e.action==='quotation.revision_fulfilled' && e.subjectId===request.id));
   h.as('client');visible=result(await h.client.quotations('29','19'));assert.equal(visible.at(-1).id,revised.id);assert.equal(visible.at(-1).isLatestRevision,true);
   result(await h.client.decideQuotation('29','9','19',sent.id,{decision:'accepted'}),'QUOTATION_NOT_ELIGIBLE');
   result(await h.client.requestQuotationRevision('29','9','19',{quotationId:sent.id,reason:'Outdated request'}),'QUOTATION_NOT_ELIGIBLE');
-  result(await h.client.submitPurchaseOrder('29','9','19',{reference:'PO-test',quotationId:revised.id,documentId:'701',deliveryMethodId:'1'}),'QUOTATION_NOT_ACCEPTED');
+  result(await h.client.submitPurchaseOrder('29','9','19',{quotationId:revised.id,documentId:'701'}),'QUOTATION_NOT_ACCEPTED');
   result(await h.client.decideQuotation('29','9','19',revised.id,{decision:'accepted'}));
   visible=result(await h.client.quotations('29','19'));assert.equal(visible.at(-1).decision,'accepted');
-  const po=result(await h.client.submitPurchaseOrder('29','9','19',{reference:'PO-test',quotationId:revised.id,documentId:'701',deliveryMethodId:'1'}));
+  const po=result(await h.client.submitPurchaseOrder('29','9','19',{quotationId:revised.id,documentId:'701'}));
   assert.equal(po.acceptedQuotationId,revised.id);
   h.as('sales');assert.equal(result(await h.sales.purchaseOrder('19')).id,po.id);
   result(await h.sales.createJobOrders('19',actor('sales'),{dueDate:'2099-12-31',poVerified:true,specsVerified:true,termsVerified:true}),'PURCHASE_ORDER_NOT_VALIDATED');
   assert.equal(result(await h.sales.processPurchaseOrder('19',actor('sales'),{decision:'validated'})).status,'validated');
   result(await h.sales.createQuotation('19',{...body,baseQuotationId:revised.id},actor('sales')),'INVALID_STATE');
   assert.equal(h.quotes.length,3);
+});
+
+test('a freshly sent quotation cannot be revised again without an approved client request',async()=>{
+  const h=workflow();
+  const sent=result(await h.sales.createQuotation('19',{...body,status:'sent'},actor('sales')));
+  result(await h.sales.createQuotation('19',{...body,baseQuotationId:sent.id},actor('sales')),'REVISION_REQUEST_REQUIRED');
+  assert.equal(h.quotes.length,1);
+  assert.equal(h.audits.some(e=>e.action==='quotation.revision_fulfilled'),false);
 });
 
 test('order detail reports the failing related read without hiding it or leaking SQL',async()=>{

@@ -1,4 +1,5 @@
 import {phase2Errors} from '../controllers/phase2-response.js';
+import { createPoUploadDiagnostics } from '../controllers/service-failure-log.js';
 import { Router } from 'express';
 import express from 'express';
 import { pool } from '../config/database.js';
@@ -38,7 +39,7 @@ const errors = {
 function respond(res, result, successStatus = 200) { if (result?.success) return res.status(successStatus).json({ success: true, data: result.data }); const [status, message] = errors[result?.code] ?? [503, 'Document service is temporarily unavailable.']; return res.status(status).json({ success: false, code: result?.code ?? 'SERVICE_UNAVAILABLE', message, ...(result?.errors ? { errors: result.errors } : {}) }); }
 function fileResponse(res, result) { if (!result?.success) return respond(res, result); res.set('X-Content-Type-Options','nosniff');res.set('Content-Security-Policy',"sandbox; default-src 'none'");res.set('Content-Type', result.data.mimeType); res.set('Content-Disposition', `inline; filename="${String(result.data.originalFilename).replace(/[^A-Za-z0-9._-]/g, '_')}"`); res.set('Cache-Control', 'no-store'); return res.status(200).send(result.data.buffer); }
 
-export function createDocumentRouter({ service = createDocumentWorkflowsService({ db: pool }), sketchService = createEngineerSketchService({ db: pool }), validateSessionService = validateSession, updateSessionActivityService = updateSessionActivity, permissionChecker = hasPermission, appOrigin = process.env.APP_ORIGIN } = {}) {
+export function createDocumentRouter({ logger = console, service = createDocumentWorkflowsService({ db: pool, logger }), sketchService = createEngineerSketchService({ db: pool }), validateSessionService = validateSession, updateSessionActivityService = updateSessionActivity, permissionChecker = hasPermission, appOrigin = process.env.APP_ORIGIN } = {}) {
   const router = Router();
   const permission = createPermissionMiddleware({ permissionChecker });
   const clientRole = createRoleMiddleware(['client']);
@@ -83,7 +84,7 @@ export function createDocumentRouter({ service = createDocumentWorkflowsService(
   }
 
   router.post('/client/orders/:id/purchase-order', clientRole, permission('orders', 'read'), permission('quotations', 'read'), createOriginMiddleware({ appOrigin, allowMultipart: true }), createDocumentUploadMiddleware(), async (req, res) => {
-    try { return respond(res, await service.uploadPurchaseOrder({ clientId: req.auth.clientId, userId: req.auth.userId, orderId: req.params.id, reference: req.documentUpload.fields.reference,deliveryMethodId:req.documentUpload.fields.deliveryMethodId,quotationId:req.documentUpload.fields.quotationId, file: req.documentUpload.file, context: { requestId: req.requestId } }), 201); } catch { return respond(res, { code: 'DOCUMENT_UPLOAD_FAILED' }); }
+    try { return respond(res, await service.uploadPurchaseOrder({ clientId: req.auth.clientId, userId: req.auth.userId, orderId: req.params.id, quotationId:req.documentUpload.fields.quotationId, file: req.documentUpload.file, context: { requestId: req.requestId } }), 201); } catch (error) { createPoUploadDiagnostics({ logger, requestId: req.requestId }).error(error); return respond(res, { code: 'DOCUMENT_UPLOAD_FAILED' }); }
   });
   router.post('/client/orders/:id/payment-proof', clientRole, permission('payments', 'create'), createOriginMiddleware({ appOrigin, allowMultipart: true }), createDocumentUploadMiddleware({multiple:true}), async (req, res) => {
     try { return respond(res, await service.uploadPaymentProof({ clientId: req.auth.clientId, userId: req.auth.userId, orderId: req.params.id, invoiceId: req.documentUpload.fields.invoiceId, amount: req.documentUpload.fields.amount, method: req.documentUpload.fields.method,paymentMethodId:req.documentUpload.fields.paymentMethodId,note:req.documentUpload.fields.note, referenceNumber: req.documentUpload.fields.referenceNumber, files: req.documentUpload.files, context: { requestId: req.requestId } }), 201); } catch { return respond(res, { code: 'DOCUMENT_UPLOAD_FAILED' }); }

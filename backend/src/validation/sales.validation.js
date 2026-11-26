@@ -109,15 +109,13 @@ export function validateQuotationDecision(body) {
 
 export function validatePurchaseOrderSubmission(body) {
   try {
-    const input = ownData(body, ['reference','quotationId','documentId','deliveryMethodId']);
-    if (!input || typeof input.reference !== 'string' || !input.reference.trim() || input.reference.length > 60 || !input.reference.isWellFormed()) {
-      return fail({ reference: 'A valid purchase-order reference is required.' });
+    const input = ownData(body, ['quotationId', 'documentId']);
+    if (!input || !validateApplicationId(input.documentId).success || (input.quotationId !== undefined && !validateApplicationId(input.quotationId).success)) {
+      return fail({ documentId: 'An available uploaded document is required.' });
     }
-    if(!validateApplicationId(input.documentId).success||!validateApplicationId(input.deliveryMethodId).success||(input.quotationId!==undefined&&!validateApplicationId(input.quotationId).success))return fail({documentId:'An available uploaded document and configured delivery method are required.'});return { success: true, data: { reference: input.reference.trim(),documentId:input.documentId,deliveryMethodId:input.deliveryMethodId,...(input.quotationId?{quotationId:input.quotationId}:{}) } };
+    return { success: true, data: { documentId: input.documentId, ...(input.quotationId ? { quotationId: input.quotationId } : {}) } };
   } catch { return fail({ body: 'Invalid purchase-order submission.' }); }
-}
-
-export function validatePurchaseOrderDecision(body) {
+}export function validatePurchaseOrderDecision(body) {
   try {
     const input = ownData(body, ['decision', 'reason']);
     if (!input || !['validated', 'rejected'].includes(input.decision)) return fail({ decision: 'A purchase-order decision must be validated or rejected.' });

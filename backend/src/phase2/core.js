@@ -134,8 +134,10 @@ export function failure(e) {
   return fail('SERVICE_UNAVAILABLE');
 }
 export async function transaction(db, actor, roles, work, {
-  identityLock = false
+  identityLock = false,
+  diagnostics
 } = {}) {
+  const stage = value => { try { diagnostics?.stage(value); } catch { /* Diagnostics cannot alter results. */ } };
   let c,
     open = false,
     commitAttempted = false,
@@ -143,6 +145,7 @@ export async function transaction(db, actor, roles, work, {
     lockName;
   try {
     if (!actor || !id(actor.userId) || !roles.includes(actor.roleCode) || actor.accountType !== (actor.roleCode === 'client' ? 'client' : 'employee')) return fail('FORBIDDEN');
+    stage('connection_acquire');
     c = await db.getConnection();
     if (identityLock) {
       const selected = await one(c, 'SELECT DATABASE() AS databaseName');
@@ -153,8 +156,10 @@ export async function transaction(db, actor, roles, work, {
         throw new BusinessError('CONFLICT');
       }
     }
+    stage('transaction_begin');
     await c.beginTransaction();
     open = true;
+    stage('user_identity_lookup');
     const identity = {
       ...(await authorize(c, actor, roles)),
       requestId: currentRequestId() ?? actor?.requestId ?? randomUUID()
@@ -162,10 +167,12 @@ export async function transaction(db, actor, roles, work, {
     const result = await work(c, identity);
     if (result?.success === false) return result;
     commitAttempted = true;
+    stage('transaction_commit');
     await c.commit();
     open = false;
     return result?.success === true ? result : ok(result);
   } catch (e) {
+    try { diagnostics?.error(e); } catch { /* Preserve the original failure and rollback. */ }
     if (commitAttempted) {
       destroy = true;
       return fail('WRITE_OUTCOME_UNKNOWN');
@@ -174,7 +181,8 @@ export async function transaction(db, actor, roles, work, {
   } finally {
     if (open && c) try {
       await c.rollback();
-    } catch {
+    } catch (e) {
+      try { diagnostics?.error(e, 'transaction_rollback'); } catch { /* Preserve the original failure. */ }
       destroy = true;
     }
     if (lockName && c) try {

@@ -628,9 +628,9 @@ function OrdersTab({ clientName, onSubmitted, onPayInvoice, targetInquiryId }: {
         <POUploadOverlay
           isResubmission={Boolean(poForInquiry && poReviewStatus(poForInquiry) === "Rejected")}
           onClose={() => setPoForId(null)}
-          onSubmit={async ({ fileName, fileDataUrl, poNumber, file, deliveryMethodId }) => {
+          onSubmit={async ({ fileName, fileDataUrl, poNumber, file }) => {
             if (realMode) {
-              try { await submitPurchaseOrder(poForId, poNumber, file, deliveryMethodId); setPoForId(null); toast.success("Purchase Order submitted", { description: "Sales will review the uploaded PO document." }); return true; }
+              try { await submitPurchaseOrder(poForId, file); setPoForId(null); toast.success("Purchase Order submitted", { description: "Sales will review the uploaded PO document." }); return true; }
               catch (cause) { toast.error(cause instanceof Error ? cause.message : "Purchase-order submission failed."); return false; }
             }
             const inquiry = poForInquiry;
@@ -1798,7 +1798,7 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
             <div className="py-4 flex flex-col gap-3">
               <div className="font-dm flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2" style={{ fontSize: 12 }}>
                 <span style={{ color: "#64748B", fontWeight: 700 }}>Quotation status</span>
-                <span style={{ color: "#1D4E8A", fontWeight: 800 }}>{inquiry.quotationStatus?.toUpperCase() ?? "AVAILABLE"}{inquiry.quotationDoc?.revisionNumber != null && ` · Revision ${inquiry.quotationDoc.revisionNumber}`}</span>
+                <span style={{ color: "#1D4E8A", fontWeight: 800 }}>{inquiry.quotationStatus?.toUpperCase() ?? "AVAILABLE"}</span>
               </div>
               <div className="rounded-lg border border-slate-200 overflow-hidden bg-white">
                 <table className="w-full">
@@ -2261,19 +2261,8 @@ function ClientOrderCard({ inquiry, onUploadPO, onCancel, onPayInvoice }: { inqu
   );
 }
 
-function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string; file: File; deliveryMethodId?: string }) => Promise<boolean>; isResubmission: boolean }) {
+function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () => void; onSubmit: (po: { fileName: string; fileDataUrl: string; poNumber: string; file: File }) => Promise<boolean>; isResubmission: boolean }) {
   const { realMode } = useClientData();
-  const [deliveryMethods, setDeliveryMethods] = useState<{id:string;name:string}[]>([]);
-  const [deliveryMethodId, setDeliveryMethodId] = useState('');
-  const [referenceError, setReferenceError] = useState('');
-  useEffect(() => {
-    if (!realMode) return;
-    const controller = new AbortController();
-    getReferenceData(controller.signal).then(data => { if (!controller.signal.aborted) setDeliveryMethods(data.deliveryMethods); })
-      .catch(cause => { if (!controller.signal.aborted) setReferenceError(cause instanceof Error ? cause.message : 'Delivery methods are unavailable.'); });
-    return () => controller.abort();
-  }, [realMode]);
-  const [poReference, setPoReference] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submissionLock = useRef(false);
   const { generatePONumber } = useOrders();
@@ -2304,20 +2293,17 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-md hover:bg-slate-100 flex items-center justify-center"><X size={16} /></button>
         </div>
         <div className="p-6 flex flex-col gap-4">
-          {realMode && <><label className="font-dm text-xs font-semibold text-slate-700">Client PO reference<input value={poReference} maxLength={80} onChange={event => setPoReference(event.target.value)} className="mt-1 w-full rounded border border-slate-200 p-2 text-sm" /></label><label className="font-dm text-xs font-semibold text-slate-700">Delivery method<select value={deliveryMethodId} onChange={event => setDeliveryMethodId(event.target.value)} className="mt-1 w-full rounded border border-slate-200 p-2 text-sm"><option value="">Select delivery method</option>{deliveryMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>{referenceError && <p role="alert" className="text-xs text-red-700">{referenceError}</p>}</>}
+
           <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) readPOFile(f); }} className="flex flex-col items-center justify-center gap-2 py-10 rounded-lg cursor-pointer transition-colors" style={{ border: `2px dashed ${drag ? "#C8102E" : "#CBD5E1"}`, backgroundColor: drag ? "#FEF2F2" : "#F8FAFC" }}>
             <Upload size={28} style={{ color: file ? "#16A34A" : "#94A3B8" }} />
             <span className="font-dm" style={{ fontSize: 13, color: "#0F172A", fontWeight: 600 }}>{file ? file.name : "Drop your PO here or click to browse"}</span>
             <span className="font-dm" style={{ fontSize: 11, color: "#94A3B8" }}>Accepts PDF, JPG, PNG</span>
             <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => { const selected = e.target.files?.[0]; if (selected) readPOFile(selected); e.currentTarget.value = ""; }} />
           </label>
-          <div className="rounded-md p-2 font-dm flex items-center justify-between" style={{ fontSize: 11, backgroundColor: "#F1F5F9", color: "#64748B" }}>
-            <span>{realMode ? "Reference assigned on submission" : "Auto-generated reference"}</span>
-            <span className="font-mono-jb" style={{ color: "#0F172A", fontWeight: 700 }}>{autoRef}</span>
-          </div>
+          <div className="rounded-md p-2 font-dm" style={{ fontSize: 11, backgroundColor: "#F1F5F9", color: "#64748B" }}>{realMode ? "Internal reference assigned after upload" : `Auto-generated reference: ${autoRef}`}</div>
           {/* Section E — always submit the auto-generated reference, never the uploaded file's name */}
-          <button onClick={() => setConfirmSubmit(true)} disabled={submitting || !file || (realMode ? !poReference.trim() || !deliveryMethodId : !fileDataUrl)} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
-            {isResubmission ? "REVIEW REVISED PURCHASE ORDER" : "REVIEW PURCHASE ORDER"} ({autoRef})
+          <button onClick={() => setConfirmSubmit(true)} disabled={submitting || !file || (!realMode && !fileDataUrl)} className="flex items-center justify-center gap-2 py-3 rounded-md text-white font-dm hover:opacity-90 disabled:opacity-40" style={{ backgroundColor: "#C8102E", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+            {isResubmission ? "REVIEW REVISED PURCHASE ORDER" : "REVIEW PURCHASE ORDER"} {!realMode && `(${autoRef})`}
           </button>
         </div>
       </div>
@@ -2335,7 +2321,7 @@ function POUploadOverlay({ onClose, onSubmit, isResubmission }: { onClose: () =>
               event.preventDefault();
               if (!file || (!realMode && !fileDataUrl) || submissionLock.current) return;
               submissionLock.current = true; setSubmitting(true);
-              try { if (await onSubmit({ fileName: file.name, fileDataUrl: fileDataUrl ?? "", poNumber: realMode ? poReference.trim() : autoRef, file, deliveryMethodId: realMode ? deliveryMethodId : undefined })) setConfirmSubmit(false); }
+              try { if (await onSubmit({ fileName: file.name, fileDataUrl: fileDataUrl ?? "", poNumber: autoRef, file })) setConfirmSubmit(false); }
               finally { submissionLock.current = false; setSubmitting(false); }
             }}>CONFIRM SUBMISSION</AlertDialogAction>
           </AlertDialogFooter>

@@ -34,20 +34,80 @@ const stages = new Set(['service_call', 'service_result', 'response',
   'identity_lock_release_result', 'connection_release', 'connection_destroy']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const poOperation = 'client.purchase_order.upload';
+operations.add(poOperation);
+for (const stage of ['inquiry_lock', 'quotation_lookup', 'duplicate_check',
+  'document_validation', 'document_insert', 'storage_put', 'document_available',
+  'po_reference', 'po_insert', 'inquiry_update', 'po_audit', 'storage_cleanup', 'cleanup_audit']) stages.add(stage);
+// These extra classifiers and static messages apply only to the PO diagnostic.
+// Never use error.message/sqlMessage/stack: they can contain SQL values or paths.
+const poCategories = new Map([
+  ...categories,
+  ...['ER_NO_DEFAULT_FOR_FIELD', 'ER_BAD_NULL_ERROR', 'ER_DATA_TOO_LONG',
+    'ER_TRUNCATED_WRONG_VALUE', 'WARN_DATA_TRUNCATED', 'ER_NO_REFERENCED_ROW_2',
+    'ER_ROW_IS_REFERENCED_2', 'ER_DUP_ENTRY'].map(code => [code, 'database_constraint_error']),
+  ...['EACCES', 'EPERM', 'ENOENT', 'ENOSPC', 'EEXIST'].map(code => [code, 'storage_error']),
+  ...['INVALID_DOCUMENT', 'STORAGE_NOT_CONFIGURED', 'DOCUMENT_UPLOAD_FAILED',
+    'QUOTATION_NOT_ACCEPTED', 'PURCHASE_ORDER_ALREADY_EXISTS', 'INVALID_STATE',
+    'FORBIDDEN', 'NOT_FOUND', 'PASSWORD_CHANGE_REQUIRED', 'VALIDATION_ERROR',
+    'STALE_RECORD'].map(code => [code, 'business_rule_error'])
+]);
+const poMessages = new Map([
+  ['ER_NO_DEFAULT_FOR_FIELD', 'A required database field has no default.'],
+  ['ER_BAD_NULL_ERROR', 'A required database field cannot be null.'],
+  ['ER_DATA_TOO_LONG', 'A value exceeds a database field limit.']
+]);
+const categoryMessages = new Map([
+  ['database_constraint_error', 'A database constraint rejected the operation.'],
+  ['database_connection_error', 'The database connection failed.'],
+  ['database_permission_error', 'The database denied the operation.'],
+  ['database_query_error', 'The database could not execute the operation.'],
+  ['database_resource_error', 'A database resource was unavailable.'],
+  ['database_tls_error', 'Database TLS verification failed.'],
+  ['storage_error', 'The document storage operation failed.'],
+  ['business_rule_error', 'A document workflow requirement was not met.'],
+  ['service_unavailable', 'The service could not complete the operation.']
+]);
+const poBusinessStatuses = new Map([
+  ['INVALID_DOCUMENT', 400], ['VALIDATION_ERROR', 400], ['FORBIDDEN', 403],
+  ['PASSWORD_CHANGE_REQUIRED', 403], ['NOT_FOUND', 404], ['QUOTATION_NOT_ACCEPTED', 409],
+  ['PURCHASE_ORDER_ALREADY_EXISTS', 409], ['INVALID_STATE', 409], ['STALE_RECORD', 409]
+]);
+
+export function createPoUploadDiagnostics({ logger = console, requestId } = {}) {
+  let stage = 'service_call';
+  return {
+    stage: value => { stage = value; },
+    error: (error, failedStage = stage) => {
+      let statusCode = 503;
+      try {
+        if (!['service_call', 'transaction_commit'].includes(failedStage)) {
+          if (error?.business) statusCode = poBusinessStatuses.get(error.code) ?? 503;
+          else if (['ER_DUP_ENTRY', 'ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'].includes(error?.code)) statusCode = 409;
+        }
+      } catch { /* The safe classifier handles inaccessible properties. */ }
+      logServiceFailure({ logger, operation: poOperation, requestId, stage: failedStage, error, statusCode });
+    }
+  };
+}
+
 export function logServiceFailure({ logger = console, operation, requestId, stage, error, statusCode = 503 }) {
   // Logging must not change the response even if an error getter or sink fails.
   try {
     let code;
     try { code = error?.code; } catch { /* Treat inaccessible codes as unknown. */ }
-    const knownCode = typeof code === 'string' && categories.has(code);
+    const classifier = operation === poOperation ? poCategories : categories;
+    const knownCode = typeof code === 'string' && classifier.has(code);
+    const category = knownCode ? classifier.get(code) : stage === 'service_result' ? 'service_result_failure' : 'unhandled_error';
     logger.error(JSON.stringify({
       event: 'http_request_failed',
       operation: operations.has(operation) ? operation : 'unknown_operation',
       requestId: typeof requestId === 'string' && requestId.length === 36 && uuid.test(requestId) ? requestId : null,
       stage: stages.has(stage) ? stage : 'unknown_stage',
-      category: knownCode ? categories.get(code) : stage === 'service_result' ? 'service_result_failure' : 'unhandled_error',
+      category,
       code: knownCode ? code : 'UNKNOWN_ERROR',
-      statusCode: [201, 409, 503].includes(statusCode) ? statusCode : 503
+      ...(operation === poOperation ? { message: poMessages.get(code) ?? categoryMessages.get(category) ?? 'The PO upload operation failed.' } : {}),
+      statusCode: (operation === poOperation ? [400, 403, 404, 409, 503] : [201, 409, 503]).includes(statusCode) ? statusCode : 503
     }));
   } catch { /* Do not replace the original service response on logging failure. */ }
 }

@@ -9,6 +9,8 @@ import {
 import { validateClientInquiry } from '../validation/client-inquiry.validation.js';
 import { createAccountingService } from './accounting.js';
 import { allowPurchaseOrderSubmission } from './workflows.js';
+import { createPoUploadDiagnostics } from '../controllers/service-failure-log.js';
+import { currentRequestId } from '../config/request-context.js';
 import { ok, fail, read, rows, one, id, text, object, requireThat, paymentTerm, paging, decimal, format, transaction, authorize, lockInquiry, insert, changed, audit, reference } from './core.js';
 
 export const validSubmissionKey = key =>
@@ -18,7 +20,8 @@ export const validSubmissionKey = key =>
 export function createDocumentWorkflowsService({
   db,
   storage,
-  bucketName = process.env.GCS_BUCKET
+  bucketName = process.env.GCS_BUCKET,
+  logger = console
 } = {}) {
   const storageDriver = process.env.DOCUMENT_STORAGE_DRIVER || 'local';
 
@@ -43,7 +46,8 @@ export function createDocumentWorkflowsService({
     }
   };
 
-  async function store(c, a, file, kind, scope, parentId, staged) {
+  async function store(c, a, file, kind, scope, parentId, staged, diagnostics) {
+    diagnostics?.stage('document_validation');
     requireThat(
       storage ||
       storageDriver === 'local' ||
@@ -62,6 +66,7 @@ export function createDocumentWorkflowsService({
       .update(file.buffer)
       .digest('hex');
 
+    diagnostics?.stage('document_insert');
     const documentId = await insert(
       c,
       "INSERT INTO document(file_name,mime_type,size_bytes,sha256,storage_status,uploaded_by_user_id) VALUES (?,?,?,?,'pending',?)",
@@ -96,6 +101,7 @@ export function createDocumentWorkflowsService({
 
     staged.push(pending);
 
+    diagnostics?.stage('storage_put');
     const saved = await objects.put({
       objectKey,
       buffer: file.buffer,
@@ -112,6 +118,7 @@ export function createDocumentWorkflowsService({
 
     pending.generation = saved.generation;
 
+    diagnostics?.stage('document_available');
     await changed(
       c,
       "UPDATE document SET storage_bucket=?,storage_key=?,object_generation=?,storage_status='available' WHERE document_id=? AND storage_status='pending'",
@@ -126,21 +133,23 @@ export function createDocumentWorkflowsService({
     return documentId;
   }
 
-  async function withObjects(actor, roles, work) {
+  async function withObjects(actor, roles, work, diagnostics) {
     const staged = [];
 
     const result = await transaction(
       db,
       actor,
       roles,
-      (c, a) => work(c, a, staged)
+      (c, a) => work(c, a, staged, diagnostics),
+      { diagnostics }
     );
 
     if (!result.success && result.code !== 'WRITE_OUTCOME_UNKNOWN') {
       for (const item of staged) {
         try {
           await objects.delete(item);
-        } catch {
+        } catch (error) {
+          diagnostics?.error(error, 'storage_cleanup');
           await read(db, async c => {
             await audit(
               c,
@@ -157,7 +166,7 @@ export function createDocumentWorkflowsService({
             );
 
             return ok(null);
-          });
+          }, diagnostics ? error => diagnostics.error(error, 'cleanup_audit') : undefined);
         }
       }
     }
@@ -177,16 +186,15 @@ export function createDocumentWorkflowsService({
       clientId,
       userId,
       orderId,
-      reference: poReference,
       file,
       documentId,
-      deliveryMethodId,
       quotationId,
       context = {}
     }) => withObjects(
       client(clientId, userId),
       ['client'],
-      async (c, a, staged) => {
+      async (c, a, staged, diagnostics) => {
+        diagnostics.stage('inquiry_lock');
         const i = await lockInquiry(c, orderId, a.clientId);
 
         requireThat(
@@ -194,17 +202,8 @@ export function createDocumentWorkflowsService({
           'INVALID_STATE'
         );
 
-        requireThat(id(deliveryMethodId), 'REFERENCE_DATA_MISSING');
 
-        requireThat(
-          await one(
-            c,
-            'SELECT delivery_method_id FROM delivery_method WHERE delivery_method_id=? AND is_active=1',
-            [deliveryMethodId]
-          ),
-          'REFERENCE_DATA_MISSING'
-        );
-
+        diagnostics.stage('quotation_lookup');
         const q = await one(
           c,
           "SELECT CAST(quotation_id AS CHAR) id,terms_of_payment paymentTermCode FROM quotation WHERE inquiry_id=? AND is_current=1 AND status='accepted' FOR UPDATE",
@@ -216,6 +215,7 @@ export function createDocumentWorkflowsService({
           'QUOTATION_NOT_ACCEPTED'
         );
 
+        diagnostics.stage('duplicate_check');
         await allowPurchaseOrderSubmission(c, orderId);
 
         const doc = await store(
@@ -225,28 +225,33 @@ export function createDocumentWorkflowsService({
           'po',
           'purchase-orders',
           orderId,
-          staged
+          staged,
+          diagnostics
         );
 
+        diagnostics.stage('po_reference');
+        const poReference = reference('PO');
+        diagnostics.stage('po_insert');
         const po = await insert(
           c,
-          'INSERT INTO purchase_order(po_no,quotation_id,po_document_id,received_date,payment_terms,delivery_method_id,recorded_by_user_id) VALUES (?,?,?,UTC_DATE(),?,?,?)',
+          'INSERT INTO purchase_order(po_no,quotation_id,po_document_id,received_date,payment_terms,recorded_by_user_id) VALUES (?,?,?,UTC_DATE(),?,?)',
           [
-            text(poReference, 80),
+            poReference,
             q.id,
             doc,
             paymentTerm(q.paymentTermCode),
-            deliveryMethodId,
             a.userId
           ]
         );
 
+        diagnostics.stage('inquiry_update');
         await changed(
           c,
           "UPDATE inquiry SET status='po' WHERE inquiry_id=?",
           [orderId]
         );
 
+        diagnostics.stage('po_audit');
         await audit(
           c,
           a,
@@ -266,7 +271,8 @@ export function createDocumentWorkflowsService({
           reference: poReference,
           fileId: doc
         });
-      }
+      },
+      createPoUploadDiagnostics({ logger, requestId: currentRequestId() ?? context.requestId })
     ),
 
     uploadPaymentProof: ({

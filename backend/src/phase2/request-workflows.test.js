@@ -6,7 +6,7 @@ function requests(options = {}) {
   const h = fixture({
     ...options,
     handler(sql, p, s) {
-      if (sql.startsWith('SELECT request_id FROM')) return [];
+      if (sql.startsWith('SELECT request_id FROM') || sql.startsWith('SELECT rr.request_id')) return [];
       if (sql.startsWith('SELECT DATE_FORMAT(submitted_at')) return [{
         requestedAt: '2026-11-22T00:00:00Z'
       }];

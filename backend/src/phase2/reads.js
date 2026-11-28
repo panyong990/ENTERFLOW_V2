@@ -35,9 +35,15 @@ const value = pick(row, [
   'archiveReason', 'archiveNote', 'archivedAt', 'itemCount',
   ...(client
     ? ['latestQuotationStatus']
-    : ['stageCode', 'generalNotes', 'verifiedPaymentAmount', 'invoiceAmount'])
+    : ['stageCode', 'generalNotes', 'verifiedPaymentAmount', 'invoiceAmount', 'latestQuotationStatus'])
 ]);
   if (value.itemCount !== undefined) value.itemCount = Number(value.itemCount);
+  // A saved draft is not a client-visible quotation stage. Correct older rows
+  // that were advanced by the pre-fix draft workflow as well.
+  if (value.status === 'quotation' && value.latestQuotationStatus === 'draft') {
+    value.status = 'inquiry';
+    if (value.stageCode !== undefined) value.stageCode = 'inquiry';
+  }
   value.stageLabel ??= {
     inquiry: 'Inquiry',
     quotation: 'Quotation',
@@ -48,7 +54,7 @@ const value = pick(row, [
     delivered: 'Delivered',
     cancelled: 'Cancelled',
     rejected: 'Rejected'
-  }[row.status ?? row.stageCode] ?? row.status;
+  }[value.status ?? value.stageCode] ?? value.status;
   return termDisplay(value);
 };
 const clientShipment = row => ({
@@ -132,7 +138,9 @@ export function createPhase2Reads({
     detail: inquiryId => read(db, async c => {
       const inquiry = await owned(c, inquiryId);
       const items = await rows(c, `SELECT CAST(ii.inquiry_item_id AS CHAR) id,CAST(ii.inquiry_item_id AS CHAR) specificationId,CAST(ii.inquiry_id AS CHAR) orderId,ii.line_no lineNumber,CAST(ii.filter_type_id AS CHAR) filterTypeId,ft.filter_type_name filterTypeCode,ii.filter_name filterName,ii.quantity,ii.od1_mm od1,ii.od2_mm od2,ii.id1_mm id1,ii.id2_mm id2,ii.height_mm height,ii.overall_height_mm overallHeight,ii.filter_media media,ii.inner_core innerCore,ii.outer_core outerCore,ii.o_ring oring,ii.gasket,ii.filtration_rating filtrationRating,ii.template_specifications templateSpecifications,CAST(ii.sketch_document_id AS CHAR) sketchDocumentId FROM inquiry_item ii JOIN filter_type ft ON ft.filter_type_id=ii.filter_type_id WHERE ii.inquiry_id=? ORDER BY ii.line_no`, [inquiryId]);
-      const revisionRequests = await rows(c, 'SELECT CAST(rr.request_id AS CHAR) id,CAST(rr.quotation_id AS CHAR) quotationId,q.quotation_no quotationReference,q.revision_no revisionNumber,rr.reason,rr.status,rr.submitted_at requestedAt,rr.reviewed_at decidedAt,rr.review_note reviewNote FROM quotation_revision_request rr JOIN quotation q ON q.quotation_id=rr.quotation_id WHERE q.inquiry_id=? ORDER BY rr.request_id', [inquiryId]);
+      const revisionRequests = await rows(c, `SELECT CAST(rr.request_id AS CHAR) id,CAST(rr.quotation_id AS CHAR) quotationId,q.quotation_no quotationReference,q.revision_no revisionNumber,rr.reason,rr.status,rr.submitted_at requestedAt,rr.reviewed_at decidedAt,rr.review_note reviewNote,
+        EXISTS(SELECT 1 FROM audit_event ae WHERE ae.subject_type='quotation_revision_request' AND ae.subject_id=rr.request_id AND ae.action='quotation.revision_fulfilled') fulfilled
+        FROM quotation_revision_request rr JOIN quotation q ON q.quotation_id=rr.quotation_id WHERE q.inquiry_id=? ORDER BY rr.request_id`, [inquiryId]);
       const cancellationHistory = await rows(c, `SELECT CAST(request_id AS CHAR) id,CAST(quotation_id AS CHAR) quotationId,CAST(po_id AS CHAR) purchaseOrderId,reason,'client' requestedBy,status resolution,submitted_at requestedAt,reviewed_at resolvedAt,review_note response FROM cancellation_request WHERE inquiry_id=? ORDER BY request_id`, [inquiryId]);
       const result = {
         ...publicInquiry(inquiry, clientId),

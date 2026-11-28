@@ -87,11 +87,11 @@ export function useOrderAdapter({ profile, bundles, refresh }: State, surface: S
     refresh();
     return result;
   };
-  const submitPurchaseOrder = async (orderId: string, reference: string, file?: File, deliveryMethodId?: string) => {
+  const submitPurchaseOrder = async (orderId: string, file?: File) => {
     const quotations = bundles.find(bundle => bundle.order.id === orderId)?.quotations;
     const quotation = quotations?.find(quote => quote.isLatestRevision && (quote.decision === 'accepted' || quote.status === 'accepted'));
-    if (!file || !deliveryMethodId || !quotation) throw new Error('An accepted current quotation, delivery method and PO document are required.');
-    const result = await clientPortalApi.uploadPurchaseOrderDocument(orderId, { reference, file, deliveryMethodId, quotationId: quotation.id });
+    if (!file || !quotation) throw new Error('An accepted current quotation and PO document are required.');
+    const result = await clientPortalApi.uploadPurchaseOrderDocument(orderId, { file, quotationId: quotation.id });
     refresh();
     return result;
   };
@@ -120,7 +120,7 @@ export function useOrderAdapter({ profile, bundles, refresh }: State, surface: S
   }), [rows, addInquiry, decideQuotation, submitPurchaseOrder, requestQuotationRevision, requestCancellation, submitPayment]);
 }
 export function useSettings() {
-  return { settings: { bankDetails: { bankName: 'Unavailable — not provided by the Client API', accountName: '—', accountNumber: '—' }, paymentMethods: [] as {id: string; label: string; type: string; details: string}[] } };
+  return { settings: { bankDetails: { bankName: 'Unavailable â€” not provided by the Client API', accountName: 'â€”', accountNumber: 'â€”' }, paymentMethods: [] as {id: string; label: string; type: string; details: string}[] } };
 }
 export async function loadProductSketchAttachment(..._args: unknown[]) { return null as { fileName: string; dataUrl: string } | null; }
 // File reading prepares a transient draft only. It never opens the Demo IndexedDB.

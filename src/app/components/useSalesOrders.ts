@@ -98,7 +98,7 @@ export interface SalesPayment {
 }
 
 export type SalesOrderDetail = SalesOrderRow & {
-  revisionRequests?: {id:string;quotationId:string;quotationReference?:string;revisionNumber:number;reason:string;status:string;requestedAt:string}[];
+  revisionRequests?: {id:string;quotationId:string;quotationReference?:string;revisionNumber:number;reason:string;status:string;requestedAt:string;fulfilled?:boolean}[];
   items: SalesOrderItem[];
   quotations: unknown[];
   purchaseOrders: unknown[];

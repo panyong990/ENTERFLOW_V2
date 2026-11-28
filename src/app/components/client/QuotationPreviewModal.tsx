@@ -41,7 +41,7 @@ export function QuotationPreviewModal({ inquiry, doc, vatLabel, total, preparedB
         <div className="px-6 py-3 border-b border-slate-200 flex items-center justify-between shrink-0 print:hidden">
           <div>
             <h3 className="font-syne" style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Quotation Preview</h3>
-            <p className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{doc.quotationNo}{doc.revisionNumber != null && ` · Revision ${doc.revisionNumber}`}</p>
+            <p className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>{doc.quotationNo}</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md font-dm hover:bg-slate-100" style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A", border: "1px solid #CBD5E1" }}>

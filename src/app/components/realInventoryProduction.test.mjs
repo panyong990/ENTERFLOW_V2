@@ -34,11 +34,19 @@ test('Real MaterialsProvider preserves catalog references and uses an explicit d
   assert.match(inventory, /Not recorded/);
 });
 
-test('Sales quotation material lookup uses authenticated records and approved prices without manufacturing BOM inputs', async () => {
+test('Sales quotation preview preserves authenticated reference pricing and explicit per-product BOM inputs', async () => {
   const costing = await readFile(new URL('./CostEstimationPanel.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(costing, /Authenticated material lookup/);
   assert.match(costing, /serverCosting/);
-  assert.match(costing, /Material requirements and prices are calculated from saved records/);
+  // The current committed editor replaced the old read-only placeholder copy.
+  // Guard the actual draft contract, rather than requiring that obsolete copy.
+  assert.match(costing, /material\.source === "database"/);
+  assert.match(costing, /material\.referenceUnitPrice/);
+  assert.match(costing, /if \(serverCosting\) return materialDrafts\.current\[activeProductIndex\] \?\? initialBoms\?\.\[activeProductIndex\] \?\? \[\]/);
+  const preparation = await readFile(new URL('./sales/RealQuotationPreparation.tsx', import.meta.url), 'utf8');
+  assert.match(preparation, /qtyPerFilter: qty/);
+  assert.match(preparation, /materials: costingMaterials\[index\]/);
+  assert.doesNotMatch(preparation, /approvedCostingPrice\s*[:=]/);
   assert.match(materials, /getInventory\(controller\.signal\)/);
 });
 
@@ -47,7 +55,10 @@ test('Real Inventory exposes unknown stock separately and shows Finished Goods q
   assert.match(materials, /available: Number\.NaN/);
   const finishedGoods = await readFile(new URL('./FinishedGoodsOrderActivity.tsx', import.meta.url), 'utf8');
   assert.match(finishedGoods, /getFinishedGoodStockStatus/);
-  assert.match(finishedGoods, /Number\.isFinite\(item\.qtyInStock\) \? `\$\{item\.qtyInStock\} pcs` : "Not recorded"/);
+  assert.match(finishedGoods, /stockStatus: warehouseFinishedGoodStatus\(row\.item\)/);
+  assert.match(finishedGoods, /quantityLabel: row\.item\.qtyInStock === null/);
+  assert.match(finishedGoods, /row\.item\.quantityStatus === "provisional_sample"/);
+  assert.match(finishedGoods, /\{quantityLabel\}/);
   assert.match(finishedGoods, /stockStatus\.label/);
 });
 
@@ -58,8 +69,13 @@ test('Real Stock Request views retain order, quotation, original stock snapshots
   assert.match(warehouseRequests, /inventoryUpdates/);
   assert.match(salesRequests, /<StockRequestsModal/);
   assert.match(salesRequests, /createStockRequest/);
-  assert.match(salesRequests, /stockRequestReady/);
-  assert.match(salesRequests, /disabled=\{!ready \|\| uncertain\}/);
+  // Readiness now comes from persisted BOM assessments, not the former manual
+  // material/quantity selector. These gates are also exercised in the browser.
+  assert.match(salesRequests, /report\.requirementsAvailable !== true/);
+  assert.match(salesRequests, /report\.unmappedItems\.length/);
+  assert.match(salesRequests, /item\.quantityStatus !== "verified"/);
+  const submit = salesRequests.slice(salesRequests.indexOf('const submit = async'), salesRequests.indexOf('lock.current = true',salesRequests.indexOf('const submit = async')));
+  for (const gate of ['!orderId','!assessmentReady','checking','availabilityError','shortages.length === 0','existingRequest','uncertain','lock.current']) assert.ok(submit.includes(gate),gate);
 });
 
 test('Real Production uses authenticated Job Order retrieval while keeping the existing screen read-only', async () => {

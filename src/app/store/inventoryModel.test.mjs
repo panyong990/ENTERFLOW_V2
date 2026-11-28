@@ -109,15 +109,17 @@ test('Q02 Sales adapter cannot show legacy, sample, unknown or contradictory ava
 });
 
 
-test('Sales backend response without legacy unmappedItems', () => {
-  const unmapped = normalizeOperationalAvailability({
+test('Sales backend requires explicit BOM completeness and retains mapped quantities only with complete metadata', () => {
+  const incomplete = {
     orderId: '13',
     overallStatus: 'unmapped',
     requirementsAvailable: false,
     stockChanged: false,
     materials: [],
     assessments: []
-  });
+  };
+  assert.throws(() => normalizeOperationalAvailability(incomplete), /completeness/);
+  const unmapped = normalizeOperationalAvailability({...incomplete,unmappedItems:[]});
 
   assert.equal(unmapped.overallStatus, 'unmapped');
   assert.deepEqual(unmapped.unmappedItems, []);
@@ -126,6 +128,8 @@ test('Sales backend response without legacy unmappedItems', () => {
   const available = normalizeOperationalAvailability({
     orderId: '13',
     overallStatus: 'available',
+    requirementsAvailable: true,
+    unmappedItems: [],
     stockChanged: false,
     materials: [],
     assessments: [{
@@ -147,4 +151,6 @@ test('Sales backend response without legacy unmappedItems', () => {
   assert.equal(available.assessments[0].unit, 'pc');
   assert.equal(available.assessments[0].availableQuantity, 200);
   assert.equal(available.assessments[0].shortageQuantity, 0);
+  assert.equal(available.stockChanged,false);
+  assert.equal(normalizeOperationalAvailability({...available,requirementsAvailable:false}).overallStatus,'unmapped');
 });

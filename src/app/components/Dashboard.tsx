@@ -1,3 +1,10 @@
+import { WarehouseReference } from "./WarehouseReference";
+import { useEffect as useWarehouseEffect } from "react";
+import {
+  getWarehouseDashboard,
+  warehouseQuantity,
+  type WarehouseDashboardResponse
+} from "../api/warehouseDashboard";
 import { useMemo, useState } from "react";
 import { useProductionJobOrders } from "./useProductionJobOrders";
 import { useSalesOrders } from "./useSalesOrders";
@@ -436,6 +443,47 @@ function displayQuantity(quantity: number): string {
 function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void }) {
   const { mode } = useSession();
   const realMode = mode === "real";
+  const [liveData, setLiveData] = useState<WarehouseDashboardResponse | null>(null);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [liveError, setLiveError] = useState(false);
+  const [reload, setReload] = useState(0);
+
+  useWarehouseEffect(() => {
+    if (!realMode) {
+      setLiveData(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setLiveLoading(true);
+    setLiveError(false);
+    setLiveData(null);
+
+    getWarehouseDashboard(controller.signal)
+      .then(result => {
+        if (!controller.signal.aborted) setLiveData(result);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLiveError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLiveLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [realMode, reload]);
+
+  useWarehouseEffect(() => {
+    if (!realMode) return;
+
+    const refresh = () => setReload(value => value + 1);
+
+    window.addEventListener("focus", refresh);
+
+    return () => window.removeEventListener("focus", refresh);
+  }, [realMode]);
+
   const { rawMaterials, finishedGoods } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
   const readyForDispatch = completedJOs.filter(
@@ -525,6 +573,120 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
     .filter((entry) => !Number.isNaN(new Date(entry.date).getTime()))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
+  const live = realMode && !liveLoading && !liveError ? liveData : null;
+  const unavailable = realMode && !live;
+
+  const unavailableMessage = liveError
+    ? "Warehouse data is unavailable."
+    : "Loading Warehouse records...";
+
+  const displayedLowStock = realMode
+    ? (live?.lowStockAlerts ?? []).map(item => ({
+        id: item.id,
+        name: item.name,
+        current: warehouseQuantity(item.current),
+        minimum: warehouseQuantity(item.minimum),
+        unit: item.unit,
+        status: item.status === "out-of-stock"
+          ? { label: "Out of Stock", bg: "#FEE2E2", fg: "#991B1B" }
+          : { label: "Low Stock", bg: "#FFEDD5", fg: "#C2410C" }
+      }))
+    : lowStockItems.map(item => ({
+        ...item,
+        current: displayQuantity(item.current),
+        minimum: displayQuantity(item.minimum)
+      }));
+
+  const displayedClients = realMode
+    ? live?.topClientsByOrders ?? []
+    : topClientsByOrders;
+
+  const dispatchTotal = realMode
+    ? live?.readyForDispatch.total ?? null
+    : String(readyForDispatch.length);
+
+  const displayedDispatch = realMode
+    ? (live?.readyForDispatch.items ?? []).map(job => ({
+        id: job.id,
+        joNumber: job.joNumber,
+        client: job.client ?? "Not recorded",
+        product: job.product ?? "Not recorded",
+        quantity: warehouseQuantity(job.totalQuantity)
+      }))
+    : readyForDispatch.slice(0, 6).map(job => ({
+        id: job.id,
+        joNumber: job.joNumber ?? `JO-${job.code}`,
+        client: job.clientName,
+        product: job.products[0]?.filterName ?? job.products[0]?.type ?? "\u2014",
+        quantity: job.products.reduce((total, product) => total + product.qty, 0)
+      }));
+
+  const displayedActivity = realMode
+    ? (live?.recentActivity ?? []).map(entry => ({
+        id: entry.id,
+        date: entry.date,
+        title: entry.title,
+        subject: entry.subject,
+        description: entry.newQty != null
+          ? `${warehouseQuantity(entry.oldQty)} \u2192 ${warehouseQuantity(entry.newQty)} ${entry.unit ?? ""} \u00b7 ${entry.reason ?? "Stock observation"}`
+          : entry.description ?? "",
+        user: entry.actorId ? `Employee ID ${entry.actorId}` : undefined
+      }))
+    : activity;
+
+  const metrics = [
+    {
+      label: "Tracked Raw Material Items",
+      value: realMode
+        ? live ? String(live.trackedRawMaterialItems) : "\u2014"
+        : String(rawMaterials.length),
+      detail: "in inventory",
+      icon: Boxes,
+      color: "#1A2B4A"
+    },
+    {
+      label: "Finished Goods",
+      value: realMode
+        ? live
+          ? live.finishedGoods.complete
+            ? warehouseQuantity(live.finishedGoods.totalQuantity)
+            : `${warehouseQuantity(live.finishedGoods.verifiedQuantity)}*`
+          : "\u2014"
+        : displayQuantity(totalFinishedGoods),
+      detail: realMode
+        ? live
+          ? `${live.finishedGoods.recordedItems} recorded items \u00b7 pcs${live.finishedGoods.complete ? "" : ` \u00b7 *verified subtotal; ${live.finishedGoods.unverifiedItems} unverified`}`
+          : "Authenticated inventory"
+        : `${finishedGoods.length} recorded items \u00b7 pcs`,
+      icon: Factory,
+      color: "#2563EB"
+    },
+    {
+      label: "Low-Stock Items",
+      value: realMode
+        ? live ? String(live.lowStock.confirmedItems) : "\u2014"
+        : String(lowStockItems.length),
+      detail: realMode
+        ? live
+          ? `${live.lowStock.confirmedItems} confirmed${live.lowStock.unverifiedItems ? ` \u00b7 ${live.lowStock.unverifiedItems} unverified` : " \u00b7 all assessed"}`
+          : "Authenticated stock status"
+        : "at or below threshold, including out of stock",
+      icon: AlertTriangle,
+      color: realMode
+        ? live && live.lowStock.complete && live.lowStock.confirmedItems === 0
+          ? "#16A34A"
+          : "#C2410C"
+        : lowStockItems.length ? "#C2410C" : "#16A34A"
+    },
+    {
+      label: "Ready for Dispatch",
+      value: dispatchTotal === null ? "\u2014" : warehouseQuantity(dispatchTotal),
+      detail: "awaiting Warehouse preparation",
+      icon: Truck,
+      color: "#0F766E"
+    }
+  ];
+
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <header className="bg-white border-b border-slate-200/70 px-5 py-5 sm:px-8 sticky top-0 z-10">
@@ -533,13 +695,23 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
       </header>
 
       <main className="px-4 py-5 sm:px-8 sm:py-7 flex flex-col gap-6">
+        {realMode && (
+          <div className="flex items-center gap-3 font-dm text-xs text-slate-500">
+            <span role={liveError ? "alert" : "status"}>
+              {unavailable ? unavailableMessage : "Live Warehouse records"}
+            </span>
+            <button
+              type="button"
+              disabled={liveLoading}
+              onClick={() => setReload(value => value + 1)}
+              className="ml-auto rounded-md border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {liveLoading ? "Loading..." : "Refresh Dashboard"}
+            </button>
+          </div>
+        )}
         <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" aria-label="Warehouse summary">
-          {[
-            { label: "Tracked Raw Material Items", value: realMode ? "—" : String(rawMaterials.length), detail: "in inventory", icon: Boxes, color: "#1A2B4A" },
-            { label: "Finished Goods", value: realMode ? "—" : displayQuantity(totalFinishedGoods), detail: `${finishedGoods.length} recorded items · pcs`, icon: Factory, color: "#2563EB" },
-            { label: "Low-Stock Items", value: realMode ? "—" : String(lowStockItems.length), detail: "at or below threshold, including out of stock", icon: AlertTriangle, color: lowStockItems.length ? "#C2410C" : "#16A34A" },
-            { label: "Ready for Dispatch", value: realMode ? "—" : String(readyForDispatch.length), detail: "awaiting Warehouse preparation", icon: Truck, color: "#0F766E" },
-          ].map((metric) => {
+          {metrics.map((metric) => {
             const Icon = metric.icon;
             const card = (
               <>
@@ -572,14 +744,14 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
           <Card title="Low-Stock Alerts" className="xl:col-span-5">
-            {lowStockItems.length ? (
+            {unavailable ? <p className="font-dm text-xs text-slate-500">{unavailableMessage}</p> : displayedLowStock.length ? (
               <div className="max-h-[390px] overflow-auto flex flex-col divide-y divide-slate-100">
-                {lowStockItems.map((item) => (
+                {displayedLowStock.map((item) => (
                   <div key={item.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-dm font-semibold truncate" style={{ fontSize: 13, color: "#0F172A" }}>{item.name}</div>
-                        <div className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>On hand {displayQuantity(item.current)} {item.unit} · Minimum {displayQuantity(item.minimum)} {item.unit}</div>
+                        <div className="font-dm mt-1" style={{ fontSize: 12, color: "#64748B" }}>On hand {item.current} {item.unit} · Minimum {item.minimum} {item.unit}</div>
                       </div>
                       <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 whitespace-nowrap" style={{ backgroundColor: item.status.bg, color: item.status.fg, fontSize: 11, fontWeight: 600 }}>
                         {item.status.label}
@@ -590,9 +762,14 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
               </div>
             ) : (
               <div className="py-8 text-center">
-                <CheckCircle2 size={24} className="mx-auto" style={{ color: "#16A34A" }} />
-                <p className="font-dm mt-2" style={{ fontSize: 13, fontWeight: 600, color: "#64748B" }}>No low-stock items.</p>
+                <CheckCircle2 size={24} className="mx-auto" style={{ color: realMode && !live?.lowStock.complete ? "#94A3B8" : "#16A34A" }} />
+                <p className="font-dm mt-2" style={{ fontSize: 13, fontWeight: 600, color: "#64748B" }}>{realMode && !live?.lowStock.complete ? "No confirmed low-stock items." : "No low-stock items."}</p>
               </div>
+            )}
+            {live && live.lowStock.unverifiedItems > 0 && (
+              <p className="font-dm mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+                {live.lowStock.unverifiedItems} materials have unverified stock or threshold data.
+              </p>
             )}
           </Card>
 
@@ -601,9 +778,9 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
             className="xl:col-span-7"
             action={<button type="button" onClick={() => onNavigate?.("inventory-finished")} className="font-dm inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>View Inventory <ArrowRight size={13} /></button>}
           >
-            {topClientsByOrders.length ? (
+            {unavailable ? <p className="font-dm text-xs text-slate-500">{unavailableMessage}</p> : displayedClients.length ? (
               <ol className="divide-y divide-slate-100">
-                {topClientsByOrders.map((client, index) => (
+                {displayedClients.map((client, index) => (
                   <li key={client.client} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                     <span className="font-mono-jb w-5 shrink-0 text-center" style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{index + 1}</span>
                     <span className="font-dm min-w-0 flex-1 truncate" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{client.client}</span>
@@ -625,25 +802,25 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
             className="xl:col-span-7"
             action={<button onClick={() => onNavigate?.("waybill")} className="font-dm inline-flex items-center gap-1 px-3 py-2 rounded-md hover:bg-slate-50" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>View All <ArrowUpRight size={14} /></button>}
           >
-            {readyForDispatch.length ? (
+            {unavailable ? <p className="font-dm text-xs text-slate-500">{unavailableMessage}</p> : displayedDispatch.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[520px]">
                   <thead><tr className="text-left border-b border-slate-100">
                     {["JO Number", "Client", "Product", "Qty", "Status"].map((heading) => <th key={heading} className="font-dm py-2 px-2 first:pl-0" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>{heading}</th>)}
                   </tr></thead>
                   <tbody>
-                    {readyForDispatch.slice(0, 6).map((job) => (
+                    {displayedDispatch.map((job) => (
                       <tr key={job.id} className="border-b last:border-0 border-slate-100">
-                        <td className="font-mono-jb py-3 px-2 pl-0 whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}>{job.joNumber ?? `JO-${job.code}`}</td>
-                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#0F172A" }}>{job.clientName}</td>
-                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#475569" }}>{job.products[0]?.filterName ?? job.products[0]?.type ?? "—"}</td>
-                        <td className="font-dm py-3 px-2 whitespace-nowrap" style={{ fontSize: 12, color: "#475569" }}>{job.products.reduce((total, product) => total + product.qty, 0)}</td>
+                        <td className="font-mono-jb py-3 px-2 pl-0 whitespace-nowrap" style={{ fontSize: 11, fontWeight: 600, color: "#1A2B4A" }}><WarehouseReference value={job.joNumber}/></td>
+                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#0F172A" }}>{job.client}</td>
+                        <td className="font-dm py-3 px-2" style={{ fontSize: 12, color: "#475569" }}>{job.product}</td>
+                        <td className="font-dm py-3 px-2 whitespace-nowrap" style={{ fontSize: 12, color: "#475569" }}>{job.quantity}</td>
                         <td className="py-3 px-2"><span className="font-dm inline-flex items-center rounded-full px-2 py-1 whitespace-nowrap" style={{ backgroundColor: "#EFF6FF", color: "#1D4ED8", fontSize: 11, fontWeight: 600 }}>Ready for Dispatch</span></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {readyForDispatch.length > 6 && <p className="font-dm mt-3" style={{ fontSize: 11, color: "#64748B" }}>Showing 6 of {readyForDispatch.length} ready job orders.</p>}
+                {dispatchTotal !== null && Number(dispatchTotal) > 6 && <p className="font-dm mt-3" style={{ fontSize: 11, color: "#64748B" }}>Showing 6 of {warehouseQuantity(dispatchTotal)} ready job orders.</p>}
               </div>
             ) : (
               <div className="py-8 text-center">
@@ -654,14 +831,19 @@ function WarehouseDashboard({ onNavigate }: { onNavigate?: (id: string) => void 
           </Card>
 
           <Card title="Recent Activity" className="xl:col-span-5">
-            {activity.length ? (
+            {live && live.recentActivityComplete !== true && (
+              <p className="font-dm mb-3 text-xs text-slate-500">
+                Showing recorded inventory and dispatch activity. Historical coverage may be incomplete.
+              </p>
+            )}
+            {unavailable ? <p className="font-dm text-xs text-slate-500">{unavailableMessage}</p> : displayedActivity.length ? (
               <div className="flex flex-col">
-                {activity.map((entry) => (
+                {displayedActivity.map((entry) => (
                   <div key={entry.id} className="flex gap-3 py-3 first:pt-0 last:pb-0 border-b last:border-0 border-slate-100">
                     <div className="mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#EFF6FF", color: "#2563EB" }}><Clock3 size={13} /></div>
                     <div className="min-w-0">
                       <div className="font-dm font-semibold" style={{ fontSize: 12, color: "#0F172A" }}>{entry.title}</div>
-                      <div className="font-dm mt-0.5 truncate" style={{ fontSize: 11, color: "#475569" }} title={entry.subject}>{entry.subject}</div>
+                      <div className="font-dm mt-0.5 truncate" style={{ fontSize: 11, color: "#475569" }} title={entry.subject}><WarehouseReference value={entry.subject}/></div>
                       <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>{entry.description}</div>
                       <div className="font-dm mt-1" style={{ fontSize: 10, color: "#94A3B8" }}>
                         {new Date(entry.date).toLocaleString()} {entry.user ? `· ${entry.user}` : ""}

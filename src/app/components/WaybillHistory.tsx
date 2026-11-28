@@ -1,10 +1,13 @@
-import { Fragment, useMemo, useState } from "react";
+import { WarehouseReference } from "./WarehouseReference";
+import { WarehouseProductSketches } from "./WarehouseProductSketches";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Eye, Filter, Paperclip, Search } from "lucide-react";
 import { useOrders } from "../store/orders";
 import { useSession } from "../store/session";
 import { toast } from "sonner";
 import { NotificationBell } from "./NotificationBell";
 import { buildWaybillHistory } from "./waybillData";
+import { listWarehouseWaybillHistory, toHistoryRow } from "../api/warehouseWaybillHistory";
 
 export function WaybillHistory() {
   const { inquiriesByStage } = useOrders();
@@ -15,12 +18,91 @@ export function WaybillHistory() {
   const [isLogFilterOpen, setIsLogFilterOpen] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+
+  const [historyState, setHistoryState] = useState<{
+    key: string;
+    rows: ReturnType<typeof toHistoryRow>[];
+    hasMore: boolean;
+    error: boolean;
+  } | null>(null);
+
+  const historySearch = logQuery.trim();
+
+  const historyKey = JSON.stringify([
+    historySearch,
+    logDateFilter,
+    historyPage,
+    historyRefresh
+  ]);
+
+  useEffect(() => {
+    if (!realMode) {
+      setHistoryState(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await listWarehouseWaybillHistory(
+          historySearch,
+          logDateFilter,
+          historyPage,
+          controller.signal
+        );
+
+        const rows = result.items.map(toHistoryRow);
+
+        if (active) {
+          setHistoryState({
+            key: historyKey,
+            rows,
+            hasMore: result.hasMore,
+            error: false
+          });
+        }
+      } catch {
+        if (active) {
+          setHistoryState({
+            key: historyKey,
+            rows: [],
+            hasMore: false,
+            error: true
+          });
+        }
+      }
+    }, 200);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    realMode,
+    historySearch,
+    logDateFilter,
+    historyPage,
+    historyKey
+  ]);
+
+  const currentHistory =
+    historyState?.key === historyKey ? historyState : null;
+
+  const historyLoading = realMode && !currentHistory;
+  const historyError = realMode && currentHistory?.error === true;
+
+
   const historyInquiries = useMemo(
     () => inquiriesByStage(["ready_for_dispatch", "dispatched", "delivered", "paid", "overdue"]),
     [inquiriesByStage]
   );
   const log = useMemo(() => buildWaybillHistory(historyInquiries), [historyInquiries]);
-  const filtered = useMemo(() => log.filter((row) => {
+  const demoFiltered = useMemo(() => log.filter((row) => {
     const query = logQuery.trim().toLocaleLowerCase();
     const searchMatches = !query ||
       row.waybillNo.toLocaleLowerCase().includes(query) ||
@@ -40,6 +122,8 @@ export function WaybillHistory() {
     return searchMatches && dateMatches;
   }), [log, logDateFilter, logQuery]);
 
+  const filtered = realMode ? (currentHistory?.rows ?? []) : demoFiltered;
+
   return (
     <div className="flex-1 h-full overflow-auto" style={{ backgroundColor: "#F4F6F9" }}>
       <header className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 flex items-start justify-between">
@@ -54,7 +138,18 @@ export function WaybillHistory() {
         <NotificationBell />
       </header>
 
-      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real waybill history is unavailable. Search, filters, expansion, and document presentation remain available, but Demo scan records are excluded until an authenticated read API is connected.</div>}
+      {historyError && (
+        <div role="alert" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950 flex items-center justify-between gap-3">
+          <span>Real waybill history is unavailable. Please try again.</span>
+          <button
+            type="button"
+            className="rounded-md border border-amber-300 bg-white px-3 py-1.5 font-semibold"
+            onClick={() => setHistoryRefresh(value => value + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="px-8 py-8">
         <section aria-label="Waybill History Log">
@@ -68,8 +163,8 @@ export function WaybillHistory() {
                 <div className="relative">
                   <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
                   <input
-                    value={logQuery}
-                    onChange={(event) => setLogQuery(event.target.value)}
+                    value={logQuery} maxLength={realMode ? 200 : undefined}
+                    onChange={(event) => { setLogQuery(event.target.value); setHistoryPage(1); setExpandedLogId(null); }}
                     placeholder="Search waybill / JO / client..."
                     aria-label="Search by Waybill number, JO number, client, or item"
                     className="font-dm w-52 max-w-[calc(100vw-10rem)] pl-8 pr-3 py-1.5 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
@@ -99,7 +194,7 @@ export function WaybillHistory() {
                           key={value}
                           type="button"
                           onClick={() => {
-                            setLogDateFilter(value);
+                            setLogDateFilter(value); setHistoryPage(1); setExpandedLogId(null);
                             setIsLogFilterOpen(false);
                           }}
                           aria-pressed={logDateFilter === value}
@@ -124,7 +219,7 @@ export function WaybillHistory() {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{realMode ? "Real waybill history is unavailable." : "No waybills match your filters."}</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{historyLoading ? "Loading waybill history..." : historyError ? "Waybill history could not be loaded." : "No waybills match your filters."}</td></tr>
                 ) : filtered.map((row) => {
                   const isExpanded = expandedLogId === row.id;
                   const matchedJob = row.matchedJob;
@@ -145,9 +240,9 @@ export function WaybillHistory() {
                       >
                         <td className="px-4 py-3 font-dm" style={{ fontSize: 12, color: "#475569" }}>{row.date}</td>
                         <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, fontWeight: 600, color: "#1A2B4A" }}>
-                          <span className="inline-flex items-center gap-2">{isExpanded ? <ChevronUp size={14} style={{ color: "#94A3B8" }} /> : <ChevronDown size={14} style={{ color: "#94A3B8" }} />}{row.waybillNo}</span>
+                          <span className="inline-flex items-center gap-2">{isExpanded ? <ChevronUp size={14} style={{ color: "#94A3B8" }} /> : <ChevronDown size={14} style={{ color: "#94A3B8" }} />}<WarehouseReference value={row.waybillNo}/></span>
                         </td>
-                        <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}>{row.jo}</td>
+                        <td className="px-4 py-3 font-mono-jb" style={{ fontSize: 12, color: "#475569" }}><WarehouseReference value={row.jo}/></td>
                         <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{row.client}</td>
                         <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{row.item}</td>
                         <td className="px-4 py-3 font-dm" style={{ fontSize: 13, color: "#475569" }}>{row.qty}</td>
@@ -176,7 +271,12 @@ export function WaybillHistory() {
                               </div>
                               <div>
                                 <div className="font-dm mb-2" style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>Product Sketch</div>
-                                {matchedJob?.sketch ? (
+                                {realMode && "deliveryId" in row && typeof row.deliveryId === "string" ? (
+                                  <WarehouseProductSketches
+                                    key={row.deliveryId}
+                                    deliveryId={row.deliveryId}
+                                  />
+                                ) : matchedJob?.sketch ? (
                                   <div className="rounded-lg flex flex-col items-center justify-center py-6 gap-2 bg-white" style={{ border: "1.5px dashed #93C5FD" }}>
                                     <Paperclip size={28} style={{ color: "#1A2B4A" }} />
                                     <div className="font-mono-jb" style={{ fontSize: 11, fontWeight: 700, color: "#2563EB", textAlign: "center" }}>{matchedJob.sketch}</div>
@@ -186,7 +286,7 @@ export function WaybillHistory() {
                                   </div>
                                 ) : (
                                   <div className="rounded-lg p-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8", backgroundColor: "white", border: "1px dashed #CBD5E1" }}>
-                                    No sketch on file
+                                    {realMode ? "Drawing access unavailable for Warehouse." : "No sketch on file"}
                                   </div>
                                 )}
                               </div>
@@ -199,6 +299,36 @@ export function WaybillHistory() {
                 })}
               </tbody>
             </table>
+
+            {realMode && (historyPage > 1 || currentHistory?.hasMore) && (
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 font-dm text-xs">
+                <span>Page {historyPage}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={historyLoading || historyPage <= 1}
+                    className="rounded-md border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+                    onClick={() => {
+                      setExpandedLogId(null);
+                      setHistoryPage(page => Math.max(1, page - 1));
+                    }}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={historyLoading || !currentHistory?.hasMore}
+                    className="rounded-md border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+                    onClick={() => {
+                      setExpandedLogId(null);
+                      setHistoryPage(page => page + 1);
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </div>

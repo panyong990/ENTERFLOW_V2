@@ -123,22 +123,22 @@ test('inventory read preserves source identity, reference prices, approved price
   assert.equal(calls.length, 2);
 });
 
-test('Sales inventory reads retain approved prices but omit unapproved reference prices', async () => {
+test('Sales inventory reads distinguish reference prices from approved costing prices', async () => {
   const { service } = listService();
   const result = await service.list({userId:'9',accountType:'employee',roleCode:'sales'});
-  assert.equal(result.data.materials[0].referenceUnitPrice, null);
+  assert.equal(result.data.materials[0].referenceUnitPrice, '10.0000');
   assert.equal(result.data.materials[0].referencePriceText, null);
   assert.equal(result.data.materials[0].approvedCostingPrice, null);
   assert.equal(result.data.materials[1].approvedCostingPrice, '4.5000');
 });
 
-test('material maintenance denies Sales and rejects stock or price writes', async () => {
+test('material maintenance denies Sales and rejects malformed quantities or approved-price writes', async () => {
   let connectionRequested = false;
   const service = createInventoryService({ db: { getConnection: async () => { connectionRequested = true; throw new Error('unexpected'); } } });
   assert.deepEqual(await service.create({ userId: '9', accountType: 'employee', roleCode: 'sales' }, {}), { success: false, code: 'FORBIDDEN' });
   const invalidCreate = await service.create(
     { userId: '9', accountType: 'employee', roleCode: 'warehouse' },
-    { name: 'Media', unit: 'kg', quantityOnHand: 5 },
+    { name: 'Media', unit: 'kg', quantityOnHand: 'invalid' },
   );
   assert.equal(invalidCreate.code, 'VALIDATION_ERROR');
   assert.equal(connectionRequested,false);
@@ -156,8 +156,8 @@ test('Warehouse material creation uses a configured unit and leaves stock and pr
  const calls=[],c={async beginTransaction(){},async commit(){},async rollback(){},release(){},async execute(sql,p){calls.push({sql,p});if(sql.includes('FROM user_account'))return [[{userId:'9',roleCode:'warehouse',status:'active',clientId:null,mustChangePassword:0}]];if(sql.includes('FROM unit_of_measure'))return [[{uom_id:'1'}]];return [{affectedRows:1,insertId:'82'}];}};
  const s=createInventoryService({db:{getConnection:async()=>c}}),a={userId:'9',accountType:'employee',roleCode:'warehouse'};
  const value=await s.create(a,{name:'Explicit test fixture',uomId:'1'});assert.equal(value.success,true);assert.equal(value.data.quantityOnHand,null);assert.equal(value.data.quantityStatus,'unknown');assert.equal(value.data.approvedCostingPrice,null);assert.equal(value.data.threshold,null);
- const insert=calls.find(c=>c.sql.startsWith('INSERT INTO raw_material'));assert.deepEqual(insert.p,['Explicit test fixture',null,'1',null,'unknown',null]);assert.doesNotMatch(insert.sql,/unit_price|qty_in_stock/);
+ const insert=calls.find(c=>c.sql.startsWith('INSERT INTO raw_material'));assert.deepEqual(insert.p,['Explicit test fixture',null,'1',null,'unknown',null,null]);assert.doesNotMatch(insert.sql,/\bunit_price\b|qty_in_stock/);
  const threshold=await s.create(a,{name:'Observed threshold',uomId:'1',threshold:'2'});assert.equal(threshold.data.thresholdStatus,'verified');assert.equal(threshold.data.quantityStatus,'unknown');
 });
-test('Warehouse threshold zero preserves sample quantity and never changes costing prices',async()=>{const h=observationHarness();const value=await h.service.update({userId:'9',accountType:'employee',roleCode:'warehouse'},'61',{threshold:'0'});assert.equal(value.data.threshold,'0.0000');assert.equal(value.data.quantityStatus,'provisional_sample');assert(h.calls.filter(c=>c.sql?.startsWith('UPDATE')).every(c=>!c.sql.includes('unit_price')&&!c.sql.includes('qty_in_stock')));});
+test('Warehouse threshold zero preserves sample quantity and never changes costing prices',async()=>{const h=observationHarness();const value=await h.service.update({userId:'9',accountType:'employee',roleCode:'warehouse'},'61',{threshold:'0'});assert.equal(value.data.threshold,'0.0000');assert.equal(value.data.quantityStatus,'provisional_sample');assert(h.calls.filter(c=>c.sql?.startsWith('UPDATE')).every(c=>!/\bunit_price\b|qty_in_stock/.test(c.sql)));});
 test('Warehouse quantity observation appends movement and records before/after provenance',async()=>{const h=observationHarness();const value=await h.service.update({userId:'9',accountType:'employee',roleCode:'warehouse'},'61',{quantityOnHand:'37.2500',threshold:'4.5000',reason:'Explicit count'});assert.equal(value.data.quantityStatus,'verified');assert.equal(value.data.quantityOnHand,'37.2500');assert.equal(value.data.thresholdStatus,'verified');const ledger=h.calls.find(c=>c.sql?.startsWith('INSERT INTO stock_movement'));assert.equal(ledger.params[2],'provisional_sample');assert.equal(ledger.params[3],null);assert.equal(ledger.params[5],null);assert.equal(h.audits[0].before.quantityStatus,'provisional_sample');assert.equal(h.audits[0].after.quantityStatus,'verified');});

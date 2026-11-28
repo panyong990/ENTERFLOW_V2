@@ -4,9 +4,15 @@ export function createWarehouseController({ service, logger = console }) {
   const respond = operation => async (request, response) => {
     let stage = 'service_call';
     try {
-      const result = operation === 'list'
+      const result = operation === 'dashboard'
+        ? await service.getDashboard(request.auth)
+        : operation === 'finishedGoods'
+          ? await service.listFinishedGoods(request.auth, request.query)
+          : operation === 'list'
         ? await service.listShipments(request.auth, request.query)
-        : await service.getShipment(request.auth, request.params.id);
+        : operation === 'history'
+          ? await service.listWaybillHistory(request.auth, request.query)
+          : await service.getShipment(request.auth, request.params.id);
       stage = 'response';
       if (result?.success) return response.json({ success: true, data: result.data });
       if (result?.code === 'VALIDATION_ERROR') return response.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Invalid Warehouse request.', ...(result.errors ? { errors: result.errors } : {}) });
@@ -18,5 +24,5 @@ export function createWarehouseController({ service, logger = console }) {
       return response.status(503).json({ success: false, code: 'SERVICE_UNAVAILABLE', message: 'Warehouse service is temporarily unavailable.' });
     }
   };
-  return { list: respond('list'), detail: respond('detail') };
+  return { list: respond('list'), detail: respond('detail'), history: respond('history'), dashboard: respond('dashboard'), finishedGoods: respond('finishedGoods') };
 }

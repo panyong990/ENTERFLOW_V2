@@ -1,3 +1,10 @@
+import { WarehouseReference } from "./WarehouseReference";
+import { useSession } from "../store/session";
+import {
+  listWarehouseFinishedGoods,
+  warehouseFinishedGoodStatus,
+  type WarehouseFinishedGoodsResponse
+} from "../api/warehouseFinishedGoods";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, Search, SlidersHorizontal } from "lucide-react";
 import { getFinishedGoodStockStatus, useMaterials } from "../store/materials";
@@ -41,7 +48,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
   className?: string;
   onItemClick?: (item: FinishedGood) => void;
 }) {
-  const { finishedGoods, inventoryLoading, inventoryError, refreshInventory } = useMaterials();
+  const { finishedGoods, inventoryLoading: demoLoading, inventoryError: demoError, refreshInventory: demoRefresh } = useMaterials();
   const { inquiries, completedJOs } = useOrders();
   const [query, setQuery] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -54,6 +61,67 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
   const [draftYearFilter, setDraftYearFilter] = useState("");
   const [draftSort, setDraftSort] = useState<FinishedGoodsSort>("orders-desc");
   const filterContainerRef = useRef<HTMLDivElement>(null);
+
+  const { mode, role } = useSession();
+  const realWarehouse = mode === "real" && role === "warehouse";
+  const [realResult, setRealResult] = useState<WarehouseFinishedGoodsResponse | null>(null);
+  const [realLoading, setRealLoading] = useState(true);
+  const [realError, setRealError] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [loadedKey, setLoadedKey] = useState("");
+  const requestKey = JSON.stringify([query.trim(), filterType, monthFilter, yearFilter, sort, reload]);
+
+  useEffect(() => {
+    if (!realWarehouse) {
+      setRealResult(null);
+      setLoadedKey("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setRealLoading(true);
+    setRealError(false);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await listWarehouseFinishedGoods({
+          q: query.trim(),
+          filterType,
+          month: monthFilter,
+          year: yearFilter,
+          sort
+        }, controller.signal);
+
+        if (!controller.signal.aborted) {
+          setRealResult(response);
+          setLoadedKey(requestKey);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setRealError(true);
+          setLoadedKey(requestKey);
+        }
+      } finally {
+        if (!controller.signal.aborted) setRealLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [realWarehouse, query, filterType, monthFilter, yearFilter, sort, requestKey]);
+
+  const inventoryLoading = realWarehouse
+    ? realLoading || loadedKey !== requestKey
+    : demoLoading;
+
+  const inventoryError = realWarehouse ? realError : demoError;
+
+  const refreshInventory = () => {
+    if (realWarehouse) setReload(value => value + 1);
+    else demoRefresh();
+  };
 
   const orderHistory = useMemo(() => buildOrderHistory(inquiries, completedJOs), [inquiries, completedJOs]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -121,6 +189,52 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
     return { rows, topDemandIds };
   }, [finishedGoods, normalizedQuery, orderHistory, filterType, monthFilter, yearFilter, sort]);
 
+  const realFilterGroups = useMemo(() => {
+    const groups = new Map<string, {code: string; label: string}[]>();
+
+    for (const type of realResult?.filterOptions.filterTypes ?? []) {
+      const types = groups.get(type.templateGroup) ?? [];
+      types.push({ code: type.id, label: type.name });
+      groups.set(type.templateGroup, types);
+    }
+
+    return Array.from(groups, ([label, types]) => ({ label, types }));
+  }, [realResult]);
+
+  const displayedFilterGroups = realWarehouse
+    ? realFilterGroups
+    : finishedGoodsFilterOptions;
+
+  const displayedYears = realWarehouse
+    ? realResult?.filterOptions.years ?? []
+    : finishedGoodsFilterValues.years;
+
+  const displayedRows = realWarehouse
+    ? (inventoryLoading || inventoryError ? [] : realResult?.items ?? [])
+        .map(row => ({
+          item: row.item,
+          recurringOrders: row.recurringOrders,
+          highlighted: row.highlighted,
+          rank: row.rank,
+          stockStatus: warehouseFinishedGoodStatus(row.item),
+          quantityLabel: row.item.qtyInStock === null
+            ? "Not recorded"
+            : row.item.quantityStatus === "provisional_sample"
+              ? `${row.item.qtyInStock} pcs (sample)`
+              : `${row.item.qtyInStock} pcs`,
+          clickItem: null
+        }))
+    : finishedGoodsOrderActivity.rows.map(({item, recurringOrders}, index) => ({
+        item,
+        recurringOrders,
+        highlighted: finishedGoodsOrderActivity.topDemandIds.has(item.id),
+        rank: index + 1,
+        stockStatus: getFinishedGoodStockStatus(item),
+        quantityLabel: Number.isFinite(item.qtyInStock)
+          ? `${item.qtyInStock} pcs`
+          : "Not recorded",
+        clickItem: item
+      }));
   const activeFilterCount = Number(Boolean(filterType)) +
     Number(Boolean(monthFilter)) +
     Number(Boolean(yearFilter)) +
@@ -182,7 +296,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
         <div className="relative min-w-0 flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
           <input
-            value={query}
+            value={query} maxLength={realWarehouse ? 200 : undefined}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search item code, PN, name, client, order code..."
             className="font-dm w-full pl-9 pr-4 py-2 rounded-md border border-slate-200 outline-none focus:border-slate-400 bg-white"
@@ -215,7 +329,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
                   <label htmlFor="fg-filter-type" className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Filter Type</label>
                   <select id="fg-filter-type" aria-label="Filter by filter type" value={draftFilterType} onChange={(event) => setDraftFilterType(event.target.value)} className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
                     <option value="">All Filter Types</option>
-                    {finishedGoodsFilterOptions.map(({ label, types }) => (
+                    {displayedFilterGroups.map(({ label, types }) => (
                       <optgroup key={label} label={label}>
                         {types.map((filterType) => <option key={filterType.code} value={filterType.code}>{filterType.label}</option>)}
                       </optgroup>
@@ -237,7 +351,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
                     <label htmlFor="fg-filter-year" className="font-dm" style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Year</label>
                     <select id="fg-filter-year" aria-label="Filter by year" value={draftYearFilter} onChange={(event) => setDraftYearFilter(event.target.value)} className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-slate-400" style={{ fontSize: 12 }}>
                       <option value="">All Years</option>
-                      {finishedGoodsFilterValues.years.map((year) => <option key={year} value={year}>{year}</option>)}
+                      {displayedYears.map((year) => <option key={year} value={year}>{year}</option>)}
                     </select>
                   </div>
                 </div>
@@ -271,23 +385,21 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
               </tr>
             </thead>
             <tbody>
-              {finishedGoodsOrderActivity.rows.map(({ item, recurringOrders }, index) => {
-                const highlighted = finishedGoodsOrderActivity.topDemandIds.has(item.id);
-                const stockStatus = getFinishedGoodStockStatus(item);
+              {displayedRows.map(({ item, recurringOrders, highlighted, rank, stockStatus, quantityLabel, clickItem }) => {
                 return (
                   <tr
                     key={item.id}
-                    onClick={() => onItemClick?.(item)}
+                    onClick={() => { if (clickItem) onItemClick?.(clickItem); }}
                     onKeyDown={(event) => {
-                      if (onItemClick && (event.key === "Enter" || event.key === " ")) {
+                      if (clickItem && onItemClick && (event.key === "Enter" || event.key === " ")) {
                         event.preventDefault();
-                        onItemClick(item);
+                        onItemClick(clickItem);
                       }
                     }}
-                    role={onItemClick ? "button" : undefined}
-                    tabIndex={onItemClick ? 0 : undefined}
+                    role={clickItem && onItemClick ? "button" : undefined}
+                    tabIndex={clickItem && onItemClick ? 0 : undefined}
                     className="border-t border-slate-200/70 transition-colors hover:bg-slate-50"
-                    style={{ backgroundColor: highlighted ? "#FFF1F2" : "#FFFFFF", cursor: onItemClick ? "pointer" : undefined }}
+                    style={{ backgroundColor: highlighted ? "#FFF1F2" : "#FFFFFF", cursor: clickItem && onItemClick ? "pointer" : undefined }}
                   >
                     <td className="px-4 py-3">
                       <span
@@ -299,20 +411,20 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
                           fontWeight: 700,
                         }}
                       >
-                        {index + 1}
+                        {rank}
                       </span>
                     </td>
-                    <td className="px-4 py-3" style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>{item.itemCode}</td>
+                    <td className="px-4 py-3" style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>{realWarehouse ? <WarehouseReference value={item.itemCode}/> : item.itemCode}</td>
                     <td className="px-4 py-3" style={{ fontSize: 12, color: "#475569" }}>{item.enterFilPN || "Not recorded"}</td>
                     <td className="px-4 py-3" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{item.itemName || "Not provided"}</td>
                     <td className="px-4 py-3" style={{ fontSize: 12, color: "#475569" }}>{item.client}</td>
-                    <td className="px-4 py-3" style={{ fontSize: 12, fontWeight: 700, color: stockStatus.fg }}>{Number.isFinite(item.qtyInStock) ? `${item.qtyInStock} pcs` : "Not recorded"}</td>
+                    <td className="px-4 py-3" style={{ fontSize: 12, fontWeight: 700, color: stockStatus.fg }}>{quantityLabel}</td>
                     <td className="px-4 py-3"><span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ backgroundColor: stockStatus.bg, color: stockStatus.fg }}>{stockStatus.label}</span></td>
                     <td className="px-4 py-3" style={{ fontSize: 13, fontWeight: highlighted ? 700 : 500, color: highlighted ? "#C8102E" : "#334155" }}>{recurringOrders}</td>
                   </tr>
                 );
               })}
-              {finishedGoodsOrderActivity.rows.length === 0 && (
+              {displayedRows.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-10 text-center font-dm" style={{ fontSize: 13, color: "#94A3B8" }}>
                     <Boxes size={28} style={{ color: "#CBD5E1", margin: "0 auto 8px" }} />
@@ -321,7 +433,7 @@ export function FinishedGoodsOrderActivity({ className = "", onItemClick }: {
                         ? "Loading authenticated finished-good inventory…"
                         : inventoryError
                           ? "Finished-good inventory is unavailable."
-                          : finishedGoods.length === 0
+                          : !realWarehouse && finishedGoods.length === 0
                             ? "No finished-good inventory records are available."
                             : "No finished goods match the selected search and filters."}
                     </p>

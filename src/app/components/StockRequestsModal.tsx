@@ -1,3 +1,4 @@
+import { WarehouseReference } from "./WarehouseReference";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ export interface StockRequestsAdapter {
   writesUnavailable?: boolean;
   retry?: () => void;
   newRequest?: ReactNode;
-  respond?: (request: StockRequestPresentation, quantities: Record<string, string>, updateInventory: boolean) => Promise<void>;
+  respond?: (request: StockRequestPresentation, quantities: Record<string, string>, updateInventory: boolean, reason?: string) => Promise<void>;
 }
 
 const statusLabel: Record<StockRequestStatus, string> = {
@@ -133,15 +134,18 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [inquiryId, setInquiryId] = useState("");
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(initialRequestId ?? null);
+  const [warehouseQuery, setWarehouseQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockRequestStatus | "all">("all");
   const [observedQuantities, setObservedQuantities] = useState<Record<string, string>>({});
   const [confirmingInventory, setConfirmingInventory] = useState(false);
+  const [inventoryReason, setInventoryReason] = useState("");
   const [commandError, setCommandError] = useState("");
   const commandLock = useRef(false);
 
   useEffect(() => {
     setObservedQuantities({});
     setConfirmingInventory(false);
+    setInventoryReason("");
     setCommandError("");
   }, [selectedRequestId, requests]);
 
@@ -163,7 +167,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
     }] : [];
   });
   const sortedRequests = useMemo(() => [...requests].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [requests]);
-  const visibleRequests = sortedRequests.filter((request) => statusFilter === "all" || request.status === statusFilter);
+  const visibleRequests = sortedRequests.filter((request) => (statusFilter === "all" || request.status === statusFilter) && (mode !== "warehouse" || !warehouseQuery.trim() || [request.reference, request.requestId, request.inquiryReference, request.quotationReference, request.clientName].some(value => value?.toLowerCase().includes(warehouseQuery.trim().toLowerCase()))));
   const externalRequestSelected = useRef(false);
 
   useEffect(() => {
@@ -272,10 +276,11 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
   const submitObservedResponse = async (updateInventory: boolean) => {
     if (!selectedRequest || !adapter?.respond || writesUnavailable || commandLock.current || (updateInventory && !confirmingInventory)) return;
     if (!validObservations()) { setCommandError(observationError); return; }
+    if (updateInventory && (!inventoryReason.trim() || inventoryReason.trim().length > 5000)) { setCommandError("Enter an inventory adjustment reason (up to 5000 characters)."); return; }
     commandLock.current = true;
     setCommandError("");
     try {
-      await adapter.respond(selectedRequest, observedQuantities, updateInventory);
+      await adapter.respond(selectedRequest, observedQuantities, updateInventory, updateInventory ? inventoryReason.trim() : undefined);
       setConfirmingInventory(false);
       toast.success(updateInventory ? "Recorded inventory quantities saved" : "Stock levels sent to Sales");
     } catch (cause) {
@@ -304,6 +309,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
         <div className="p-5 flex flex-col gap-4 min-h-0 flex-1 overflow-hidden">
           {adapter?.loading && <p role="status" className="font-dm text-sm text-slate-500">Loading Stock Requests…</p>}
           {(adapter?.error || commandError) && <div><p role="alert" className="font-dm text-sm text-red-800">{adapter?.error || commandError}</p>{adapter?.retry && <button type="button" disabled={busy || adapter.loading} onClick={adapter.retry} className="mt-2 rounded border border-slate-300 px-3 py-1 font-dm text-xs">Retry Stock Requests</button>}</div>}
+          {mode === "warehouse" && !selectedRequest && <input aria-label="Search Stock Requests" value={warehouseQuery} onChange={event => setWarehouseQuery(event.target.value)} placeholder="Search full request, inquiry or quotation reference, or client" className="w-full rounded border border-slate-300 px-3 py-2 text-sm"/>}
           {!selectedRequest ? (
             <>
               {mode === "sales" && !apiMode && (
@@ -392,9 +398,9 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
                       return (
                         <div key={request.requestId} className="rounded-lg border border-slate-200 p-3 flex items-center gap-3 flex-wrap">
                           <div className="flex-1 min-w-56">
-                            <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>{request.reference ?? request.requestId}</div>
-                            <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{request.inquiryReference} · {request.clientName}</div>
-                            {apiMode && <div className="font-dm mt-0.5 text-xs text-slate-500">Order {request.inquiryReference} · Quotation {request.quotationReference ?? "Not recorded"} · Requested by {request.requestedBy}</div>}
+                            <div className="font-dm" style={{ fontSize: 12, fontWeight: 800, color: "#1A2B4A" }}>{mode === "warehouse" ? <WarehouseReference value={request.reference ?? request.requestId}/> : request.reference ?? request.requestId}</div>
+                            <div className="font-dm mt-0.5" style={{ fontSize: 11, color: "#64748B" }}>{mode === "warehouse" ? <WarehouseReference value={request.inquiryReference}/> : request.inquiryReference} · {request.clientName}</div>
+                            {apiMode && <div className="font-dm mt-0.5 text-xs text-slate-500">Order {mode === "warehouse" ? <WarehouseReference value={request.inquiryReference}/> : request.inquiryReference} · Quotation {mode === "warehouse" ? <WarehouseReference value={request.quotationReference ?? "Not recorded"}/> : request.quotationReference ?? "Not recorded"} · Requested by {request.requestedBy}</div>}
                             <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 800, color: request.status === "update_requested" ? "#B45309" : request.status === "pending" ? "#1D4ED8" : "#15803D" }}>{statusLabel[request.status]}</div>
                           </div>
                           <div className="font-dm" style={{ fontSize: 10, color: "#64748B" }}>
@@ -416,11 +422,11 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
               </button>
               <section className="rounded-lg border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3" style={{ backgroundColor: "#F8FAFC" }}>
-                  <div className="font-syne" style={{ fontSize: 15, fontWeight: 800, color: "#1A2B4A" }}>{selectedRequest.reference ?? selectedRequest.requestId}</div>
+                  <div className="font-syne" style={{ fontSize: 15, fontWeight: 800, color: "#1A2B4A" }}>{mode === "warehouse" ? <WarehouseReference value={selectedRequest.reference ?? selectedRequest.requestId}/> : selectedRequest.reference ?? selectedRequest.requestId}</div>
                   <div className="font-dm mt-1" style={{ fontSize: 11, color: "#64748B" }}>
-                    {selectedRequest.inquiryReference} · {(!apiMode && selectedInquiry?.clientName) || selectedRequest.clientName} · Requested by {selectedRequest.requestedBy} · {dateTime(selectedRequest.createdAt)}
+                    {mode === "warehouse" ? <WarehouseReference value={selectedRequest.inquiryReference}/> : selectedRequest.inquiryReference} · {(!apiMode && selectedInquiry?.clientName) || selectedRequest.clientName} · Requested by {selectedRequest.requestedBy} · {dateTime(selectedRequest.createdAt)}
                   </div>
-                  {apiMode && <div className="font-dm mt-1 text-xs text-slate-500">Order {selectedRequest.inquiryReference} · Quotation {selectedRequest.quotationReference ?? "Not recorded"}</div>}
+                  {apiMode && <div className="font-dm mt-1 text-xs text-slate-500">Order {mode === "warehouse" ? <WarehouseReference value={selectedRequest.inquiryReference}/> : selectedRequest.inquiryReference} · Quotation {mode === "warehouse" ? <WarehouseReference value={selectedRequest.quotationReference ?? "Not recorded"}/> : selectedRequest.quotationReference ?? "Not recorded"}</div>}
                   <div className="font-dm mt-1" style={{ fontSize: 10, fontWeight: 800, color: selectedRequest.status === "update_requested" ? "#B45309" : selectedRequest.status === "pending" ? "#1D4ED8" : "#15803D" }}>{statusLabel[selectedRequest.status]}</div>
                 </div>
 
@@ -488,6 +494,7 @@ export function StockRequestsModal({ mode, onClose, initialRequestId, adapter }:
                       {confirmingInventory && <div role="alertdialog" aria-label="Confirm manual inventory quantities" className="w-full rounded-lg border border-blue-200 bg-blue-50 p-3 font-dm text-xs">
                         <p>Confirm these observed quantities. This replaces the quantity on hand; it does not add requested quantities or reserve stock.</p>
                         {selectedRequest.requestedMaterials.map((material) => <p key={material.materialId} className="mt-1">{material.materialName}: {observedQuantities[material.materialId]} {material.unit}</p>)}
+                        <label className="mt-3 block">Inventory adjustment reason<textarea aria-label="Inventory adjustment reason" value={inventoryReason} maxLength={5000} disabled={busy} onChange={event => setInventoryReason(event.target.value)} className="mt-1 w-full rounded border border-slate-300 bg-white p-2"/></label>
                         <div className="mt-3 flex justify-end gap-3"><button type="button" disabled={busy} onClick={() => setConfirmingInventory(false)}>Cancel inventory update</button><button type="button" disabled={writesUnavailable} onClick={() => void submitObservedResponse(true)} className="rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50">Confirm recorded quantities</button></div>
                       </div>}
                     </>}

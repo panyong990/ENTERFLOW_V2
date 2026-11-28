@@ -1,3 +1,5 @@
+import { WarehouseReference } from "./WarehouseReference";
+import { RealWarehouseMaterialHistory } from "./RealWarehouseMaterialHistory";
 import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { X, History, Pencil, Search, Boxes, ChevronDown, ChevronUp, Plus, SlidersHorizontal, CheckCircle2, AlertTriangle, CircleX } from "lucide-react";
 import { Toaster, toast } from "sonner";
@@ -240,7 +242,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
           ) : (
             <span role="menuitem" aria-disabled="true" className="font-dm block px-3 py-2 text-xs text-slate-500">Catalog reference · not editable</span>
           )}
-          {!realMode && <button
+          {(!realMode || (role === "warehouse" && contextMenu.material.source === "database")) && <button
               type="button"
               role="menuitem"
               onClick={() => {
@@ -458,7 +460,7 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
                             >
                               <td className="px-4 py-3 font-dm" style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
                                 {m.name}
-                                {(m.itemCode || m.catalogCode) && <div className="font-mono-jb mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{m.itemCode ?? m.catalogCode}</div>}
+                                {(m.itemCode || m.catalogCode) && <div className="font-mono-jb mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{role === "warehouse" ? <WarehouseReference value={m.itemCode ?? m.catalogCode}/> : m.itemCode ?? m.catalogCode}</div>}
                                 {realMode && <div className="font-dm mt-0.5" style={{ fontSize: 10, color: "#64748B" }}>{m.source === "database" ? "Authenticated material" : "Catalog reference"}</div>}
                                 {m.supplier && <div className="font-dm" style={{ fontSize: 10, color: "#94A3B8", marginTop: 1 }}>{m.supplier}</div>}
                               </td>
@@ -531,7 +533,15 @@ export function Inventory({ initialTab = "raw" }: { initialTab?: "raw" | "finish
 
       {/* History Drawer */}
       {historyFor && (
-        <HistoryDrawer m={historyFor} onClose={() => setHistoryFor(null)} />
+        realMode
+          ? role === "warehouse" && historyFor.source === "database"
+            ? <RealWarehouseMaterialHistory
+                key={historyFor.id}
+                material={historyFor}
+                onClose={() => setHistoryFor(null)}
+              />
+            : null
+          : <HistoryDrawer m={historyFor} onClose={() => setHistoryFor(null)} />
       )}
       {showStockRequests && (realMode ? <RealWarehouseStockRequests onClose={() => setShowStockRequests(false)} /> : <StockRequestsModal mode="warehouse" onClose={() => setShowStockRequests(false)} />)}
       {showShipments && <RealWarehouseShipments onClose={() => setShowShipments(false)} />}
@@ -575,6 +585,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
   onClose: () => void;
   relatedJobs: string[];
 }) {
+  const warehouse = useSession().role === "warehouse";
   const isRaw = selection.kind === "raw";
   const itemName = isRaw ? selection.item.name : selection.item.itemName;
   const status = isRaw
@@ -646,7 +657,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
               {details.map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 p-3">
                   <dt className="font-dm" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>{label}</dt>
-                  <dd className="font-dm mt-1 break-words" style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{value}</dd>
+                  <dd className="font-dm mt-1 break-words" style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{warehouse ? <WarehouseReference value={value}/> : value}</dd>
                 </div>
               ))}
             </dl>
@@ -659,7 +670,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
                 {specs.map(([key, value]) => (
                   <div key={key} className="rounded-lg bg-slate-50 p-3">
                     <dt className="font-dm" style={{ fontSize: 10, fontWeight: 600, color: "#64748B" }}>{specLabels[key] ?? key}</dt>
-                    <dd className="font-dm mt-1" style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{value}</dd>
+                    <dd className="font-dm mt-1" style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{warehouse ? <WarehouseReference value={value}/> : value}</dd>
                   </div>
                 ))}
               </dl>
@@ -699,7 +710,7 @@ function InventoryDetailsDrawer({ selection, onClose, relatedJobs, realMode }: {
             <section className="mt-5">
               <h3 className="font-syne mb-2" style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Related production jobs</h3>
               <div className="flex flex-wrap gap-2">
-                {relatedJobs.map((job) => <span key={job} className="rounded-md bg-slate-100 px-2.5 py-1 font-mono-jb" style={{ fontSize: 11, color: "#334155" }}>{job}</span>)}
+                {relatedJobs.map((job) => <span key={job} className="rounded-md bg-slate-100 px-2.5 py-1 font-mono-jb" style={{ fontSize: 11, color: "#334155" }}>{warehouse ? <WarehouseReference value={job}/> : job}</span>)}
               </div>
             </section>
           )}

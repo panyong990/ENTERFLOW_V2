@@ -22,6 +22,7 @@ export type ApiRequest = {
   orderId: string;
   orderReference?: string | null;
   clientReference?: string | null;
+  clientName?: string | null;
   requestedBy?: string;
   createdAt?: string;
   status: string;
@@ -77,7 +78,7 @@ export function mapStockRequestRecord(row: ApiRequest, materialUnits: Map<string
     inquiryId: row.orderId,
     inquiryReference: row.orderReference ?? row.orderId,
     clientReference: row.clientReference ?? "Not recorded",
-    clientName: row.clientReference ?? "Not recorded",
+    clientName: row.clientName ?? "Not recorded",
     requestedBy: row.requestedBy ?? "Not recorded",
     createdAt: row.createdAt ?? "",
     status: row.status as StockRequestStatus,

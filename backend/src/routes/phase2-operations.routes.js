@@ -108,7 +108,8 @@ export function createPhase2OperationsRouter({
   }), action(req => delivery.create(req.auth, req.body)));
   router.post('/warehouse/deliveries/:id/waybill', role(['warehouse']), permission('waybills', 'create'), origin, json({
     limit: '4kb'
-  }), action(req => delivery.waybill(req.auth, req.params.id, req.body)));
+  }), (req, res, next) => req.body?.printed === true ? permission('waybills', 'update')(req, res, next) : next(),
+  action(req => delivery.waybill(req.auth, req.params.id, req.body)));
   router.post('/accounting/deliveries/:id/receipt', role(['accounting']), permission('deliveryReceipts', 'create'), origin, json({
     limit: '8kb'
   }), action(req => delivery.receipt(req.auth, req.params.id, req.body)));

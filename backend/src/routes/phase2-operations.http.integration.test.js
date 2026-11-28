@@ -4,12 +4,12 @@ import express from 'express';
 import {createPhase2OperationsRouter} from './phase2-operations.routes.js';
 import {hasPermission} from '../config/permissions.js';
 
-async function harness(t,{role='client',deny=false,mustChange=0}={}){
+async function harness(t,{role='client',deny=false,mustChange=0,denyWaybillUpdate=false}={}){
   let connections=0;
   const db={async getConnection(){connections++;throw new Error('Explicit offline database boundary');}};
   const app=express();app.use('/api/phase2',createPhase2OperationsRouter({db,appOrigin:'http://localhost:3107',
     validateSessionService:async token=>token==='a'.repeat(64)?{userId:'9',sessionId:'19',roleCode:role,accountType:role==='client'?'client':'employee',clientId:role==='client'?'29':null,active:1,mustChangePassword:mustChange}:null,
-    updateSessionActivityService:async()=>true,permissionChecker:(...args)=>!deny&&hasPermission(...args),
+    updateSessionActivityService:async()=>true,permissionChecker:(...args)=>!deny&&!(denyWaybillUpdate&&args[1]==='waybills'&&args[2]==='update')&&hasPermission(...args),
   }));
   const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
   t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
@@ -22,6 +22,13 @@ const mutations=[
   ['accounting','/accounting/deliveries/19/receipt','POST'],['accounting','/accounting/proofs/99/review','POST'],
   ['logistics','/logistics/deliveries/19','PATCH'],['logistics','/logistics/deliveries/19/signed-receipt','POST'],
 ];
+test('print confirmation requires existing waybills.update in addition to create permission', async t => {
+  const h = await harness(t, { role: 'warehouse', denyWaybillUpdate: true });
+  assert.equal((await h.request('/warehouse/deliveries/19/waybill', { method: 'POST', body: { printed: true } })).status, 403);
+  assert.equal(h.connections, 0);
+  assert.equal((await h.request('/warehouse/deliveries/19/waybill', { method: 'POST', body: { printed: false } })).status, 503);
+  assert.equal(h.connections, 1);
+});
 for(const [role,path,method]of mutations){
   test(path+' rejects another role before any database call',async t=>{const h=await harness(t);assert.equal((await h.request(path,{method,body:{}})).status,403);assert.equal(h.connections,0);});
   test(path+' enforces its existing permission grant',async t=>{const h=await harness(t,{role,deny:true});assert.equal((await h.request(path,{method,body:{}})).status,403);assert.equal(h.connections,0);});

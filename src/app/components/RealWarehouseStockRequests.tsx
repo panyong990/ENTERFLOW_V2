@@ -35,6 +35,7 @@ export function RealWarehouseStockRequests({ onClose }: { onClose: () => void })
     request: StockRequestPresentation,
     quantities: Record<string, string>,
     updateInventory: boolean,
+    reason?: string,
   ) => {
     const lines = request.requestedMaterials.map((material) => {
       const lineId = request.lineIds?.[material.materialId];
@@ -46,18 +47,22 @@ export function RealWarehouseStockRequests({ onClose }: { onClose: () => void })
         shortageQuantity: Number(Math.max(0, material.requiredQuantity - currentQuantity).toFixed(4)),
       };
     });
-    await processStockRequest(request.requestId, {
-      status: updateInventory ? "updated" : "responded",
-      lines,
-      ...(updateInventory ? {
-        inventoryUpdates: request.requestedMaterials.map((material) => ({
-          materialId: material.materialId,
-          quantityOnHand: Number(quantities[material.materialId]),
-        })),
-      } : {}),
-    });
-    if (updateInventory) refreshInventory();
-    await load();
+    setSaving(true);
+    try {
+      await processStockRequest(request.requestId, {
+        status: updateInventory ? "updated" : "responded",
+        lines,
+        ...(updateInventory ? {
+          reason,
+          inventoryUpdates: request.requestedMaterials.map((material) => ({
+            materialId: material.materialId,
+            quantityOnHand: Number(quantities[material.materialId]),
+          })),
+        } : {}),
+      });
+      if (updateInventory) refreshInventory();
+      await load();
+    } finally { setSaving(false); }
   }, [load, refreshInventory]);
 
   return (

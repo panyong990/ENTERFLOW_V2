@@ -4,11 +4,12 @@ import { createWarehouseService } from './warehouse.service.js';
 
 const warehouse = { accountType: 'employee', roleCode: 'warehouse', userId: '9' };
 
-function harness({ shipments = [], shipment = null, waybills = [], receipts = [] } = {}) {
+function harness({ shipments = [], shipment = null, waybills = [], receipts = [], items = [] } = {}) {
   const calls = [];
   const connection = {
     async execute(sql, params) {
       calls.push({ sql, params });
+      if (sql.includes('FROM delivery_item di')) return [items];
       if (sql.includes('LIMIT ?') && sql.includes('FROM delivery d')) return [shipments];
       if (sql.includes('WHERE d.delivery_id=?')) return [shipment ? [shipment] : []];
       if (sql.includes('FROM waybill WHERE')) return [waybills];
@@ -57,4 +58,15 @@ test('Warehouse shipment detail returns waybills and delivery receipts without o
 test('Warehouse shipment detail safely returns not found', async () => {
   const h = harness();
   assert.deepEqual(await h.service.getShipment(warehouse, '41'), { success: false, code: 'NOT_FOUND' });
+});
+
+test('print metadata uses shipment-owned line quantities and existing PO/invoice/address columns', async () => {
+  const h = harness({ shipment: { id: '41', jobOrderId: '31', purchaseOrderReference: 'PO-1', salesInvoiceReference: null, clientAddress: '' },
+    items: [{ name: 'Filter', quantity: '2' }], waybills: [{ id: '51', shipmentId: '41', qrIdentifier: 'QR-stored', reference: 'WB-1', printedAt: null }] });
+  const result = await h.service.getShipment(warehouse, '41');
+  assert.deepEqual(result.data.waybillItems, [{ name: 'Filter', quantity: '2' }]);
+  const itemQuery = h.calls.find(call => call.sql.includes('FROM delivery_item di'));
+  assert.deepEqual(itemQuery.params, ['41']); assert.match(itemQuery.sql, /ji.jo_id=d.jo_id/);
+  assert.ok(h.calls.some(call => call.sql.includes('purchaseOrderReference') && call.sql.includes('salesInvoiceReference')));
+  assert.equal(h.calls.some(call => /\b(?:INSERT|UPDATE|DELETE)\b/.test(call.sql)), false);
 });

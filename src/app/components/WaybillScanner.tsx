@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IScannerControls } from "@zxing/browser";
 import { Fragment } from "react";
 import { Printer, CheckCircle2, X, ScanLine, Info, Camera, Search, Filter, QrCode, ShieldCheck } from "lucide-react";
@@ -8,6 +8,9 @@ import { useSession } from "../store/session";
 import { clientCompanyAddress, getClientCompanySettings } from "../store/clientCompanySettings";
 import { NotificationBell } from "./NotificationBell";
 import { inquiryToDispatchRow, type DispatchRow } from "./waybillData";
+import { WaybillDocument } from "./WaybillDocument";
+import { RealWarehouseWaybillRecords } from "./RealWarehouseWaybillRecords";
+import type { WarehouseScanTarget } from './WarehouseWaybillVerification';
 
 interface WaybillPreviewData {
   shipment: DispatchRow;
@@ -44,6 +47,10 @@ export function WaybillScanner() {
   const { inquiriesByStage, updateInquiry } = useOrders();
   const { mode } = useSession();
   const realMode = mode === "real";
+  const realScanTargetRef=useRef<WarehouseScanTarget|null>(null);
+  const [realScanTarget,setRealScanTarget]=useState<WarehouseScanTarget|null>(null);
+  const [realDispatchRefresh,setRealDispatchRefresh]=useState(0);
+  const [realDispatchBusy,setRealDispatchBusy]=useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanPopup, setScanPopup] = useState<DispatchRow | null>(null);
   const [waybillPreview, setWaybillPreview] = useState<WaybillPreviewData | null>(null);
@@ -116,7 +123,25 @@ export function WaybillScanner() {
     scanControlsRef.current = null;
     releaseCameraStream();
     setIsScanning(false);
+    setIsCameraStarting(false);
   };
+
+  const handleScanTargetChange=useCallback((target:WarehouseScanTarget|null)=>{
+    if(!target || target.busy || target.deliveryId!==realScanTargetRef.current?.deliveryId)stopScanner();
+    realScanTargetRef.current=target;setRealScanTarget(target);
+  },[]);
+  useEffect(()=>{if(realMode&&realDispatchBusy)stopScanner();},[realMode,realDispatchBusy]);
+
+  useEffect(()=>{
+    stopScanner();setScanPopup(null);setCameraError('');
+  },[realMode]);
+
+  useEffect(()=>{
+    const stopWhenHidden=()=>{if(document.visibilityState==='hidden')stopScanner();};
+    const stopWhenLeaving=()=>stopScanner();
+    document.addEventListener('visibilitychange',stopWhenHidden);window.addEventListener('pagehide',stopWhenLeaving);
+    return()=>{document.removeEventListener('visibilitychange',stopWhenHidden);window.removeEventListener('pagehide',stopWhenLeaving);};
+  },[]);
 
   useEffect(() => {
     if (!isScanning || !cameraStream) return;
@@ -136,6 +161,16 @@ export function WaybillScanner() {
         const reader = new BrowserQRCodeReader();
         const controls = await reader.decodeFromStream(cameraStream, video, (result, _error, scannerControls) => {
           if (cancelled || scanSessionRef.current !== scanSession || !result) return;
+
+          if(realMode) {
+            const target=realScanTargetRef.current;
+            if(!target || target.busy)return;
+            // Invalidate this decode loop before handing off; preserve opaque QR bytes.
+            scanSessionRef.current+=1;scannerControls.stop();scanControlsRef.current=null;
+            releaseCameraStream();setIsScanning(false);setCameraError('');
+            void target.verifyIdentifier(result.getText());
+            return;
+          }
 
           const identifier = result.getText().trim();
           const match = shipmentsRef.current.find(
@@ -191,7 +226,7 @@ export function WaybillScanner() {
         cameraStream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [isScanning, cameraStream]);
+  }, [isScanning, cameraStream,realMode]);
 
   useEffect(() => () => {
     scanSessionRef.current += 1;
@@ -202,8 +237,9 @@ export function WaybillScanner() {
 
   const startScanner = async () => {
     if (realMode) {
-      toast.info("Real waybill scanning is unavailable", { description: "An authenticated waybill verification API is required; no scan was started." });
-      return;
+      if(!realScanTargetRef.current || realScanTargetRef.current.busy) {
+        toast.info('Select a Warehouse shipment first', {description:'Wait for any verification to finish before starting the camera.'});return;
+      }
     }
     if (cameraRequestPendingRef.current || cameraStreamRef.current || scanControlsRef.current) return;
 
@@ -343,8 +379,6 @@ export function WaybillScanner() {
         <NotificationBell />
       </header>
 
-      {realMode && <div role="status" className="border-b border-amber-200 bg-amber-50 px-8 py-3 font-dm text-xs text-amber-950">Real waybill records are unavailable. The scanner, lookup, preview, history, and print workflow remain visible, but Demo records are excluded and scan verification or waybill updates require an authenticated API.</div>}
-
       <div className="px-6 md:px-8 py-6 md:py-8 flex flex-col gap-6">
         <section aria-label="Waybill Scanner" className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
           <div className="grid lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -365,12 +399,12 @@ export function WaybillScanner() {
                     <Camera size={15} /> Stop Camera
                   </button>
                 ) : (
-                  <button onClick={startScanner} disabled={realMode} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>
+                  <button onClick={startScanner} disabled={realMode && (!realScanTarget || realScanTarget.busy)} className="font-dm flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: "#C8102E", fontSize: 12, fontWeight: 700 }}>
                     <Camera size={15} /> {cameraError ? "Retry Camera" : "Start QR Scanner"}
                   </button>
                 )}
                 <span className="font-dm" style={{ fontSize: 11, color: "#64748B" }}>
-                  {realMode ? "Live scan verification is unavailable until an authenticated waybill API is connected." : isCameraStarting ? "Waiting for camera access. You can cancel while the request is pending." : isScanning ? "Point the camera at the Waybill QR code." : "Allow camera access to scan the QR code. The QR contains only the Waybill identifier."}
+                  {realMode ? !realScanTarget ? 'Select a shipment in Dispatch Labels below before scanning.' : realScanTarget.busy ? 'Verification is in progress. Camera is stopped.' : isCameraStarting ? 'Waiting for camera permission. You can cancel while the request is pending.' : isScanning ? `Point the camera at the QR code for shipment ${realScanTarget.deliveryId}.` : `Camera starts only when requested. Selected shipment: ${realScanTarget.deliveryId}.` : isCameraStarting ? "Waiting for camera access. You can cancel while the request is pending." : isScanning ? "Point the camera at the Waybill QR code." : "Allow camera access to scan the QR code. The QR contains only the Waybill identifier."}
                 </span>
               </div>
               {cameraError && <p className="font-dm mt-3" role="alert" style={{ fontSize: 12, color: "#B91C1C" }}>{cameraError}</p>}
@@ -440,7 +474,7 @@ export function WaybillScanner() {
                       letterSpacing: 0.4,
                     }}
                   >
-                    {scanPopup ? "VERIFIED" : cameraError ? "ERROR" : isScanning ? "SCANNING" : "READY"}
+                    {realMode && realScanTarget?.busy ? 'VERIFYING' : scanPopup ? "VERIFIED" : cameraError ? "ERROR" : isScanning ? "SCANNING" : "READY"}
                   </span>
                 </div>
               </div>
@@ -455,18 +489,20 @@ export function WaybillScanner() {
           </div>
         </section>
 
-        <section>
+        <section aria-label="Dispatch Labels — Ready for Packing">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-3">
             <div>
               <h2 className="font-syne" style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>📦 Dispatch Labels — Ready for Packing</h2>
               <p className="font-dm mt-0.5" style={{ fontSize: 12, color: "#64748B" }}>Print or reprint dispatch labels for finished production items before they ship.</p>
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto">
+              {realMode&&<button type="button" disabled={realDispatchBusy} onClick={()=>setRealDispatchRefresh(value=>value+1)} className="font-dm rounded-md border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold disabled:opacity-50">Refresh</button>}
               <div className="relative w-full md:w-72">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#94A3B8" }} />
                 <input
                   type="search"
                   value={dispatchSearch}
+                  disabled={realMode&&realDispatchBusy}
                   onChange={(event) => setDispatchSearch(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") setIsDispatchFilterOpen(false);
@@ -491,7 +527,7 @@ export function WaybillScanner() {
                 {isDispatchFilterOpen && (
                   <div className="absolute right-0 top-12 z-20 w-64 bg-white rounded-lg border border-slate-200 p-4 shadow-lg">
                     <label className="font-dm block" style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                      Date
+                      {realMode?'Dispatch date':'Date'}
                       <select
                         value={dispatchDateFilter}
                         onChange={(event) => setDispatchDateFilter(event.target.value)}
@@ -509,6 +545,7 @@ export function WaybillScanner() {
               </div>
             </div>
           </div>
+          {realMode ? <RealWarehouseWaybillRecords onScanTargetChange={handleScanTargetChange} search={dispatchSearch} dateFilter={dispatchDateFilter} refreshKey={realDispatchRefresh} onBusyChange={setRealDispatchBusy}/> : (
           <div className="bg-white rounded-xl border border-slate-200/70 overflow-hidden" style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
             <table className="w-full">
               <thead style={{ backgroundColor: "#F4F6F9" }}>
@@ -520,7 +557,7 @@ export function WaybillScanner() {
               </thead>
               <tbody>
                 {ready.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>{realMode ? "Real dispatch records are unavailable." : "No items ready for dispatch."}</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No items ready for dispatch.</td></tr>
                 ) : filteredReady.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-6 text-center font-dm" style={{ fontSize: 12, color: "#94A3B8" }}>No matching job orders found.</td></tr>
                 ) : filteredReady.map((c) => {
@@ -592,11 +629,12 @@ export function WaybillScanner() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
 
       </div>
 
-      {waybillPreview && (
+      {!realMode && waybillPreview && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
           style={{ backgroundColor: "rgba(15,23,42,0.7)" }}
@@ -626,81 +664,7 @@ export function WaybillScanner() {
             </div>
 
             <div className="overflow-auto p-4 md:p-5 print:p-0" style={{ backgroundColor: "#F4F6F9" }}>
-              <article
-                id="waybill-preview-document"
-                className="bg-white mx-auto print:shadow-none"
-                style={{ width: "100%", maxWidth: 560, padding: 20, boxShadow: "0 4px 16px rgba(15,23,42,0.08)", border: "1px solid #E2E8F0" }}
-              >
-                <div className="flex items-start justify-between gap-3 pb-3 border-b" style={{ borderColor: "#CBD5E1" }}>
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="flex flex-col items-center">
-                      <span style={{ fontSize: 30, color: "#C8102E", fontWeight: 900, lineHeight: 0.9 }}>▲</span>
-                      <span className="font-dm" style={{ fontSize: 7, fontWeight: 800, color: "#C8102E", letterSpacing: 0.8, marginTop: 1 }}>EFIP</span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-syne" style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", letterSpacing: 0.3, textTransform: "uppercase" }}>
-                        Enter-Flow / Enter-Fil Industrial Products
-                      </div>
-                      <div className="font-dm mt-1" style={{ fontSize: 10, color: "#475569", lineHeight: 1.4 }}>
-                        Sitio Hulo, Barangay Balasing - San Jose Rd<br />
-                        Santa Maria, 3022 Bulacan
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-syne" style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", letterSpacing: 1, lineHeight: 1 }}>WAYBILL</div>
-                    <div className="font-dm mt-1.5" style={{ fontSize: 9, color: "#64748B" }}>Dispatch Date</div>
-                    <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{waybillPreview.dispatchDate}</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 border-b border-slate-200">
-                  <div className="flex flex-col gap-2.5 min-w-0">
-                    <div>
-                      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.6, textTransform: "uppercase" }}>Waybill No.</div>
-                      <div className="font-mono-jb mt-0.5 break-words" style={{ fontSize: 19, fontWeight: 800, color: "#1A2B4A" }}>{waybillPreview.shipment.waybillIdentifier}</div>
-                    </div>
-                    <div>
-                      <div className="font-dm" style={{ fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 0.6, textTransform: "uppercase" }}>JO No.</div>
-                      <div className="font-mono-jb mt-0.5 break-words" style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>{waybillPreview.shipment.jo}</div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <img src={waybillPreview.qrDataUrl} alt="QR code containing Waybill identifier" className="w-24 h-24" />
-                    <div className="font-dm mt-0.5 text-center" style={{ fontSize: 9, fontWeight: 700, color: "#475569" }}>QR Code</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-4 py-3 border-b border-slate-200">
-                  <div className="pr-4 border-r border-slate-200">
-                    <div className="font-dm pb-1 mb-1.5 border-b border-slate-200" style={{ fontSize: 10, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.8 }}>FROM</div>
-                    <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>Enter-Fil Industrial Products</div>
-                    <div className="font-dm mt-1" style={{ fontSize: 11, lineHeight: 1.45, color: "#475569" }}>
-                      Sitio Hulo, Barangay Balasing - San Jose Rd<br />
-                      Santa Maria, 3022 Bulacan
-                    </div>
-                  </div>
-                  <div className="pl-1">
-                    <div className="font-dm pb-1 mb-1.5 border-b border-slate-200" style={{ fontSize: 10, fontWeight: 800, color: "#1A2B4A", letterSpacing: 0.8 }}>TO</div>
-                    <div className="font-dm" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{waybillPreview.shipment.client}</div>
-                    <div className="font-dm mt-1" style={{ fontSize: 11, lineHeight: 1.45, color: "#475569", overflowWrap: "anywhere" }}>
-                      {waybillPreview.clientAddress}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  {[
-                    ["Item / Product", waybillPreview.shipment.item],
-                    ["Quantity", `${waybillPreview.shipment.qty} pcs`],
-                    ["PO Number", waybillPreview.shipment.po],
-                    ["SI Number", waybillPreview.shipment.si],
-                    ["Delivery Method", waybillPreview.shipment.method],
-                  ].map(([label, value]) => (
-                    <WaybillField key={label} label={label} value={value} />
-                  ))}
-                </div>
-              </article>
+              <WaybillDocument data={waybillPreview} />
             </div>
           </div>
         </div>
@@ -774,15 +738,6 @@ export function WaybillScanner() {
           #waybill-preview-document { padding: 16px !important; }
         }
       `}</style>
-    </div>
-  );
-}
-
-function WaybillField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 py-2.5 border-b border-slate-100 last:border-b-0 min-w-0">
-      <span className="font-dm" style={{ fontSize: 9, color: "#64748B" }}>{label}</span>
-      <span className="font-dm text-right break-words" style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{value}</span>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { ok, read, rows, one, id, text, object, requireThat, paging, transaction, lockInquiry, inquiryFor, insert, changed, audit, notifyClient, notifyRole, reference, date } from './core.js';
 import { deliveryFrom, deliveryColumns } from './reads.js';
+import { ensureWaybill, recordWaybillPrint, makeShortWaybillReference } from './waybillGeneration.js';
 const handoff = "EXISTS(SELECT 1 FROM audit_event ae WHERE ae.subject_type='delivery' AND ae.subject_id=d.delivery_id AND ae.action='delivery.handed_off') AND EXISTS(SELECT 1 FROM waybill hw WHERE hw.delivery_id=d.delivery_id AND hw.printed_at IS NOT NULL) AND EXISTS(SELECT 1 FROM delivery_receipt hdr JOIN document hd ON hd.document_id=hdr.document_id AND hd.storage_status='available' WHERE hdr.delivery_id=d.delivery_id)";
 export function createShipmentReadService({
   db,
@@ -16,6 +17,18 @@ export function createShipmentReadService({
         params = [],
         where = ['1=1'];
       if (handoffOnly) where.push(handoff);
+      if (query.pendingWaybillsOnly === true) {
+        requireThat(roleCode === 'warehouse', 'FORBIDDEN');
+        where.push(`NOT EXISTS (
+          SELECT 1
+          FROM waybill pending_wb
+          JOIN audit_event verified
+            ON verified.subject_type='waybill'
+            AND verified.subject_id=pending_wb.waybill_id
+            AND verified.action='waybill.scan_verified'
+          WHERE pending_wb.delivery_id=d.delivery_id
+        )`);
+      }
       if (query.orderId) {
         requireThat(id(query.orderId));
         where.push('i.inquiry_id=?');
@@ -31,20 +44,28 @@ export function createShipmentReadService({
     getShipment: (actor, target) => read(db, async c => {
       authorized(actor);
       requireThat(id(target));
-      const d = await one(c, `SELECT ${deliveryColumns} FROM ${deliveryFrom} WHERE d.delivery_id=?${handoffOnly ? ' AND ' + handoff : ''}`, [target]);
+      const printColumns = roleCode === 'warehouse' ? `,p.po_no purchaseOrderReference,i.contact_person contactPerson,
+        (SELECT CASE WHEN COUNT(*)=1 THEN MAX(si.invoice_no) ELSE NULL END FROM sales_invoice si WHERE si.po_id=p.po_id) salesInvoiceReference,
+        (SELECT CAST(COUNT(*) AS CHAR) FROM sales_invoice si WHERE si.po_id=p.po_id) salesInvoiceCount,
+        CONCAT_WS(', ',NULLIF(c.address_line1,''),NULLIF(c.address_line2,''),NULLIF(c.city_province,''),NULLIF(c.zip_code,'')) clientAddress` : '';
+      const d = await one(c, `SELECT ${deliveryColumns}${printColumns} FROM ${deliveryFrom} WHERE d.delivery_id=?${handoffOnly ? ' AND ' + handoff : ''}`, [target]);
       requireThat(d, 'NOT_FOUND');
-      const waybills = await rows(c, `SELECT CAST(waybill_id AS CHAR) id,waybill_no reference,${roleCode === 'warehouse' ? 'qr_identifier qrIdentifier,' : ''}printed_at printedAt FROM waybill WHERE delivery_id=?`, [target]);
+      const waybills = await rows(c, `SELECT CAST(waybill_id AS CHAR) id,CAST(delivery_id AS CHAR) shipmentId,waybill_no reference,${roleCode === 'warehouse' ? 'qr_identifier qrIdentifier,' : ''}printed_at printedAt FROM waybill WHERE delivery_id=?`, [target]);
       const deliveryReceipts = await rows(c, 'SELECT CAST(delivery_receipt_id AS CHAR) id,dr_no reference,CAST(document_id AS CHAR) documentId,generated_at generatedAt FROM delivery_receipt WHERE delivery_id=?', [target]);
       return ok({
         ...d,
         waybills,
+        ...(roleCode === 'warehouse' ? { waybillItems: await rows(c, `SELECT ji.item_name name,CAST(di.quantity AS CHAR) quantity
+          FROM delivery_item di JOIN delivery d ON d.delivery_id=di.delivery_id
+          JOIN job_order_item ji ON ji.jo_item_id=di.jo_item_id AND ji.jo_id=d.jo_id
+          WHERE di.delivery_id=? ORDER BY ji.line_no,di.delivery_item_id`, [target]) } : {}),
         deliveryReceipts
       });
     })
   };
 }
 export function createDeliveryOperations({
-  db
+  db, makeWaybillReference = makeShortWaybillReference
 }) {
   return {
     create: (actor, body) => transaction(db, actor, ['warehouse', 'admin'], async (c, a) => {
@@ -122,17 +143,16 @@ export function createDeliveryOperations({
     waybill: (actor, target, body = {}) => transaction(db, actor, ['warehouse'], async (c, a) => {
       requireThat(id(target));
       object(body, ['printed']);
+      requireThat(body.printed === undefined || typeof body.printed === 'boolean');
       const inquiryId = await inquiryFor(c, 'delivery', 'delivery_id', target);
       await lockInquiry(c, inquiryId);
-      const existing = await one(c, 'SELECT * FROM waybill WHERE delivery_id=? FOR UPDATE', [target]);
-      let waybillId = existing ? String(existing.waybill_id) : await insert(c, 'INSERT INTO waybill(delivery_id,waybill_no,qr_identifier,generated_by_user_id) VALUES (?,?,?,?)', [target, reference('WB'), reference('QR'), a.userId]);
-      if (body.printed === true) await changed(c, 'UPDATE waybill SET printed_at=COALESCE(printed_at,UTC_TIMESTAMP(3)) WHERE waybill_id=?', [waybillId]);
-      await audit(c, a, body.printed === true ? 'waybill.printed' : 'waybill.generated', 'waybill', waybillId, null, {
+      let row = await ensureWaybill(c, target, a.userId, { makeReference: makeWaybillReference });
+      if (body.printed === true) row = await recordWaybillPrint(c, row);
+      await audit(c, a, body.printed === true ? 'waybill.printed' : 'waybill.generated', 'waybill', row.id, null, {
         deliveryId: target
       });
       return ok({
-        id: waybillId,
-        deliveryId: target
+        ...row
       });
     }),
     receipt: (actor, target, body) => transaction(db, actor, ['accounting'], async (c, a) => {

@@ -92,7 +92,7 @@ export function normalizeOperationalAvailability(response) {
   const hasAvailable = assessments.some(item => item.status === 'available');
   const hasInsufficient = assessments.some(item => item.status === 'insufficient');
 
-  const overallStatus = unmappedItems.length ||
+  const overallStatus = response.requirementsAvailable === false || unmappedItems.length ||
       response.overallStatus === 'unmapped'
     ? 'unmapped'
     : !assessments.length
